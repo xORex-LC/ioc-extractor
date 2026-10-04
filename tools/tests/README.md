@@ -29,3 +29,13 @@ boundary, а не запускает долгий daemon scenario.
 
 Тот же набор проверяет полную диагностическую эквивалентность selected-версий
 и сохранение пар при чередовании before/after в optimization comparison.
+
+Capacity contracts проверяют независимую очистку host/IP, сохранение URL с
+путями в aggregate, KEEP_FIRST/LAST_NONEMPTY источники и отказ при лишних,
+потерянных либо изменённых public CSV rows. Provisioned SMB запуск остаётся
+отдельным opt-in evidence через `make data-processing-capacity`.
+
+Контракты retention проверяют очистку тяжёлого состояния после успешного и
+ошибочного fork, сохранность входов/логов/frozen fixtures, явный opt-in для
+баз и отказ от очистки чужих каталогов и symlink targets. При нехватке места
+новая JVM не запускается.

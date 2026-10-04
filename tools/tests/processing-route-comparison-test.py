@@ -20,9 +20,173 @@ OPTIMIZATION_SPEC = importlib.util.spec_from_file_location(
     "optimization_comparison", Path(__file__).resolve().parents[1] / "dev/processing-optimization-comparison.py")
 OPTIMIZATION = importlib.util.module_from_spec(OPTIMIZATION_SPEC)
 OPTIMIZATION_SPEC.loader.exec_module(OPTIMIZATION)
+CAPACITY_SPEC = importlib.util.spec_from_file_location(
+    "capacity", Path(__file__).resolve().parents[1] / "dev/data-processing-capacity.py")
+CAPACITY = importlib.util.module_from_spec(CAPACITY_SPEC)
+CAPACITY_SPEC.loader.exec_module(CAPACITY)
 
 
 class ComparisonTest(unittest.TestCase):
+    def test_default_retention_removes_owned_state_and_preserves_evidence_inputs_and_symlink_targets(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(COMPARISON, 'REPO', Path(folder)):
+            root = Path(folder) / '.dev/fork'
+            root.mkdir(parents=True)
+            COMPARISON.mark_owned_workspace(root)
+            for name in ('ioc-dataframe.db', 'ioc-dataframe.db-wal', 'masks.csv', 'run.log', 'signature.json.gz', 'import.csv'):
+                (root / name).write_text(name)
+            (root / 'test-resources').mkdir()
+            (root / 'test-resources/masks.csv').write_text('fixture')
+            external = Path(folder) / 'outside.db'
+            external.write_text('must survive')
+            (root / 'linked.db').symlink_to(external)
+            (root / 'linked-folder').symlink_to(external.parent, target_is_directory=True)
+            result = COMPARISON.discard_generated_state(root)
+            self.assertEqual(result['removed_files'], 3)
+            self.assertFalse((root / 'ioc-dataframe.db').exists())
+            self.assertFalse((root / 'masks.csv').exists())
+            for name in ('run.log', 'signature.json.gz', 'import.csv', 'test-resources/masks.csv'):
+                self.assertTrue((root / name).is_file(), name)
+            self.assertEqual(external.read_text(), 'must survive')
+
+    def test_retention_requires_ownership_and_explicit_opt_in_preserves_state(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(COMPARISON, 'REPO', Path(folder)):
+            root = Path(folder) / '.dev/fork'
+            root.mkdir(parents=True)
+            database = root / 'ioc-dataframe.db'
+            database.write_text('state')
+            with self.assertRaisesRegex(ValueError, 'unowned'):
+                COMPARISON.discard_generated_state(root)
+            COMPARISON.mark_owned_workspace(root)
+            result = COMPARISON.discard_generated_state(root, retain=True)
+            self.assertTrue(result['state_retained'])
+            self.assertEqual(database.read_text(), 'state')
+            with self.assertRaisesRegex(ValueError, 'unowned'):
+                COMPARISON.discard_generated_state(Path(folder))
+
+    def test_stand_cleanup_preserves_import_fixtures_and_drops_published_copies_and_private_jar(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(COMPARISON, 'REPO', Path(folder)):
+            root = Path(folder) / '.dev/stand'
+            root.mkdir(parents=True)
+            COMPARISON.mark_owned_workspace(root)
+            (root / 'masks.csv').write_text('physical import fixture')
+            for relative in ('ioc-app.jar', 'var/db/ioc-service.db', 'var/export/slice/masks.csv', 'readback/profile/masks.csv'):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('generated')
+            result = COMPARISON.discard_generated_state(root, stand=True)
+            self.assertEqual(result['removed_files'], 4)
+            self.assertEqual((root / 'masks.csv').read_text(), 'physical import fixture')
+
+    def test_state_manifest_default_does_not_copy_databases_and_opt_in_backup_preserves_wal_records(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            dataframe, service = root / 'dataframe.db', root / 'service.db'
+            with sqlite3.connect(dataframe) as writer:
+                writer.execute('PRAGMA journal_mode=WAL')
+                writer.execute('PRAGMA user_version=12')
+                for artifact in CAPACITY.ARTIFACTS:
+                    writer.execute(f'CREATE TABLE {artifact}(value TEXT)')
+                writer.execute('CREATE TABLE canonical_match_alias(value TEXT)')
+                writer.execute('CREATE TABLE artifact_revision(artifact TEXT,revision INTEGER)')
+                writer.execute("INSERT INTO ip_list VALUES('192.0.2.1')")
+                writer.commit()
+                with sqlite3.connect(service) as connection:
+                    connection.execute('PRAGMA user_version=12')
+                    connection.execute('CREATE TABLE ingest_run(value TEXT)')
+                manifests = CAPACITY.snapshot_state(dataframe, service, root / 'facts')
+                self.assertFalse(manifests['dataframe']['state_retained'])
+                self.assertEqual(list((root / 'facts').iterdir()), [root / 'facts/manifest.json'])
+                backups = CAPACITY.snapshot_state(dataframe, service, root / 'backup', retain=True)
+                self.assertEqual(backups['dataframe']['artifact_rows']['ip_list'], 1)
+                self.assertFalse(list((root / 'backup').glob('*.db')))
+                import gzip
+                with gzip.open(backups['dataframe']['file'], 'rb') as contents:
+                    restored = root / 'restored.db'
+                    restored.write_bytes(contents.read())
+                with sqlite3.connect(restored) as connection:
+                    self.assertEqual(connection.execute('SELECT value FROM ip_list').fetchall(), [('192.0.2.1',)])
+            writer.close()
+
+
+    def test_failed_fork_cleans_databases_after_process_returns_and_keeps_failure_log(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(COMPARISON, 'REPO', Path(folder)):
+            workspace = Path(folder) / '.dev'
+            workspace.mkdir()
+            def fail(root, *arguments):
+                (root / 'ioc-dataframe.db').write_text('partial state')
+                (root / 'run.log').write_text('process failure evidence')
+                raise RuntimeError('failed fork')
+            with patch.object(COMPARISON, 'measure_one', side_effect=fail):
+                with self.assertRaisesRegex(RuntimeError, 'failed fork'):
+                    COMPARISON.run_one(workspace, workspace / 'document.html', 'document', True, 0, '', 1, 1, 0)
+            root = workspace / 'document-selected-0'
+            self.assertFalse((root / 'ioc-dataframe.db').exists())
+            self.assertEqual((root / 'run.log').read_text(), 'process failure evidence')
+
+    def test_fork_refuses_to_start_when_disk_headroom_is_exhausted(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            with patch.object(COMPARISON.shutil, 'disk_usage') as usage, \
+                    patch.object(COMPARISON, 'measure_one') as measure:
+                usage.return_value.free = 0
+                with self.assertRaisesRegex(RuntimeError, 'no JVM started'):
+                    COMPARISON.run_one(root, root / 'document.html', 'document', True, 0, '', 1, 1, 0)
+                measure.assert_not_called()
+            self.assertFalse((root / 'document-selected-0').exists())
+
+    def capacity_policy(self):
+        columns = {
+            'masks': ['mask', 'url_match', 'host_match', 'source'],
+            'ip_list': ['ip', 'score', 'source'],
+            'hashes': ['hash_md5', 'hash_sha256', 'hash_sha1', 'source'],
+            'address_blacklist': ['forbidden_url', 'forbidden_ip'],
+            'ioc_aggregate': ['name', 'ip_address', 'url_match', 'host_match', 'hash']}
+        keys = {'masks': ['mask'], 'ip_list': ['ip', 'score'],
+                'hashes': ['hash_md5', 'hash_sha256', 'hash_sha1'],
+                'address_blacklist': ['forbidden_url', 'forbidden_ip'],
+                'ioc_aggregate': ['ip_address', 'url_match', 'host_match', 'hash']}
+        return {'ioc': {'refang': {'rules': [{'from': 'hxxps', 'to': 'https'},
+                                            {'from': '[.]', 'to': '.'}, {'from': '[:]', 'to': ':'}]},
+                        'sink': {'artifacts': [{'name': name, 'columns': [{'name': column} for column in value]}
+                                               for name, value in columns.items()]},
+                        'artifact-identity': {'artifacts': [{'name': name, 'key-columns': value}
+                                                           for name, value in keys.items()]}}}
+
+    def test_capacity_stand_oracle_cleans_hosts_and_preserves_detailed_aggregate(self):
+        oracle = CAPACITY.FixtureOracle(self.capacity_policy())
+        oracle.feed('<h2>БИБ-0001</h2><p>sample-1 :: hxxps[:]//ioc-1[.]example[.]test/a?q=1</p>'
+                    '<h2>БИБ-0002</h2><p>sample-2 :: https://ioc-1.example.test/a?q=1</p>'
+                    '<p>sample-3 :: 10.0.0.1:9090/api</p><p>' + 'a' * 32 + '</p>')
+        self.assertEqual(oracle.observations, 4)
+        mask = next(iter(oracle.expected['masks'].values()))
+        self.assertEqual(mask, {'mask': 'ioc-1.example.test', 'url_match': 'u:hAS',
+                                'host_match': 'h:dAS', 'source': 'БИБ-0001'})
+        aggregate = list(oracle.expected['ioc_aggregate'].values())
+        self.assertIn({'name': 'БИБ-0002', 'ip_address': None,
+                       'url_match': 'https://ioc-1.example.test/a?q=1', 'host_match': 'ioc-1.example.test',
+                       'hash': None}, aggregate)
+        self.assertEqual(next(iter(oracle.expected['ip_list'].values()))['ip'], '10.0.0.1')
+        self.assertEqual(next(iter(oracle.expected['hashes'].values()))['hash_md5'], 'A' * 32)
+
+    def test_capacity_stand_oracle_rejects_unknown_fixture_psl_instead_of_guessing(self):
+        oracle = CAPACITY.FixtureOracle(self.capacity_policy())
+        with self.assertRaisesRegex(ValueError, 'Unqualified PSL'):
+            oracle.feed('<h2>БИБ-0001</h2><p>unknown.example.com</p>')
+
+    def test_capacity_public_oracle_rejects_extra_missing_and_wrong_rows(self):
+        oracle = CAPACITY.FixtureOracle(self.capacity_policy())
+        oracle.feed('<h2>БИБ-0001</h2><p>10.0.0.1</p>')
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / 'ip.csv'
+            path.write_text('id;ip;score;source\n1;10.0.0.1;NULL;БИБ-0001\n')
+            oracle.check_csv('ip_list', path)
+            for content in ('id;ip;score;source\n',
+                            'id;ip;score;source\n1;10.0.0.1;20;БИБ-0001\n',
+                            'id;ip;score;source\n1;10.0.0.1;NULL;БИБ-0001\n2;10.0.0.1;NULL;БИБ-0001\n'):
+                path.write_text(content)
+                with self.assertRaises(RuntimeError):
+                    oracle.check_csv('ip_list', path)
+
     def test_capacity_document_profile_enables_canonical_lifecycle(self):
         with tempfile.TemporaryDirectory() as root:
             COMPARISON.config("document", True, Path(root), shape="mixed", capacity=True)

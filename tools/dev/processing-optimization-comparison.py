@@ -21,7 +21,7 @@ PROFILES = {
     "unique": ("domains", 8000, 8000, 2000, 2000),
     "collapse": ("host-collapse", 100000, 25000, 10000, 2500),
     "capacity-10k": ("mixed", 10000, 10000, 10000, 10000),
-    "capacity-100k": ("mixed", 100000, 100000, 10000, 10000),
+    "capacity-100k": ("mixed", 100000, 100000, 100000, 100000),
 }
 METRICS = ("elapsed_ms", "allocated_main_bytes", "sampled_peak_heap_bytes",
            "sampled_peak_current_rss_kib", "sampled_peak_rss_kib", "startup_ms",
@@ -80,6 +80,8 @@ def main():
     parser.add_argument("--workload", choices=["both", "document", "import"], default="both")
     parser.add_argument("--pairs", type=int, default=5)
     parser.add_argument("--diagnostics", action="store_true")
+    parser.add_argument("--retain-state", action="store_true",
+                        help="Keep generated databases/CSVs; default retains measured evidence only")
     parser.add_argument("--agent", type=Path,
                         help="Common diagnostic agent jar; required with --diagnostics")
     args = parser.parse_args()
@@ -93,15 +95,16 @@ def main():
         parser.error("Use an empty workspace")
     runtimes = {"before": args.reference.resolve(), "after": args.candidate.resolve()}
     frozen = {side: frozen_runtime(path) for side, path in runtimes.items()}
-    # Resource differences would change policies or the measurement probe's environment.
-    for path in (runtimes["before"] / "test-resources").rglob("*"):
-        if path.is_file():
-            other = runtimes["after"] / "test-resources" / path.relative_to(runtimes["before"] / "test-resources")
-            if path.read_bytes() != other.read_bytes():
-                raise RuntimeError(f"Test resource mismatch: {path.name}")
+    # Compare both directions: an extra probe/resource also changes the experiment.
+    for directory in ("test-resources", "probe-classes"):
+        snapshots = [{str(path.relative_to(runtime / directory)): hashlib.sha256(path.read_bytes()).hexdigest()
+                      for path in (runtime / directory).rglob("*") if path.is_file()}
+                     for runtime in runtimes.values()]
+        if snapshots[0] != snapshots[1]:
+            raise RuntimeError(f"Frozen {directory} differ; use identical measurement probes and policies")
     os.environ.update(DEBUG="false", TRACE="false", LOGGING_LEVEL_ROOT="WARN")
     report = {"runtimes": {side: value[1] for side, value in frozen.items()},
-              "pairs": args.pairs, "warmups": 1, "profiles": {}, "execution_order": [],
+              "pairs": args.pairs, "profiles": {}, "execution_order": [],
               "mode": "diagnostic" if args.diagnostics else "primary",
               "logging": {key: os.environ[key] for key in ("DEBUG", "TRACE", "LOGGING_LEVEL_ROOT")},
               "jvm_flags": ["-Xms128m", "-Xmx512m"],
@@ -123,6 +126,7 @@ def main():
                                            document_unique, import_unique, shape)
             samples = []
             item = {"samples": samples, "shape": shape,
+                    "warmups": 0 if name.startswith("capacity-") else 1,
                     "input_sha256": {kind: hashlib.sha256(path.read_bytes()).hexdigest()
                                      for kind, path in fixtures.items()}}
             report["profiles"][name] = item
@@ -144,7 +148,7 @@ def main():
                             document_unique if kind == "document" else import_unique,
                             0 if name.startswith("capacity-") else 1,
                             runtimes[side] / "test-resources", args.diagnostics, shape,
-                            capacity=name.startswith("capacity-"))
+                            capacity=name.startswith("capacity-"), retain_state=args.retain_state)
                         metrics["revision"] = side
                         samples.append(metrics)
                         signatures[side] = signature

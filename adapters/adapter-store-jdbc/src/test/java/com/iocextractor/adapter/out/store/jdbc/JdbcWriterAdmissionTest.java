@@ -1,6 +1,8 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import com.iocextractor.common.IocExtractorException;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -10,10 +12,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Timeout(20)
 class JdbcWriterAdmissionTest {
 
     @Test
@@ -80,6 +84,45 @@ class JdbcWriterAdmissionTest {
 
         assertThat(admission.fair()).isTrue();
         assertThat(admitted).containsExactlyElementsOf(families);
+    }
+
+    @Test
+    void interruptedWaiterNeverRunsWorkAndDoesNotPreventFreshAdmission() throws Exception {
+        JdbcWriterAdmission admission = new JdbcWriterAdmission();
+        CountDownLatch holderEntered = new CountDownLatch(1);
+        CountDownLatch releaseHolder = new CountDownLatch(1);
+        AtomicReference<Thread> waitingThread = new AtomicReference<>();
+        AtomicInteger cancelledWork = new AtomicInteger();
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> holder = executor.submit(() -> admission.execute(() -> {
+                holderEntered.countDown();
+                await(releaseHolder);
+                return null;
+            }));
+            assertThat(holderEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<Boolean> waiter = executor.submit(() -> {
+                waitingThread.set(Thread.currentThread());
+                try {
+                    admission.execute(cancelledWork::incrementAndGet);
+                    throw new AssertionError("Interrupted waiter was admitted");
+                } catch (IocExtractorException failure) {
+                    assertThat(failure).hasCauseInstanceOf(InterruptedException.class);
+                    return Thread.currentThread().isInterrupted();
+                }
+            });
+            awaitQueueDepth(admission, 1);
+            waitingThread.get().interrupt();
+            assertThat(waiter.get(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(cancelledWork).hasValue(0);
+            releaseHolder.countDown();
+            holder.get(5, TimeUnit.SECONDS);
+            assertThat(admission.execute(() -> "fresh attempt")).isEqualTo("fresh attempt");
+        } finally {
+            releaseHolder.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
     }
 
     private Void admitted(JdbcWriterAdmission admission,

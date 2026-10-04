@@ -75,3 +75,44 @@ fast suites and from 287 to 288 deterministic suites; integration/external
 counts and every coverage/analyzer threshold remain unchanged. Three additions
 to the existing matcher integration suite cover repeated calls, independent
 connections, chunk boundaries and rollback/retry. Final gates are pending.
+
+## Measurement disposition and remaining memory boundary
+
+The first five-pair 10k comparison is retained locally as preliminary evidence:
+its first document pair overlapped the final 16 seconds of PMD analysis. It is
+excluded from the primary comparison. A separate quiet five-pair 10k repeat
+and five-pair 100k comparison use frozen CAP-1A and CAP-1B runtimes, byte-equal
+probes/resources, alternating order and fresh empty stores. The 100k import
+workload now also contains 100k rows; it is not a repeated 10k import labelled
+as a 100k profile.
+
+Initial 100k document samples reduce local processing from roughly 84 seconds
+to 28 seconds, but process RSS remains near 800 MiB. These are provisional
+samples until the complete report is checked. The reused statement/matcher
+resources reduce work and allocation; the still-materialized document,
+prepared rows and downstream projection/export state remain CAP-3–CAP-5
+concerns. Neither the 512 MiB service RSS target nor capacity acceptance is
+closed by CAP-1B.
+
+## Local evidence retention correction
+
+The first capacity harness retained every per-fork SQLite store and repeated
+CSV, accumulating about 11 GiB in CAP workspaces. This was an execution defect.
+Completed-run state is now disposable after the semantic checks: all three
+comparison/capacity tools clean owned databases, WAL/SHM, staged snapshots and
+generated projections on success and failure. Inputs, configuration, logs,
+measurements and compressed complete oracle signatures remain. Full state
+retention requires explicit `--retain-state`; stand snapshots use gzip. Cleanup
+does not follow symlinks or traverse source/Git/frozen-runtime directories.
+Each new comparison fork refuses to start with less than 1 GiB free.
+
+Obsolete generated states across 75 private benchmark workspaces were removed,
+and existing full signatures were compressed, releasing about 15 GiB. One
+coherent compressed canonical/service pair from the successful 100k stand run
+and one from a 10k processed import remain for investigation. The frozen
+CAP-1A/CAP-1B runtime identities match the primary report after cleanup.
+Twenty-seven offline harness contracts and real 40-document/40-import JVM
+forks pass; their retained evidence occupies roughly 60/80 KiB and no SQLite
+state remains in either completed fork. The WSL relocation interrupted a
+diagnostic run and left incomplete files; those samples are excluded until
+reproduced. Completed primary reports are intact.

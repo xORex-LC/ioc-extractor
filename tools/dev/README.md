@@ -137,6 +137,31 @@ oracle. Реальные результаты читаются cursor-ом по�
 fresh JVM, empty private stores, без прогрева входными файлами. Эти профили
 не заменяют отдельную проверку all-five AS_IS import и полного SMB-цикла.
 
+`make data-processing-capacity CAPACITY_ARGS='--mode sql --runtime .dev/FROZEN
+--workspace .dev/NEW-SQL-EVIDENCE'` запускает actual packaged matcher с точным
+JDBC driver на 1k/10k/100k unrelated aliases. SQL fixture является private
+mechanism experiment, а не способом заполнения business databases.
+
+Режим `--mode stand` дополнительно требует `--config`, `--environment` и
+`--document`; `--imports` добавляет пять AS_IS SMB deliveries. Он запускает
+отдельный daemon с private SQLite/cwd, двумя CPU affinity и собственным SMB
+namespace; policy/cadence сохраняются. В evidence явно отделены affinity от
+cgroup quota, process RSS от heap/cgroup charge и полный SMB/readback cycle от
+pipeline stage times. Полный oracle проверяет все public fields/keys,
+provenance, manifest hashes, revisions и sparse import slots. Неизвестные
+fixture hosts отклоняются: oracle поддерживает закреплённый `.example.test`
+corpus и малый `example.org` fixture, а не произвольную PSL.
+
+Во всех трёх processing comparison/capacity harness временные SQLite базы,
+WAL/SHM, staging и повторные CSV удаляются после проверок каждого завершённого
+JVM fork, включая ошибочный запуск. Сохраняются входы, конфигурация, логи,
+измерения и сжатый полный oracle (`signature.json.gz`); явные diagnostic/JFR
+запуски сохраняют JFR. `--retain-state` оставляет базы и CSV только по явному
+запросу. Stand по умолчанию записывает manifests состояния без копирования
+баз; выбранные SQLite snapshots сохраняются сжатыми. Новый fork требует
+минимум 1 GiB свободного места. Очистка ограничена помеченным private
+workspace, не проходит по symlinks и не затрагивает frozen runtime/resources.
+
 `processing-route-comparison.py` собирает test probe вместе с reactor и запускает
 Router в отдельных JVM/SQLite/workspace. После полного перехода на Router
 прогоны всегда `--selected-only`: совместимый движок удалён, новые отношения

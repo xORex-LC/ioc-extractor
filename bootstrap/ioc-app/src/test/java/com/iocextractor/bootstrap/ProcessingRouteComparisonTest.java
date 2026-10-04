@@ -15,6 +15,31 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Verifies that the opt-in measurement probe cannot publish partial memory samples. */
 class ProcessingRouteComparisonTest {
     @Test
+    void diagnosticAdmissionAnchorsSurroundTheActualWriterGuard() throws Exception {
+        String type = "com/iocextractor/adapter/out/store/jdbc/JdbcWriterAdmission";
+        byte[] bytes;
+        try (var source = getClass().getClassLoader().getResourceAsStream(type + ".class")) {
+            bytes = ComparisonDiagnostics.instrument(type, java.util.Objects.requireNonNull(source).readAllBytes());
+        }
+        Class<?> woven = new ClassLoader(getClass().getClassLoader()) {
+            Class<?> loadProbe() { return defineClass(type.replace('/', '.'), bytes, 0, bytes.length); }
+        }.loadProbe();
+        Object admission = woven.getConstructor().newInstance();
+        ComparisonDiagnostics.premain("", org.mockito.Mockito.mock(Instrumentation.class));
+        ComparisonDiagnostics.begin();
+        String counters;
+        try {
+            assertThat(woven.getMethod("execute", java.util.function.Supplier.class)
+                    .invoke(admission, (java.util.function.Supplier<String>) () -> "written"))
+                    .isEqualTo("written");
+        } finally {
+            counters = ComparisonDiagnostics.end();
+        }
+        assertThat(counters).contains("writer_admissions=1", "writer_admission_wait_nanos=",
+                "writer_admission_hold_nanos=", "max_writer_admission_hold_nanos=");
+    }
+
+    @Test
     void diagnosticWeavingPreservesVerificationOfStaticViewSnapshotLambda() throws Exception {
         String type = "com/iocextractor/adapter/processing/camel/runtime/InvocationViews";
         byte[] bytes;

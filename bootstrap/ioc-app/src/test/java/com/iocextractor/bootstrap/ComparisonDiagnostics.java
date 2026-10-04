@@ -60,7 +60,8 @@ public final class ComparisonDiagnostics {
             @Override
             public byte[] transform(ClassLoader loader, String name, Class<?> redefining,
                                     ProtectionDomain protection, byte[] bytes) {
-                if (!TARGETS.contains(name == null ? "" : name)) {
+                if (name == null || !(TARGETS.contains(name)
+                        || name.startsWith("com/iocextractor/adapter/out/store/jdbc/"))) {
                     return null;
                 }
                 try {
@@ -126,7 +127,9 @@ public final class ComparisonDiagnostics {
             if (start == null) {
                 throw new IllegalStateException("Preparation timer has no start: " + name);
             }
-            COUNTS.computeIfAbsent(name, ignored -> new LongAdder()).add(System.nanoTime() - start);
+            long elapsed = System.nanoTime() - start;
+            COUNTS.computeIfAbsent(name, ignored -> new LongAdder()).add(elapsed);
+            maximum("max_" + name, elapsed);
         }
     }
 
@@ -254,6 +257,27 @@ public final class ComparisonDiagnostics {
 
                     @Override public void visitMethodInsn(int opcode, String owner, String name,
                                                           String desc, boolean isInterface) {
+                        boolean admission = type.endsWith("/JdbcWriterAdmission")
+                                && owner.equals("java/util/concurrent/locks/ReentrantLock");
+                        boolean canonicalWrite = type.endsWith("/JdbcCanonicalLifecycleWriter")
+                                || type.endsWith("/JdbcCanonicalImportWriter");
+                        boolean ownership = canonicalWrite && owner.endsWith("/JdbcLifecycleTransactions")
+                                && name.equals("acquireActiveWriteOwnership");
+                        if (admission && name.equals("lockInterruptibly")) {
+                            hook("start", "writer_admission_wait_nanos");
+                        }
+                        if (admission && name.equals("unlock")) {
+                            hook("finish", "writer_admission_hold_nanos");
+                        }
+                        if (ownership) {
+                            hook("start", "canonical_writer_wait_nanos");
+                        }
+                        if (owner.equals("java/sql/Connection") && name.equals("prepareStatement")) {
+                            hook("count", "jdbc_statement_prepares");
+                        }
+                        if (owner.equals("java/sql/Connection") && name.equals("createStatement")) {
+                            hook("count", "jdbc_statement_creates");
+                        }
                         if (type.endsWith("/CompiledSelector") && (
                                 owner.equals("java/util/function/Predicate") && name.equals("test")
                                 || owner.endsWith("/OperationCatalog$PredicateBinding") && name.equals("matches"))) {
@@ -284,6 +308,19 @@ public final class ComparisonDiagnostics {
                             hook("count", "psl_domain_parses");
                         }
                         super.visitMethodInsn(opcode, owner, name, desc, isInterface);
+                        if (admission && name.equals("lockInterruptibly")) {
+                            hook("finish", "writer_admission_wait_nanos");
+                            hook("start", "writer_admission_hold_nanos");
+                            hook("count", "writer_admissions");
+                        }
+                        if (ownership) {
+                            hook("finish", "canonical_writer_wait_nanos");
+                            hook("start", "canonical_writer_hold_nanos");
+                            hook("count", "canonical_transactions");
+                        }
+                        if (canonicalWrite && owner.equals("java/sql/Connection") && name.equals("commit")) {
+                            hook("finish", "canonical_writer_hold_nanos");
+                        }
                         if (derivedClassification) {
                             super.visitMethodInsn(Opcodes.INVOKESTATIC, HELPER, "derivedFinish", "()V", false);
                         }

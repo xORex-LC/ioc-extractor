@@ -2,6 +2,7 @@
 """Router-only IOC qualification; historical paired-report statistics remain readable."""
 
 import argparse
+import gzip
 import hashlib
 import json
 import os
@@ -342,11 +343,67 @@ def expected_document_diagnostics(input_rows, unique, shape, selected):
     return overlaps + (0 if selected else input_rows - min(input_rows, unique))
 
 
+OWNED_WORKSPACE = '.processing-comparison-owned'
+GENERATED_CSV = {'masks.csv', 'ip-list.csv', 'hashes.csv', 'address-blacklist.csv', 'IOC_aggregate.csv'}
+
+
+def mark_owned_workspace(root):
+    """Only newly created, private harness directories are eligible for cleanup."""
+    if root.is_symlink() or not root.resolve().is_relative_to(REPO / '.dev'):
+        raise ValueError('Cleanup ownership requires a private repo-local .dev workspace')
+    (root / OWNED_WORKSPACE).write_text('Generated processing comparison state\n')
+
+
+def discard_generated_state(root, retain=False, stand=False):
+    """Remove replayable state after checks; preserve input/config/log/oracle evidence."""
+    if root.is_symlink() or not root.resolve().is_relative_to(REPO / '.dev') \
+            or not (root / OWNED_WORKSPACE).is_file() or (root / OWNED_WORKSPACE).is_symlink():
+        raise ValueError('Refusing cleanup of an unowned workspace')
+    removed = []
+    if not retain:
+        for directory, subdirectories, filenames in os.walk(root, followlinks=False):
+            subdirectories[:] = [name for name in subdirectories
+                if name not in ('.git', 'src', 'target', 'app-classes', 'test-resources', 'probe-classes', 'lib')
+                and not (Path(directory) / name).is_symlink()]
+            for name in filenames:
+                path = Path(directory) / name
+                if path.is_symlink():
+                    continue
+                relative = path.relative_to(root)
+                database = re.search(r'\.(?:db|sqlite|sqlite3)(?:-wal|-shm|-journal)?$', name) is not None
+                projection = name.endswith('.csv') and (relative.parts[0] in ('dataframe', 'readback', 'snapshots', 'terminal')
+                    or relative.parts[:2] == ('var', 'export')
+                    or not stand and name in GENERATED_CSV)
+                if database or projection or stand and relative == Path('ioc-app.jar'):
+                    removed.append({'path': str(relative), 'bytes': path.stat().st_size})
+                    path.unlink()
+    result = {'state_retained': retain, 'removed_bytes': sum(item['bytes'] for item in removed),
+              'removed_files': removed}
+    (root / 'retention.json').write_text(json.dumps(result, indent=2) + '\n')
+    return {'state_retained': retain, 'removed_bytes': result['removed_bytes'], 'removed_files': len(removed)}
+
+
 def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows, unique, warmups,
-            resources=RESOURCES, diagnostics=False, shape="domains", collapse_hosts=20, capacity=False):
+            resources=RESOURCES, diagnostics=False, shape="domains", collapse_hosts=20, capacity=False,
+            retain_state=False):
     name = "selected" if selected else "compatible"
     root = workspace / f"{kind}-{name}-{iteration}"
+    if shutil.disk_usage(workspace).free < 1024 ** 3:
+        raise RuntimeError('Less than 1 GiB free for a processing comparison fork; no JVM started')
     root.mkdir()
+    mark_owned_workspace(root)
+    try:
+        metrics, signature = measure_one(root, workspace, fixture, kind, selected, iteration, classpath,
+            input_rows, unique, warmups, resources, diagnostics, shape, collapse_hosts, capacity)
+    finally:
+        retention = discard_generated_state(root, retain_state)
+    metrics['retention'] = retention
+    return metrics, signature
+
+
+def measure_one(root, workspace, fixture, kind, selected, iteration, classpath, input_rows, unique, warmups,
+                resources, diagnostics, shape, collapse_hosts, capacity):
+    name = "selected" if selected else "compatible"
     config(kind, selected, root, resources, shape, capacity)
     warmup_paths = []
     for number in range(warmups):
@@ -382,6 +439,12 @@ def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows
     metrics.update(dict(item.split("=", 1) for item in environments[0].split()))
     if diagnostics:
         counters = diagnostic_counters(output)
+        if capacity:
+            required = ("jdbc_statement_prepares", "canonical_transactions", "canonical_writer_wait_nanos",
+                        "canonical_writer_hold_nanos", "writer_admissions", "writer_admission_wait_nanos",
+                        "writer_admission_hold_nanos", "max_canonical_writer_hold_nanos")
+            if any(counters.get(name, 0) <= 0 for name in required):
+                raise RuntimeError("Missing capacity writer/setup anchors in diagnostic fork")
         metrics["diagnostic_counters"] = counters
         metrics["preparation_ms"] = str(counters["preparation_nanos"] / 1_000_000)
     metrics["kind"], metrics["path"], metrics["iteration"] = kind, name, iteration
@@ -422,7 +485,9 @@ def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows
                 item["ioc"]["stage"]: item["event"]["duration"] for item in phases[-6:]}
     metrics["outcome"] = outcomes[-1]
     signature["outcome"] = outcomes[-1]
-    (root / "signature.json").write_text(json.dumps(signature, sort_keys=True, indent=2) + "\n")
+    with gzip.open(root / "signature.json.gz", 'wt', encoding='utf-8', compresslevel=1) as evidence:
+        json.dump(signature, evidence, sort_keys=True, indent=2)
+        evidence.write('\n')
     metrics["signature_sha256"] = hashlib.sha256(json.dumps(signature, sort_keys=True).encode()).hexdigest()
     return metrics, signature
 
@@ -473,6 +538,8 @@ def main():
                         help="Separate instrumented preparation/counter/JFR forks; not primary cost evidence")
     parser.add_argument("--capacity", action="store_true",
                         help="Exercise active lifecycle/alias mutations for canonical capacity qualification")
+    parser.add_argument("--retain-state", action="store_true",
+                        help="Keep generated databases/CSVs; default removes state after checks, including failures")
     parser.add_argument("--max-wall-ratio", type=float, default=2.0)
     parser.add_argument("--max-allocation-ratio", type=float, default=3.0)
     parser.add_argument("--max-rss-kib", type=int, default=1048576)
@@ -553,7 +620,7 @@ def main():
                                              else args.import_rows,
                                              args.document_unique if kind == "document" else args.import_unique,
                                              args.warmups, resources, args.diagnostics, args.shape,
-                                             args.collapse_hosts, args.capacity)
+                                             args.collapse_hosts, args.capacity, args.retain_state)
                 rows.append(metrics)
                 (workspace / "samples.json").write_text(json.dumps(rows, indent=2) + "\n")
                 if signature != previous.get(kind, signature):
@@ -592,7 +659,8 @@ def main():
                                 for name in ("cpu.max", "memory.max")},
               "jvm_flags": ["-Xms128m", "-Xmx512m"],
               "runtime_jars": [p.name for p in sorted(libraries.glob("*.jar"))],
-              "acceptance_budget": "not agreed; limits are historical regression guards",
+              "acceptance_budget": "CAP targets adopted; stage-specific acceptance is evaluated separately"
+              if args.capacity else "not agreed; limits are historical regression guards",
               "inputs": {kind: {"rows": args.document_rows if kind == "document" else args.import_rows,
                                 "final_hosts": args.collapse_hosts if args.shape == "host-collapse" else None,
                                 "source_labels": 2 if args.shape == "host-collapse" else 1,

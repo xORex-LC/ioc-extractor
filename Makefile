@@ -262,6 +262,10 @@ processing-route-comparison: ## Paired production routing probe; COMPARISON_ARGS
 processing-optimization-comparison: ## Alternate frozen before/after selected JVMs; COMPARISON_ARGS selects snapshots
 	@python3 tools/dev/processing-optimization-comparison.py $(COMPARISON_ARGS)
 
+.PHONY: data-processing-capacity
+data-processing-capacity: ## CAP-0/1 exact-driver SQL or private production-policy SMB qualification; CAPACITY_ARGS is required
+	@python3 tools/dev/data-processing-capacity.py $(CAPACITY_ARGS)
+
 db: ## Inspect SQLite read-only; DB=service|dataframe DB_COMMAND=shell|schema|tables
 	@tools/dev/database.sh --workspace "$(WORKSPACE)" --db "$(DB)" "$(DB_COMMAND)"
 
