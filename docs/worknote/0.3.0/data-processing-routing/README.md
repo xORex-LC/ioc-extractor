@@ -152,3 +152,8 @@ functional, scaling, resource, recovery and deployment gates.
 [CAP-3 execution](cap-3-execution.md) records the completed attribution and
 construction-time diagnostic changes, their G3 regressions and 60 paired stage
 measurement forks. Whole-service resource acceptance remains a later gate.
+
+[CAP-4 execution](cap-4-execution.md) records sealed private preparation,
+streamed canonical confirmations/receipts, failure and cleanup contracts, and
+the G4 10k/100k/1m memory plateau. Separate upstream memory and whole-service
+latency limits remain open.

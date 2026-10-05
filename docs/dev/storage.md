@@ -28,8 +28,10 @@ Xerial SQLite, SQL, migrations и transaction mechanics принадлежат
 Document preparation хранится отдельно от canonical truth: один приватный
 SQLite workspace на invocation, с общим admission budget и дисковыми квотами.
 Sealed winners читаются по одной строке; canonical mutation и typed receipts
-используют повторяемые курсоры. Receipt JDBC batch ограничен 128 строками и
-1 MiB расчётного удержания; positions пишутся без накопления общего batch.
+используют повторяемые курсоры. Receipt JDBC batch сбрасывается после 128 строк
+или при достижении 1 MiB расчётного удержания. Если одна запись превышает этот
+порог, она записывается отдельно; размер строки документа ограничен своим
+настраиваемым лимитом. Positions пишутся без накопления общего batch.
 Проверка повторных row keys перед ID reservation использует дисковый TEMP
 индекс с кешем 64 KiB и пределом 256 MiB. Committed observation/artifact marker
 проверяется до чтения подготовленных строк, включая STAGING whole-document

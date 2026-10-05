@@ -2,7 +2,7 @@
 
 Diagnostic evidence for the
 [capacity and scheduling review](../../data-processing-capacity-review.md).
-Recorded 2026-10-04. The incident files describe the old deployed runtime;
+Recorded 2026-10-04–2026-10-05. The incident files describe the old deployed runtime;
 CAP-0/1 evidence additionally qualifies isolated corrected executables.
 
 ## Evidence files
@@ -15,6 +15,7 @@ CAP-0/1 evidence additionally qualifies isolated corrected executables.
 | [SqliteMatcherProbe.java](SqliteMatcherProbe.java) | Reproducible private SQL mechanism experiment |
 | [cap-0-1-20261004.json](cap-0-1-20261004.json) | CAP-0/1 frozen identities, 40 paired primary forks, ten diagnostic phase forks, exact-driver work/plans and all-five live SMB/oracle checks |
 | [cap-3-stages.json](cap-3-stages.json) | CAP-3 stage mechanisms: 60 alternating primary JVM forks, 100k/1m attribution and bounded 100k diagnostics, identical semantic signatures, no retained database state |
+| [cap-4-workspace.json](cap-4-workspace.json) | CAP-4 G4: three incremental workspace/canonical/receipt JVM forks (10k/100k/1m rows per artifact) and three separate actual Spring/Tika/extraction forks; frozen bytecode, full-row oracle, explicit-GC diagnostics and verified removal of all private runtime/state |
 
 `artifact_revision.changed_at` is transaction effective time sampled before
 the mutation loop. It must not be used as commit completion wall time. The
@@ -103,3 +104,10 @@ or remote authentication file is versioned in this bundle.
 construction-time diagnostic retention, late checkpoint failures and the
 distinction between sampled garbage-containing heap and retained detail.
 Its stage measurements are not full-service resource acceptance.
+
+[CAP-4 execution](../../cap-4-execution.md) describes the forced-small-budget
+memory plateau and its scope. The two-artifact G4 diagnostic creates 2.2*N
+candidates and 2*N canonical winners for each reported N; it does not time
+Router, source reading or SMB. The separate upstream series measures those
+input graphs through attribution, without routing or writes. All six forks
+remove their databases/source files; only this compact JSON is retained.

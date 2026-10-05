@@ -75,8 +75,10 @@ runtime JDBC drivers.
   One workspace/cache serves all artifacts; its global reducer compares complete
   identity material and preserves whole-row selection and first-key order.
   Sealed repeatable cursors feed canonical writers and typed receipts. Receipt
-  cursors can borrow the writer connection; receipt batches are capped at 128
-  rows or 1 MiB estimated bytes. No document-wide winner/receipt list is retained.
+  cursors can borrow the writer connection; receipt batches flush at 128 rows
+  or 1 MiB estimated bytes. An individually larger binding flushes alone;
+  document rows have an independent configured encoded-size limit. No
+  document-wide winner/receipt list is retained.
 - `JdbcCanonicalMatchPlanner` resolves batch key material by digest and exact
   canonical equality against active rows only. Its thread-confined matching
   session uses a direct complete-key singleton query or bounded request staging;

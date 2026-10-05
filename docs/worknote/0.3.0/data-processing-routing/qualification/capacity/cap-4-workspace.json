@@ -1,0 +1,239 @@
+{
+  "source_commit": "be4afb5a787efbe6ee18c42b09501b98f2b0bfdf",
+  "scope": "G4 diagnostic: incremental routed candidates through canonical confirmation and receipt replay; explicit GC live samples; no source reader/Router/SMB timing",
+  "flags": [
+    "-Xms32m",
+    "-Xmx64m"
+  ],
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "java": "openjdk version \"21.0.12.1\" 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-24.04.4-Ubuntu)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-24.04.4-Ubuntu, mixed mode, sharing)",
+  "samples": [
+    {
+      "rows_per_artifact": 10000,
+      "limits": {
+        "memoryBytes": 2097152,
+        "cacheKiB": 64,
+        "maximumRowBytes": 4096,
+        "maximumFieldBytes": 2048,
+        "workspaceBytes": 2147483648,
+        "totalDiskBytes": 2147483648,
+        "batchRows": 128
+      },
+      "lease_bytes": 163840,
+      "live_workspace_connections": 1,
+      "summed_workspace_cache_bytes": 65536,
+      "canonical_connection_cache_bytes": 2048000,
+      "confirmation_validation_cache_bytes": 65536,
+      "state_disk_budget_bytes": 8589934592,
+      "baseline_live_heap_bytes": 13579408,
+      "baseline_rss_kib": 103700,
+      "prepare_seal_nanos": 2360548398,
+      "sealed_live_heap_bytes": 13765784,
+      "sealed_rss_kib": 140596,
+      "workspace_disk_bytes": 6038059,
+      "winner_validation_nanos": 128437289,
+      "promotion_nanos": 1356620664,
+      "promoted_live_heap_bytes": 13903312,
+      "promoted_rss_kib": 165016,
+      "receipt_read_nanos": 142193613,
+      "receipt_live_heap_bytes": 13920320,
+      "receipt_rss_kib": 165016,
+      "signatures": {
+        "first": "a4380ecfa8da3cf5786ab610f5cdfe7d71956d62c1ec74550ed90210dde7bfe9",
+        "last": "004e15585f9138ab2b8ac7096b0bc2975a3fc1b26e41e1dfb75d82a11fed999a"
+      },
+      "total_state_disk_bytes": 31999645,
+      "peak_heap_bytes": 29700128,
+      "peak_rss_kib": 168528
+    },
+    {
+      "rows_per_artifact": 100000,
+      "limits": {
+        "memoryBytes": 2097152,
+        "cacheKiB": 64,
+        "maximumRowBytes": 4096,
+        "maximumFieldBytes": 2048,
+        "workspaceBytes": 2147483648,
+        "totalDiskBytes": 2147483648,
+        "batchRows": 128
+      },
+      "lease_bytes": 163840,
+      "live_workspace_connections": 1,
+      "summed_workspace_cache_bytes": 65536,
+      "canonical_connection_cache_bytes": 2048000,
+      "confirmation_validation_cache_bytes": 65536,
+      "state_disk_budget_bytes": 8589934592,
+      "baseline_live_heap_bytes": 13571480,
+      "baseline_rss_kib": 105240,
+      "prepare_seal_nanos": 23326863099,
+      "sealed_live_heap_bytes": 13745672,
+      "sealed_rss_kib": 151680,
+      "workspace_disk_bytes": 61428271,
+      "winner_validation_nanos": 768193535,
+      "promotion_nanos": 12355445133,
+      "promoted_live_heap_bytes": 13890320,
+      "promoted_rss_kib": 195780,
+      "receipt_read_nanos": 1124563332,
+      "receipt_live_heap_bytes": 13907328,
+      "receipt_rss_kib": 195908,
+      "signatures": {
+        "first": "aab5f349a64c68383ccdf290e1067c16109813e1a8f428f132f99059422d3218",
+        "last": "bdf27afa0d8a23e5039a8c5758e8ee801a920b0941fb5290cbe7444465fd2550"
+      },
+      "total_state_disk_bytes": 323616033,
+      "peak_heap_bytes": 34915352,
+      "peak_rss_kib": 197480
+    },
+    {
+      "rows_per_artifact": 1000000,
+      "limits": {
+        "memoryBytes": 2097152,
+        "cacheKiB": 64,
+        "maximumRowBytes": 4096,
+        "maximumFieldBytes": 2048,
+        "workspaceBytes": 2147483648,
+        "totalDiskBytes": 2147483648,
+        "batchRows": 128
+      },
+      "lease_bytes": 163840,
+      "live_workspace_connections": 1,
+      "summed_workspace_cache_bytes": 65536,
+      "canonical_connection_cache_bytes": 2048000,
+      "confirmation_validation_cache_bytes": 65536,
+      "state_disk_budget_bytes": 8589934592,
+      "baseline_live_heap_bytes": 13620928,
+      "baseline_rss_kib": 106812,
+      "prepare_seal_nanos": 293276858326,
+      "sealed_live_heap_bytes": 13520320,
+      "sealed_rss_kib": 134484,
+      "workspace_disk_bytes": 635056691,
+      "winner_validation_nanos": 5735158595,
+      "promotion_nanos": 127770574184,
+      "promoted_live_heap_bytes": 13638520,
+      "promoted_rss_kib": 163652,
+      "receipt_read_nanos": 9151421636,
+      "receipt_live_heap_bytes": 13659528,
+      "receipt_rss_kib": 164992,
+      "signatures": {
+        "first": "5470702a98bb00104cd9a50100fdad35f93e822db4713a123b90f82339c3aca6",
+        "last": "c72ba0f5d9c94fbf620d400bd1634a3df95adaf57cb9cbdb97543964bb830ed3"
+      },
+      "total_state_disk_bytes": 3291336813,
+      "peak_heap_bytes": 30609128,
+      "peak_rss_kib": 179044
+    }
+  ],
+  "upstream_samples": [
+    {
+      "input_occurrences": 10000,
+      "input_bytes": 338986,
+      "baseline": {
+        "rss_kib": 265272,
+        "live_heap_bytes": 35917632
+      },
+      "before_READ_SOURCE": {
+        "rss_kib": 277688,
+        "live_heap_bytes": 40455808
+      },
+      "READ_SOURCE_nanos": 202368169,
+      "before_REFANG": {
+        "rss_kib": 285880,
+        "live_heap_bytes": 42597792
+      },
+      "REFANG_nanos": 12294085,
+      "before_EXTRACT": {
+        "rss_kib": 286264,
+        "live_heap_bytes": 42028648
+      },
+      "EXTRACT_nanos": 126734246,
+      "before_ATTRIBUTE": {
+        "rss_kib": 288952,
+        "live_heap_bytes": 43568256
+      },
+      "ATTRIBUTE_nanos": 10599521,
+      "attributed": {
+        "rss_kib": 289080,
+        "live_heap_bytes": 42902664
+      },
+      "peak_heap_bytes": 57233024,
+      "peak_rss_kib": 289080
+    },
+    {
+      "input_occurrences": 100000,
+      "input_bytes": 3488986,
+      "baseline": {
+        "rss_kib": 276208,
+        "live_heap_bytes": 35843528
+      },
+      "before_READ_SOURCE": {
+        "rss_kib": 288880,
+        "live_heap_bytes": 40366656
+      },
+      "READ_SOURCE_nanos": 324289874,
+      "before_REFANG": {
+        "rss_kib": 320612,
+        "live_heap_bytes": 47753120
+      },
+      "REFANG_nanos": 37982419,
+      "before_EXTRACT": {
+        "rss_kib": 320068,
+        "live_heap_bytes": 46706320
+      },
+      "EXTRACT_nanos": 493783895,
+      "before_ATTRIBUTE": {
+        "rss_kib": 352104,
+        "live_heap_bytes": 61974664
+      },
+      "ATTRIBUTE_nanos": 30114868,
+      "attributed": {
+        "rss_kib": 352232,
+        "live_heap_bytes": 54699552
+      },
+      "peak_heap_bytes": 131930648,
+      "peak_rss_kib": 352232
+    },
+    {
+      "input_occurrences": 1000000,
+      "input_bytes": 35888986,
+      "baseline": {
+        "live_heap_bytes": 35880808,
+        "rss_kib": 272460
+      },
+      "before_READ_SOURCE": {
+        "live_heap_bytes": 40353792,
+        "rss_kib": 285260
+      },
+      "READ_SOURCE_nanos": 1320331730,
+      "before_REFANG": {
+        "live_heap_bytes": 97178816,
+        "rss_kib": 709200
+      },
+      "REFANG_nanos": 151174320,
+      "before_EXTRACT": {
+        "live_heap_bytes": 88791864,
+        "rss_kib": 554836
+      },
+      "EXTRACT_nanos": 4419333053,
+      "before_ATTRIBUTE": {
+        "live_heap_bytes": 241268280,
+        "rss_kib": 662808
+      },
+      "ATTRIBUTE_nanos": 97409896,
+      "attributed": {
+        "live_heap_bytes": 168675960,
+        "rss_kib": 675564
+      },
+      "peak_heap_bytes": 525058464,
+      "peak_rss_kib": 747508
+    }
+  ],
+  "upstream_flags": [
+    "-Xms32m",
+    "-Xmx512m"
+  ],
+  "upstream_scope": "Separate actual Spring/Tika/read/refang/extract/attribute graph; explicit GC stage boundaries; no routing or writes",
+  "started_epoch_seconds": 1791203059.4401848,
+  "runtime_sha256": "38caf0e9dfe4bdb6967019dac46e7d02acbd88a26faf2dbb0a89fd0694b70043",
+  "temporary_runtime_and_state_removed": true,
+  "completed_epoch_seconds": 1791203558.3698058
+}

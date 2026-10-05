@@ -1,6 +1,6 @@
 # Data processing capacity implementation plan
 
-Status: CAP-0–CAP-3 implementation authorized; acceptance budgets adopted by
+Status: CAP-0–CAP-4 implemented and qualified within their stage scope; acceptance budgets adopted by
 the owner on 2026-10-04. Prepared from the
 [capacity review](data-processing-capacity-review.md). CAP-1A selective SQL and
 its JDBC regressions and CAP-1B resource sessions are implemented. Stage G0/G1A/G1B
@@ -8,7 +8,9 @@ qualification is recorded in the [execution report](cap-0-1-execution.md);
 CAP-2 ownership implementation and G2 evidence are tracked in its separate
 [execution report](cap-2-execution.md).
 CAP-3 implementation and scoped G3 qualification are complete in its
-[execution report](cap-3-execution.md). Whole-service resource acceptance remains
+[execution report](cap-3-execution.md). CAP-4 implementation and scoped G4
+qualification are complete in its [execution report](cap-4-execution.md).
+Whole-service resource acceptance remains
 open. The user supplied desired local-processing times, excluding external
 network/cadence waits, and asked for an engineering recommendation. The absolute
 budgets and technical stage gates below are frozen in
@@ -601,7 +603,12 @@ CAP-2 implementation and G2 qualification are complete in the
 qualification are complete in the [stage mechanism report](cap-3-execution.md):
 ordered/unordered attribution bounds, construction-time diagnostic retention,
 exact counts and rejecting checkpoints have regression and paired measurement
-evidence. CAP-4–CAP-7 remain unimplemented. The 100k document RSS and maximum
+evidence. CAP-4 and G4 are complete in the
+[workspace report](cap-4-execution.md): private sealed preparation, bounded
+canonical/receipt cursors, failure/ownership tests and 10k/100k/1m memory plateau.
+CAP-5–CAP-7 remain unimplemented. The separate million-occurrence
+reader/extractor graph still reaches about 730 MiB RSS in its diagnostic; G6
+latency and total-process resource acceptance remain open. The 100k document RSS and maximum
 writer-hold budgets remain open; scoped stage qualification is not whole-service
 acceptance.
 
