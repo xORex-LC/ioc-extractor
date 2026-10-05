@@ -26,7 +26,7 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
- * SQLite-backed export formation ledger with database-enforced global
+ * SQLite-backed export formation ledger with database-enforced per-profile
  * single-flight and compare-and-set state transitions.
  *
  * <p>Terminal progress and the corresponding {@code COMPLETED}/{@code SKIPPED}
@@ -91,7 +91,7 @@ public final class JdbcExportRunLedger implements ExportRunLedger, ExportRunRead
                 throw conflict(startedRun.runId(), ExportRunStatus.STARTED,
                         ExportRunStatus.STARTED, existing.get().status().name(), conflict);
             }
-            if (findActive().isPresent()) {
+            if (findActive(startedRun.profile()).isPresent()) {
                 return Optional.empty();
             }
             throw conflict;
@@ -211,14 +211,15 @@ public final class JdbcExportRunLedger implements ExportRunLedger, ExportRunRead
                 .optional();
     }
 
-    private Optional<ExportRun> findActive() {
+    private Optional<ExportRun> findActive(String profile) {
         return jdbc.sql("""
                         SELECT run_id, profile, status, slice_name, plan_hash,
                                manifest_sha256, started_at, updated_at, reason
                         FROM export_run
-                        WHERE status IN ('STARTED', 'STAGED', 'AVAILABLE')
+                        WHERE profile = :profile AND status IN ('STARTED', 'STAGED', 'AVAILABLE')
                         LIMIT 1
                         """)
+                .param("profile", profile)
                 .query(JdbcExportRunLedger::mapRun)
                 .optional();
     }

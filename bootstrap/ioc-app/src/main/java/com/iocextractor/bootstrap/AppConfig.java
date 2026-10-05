@@ -984,7 +984,7 @@ public class AppConfig {
                 lifecycleClock,
                 diagnosticSink,
                 new DiagnosticFactory(clock),
-                jdbcWriterAdmission);
+                jdbcWriterAdmission, props.storage().dataframe().pool().readMax());
     }
 
     @Bean
@@ -1078,11 +1078,17 @@ public class AppConfig {
     @ConditionalOnServiceStorage
     public RecoverExportUseCase recoverExportUseCase(
             ExportRunRecoveryService recoveryService,
+            ExportRunLedger ledger,
             ExportOperationGuard operationGuard) {
         return () -> {
-            try (ExportOperationGuard.Lease ignored = operationGuard.acquire()) {
-                return recoveryService.recoverIncomplete();
+            int recovered = 0;
+            for (String profile : ledger.findIncomplete().stream()
+                    .map(com.iocextractor.application.export.ExportRun::profile).distinct().toList()) {
+                try (ExportOperationGuard.Lease ignored = operationGuard.acquire(profile)) {
+                    recovered += recoveryService.recoverIncomplete(profile);
+                }
             }
+            return recovered;
         };
     }
 

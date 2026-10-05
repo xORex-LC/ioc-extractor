@@ -37,6 +37,7 @@ import java.util.Objects;
  */
 public final class CsvArtifactSliceWriter implements ArtifactSliceWriter {
 
+    // ExportService holds a profile lease; materialization state belongs to each invocation.
     private final SliceDirectoryLayout layout;
     private final SliceManifestCodec codec;
     private final SliceTreeVerifier verifier;
@@ -84,7 +85,7 @@ public final class CsvArtifactSliceWriter implements ArtifactSliceWriter {
     }
 
     @Override
-    public synchronized StagedSlice stage(ExportRun run,
+    public StagedSlice stage(ExportRun run,
                                           SnapshotRequest request,
                                           SnapshotSliceReader reader) {
         Objects.requireNonNull(run, "run");
@@ -120,7 +121,7 @@ public final class CsvArtifactSliceWriter implements ArtifactSliceWriter {
     }
 
     @Override
-    public synchronized SliceInspection inspect(ExportRun run) {
+    public SliceInspection inspect(ExportRun run) {
         Objects.requireNonNull(run, "run");
         Path staging = layout.staging(run);
         Path available = layout.available(run);
@@ -164,7 +165,7 @@ public final class CsvArtifactSliceWriter implements ArtifactSliceWriter {
     }
 
     @Override
-    public synchronized StagedSlice recoverStaging(ExportRun run) {
+    public StagedSlice recoverStaging(ExportRun run) {
         SliceInspection inspection = inspect(run);
         if (inspection.state() == SliceInspectionState.STAGED) {
             return new StagedSlice(run.runId(), run.sliceName(), inspection.manifestSha256(),
@@ -192,7 +193,7 @@ public final class CsvArtifactSliceWriter implements ArtifactSliceWriter {
     }
 
     @Override
-    public synchronized AvailableSlice makeAvailable(ExportRun run) {
+    public AvailableSlice makeAvailable(ExportRun run) {
         SliceInspection inspection = inspect(run);
         if (inspection.state() == SliceInspectionState.AVAILABLE) {
             return new AvailableSlice(run.runId(), run.sliceName(), inspection.manifestSha256(),
@@ -223,7 +224,7 @@ public final class CsvArtifactSliceWriter implements ArtifactSliceWriter {
     }
 
     @Override
-    public synchronized void discardStaging(ExportRun run) {
+    public void discardStaging(ExportRun run) {
         Objects.requireNonNull(run, "run");
         Path staging = layout.staging(run);
         if (!Files.exists(staging, LinkOption.NOFOLLOW_LINKS)) {

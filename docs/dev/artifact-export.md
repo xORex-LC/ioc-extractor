@@ -65,6 +65,27 @@ Daemon export scheduler до открытия этого barrier не выпол
    их отсутствии продвигает durable high-water. Canonical row id и
    `_lifecycle_id` не публикуются как этот slot и никогда не переиспользуются.
 
+## Независимое продвижение профилей
+
+[ADR-0037](../ADR/0037-profile-scoped-export-execution.md) разделяет formation и
+recovery по профилю. Service schema v13 допускает один active run на профиль;
+NIO lease исключает параллельное выполнение того же профиля между процессами.
+Startup recovery обходит все incomplete profiles до открытия scheduler, а recovery
+перед formation затрагивает только профиль, lease которого удерживает caller.
+CSV writer хранит materialization state внутри invocation и не удерживает общий
+монитор на время streaming.
+
+Daemon использует два worker-потока и не более одной queued/running попытки на
+настроенный профиль. Полный reconcile остаётся backstop для потерянных hints;
+quiet/max-cap cadence применяется отдельно. Число snapshot read transactions
+ограничено `ioc.storage.dataframe.pool.read-max`; clock/slot transactions не
+удерживают reader permit. Для одновременного продвижения двух профилей требуется
+как минимум два reader slots. Долгий snapshot удерживает WAL checkpoint, даже
+когда другой профиль может завершиться.
+
+Перед обновлением нужно остановить предыдущий процесс и сохранить согласованные
+backups. Старый binary не открывает service schema v13; rollback требует restore.
+
 ## Stable reusable export slots
 
 `SnapshotSliceReader` остаётся application output port для всей операции

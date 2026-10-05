@@ -127,8 +127,8 @@ class ExportServiceTest {
                     throw new AssertionError("revision IO must not run");
                 }, profile -> List.of(), new ExportFixtures.FakeLedger(),
                 new ExportFixtures.CountingSnapshotReader(), new ExportFixtures.FakeWriter(),
-                recovered::incrementAndGet,
-                () -> {
+                profile -> recovered.incrementAndGet(),
+                profile -> {
                     guarded.incrementAndGet();
                     return () -> { };
                 }, clock);
@@ -150,10 +150,10 @@ class ExportServiceTest {
                     return List.of(new ArtifactRevision("masks", 3, NOW));
                 }, profile -> List.of(prior), new ExportFixtures.FakeLedger(),
                 new ExportFixtures.CountingSnapshotReader(), new ExportFixtures.FakeWriter(),
-                () -> {
+                profile -> {
                     calls.add("recovery");
                     return 0;
-                }, () -> {
+                }, profile -> {
                     calls.add("acquire");
                     return () -> calls.add("release");
                 }, clock);
@@ -170,7 +170,7 @@ class ExportServiceTest {
                                   List<ExportProgress> progress,
                                   ExportFixtures.RecordingObserver observer) {
         return new ExportService(List.of(plan), artifacts -> revisions, profile -> progress,
-                ledger, snapshot, writer, () -> 0, () -> () -> { },
+                ledger, snapshot, writer, profile -> 0, profile -> () -> { },
                 new ExportChangeDetector(), observer, clock, () -> "run-new");
     }
 
@@ -182,7 +182,7 @@ class ExportServiceTest {
                                   ExportFixtures.RecordingObserver observer,
                                   RecordingControlEventPublisher events) {
         return new ExportService(List.of(plan), artifacts -> revisions, profile -> progress,
-                ledger, snapshot, writer, () -> 0, () -> () -> { },
+                ledger, snapshot, writer, profile -> 0, profile -> () -> { },
                 new ExportChangeDetector(), observer, events, clock, () -> "run-new");
     }
 }

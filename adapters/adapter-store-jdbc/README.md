@@ -185,6 +185,9 @@ runtime JDBC drivers.
   Terminal retention выполняет bounded age/count selection per outcome target,
   удаляет dataframe receipt лишь после успешного delete/archive protected
   source/report unit и затем CAS-purge service-ledger row.
+- Service schema v13 admits one active immutable export run per profile.
+  `JdbcSnapshotSliceReader` bounds concurrent read transactions by the configured
+  read budget; slot/clock writes precede read admission.
 - `JdbcExportRunLedger` stores immutable-slice formation checkpoints in
   `export_run`. A partial unique index enforces one global active run; all state
   changes use expected-status CAS. `COMPLETED`/`SKIPPED` and `export_progress`

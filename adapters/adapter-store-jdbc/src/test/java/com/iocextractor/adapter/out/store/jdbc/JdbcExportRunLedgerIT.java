@@ -78,6 +78,22 @@ class JdbcExportRunLedgerIT {
     }
 
     @Test
+    void differentProfilesCanFormConcurrentlyWithoutSharingProgress() {
+        try (HikariDataSource dataSource = dataSource("profile-start.db")) {
+            new SqliteUserVersionSchemaMigrator(dataSource, ServiceSchemaMigrations.sqlite()).migrate();
+            var ledger = new JdbcExportRunLedger(dataSource, CLOCK);
+            ExportRun one = started("one");
+            ExportRun two = ExportRun.started("two", "other-profile", "slice-two", PLAN_HASH, NOW);
+
+            assertThat(ledger.tryStart(one)).contains(one);
+            assertThat(ledger.tryStart(two)).contains(two);
+            assertThat(ledger.tryStart(ExportRun.started(
+                    "two-duplicate", two.profile(), "slice-duplicate", PLAN_HASH, NOW))).isEmpty();
+            assertThat(ledger.findIncomplete()).containsExactlyInAnyOrder(one, two);
+        }
+    }
+
+    @Test
     void active_run_is_visible_to_a_reopened_ledger_and_blocks_new_work() {
         try (HikariDataSource dataSource = dataSource("reopen-active.db")) {
             new SqliteUserVersionSchemaMigrator(dataSource, ServiceSchemaMigrations.sqlite()).migrate();

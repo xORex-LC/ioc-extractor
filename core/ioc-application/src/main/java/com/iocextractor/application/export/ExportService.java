@@ -3,7 +3,7 @@ package com.iocextractor.application.export;
 import com.iocextractor.application.port.in.export.ExportArtifactsCommand;
 import com.iocextractor.application.port.in.export.ExportArtifactsResult;
 import com.iocextractor.application.port.in.export.ExportArtifactsUseCase;
-import com.iocextractor.application.port.in.export.RecoverExportUseCase;
+import com.iocextractor.application.port.in.export.RecoverExportProfileUseCase;
 import com.iocextractor.application.port.out.export.ArtifactRevisionReader;
 import com.iocextractor.application.port.out.export.ArtifactSliceWriter;
 import com.iocextractor.application.port.out.export.ExportObserver;
@@ -43,7 +43,7 @@ public final class ExportService implements ExportArtifactsUseCase {
     private final ExportRunLedger ledger;
     private final SnapshotSliceReader snapshotReader;
     private final ArtifactSliceWriter sliceWriter;
-    private final RecoverExportUseCase recovery;
+    private final RecoverExportProfileUseCase recovery;
     private final ExportOperationGuard operationGuard;
     private final ExportChangeDetector changeDetector;
     private final ExportObserver observer;
@@ -58,7 +58,7 @@ public final class ExportService implements ExportArtifactsUseCase {
                          ExportRunLedger ledger,
                          SnapshotSliceReader snapshotReader,
                          ArtifactSliceWriter sliceWriter,
-                         RecoverExportUseCase recovery,
+                         RecoverExportProfileUseCase recovery,
                          ExportOperationGuard operationGuard,
                          Clock clock) {
         this(plans, revisionReader, progressStore, ledger, snapshotReader, sliceWriter,
@@ -73,7 +73,7 @@ public final class ExportService implements ExportArtifactsUseCase {
                          ExportRunLedger ledger,
                          SnapshotSliceReader snapshotReader,
                          ArtifactSliceWriter sliceWriter,
-                         RecoverExportUseCase recovery,
+                         RecoverExportProfileUseCase recovery,
                          ExportOperationGuard operationGuard,
                          ExportChangeDetector changeDetector,
                          ExportObserver observer,
@@ -90,7 +90,7 @@ public final class ExportService implements ExportArtifactsUseCase {
                          ExportRunLedger ledger,
                          SnapshotSliceReader snapshotReader,
                          ArtifactSliceWriter sliceWriter,
-                         RecoverExportUseCase recovery,
+                         RecoverExportProfileUseCase recovery,
                          ExportOperationGuard operationGuard,
                          ExportChangeDetector changeDetector,
                          ExportObserver observer,
@@ -119,8 +119,8 @@ public final class ExportService implements ExportArtifactsUseCase {
         if (plan.profile().mode() != ExportMode.COMPLETE) {
             throw new IllegalArgumentException("Export mode is not supported in v1: " + plan.profile().mode());
         }
-        try (ExportOperationGuard.Lease ignored = operationGuard.acquire()) {
-            recovery.recoverIncomplete();
+        try (ExportOperationGuard.Lease ignored = operationGuard.acquire(command.profile())) {
+            recovery.recoverIncomplete(command.profile());
             return export(plan);
         }
     }

@@ -22,6 +22,17 @@ class ExportRunRecoveryServiceTest {
     private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 
     @Test
+    void scopedRecoveryNeverInspectsAnotherProfilesLiveStaging() {
+        Fixture fixture = fixture(ExportRunStatus.STARTED, SliceInspectionState.PARTIAL);
+
+        assertThat(fixture.service.recoverIncomplete("unrelated-profile")).isZero();
+        assertThat(fixture.status()).isEqualTo(ExportRunStatus.STARTED);
+        assertThat(fixture.writer.discards).isZero();
+        assertThat(fixture.service.recoverIncomplete("reputation")).isEqualTo(1);
+        assertThat(fixture.status()).isEqualTo(ExportRunStatus.FAILED);
+    }
+
+    @Test
     void startedPartialIsDiscardedAndFailed() {
         Fixture fixture = fixture(ExportRunStatus.STARTED, SliceInspectionState.PARTIAL);
 

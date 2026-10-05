@@ -51,6 +51,8 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
 
     private final DataSource dataSource;
     private final Map<String, DataframeArtifactSchema> schemas;
+    private final java.util.concurrent.Semaphore readers;
+    private final int readerLimit;
     private final Clock clock;
     private final LifecycleTimeSource activeTimeSource;
     private final DiagnosticSink diagnosticSink;
@@ -93,6 +95,18 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                                    DiagnosticSink diagnosticSink,
                                    DiagnosticFactory diagnosticFactory,
                                    JdbcWriterAdmission writerAdmission) {
+        this(dataSource, schemas, clock, activeTimeSource, diagnosticSink, diagnosticFactory,
+                writerAdmission, 2);
+    }
+
+    /** Bounds read transactions while leaving the pool's writer capacity available. */
+    public JdbcSnapshotSliceReader(DataSource dataSource, List<DataframeArtifactSchema> schemas,
+                                  Clock clock, LifecycleTimeSource activeTimeSource,
+                                  DiagnosticSink diagnosticSink, DiagnosticFactory diagnosticFactory,
+                                  JdbcWriterAdmission writerAdmission, int readerLimit) {
+        if (readerLimit < 1) { throw new IllegalArgumentException("readerLimit must be positive"); }
+        this.readerLimit = readerLimit;
+        this.readers = new java.util.concurrent.Semaphore(readerLimit, true);
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -126,9 +140,7 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
             if (expectedState == LifecycleActivationState.ACTIVE) {
                 return streamActive(plan, consumer, expectedState, asOf);
             }
-            try (Connection connection = dataSource.getConnection()) {
-                return stream(connection, plan, consumer, expectedState, asOf);
-            }
+            return streamBounded(plan, consumer, expectedState, asOf);
         } catch (SQLException e) {
             throw snapshotFailure(plan.profile().name(), e);
         }
@@ -152,13 +164,33 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
             } catch (SlotReconciliationFailure failure) {
                 throw failure.sqlCause();
             }
-            try (Connection connection = dataSource.getConnection()) {
-                return stream(connection, plan, consumer, expectedState, asOf);
+            try {
+                return streamBounded(plan, consumer, expectedState, asOf);
             } catch (JdbcExportSlotRegistry.SnapshotChangedException changed) {
                 lastRace = changed;
             }
         }
         throw new SQLException("Canonical data kept changing while opening export-slot snapshot", lastRace);
+    }
+
+    /** Current transaction ownership; no IOC rows are retained by admission. */
+    public int activeReaders() { return readerLimit - readers.availablePermits(); }
+
+    public int queuedReaders() { return readers.getQueueLength(); }
+
+    private SnapshotMetadata streamBounded(ExportPlan plan, SnapshotRowConsumer consumer,
+                                           LifecycleActivationState state, Instant asOf) throws SQLException {
+        try {
+            readers.acquire();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new SQLException("Interrupted while waiting for export reader admission", interrupted);
+        }
+        try (Connection connection = dataSource.getConnection()) {
+            return stream(connection, plan, consumer, state, asOf);
+        } finally {
+            readers.release();
+        }
     }
 
     private static final class SlotReconciliationFailure extends RuntimeException {

@@ -57,3 +57,7 @@ errors/diagnostics/observability, Commons CSV, SLF4J API.
 - JSON codec внедряется через `SliceManifestCodec`: compile-time зависимости на
   sibling Jackson adapter нет;
 - service DB, export-run transitions и delivery в модуль не входят.
+
+Export formation/recovery uses profile-scoped NIO leases (ADR-0037). CSV slice
+materialization owns its state per invocation and allows unrelated profiles to
+stream concurrently under the shared reader budget.

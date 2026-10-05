@@ -1,6 +1,7 @@
 package com.iocextractor.application.export;
 
 import com.iocextractor.application.port.in.export.RecoverExportUseCase;
+import com.iocextractor.application.port.in.export.RecoverExportProfileUseCase;
 import com.iocextractor.application.port.out.export.ArtifactSliceWriter;
 import com.iocextractor.application.port.out.export.ExportObserver;
 import com.iocextractor.application.port.out.export.ExportProgressStore;
@@ -24,7 +25,7 @@ import java.util.Objects;
  * <p>Recovery never invokes the canonical snapshot reader. Valid manifest coverage is the only
  * source used to reconstruct terminal progress after a crash.
  */
-public final class ExportRunRecoveryService implements RecoverExportUseCase {
+public final class ExportRunRecoveryService implements RecoverExportUseCase, RecoverExportProfileUseCase {
 
     private final ExportRunLedger ledger;
     private final ArtifactSliceWriter sliceWriter;
@@ -82,7 +83,17 @@ public final class ExportRunRecoveryService implements RecoverExportUseCase {
 
     @Override
     public int recoverIncomplete() {
-        List<ExportRun> incomplete = ledger.findIncomplete();
+        return recoverRuns(ledger.findIncomplete());
+    }
+
+    @Override
+    public int recoverIncomplete(String profile) {
+        Objects.requireNonNull(profile, "profile");
+        return recoverRuns(ledger.findIncomplete().stream()
+                .filter(run -> run.profile().equals(profile)).toList());
+    }
+
+    private int recoverRuns(List<ExportRun> incomplete) {
         for (ExportRun run : incomplete) {
             observer.recovering(run);
             try {
