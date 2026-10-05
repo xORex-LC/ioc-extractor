@@ -21,8 +21,9 @@ public final class RowSources {
                     private R current;
                     public boolean next() {
                         current = null;
-                        current = cursor.next() ? Objects.requireNonNull(mapper.apply(cursor.value()), "mapped row") : null;
-                        return current != null;
+                        if (!cursor.next()) { return false; }
+                        current = Objects.requireNonNull(mapper.apply(cursor.value()), "mapped row");
+                        return true;
                     }
                     public R value() { return Objects.requireNonNull(current, "current row"); }
                     public void close() { current = null; cursor.close(); }

@@ -34,6 +34,42 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class IocExtractionServiceFactoryTest {
+    @Test
+    void explicitPipelinePreservesOriginalSourceMetadataAndReturnedCounts() {
+        Path source = Path.of("relative/source.html");
+        var stage = new com.iocextractor.platform.etl.Stage<ExtractionCommand,
+                com.iocextractor.application.pipeline.payload.ArtifactWriteSummary>() {
+            public com.iocextractor.platform.etl.StageId name() { return new com.iocextractor.platform.etl.StageId("CUSTOM"); }
+            public com.iocextractor.platform.etl.Envelope<com.iocextractor.application.pipeline.payload.ArtifactWriteSummary> process(
+                    com.iocextractor.platform.etl.Envelope<ExtractionCommand> input) {
+                assertThat(input.meta().attributes()).containsEntry(
+                        com.iocextractor.application.pipeline.PipelineMetaAttributes.SOURCE_PATH, source.toAbsolutePath().normalize());
+                return input.withPayload(new com.iocextractor.application.pipeline.payload.ArtifactWriteSummary(5, 3, Map.of("masks", 2)));
+            }
+        };
+        var service = new IocExtractionService(new com.iocextractor.platform.etl.PipelineRunner(FailurePolicy.failFast()),
+                com.iocextractor.platform.etl.Pipeline.<ExtractionCommand>start().then(stage), java.time.Clock.systemUTC(), "custom");
+        var result = service.extract(new ExtractionCommand("custom-run", source, true));
+        assertThat(result.runId()).isEqualTo("custom-run");
+        assertThat(result.extracted()).isEqualTo(5);
+        assertThat(result.retained()).isEqualTo(3);
+        assertThat(result.writtenPerArtifact()).containsEntry("masks", 2);
+    }
+
+    @Test
+    void factoryRejectsAZeroDiagnosticBudgetBeforeOpeningAnyWorkspace() {
+        assertThatThrownBy(() -> new IocExtractionServiceFactory(
+                source -> "", text -> new RefangOutcome(text, List.of()),
+                text -> new ExtractionOutcome(List.of(), List.of()),
+                (text, indicators) -> new AttributionOutcome(List.of(), List.of()),
+                false, "oneshot", new NoopPipelineObserver(), NoopDiagnosticSink.INSTANCE,
+                FailurePolicy.failFast(), 0, new NoWriteRepository(), null,
+                new CanonicalArtifactIdentityResolver(List.of()), NoopPipelineDecisionTracer.INSTANCE,
+                preparers -> occurrence -> Result.success(List.of()), Map.of(),
+                (command, policies) -> { throw new AssertionError("invalid budget must not admit work"); }))
+                .hasMessage("maxDiagnosticsPerRun must be positive");
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void sourceFailureClosesOwnershipAndPreservesOnlyAPreviousPromotionPin(boolean promoting) {

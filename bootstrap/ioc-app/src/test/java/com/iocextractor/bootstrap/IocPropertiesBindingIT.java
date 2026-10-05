@@ -48,6 +48,24 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class IocPropertiesBindingIT {
 
     @Test
+    void documentWorkspaceConfigurationRejectsEveryInconsistentPhysicalBudgetAtStartup() {
+        for (String property : List.of(
+                "retention=0s", "retention=-1s", "maximum-row-bytes=65535",
+                "maximum-row-bytes=16777217", "workspace-bytes=65535", "total-disk-bytes=1",
+                "memory-bytes=1", "cache-kib=63", "maximum-field-bytes=0",
+                "batch-rows=0", "batch-rows=4097", "directory=")) {
+            contextRunner("ioc.processing.workspace." + property).run(context -> {
+                assertThat(context).hasFailed();
+                assertThat(fieldErrors(context.getStartupFailure()))
+                        .anySatisfy(error -> assertThat(error.getField()).startsWith("processing.workspace."));
+            });
+        }
+        var missingRetention = new IocProcessingProperties.Workspace("workspace", 67108864, 4096,
+                262144, 65536, 2147483648L, 8589934592L, 128, null);
+        assertThat(missingRetention.isBudgetValid()).isFalse();
+    }
+
+    @Test
     void defaultConfigurationBindsThroughBootValidation() {
         contextRunner().run(context -> {
             assertThat(context).hasSingleBean(IocProperties.class);

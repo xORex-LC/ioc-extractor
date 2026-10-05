@@ -88,8 +88,7 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
                     statement.execute("CREATE TABLE candidate(ordinal INTEGER PRIMARY KEY, artifact TEXT NOT NULL, payload BLOB NOT NULL, eligible INTEGER NOT NULL, retained INTEGER NOT NULL)");
                     statement.execute("CREATE TABLE winner(artifact TEXT NOT NULL, equality_key TEXT NOT NULL, first_ordinal INTEGER NOT NULL, candidate_ordinal INTEGER NOT NULL, PRIMARY KEY(artifact,equality_key)) WITHOUT ROWID");
                     statement.execute("CREATE INDEX winner_order ON winner(artifact,first_ordinal)");
-                }
-                if (replay) { statement.execute("PRAGMA query_only=ON"); }
+                } else { statement.execute("PRAGMA query_only=ON"); }
             }
             opened.setAutoCommit(false);
             this.connection = opened;
@@ -135,11 +134,11 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
         long ordinal = ++originalOrdinal;
         try {
             if (replay) {
-                    originals.setString(1, key);
-                    try (var result = originals.executeQuery()) {
-                        if (!result.next()) { throw new IocExtractorException("Replayed document original identity differs"); }
-                        return result.getLong(1) == ordinal;
-                    }
+                originals.setString(1, key);
+                try (var result = originals.executeQuery()) {
+                    if (!result.next()) { throw new IocExtractorException("Replayed document original identity differs"); }
+                    return result.getLong(1) == ordinal;
+                }
             }
             originals.setString(1, key);
             originals.setLong(2, ordinal);
@@ -156,14 +155,7 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
         long ordinal = ++candidateOrdinal;
         try {
             if (replay) {
-                    candidates.setLong(1, ordinal);
-                    try (var result = candidates.executeQuery()) {
-                        if (!result.next() || !candidate.artifact().equals(result.getString(1))
-                                || !java.util.Arrays.equals(payload, result.getBytes(2))
-                                || eligible != result.getBoolean(3) || retainObservations != result.getBoolean(4)) {
-                            throw new IocExtractorException("Replayed document candidate differs from seal");
-                        }
-                    }
+                validateReplayedCandidate(ordinal, candidate.artifact(), payload, eligible, retainObservations);
                 return;
             }
             candidates.setLong(1, ordinal);
@@ -172,26 +164,44 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
             candidates.setBoolean(4, eligible);
             candidates.setBoolean(5, retainObservations);
             candidates.executeUpdate();
-            boolean retained = retainObservations && policy.duplicateSelection() == ArtifactWritePolicy.DuplicateSelection.KEEP_FIRST;
-            if (!retained || eligible) {
-                var material = identities.materialOf(candidate.artifact(), candidate.row().template())
-                        .orElseThrow(() -> new IocExtractorException("Routed candidate has no final identity"));
-                String key = retained ? "ordinal:" + ordinal
-                        : material.definitionId().length() + ":" + material.definitionId() + material.keyCanonical();
-                if (key.length() > limits.maximumRowBytes()
-                        || key.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > limits.maximumRowBytes()) {
-                    throw new IocExtractorException("Final identity exceeds row limit");
-                }
-                String selection = candidate.row().template().value(policy.selectionColumn());
-                boolean replace = policy.duplicateSelection() == ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY
-                        && selection != null && !selection.isBlank();
-                var statement = replace ? replaceWinner : keepWinner;
-                    statement.setString(1, candidate.artifact()); statement.setString(2, key);
-                    statement.setLong(3, ordinal); statement.setLong(4, ordinal);
-                    statement.executeUpdate();
-            }
+            selectCandidate(candidate, policy, ordinal, eligible, retainObservations);
             if (ordinal % limits.batchRows() == 0) { connection.commit(); diskCheck.run(); }
         } catch (SQLException failure) { throw storageFailure(failure); }
+    }
+
+    private void validateReplayedCandidate(long ordinal, String artifact, byte[] payload,
+            boolean eligible, boolean retainObservations) throws SQLException {
+        candidates.setLong(1, ordinal);
+        try (var result = candidates.executeQuery()) {
+            if (!result.next() || !artifact.equals(result.getString(1))
+                    || !java.util.Arrays.equals(payload, result.getBytes(2))
+                    || eligible != result.getBoolean(3) || retainObservations != result.getBoolean(4)) {
+                throw new IocExtractorException("Replayed document candidate differs from seal");
+            }
+        }
+    }
+
+    private void selectCandidate(RoutedArtifactCandidate candidate, ArtifactWritePolicy policy,
+            long ordinal, boolean eligible, boolean retainObservations) throws SQLException {
+        boolean retained = retainObservations && policy.duplicateSelection() == ArtifactWritePolicy.DuplicateSelection.KEEP_FIRST;
+        if (retained && !eligible) { return; }
+        var material = identities.materialOf(candidate.artifact(), candidate.row().template())
+                .orElseThrow(() -> new IocExtractorException("Routed candidate has no final identity"));
+        String key = retained ? "ordinal:" + ordinal
+                : material.definitionId().length() + ":" + material.definitionId() + material.keyCanonical();
+        if (key.length() > limits.maximumRowBytes()
+                || key.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > limits.maximumRowBytes()) {
+            throw new IocExtractorException("Final identity exceeds row limit");
+        }
+        String selection = candidate.row().template().value(policy.selectionColumn());
+        boolean replace = policy.duplicateSelection() == ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY
+                && selection != null && !selection.isBlank();
+        var statement = replace ? replaceWinner : keepWinner;
+        statement.setString(1, candidate.artifact());
+        statement.setString(2, key);
+        statement.setLong(3, ordinal);
+        statement.setLong(4, ordinal);
+        statement.executeUpdate();
     }
 
     @Override
@@ -257,28 +267,42 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
             statement = connection.prepareStatement("SELECT c.payload FROM winner w JOIN candidate c ON c.ordinal=w.candidate_ordinal WHERE w.artifact=? ORDER BY w.first_ordinal");
             statement.setString(1, artifact);
             ResultSet rows = statement.executeQuery();
-            PreparedStatement owned = statement;
             cursors++;
-            activeCursor = new RowCursor<>() {
-                private PreparedArtifactRow value;
-                private boolean cursorClosed;
-                public boolean next() {
-                    if (cursorClosed) { throw new IllegalStateException("Document cursor is closed"); }
-                    if (Thread.currentThread().isInterrupted()) { throw new IocExtractorException("Document promotion interrupted"); }
-                    try { value = rows.next() ? codec.decode(rows.getBytes(1)) : null; return value != null; }
-                    catch (SQLException failure) { throw storageFailure(failure); }
-                }
-                public PreparedArtifactRow value() { return Objects.requireNonNull(value, "current row"); }
-                public void close() {
-                    if (cursorClosed) { return; }
-                    cursorClosed = true; value = null; cursors--; activeCursor = null;
-                    try { owned.close(); } catch (SQLException failure) { throw storageFailure(failure); }
-                }
-            };
+            activeCursor = new PreparedRowCursor(statement, rows);
             return activeCursor;
         } catch (SQLException failure) {
             if (statement != null) { try { statement.close(); } catch (SQLException closeFailure) { failure.addSuppressed(closeFailure); } }
             throw storageFailure(failure);
+        }
+    }
+
+    private final class PreparedRowCursor implements RowCursor<PreparedArtifactRow> {
+        private final PreparedStatement statement;
+        private final ResultSet rows;
+        private PreparedArtifactRow value;
+        private boolean cursorClosed;
+
+        private PreparedRowCursor(PreparedStatement statement, ResultSet rows) {
+            this.statement = statement;
+            this.rows = rows;
+        }
+
+        public boolean next() {
+            if (cursorClosed) { throw new IllegalStateException("Document cursor is closed"); }
+            if (Thread.currentThread().isInterrupted()) { throw new IocExtractorException("Document promotion interrupted"); }
+            try { value = rows.next() ? codec.decode(rows.getBytes(1)) : null; return value != null; }
+            catch (SQLException failure) { throw storageFailure(failure); }
+        }
+
+        public PreparedArtifactRow value() { return Objects.requireNonNull(value, "current row"); }
+
+        public void close() {
+            if (cursorClosed) { return; }
+            cursorClosed = true;
+            value = null;
+            cursors--;
+            activeCursor = null;
+            try { statement.close(); } catch (SQLException failure) { throw storageFailure(failure); }
         }
     }
 

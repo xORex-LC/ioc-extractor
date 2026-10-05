@@ -48,6 +48,44 @@ class PrepareRoutedArtifactsStageTest {
     private static final ArtifactWritePolicy KEEP_FIRST = ArtifactWritePolicy.keepFirst();
 
     @Test
+    void preparationRejectsDuplicateOrMissingDescriptorsAndInvalidDiagnosticBudget() {
+        DocumentProcessingPlan plan = occurrence -> Result.success(List.of());
+        assertThatThrownBy(() -> new PrepareRoutedArtifactsStage(plan, List.of(), true, StageTestSupport.DIAGNOSTICS, 0))
+                .hasMessage("diagnosticLimit must be positive");
+        ArtifactPreparer missing = new ArtifactPreparer() {
+            public String name() { return "missing"; }
+            public Result<ArtifactWritePlan> prepare(List<com.iocextractor.processing.model.ClassifiedIndicator> indicators) {
+                return Result.success(null);
+            }
+        };
+        for (var preparers : List.of(List.of(empty("masks", "mask"), empty("masks", "mask")), List.of(missing))) {
+            var stage = com.iocextractor.application.TestDocumentWorkspace.stage(plan, preparers,
+                    (artifact, row) -> Optional.empty(), Map.of("masks", KEEP_FIRST), false);
+            assertThatThrownBy(() -> stage.process(manyOccurrences(1))).hasMessageContaining("Duplicate or missing artifact preparation");
+        }
+    }
+
+    @Test
+    void preparationCancellationClosesTheRoutingSessionBeforeAnyCandidate() {
+        var closed = new AtomicInteger();
+        DocumentProcessingPlan plan = new DocumentProcessingPlan() {
+            public Result<List<RoutedArtifactCandidate>> prepare(IndicatorOccurrence occurrence) { throw new AssertionError("cancelled"); }
+            public com.iocextractor.application.port.out.artifact.DocumentProcessingSession openSession() {
+                return new com.iocextractor.application.port.out.artifact.DocumentProcessingSession() {
+                    public Result<List<RoutedArtifactCandidate>> prepare(IndicatorOccurrence occurrence) { throw new AssertionError("cancelled"); }
+                    public void close() { closed.incrementAndGet(); }
+                };
+            }
+        };
+        var stage = com.iocextractor.application.TestDocumentWorkspace.stage(plan, List.of(empty("masks", "mask")),
+                (artifact, row) -> Optional.empty(), Map.of("masks", KEEP_FIRST), false);
+        Thread.currentThread().interrupt();
+        try { assertThatThrownBy(() -> stage.process(manyOccurrences(1))).hasMessage("Document preparation interrupted"); }
+        finally { Thread.interrupted(); }
+        assertThat(closed).hasValue(1);
+    }
+
+    @Test
     void high_error_preparation_retains_bounded_detail_and_exact_outcome_and_delivery() {
         var error = StageTestSupport.DIAGNOSTICS.create(PipelineDiagnosticCodes.ROUTING_REJECTED)
                 .with("plan", "test").with("indicator", "bad.example").with("reason", "REJECTED").build();

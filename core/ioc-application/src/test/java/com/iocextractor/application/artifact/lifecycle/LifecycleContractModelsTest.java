@@ -20,6 +20,51 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class LifecycleContractModelsTest {
 
     @Test
+    void mappingFailureInvalidatesThePreviousCursorValueAndPreservesRepeatability() {
+        var source = com.iocextractor.application.port.out.artifact.RowSource.of(List.of("good", "bad"))
+                .map(value -> { if (value.equals("bad")) { throw new IllegalStateException("mapping failed"); } return value; });
+        assertThat(source.size()).isEqualTo(2);
+        try (var cursor = source.open()) {
+            assertThat(cursor.next()).isTrue();
+            assertThat(cursor.value()).isEqualTo("good");
+            assertThatThrownBy(cursor::next).hasMessage("mapping failed");
+            assertThatThrownBy(cursor::value).hasMessage("current row");
+        }
+        assertThat(com.iocextractor.application.port.out.artifact.RowSource.of(List.of("one")).anyMatch("absent"::equals)).isFalse();
+        assertThat(com.iocextractor.application.port.out.artifact.RowSource.of(List.of()).anyMatch(value -> true)).isFalse();
+    }
+
+    @Test
+    void documentCheckpointRejectsContradictoryCountsAndOpaqueIdentityPreservesCompleteKey() {
+        for (int[] counts : List.of(new int[]{-1, 0}, new int[]{0, -1}, new int[]{1, 2})) {
+            assertThatThrownBy(() -> new com.iocextractor.application.artifact.DocumentPreparationSummary(
+                    counts[0], counts[1], com.iocextractor.diagnostics.result.DiagnosticSummary.empty()))
+                    .hasMessage("Invalid document preparation counts");
+        }
+        com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver opaque =
+                (artifact, row) -> row.value("value") == null ? Optional.empty() : Optional.of(new ArtifactRowKey(row.value("value")));
+        assertThat(opaque.materialOf("artifact", new ArtifactRow(Map.of("value", "complete-key"))))
+                .get().satisfies(material -> assertThat(material.keyCanonical()).isEqualTo("complete-key"));
+        assertThat(opaque.materialOf("artifact", new ArtifactRow(Map.of()))).isEmpty();
+    }
+
+    @Test
+    void reservedCommandRowsAreRepeatableAndPreserveSparseDeferredIds() {
+        var fields = new java.util.LinkedHashMap<String, String>(); fields.put("id", null); fields.put("value", "a");
+        var plan = new com.iocextractor.application.artifact.ArtifactWritePlan("artifact", List.of("id", "value"),
+                List.of(new PreparedArtifactRow(ArtifactRow.ordered(fields), Optional.of("id")),
+                        new PreparedArtifactRow(new ArtifactRow(Map.of("value", "b")), Optional.empty())),
+                new com.iocextractor.application.artifact.ArtifactIdSequence(
+                        com.iocextractor.application.artifact.ArtifactIdStrategy.ASCENDING, 40));
+        var rows = plan.materializeCommand(null).rows();
+        assertThat(rows.size()).isEqualTo(2);
+        var first = rows.snapshot();
+        assertThat(rows.snapshot()).isEqualTo(first);
+        assertThat(first).extracting(row -> row.row().value("id")).containsExactly("40", null);
+        assertThat(plan.materializeCommand(null).registrationOptional()).isEmpty();
+    }
+
+    @Test
     void streamedRowsCloseOnEarlyExitMappingFailureAndConsumerFailure() {
         var closed = new AtomicInteger();
         var source = new com.iocextractor.application.port.out.artifact.RowSource<String>() {
@@ -463,6 +508,9 @@ class LifecycleContractModelsTest {
         assertThat(new CanonicalArtifactConfirmation(
                 new ObservationId("observation-1"), "source-1", context,
                 "masks", List.of("mask"), List.of(record)).records().snapshot()).containsExactly(record);
+        assertThatThrownBy(() -> new CanonicalArtifactConfirmation(
+                new ObservationId("observation-1"), " ", context,
+                "masks", List.of("mask"), List.of(record))).hasMessage("sourceKey must not be blank");
         assertThatThrownBy(() -> new CanonicalArtifactConfirmation(
                 new ObservationId("observation-1"), "source-1", context,
                 "masks", List.of(), List.of(record)))

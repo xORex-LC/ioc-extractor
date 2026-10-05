@@ -49,6 +49,304 @@ class JdbcDocumentPreparationWorkspaceIT {
     @TempDir Path temporary;
 
     @Test
+    void corruptRowLengthsCountsNamesAndDuplicateFieldsAreRejectedBeforeAllocation() throws Exception {
+        var codec = new DocumentRowCodec(4096, 2048);
+        for (int fields : new int[]{-1, 129}) {
+            assertThatThrownBy(() -> codec.decode(encoded(data -> {
+                data.writeInt(1); data.writeInt(-1); data.writeInt(fields);
+            }))).hasRootCauseMessage("Invalid document field count");
+        }
+        for (int size : new int[]{-2, 2049, 10}) {
+            assertThatThrownBy(() -> codec.decode(encoded(data -> {
+                data.writeInt(1); data.writeInt(size);
+            }))).hasRootCauseMessage("Invalid document field size");
+        }
+        for (String field : java.util.Arrays.asList(null, " ")) {
+            assertThatThrownBy(() -> codec.decode(encoded(data -> {
+                data.writeInt(1); data.writeInt(-1); data.writeInt(1); text(data, field);
+            }))).hasRootCauseMessage("Invalid document field name");
+        }
+        for (boolean positions : new boolean[]{false, true}) {
+            assertThatThrownBy(() -> codec.decode(encoded(data -> {
+                data.writeInt(1); data.writeInt(-1); data.writeInt(positions ? 0 : 2);
+                if (positions) { data.writeInt(2); }
+                text(data, "value");
+                if (positions) { data.writeLong(1); } else { text(data, null); }
+                text(data, "value");
+            }))).hasRootCauseMessage(positions ? "Duplicate ordered document field" : "Duplicate document field");
+        }
+        assertThatThrownBy(() -> codec.decode(new byte[4097])).hasMessage("Document row exceeds byte limit");
+    }
+
+    @Test
+    void encodedRowsRespectColumnPositionAndUtf8ByteBudgets() {
+        var codec = new DocumentRowCodec(4096, 2048);
+        var fields = new LinkedHashMap<String, String>();
+        var positions = new LinkedHashMap<String, OccurrencePosition>();
+        for (int index = 0; index < 129; index++) {
+            fields.put("field" + index, "value");
+            positions.put("field" + index, new OccurrencePosition(index));
+        }
+        assertThatThrownBy(() -> codec.encode(new PreparedArtifactRow(ArtifactRow.ordered(fields), Optional.empty())))
+                .hasMessage("Document row has too many fields");
+        assertThatThrownBy(() -> codec.encode(new PreparedArtifactRow(ArtifactRow.ordered(Map.of("value", "a")),
+                Optional.empty(), positions))).hasMessage("Document row has too many fields");
+        assertThatThrownBy(() -> codec.encode(row("key", "я".repeat(1025), "source", 0)))
+                .hasRootCauseMessage("Document field exceeds byte limit");
+        assertThatThrownBy(() -> codec.encode(row("key", "a".repeat(2048), "b".repeat(2048), 0)))
+                .hasMessage("Document row exceeds byte limit");
+    }
+
+    @Test
+    void sealedWorkspaceRejectsMutationAndCursorHasNoStaleValueAfterEndOrClose() throws Exception {
+        try (var workspace = factory(limits(1)).open(command("frozen"), POLICIES)) {
+            workspace.append(candidate("first", "a", "first"), true, false);
+            var rows = workspace.seal(descriptors(), summary(1)).getFirst().rows();
+            assertThatThrownBy(() -> workspace.firstOriginal("new")).hasMessageContaining("sealed");
+            assertThatThrownBy(() -> workspace.append(candidate("first", "b", "next"), true, false))
+                    .hasMessageContaining("sealed");
+            assertThatThrownBy(() -> workspace.seal(descriptors(), summary(1))).hasMessageContaining("already sealed");
+            try (var cursor = rows.open()) {
+                assertThatThrownBy(cursor::value).isInstanceOf(NullPointerException.class);
+                assertThat(cursor.next()).isTrue();
+                assertThat(cursor.value().template().value("name")).isEqualTo("first");
+                assertThat(cursor.next()).isFalse();
+                assertThatThrownBy(cursor::value).isInstanceOf(NullPointerException.class);
+                cursor.close(); cursor.close();
+                assertThatThrownBy(cursor::value).isInstanceOf(NullPointerException.class);
+            }
+            workspace.discard();
+        }
+    }
+
+    @Test
+    void retryRejectsMissingOriginalExtraCandidateAndChangedCandidateFlagsOrArtifact() throws Exception {
+        var command = command("replay-shape");
+        try (var workspace = factory(limits(1)).open(command, POLICIES)) {
+            workspace.firstOriginal("original");
+            workspace.append(candidate("first", "same", "name"), true, false);
+            workspace.seal(descriptors(), summary(1));
+        }
+        try (var workspace = factory(limits(1)).open(command, POLICIES)) {
+            assertThatThrownBy(() -> workspace.firstOriginal("missing")).hasMessageContaining("original identity differs");
+        }
+        for (int change = 0; change < 4; change++) {
+            try (var workspace = factory(limits(1)).open(command, POLICIES)) {
+                if (change == 3) { workspace.append(candidate("first", "same", "name"), true, false); }
+                String artifact = change == 0 ? "last" : "first";
+                boolean eligible = change != 1;
+                boolean retained = change == 2;
+                assertThatThrownBy(() -> workspace.append(candidate(artifact, "same", "name"), eligible, retained))
+                        .hasMessageContaining("candidate differs");
+            }
+        }
+    }
+
+    @Test
+    void sealRequiresEveryCandidateAndAnAdmittedCatalog() throws Exception {
+        var command = command("incomplete-replay");
+        try (var workspace = factory(limits(1)).open(command, POLICIES)) {
+            workspace.append(candidate("first", "key", "name"), true, false);
+            workspace.seal(descriptors(), summary(1));
+        }
+        try (var workspace = factory(limits(1)).open(command, POLICIES)) {
+            assertThatThrownBy(() -> workspace.seal(descriptors(), summary(1))).hasMessageContaining("candidate count mismatch");
+            workspace.discard();
+        }
+        try (var workspace = factory(limits(1)).open(command("catalog"), POLICIES)) {
+            assertThatThrownBy(() -> workspace.seal(java.util.Collections.nCopies(129, descriptors().getFirst()), summary(0)))
+                    .hasMessageContaining("catalog exceeds limit");
+            var longHeader = new ArtifactWritePlan("first", List.of("h".repeat(32769)), List.of(), ids());
+            assertThatThrownBy(() -> workspace.seal(List.of(longHeader), summary(0))).hasMessageContaining("catalog exceeds limit");
+        }
+    }
+
+    @Test
+    void nullLastNonemptyAndMissingOrOversizedFinalIdentityAreHandledExplicitly() throws Exception {
+        try (var workspace = factory(limits(1)).open(command("null-last"), POLICIES)) {
+            workspace.append(candidate("last", "host", "name"), true, true);
+            workspace.append(candidate("last", "host", null), true, true);
+            assertThat(workspace.seal(descriptors(), summary(2)).get(1).rows().snapshot()).singleElement()
+                    .satisfies(row -> assertThat(row.template().value("name")).isEqualTo("name"));
+            workspace.discard();
+        }
+        for (String key : java.util.Arrays.asList(null, "k".repeat(4097), "я".repeat(2049))) {
+            ArtifactIdentityResolver resolver = new ArtifactIdentityResolver() {
+                public Optional<ArtifactRowKey> keyOf(String artifact, ArtifactRow row) { return Optional.empty(); }
+                public Optional<CanonicalKeyMaterial> materialOf(String artifact, ArtifactRow row) {
+                    return key == null ? Optional.empty() : Optional.of(new CanonicalKeyMaterial("def", "a".repeat(64), key));
+                }
+            };
+            var factory = new JdbcDocumentPreparationWorkspaceFactory(temporary.resolve("workspace"), limits(1), resolver, "policy");
+            try (var workspace = factory.open(command("bad-key"), POLICIES)) {
+                assertThatThrownBy(() -> workspace.append(candidate("first", "a", "name"), true, false))
+                        .hasMessageContaining(key == null ? "no final identity" : "identity exceeds row limit");
+            }
+        }
+        try (var workspace = factory(limits(1)).open(command("utf8-original"), POLICIES)) {
+            assertThatThrownBy(() -> workspace.firstOriginal("я".repeat(1025))).hasMessageContaining("field limit");
+        }
+    }
+
+    @Test
+    void failedDirectoryCleanupStillReleasesAdmissionAndPreservesTheCause() throws Exception {
+        var command = command("cleanup-failure");
+        var factory = factory(limits(1));
+        var workspace = factory.open(command, POLICIES);
+        Path nested = pin(command).resolve("unexpected-directory");
+        Files.createDirectories(nested); Files.writeString(nested.resolve("file"), "unexpected");
+        assertThatThrownBy(workspace::close).hasMessageContaining("close failed")
+                .hasRootCauseInstanceOf(java.nio.file.DirectoryNotEmptyException.class);
+        Files.delete(nested.resolve("file")); Files.delete(nested);
+        try (var retry = factory.open(command, POLICIES)) { retry.discard(); }
+        assertThat(pin(command)).doesNotExist();
+    }
+
+    @Test
+    void independentFactoriesCannotLeaseOrReapAnotherLiveWorkspace() throws Exception {
+        var command = command("leased");
+        var first = factory(limits(1));
+        try (var live = first.open(command, POLICIES)) {
+            live.seal(descriptors(), summary(0));
+            Files.setLastModifiedTime(pin(command).resolve("seal"), FileTime.from(Instant.now().minus(Duration.ofDays(2))));
+            assertThatThrownBy(() -> factory(limits(1)).open(command, POLICIES))
+                    .hasRootCauseInstanceOf(java.nio.channels.OverlappingFileLockException.class);
+            try (var other = factory(limits(1)).open(command("other-factory"), POLICIES)) {
+                assertThat(pin(command).resolve("seal")).exists(); other.discard();
+            }
+            live.discard();
+        }
+    }
+
+    @Test
+    void rootAndMarkerSymlinksOrInvalidOwnershipCannotRedirectPrivateWrites() throws Exception {
+        var command = command("unsafe-root");
+        Path outside = temporary.resolve("outside"); Files.createDirectories(outside);
+        Path root = temporary.resolve("workspace");
+        Files.createSymbolicLink(root, outside);
+        assertThatThrownBy(() -> factory(limits(1)).open(command, POLICIES)).hasRootCauseMessage("Private workspace is a symlink");
+        Files.delete(root); Files.createDirectory(root);
+        for (String marker : List.of("short", "x".repeat(26))) {
+            Files.writeString(root.resolve(".owner"), marker);
+            assertThatThrownBy(() -> factory(limits(1)).open(command, POLICIES)).hasRootCauseMessage("Invalid document workspace ownership marker");
+        }
+        Files.delete(root.resolve(".owner"));
+        Files.writeString(outside.resolve("marker"), "ioc-document-workspace-v1\n");
+        Files.createSymbolicLink(root.resolve(".owner"), outside.resolve("marker"));
+        assertThatThrownBy(() -> factory(limits(1)).open(command, POLICIES)).hasRootCauseMessage("Invalid document workspace ownership marker");
+        try (var files = Files.list(outside)) { assertThat(files.toList()).hasSize(1); }
+    }
+
+    @Test
+    void sourceIdentityExtensionAndDiskGrowthAreBounded() throws Exception {
+        for (Duration retention : List.of(Duration.ZERO, Duration.ofSeconds(-1))) {
+            assertThatThrownBy(() -> new JdbcDocumentPreparationWorkspaceFactory(temporary.resolve("workspace"),
+                    limits(1), identities(), "policy", retention)).hasMessageContaining("retention must be positive");
+        }
+        var command = command("pin-identity");
+        var hugeFingerprint = new JdbcDocumentPreparationWorkspaceFactory(temporary.resolve("workspace"), limits(1), identities(), "p".repeat(32769));
+        assertThatThrownBy(() -> hugeFingerprint.open(command, POLICIES)).hasRootCauseMessage("Document pin identity exceeds limit");
+        Path noExtension = temporary.resolve("source"); Files.writeString(noExtension, "source");
+        try (var workspace = factory(limits(1)).open(new ExtractionCommand("no-ext", noExtension, false), POLICIES)) {
+            assertThat(workspace.source().getFileName().toString()).isEqualTo("source"); workspace.discard();
+        }
+        Path extension = temporary.resolve("source." + "a".repeat(33)); Files.writeString(extension, "source");
+        assertThatThrownBy(() -> factory(limits(1)).open(new ExtractionCommand("bad-ext", extension, false), POLICIES))
+                .hasRootCauseMessage("Document extension exceeds limit");
+        var small = new DocumentPreparationLimits(1048576, 64, 4096, 2048, 131072, 262144, 1);
+        try (var workspace = factory(small).open(command("disk-growth"), POLICIES)) {
+            Files.write(pin(new ExtractionCommand("disk-growth", noExtension, false)).resolve("external-growth"), new byte[131073]);
+            assertThatThrownBy(() -> workspace.append(candidate("first", "a", "name"), true, false))
+                    .hasMessageContaining("disk quota exhausted");
+        }
+    }
+
+    @Test
+    void retainedPinsRejectReplacedMetadataSnapshotAndValidLengthBadChecksum() throws Exception {
+        for (String change : List.of("identity-size", "identity-link", "snapshot", "seal-digest", "catalog-size", "lease-link")) {
+            var command = command(change);
+            try (var workspace = factory(limits(1)).open(command, POLICIES)) { workspace.seal(descriptors(), summary(0)); }
+            Path directory = pin(command);
+            switch (change) {
+                case "identity-size" -> Files.writeString(directory.resolve("identity"), "x".repeat(131073));
+                case "identity-link" -> {
+                    Files.delete(directory.resolve("identity")); Files.createSymbolicLink(directory.resolve("identity"), command.source());
+                }
+                case "snapshot" -> Files.writeString(directory.resolve("source.html"), "changed snapshot");
+                case "seal-digest" -> Files.writeString(directory.resolve("seal"), "0".repeat(64));
+                case "catalog-size" -> {
+                    Files.writeString(directory.resolve("catalog"), "x".repeat(131073));
+                    Files.writeString(directory.resolve("seal"), ArtifactIdentityDefinition.sha256(
+                            JdbcDocumentPreparationWorkspace.hash(directory.resolve("prepared.db"))
+                            + JdbcDocumentPreparationWorkspace.hash(directory.resolve("identity"))
+                            + JdbcDocumentPreparationWorkspace.hash(directory.resolve("catalog"))));
+                }
+                case "lease-link" -> {
+                    Files.delete(directory.resolve("lease")); Files.createSymbolicLink(directory.resolve("lease"), command.source());
+                }
+                default -> throw new AssertionError(change);
+            }
+            if (change.equals("catalog-size")) {
+                try (var workspace = factory(limits(1)).open(command, POLICIES)) {
+                    assertThatThrownBy(() -> workspace.seal(descriptors(), summary(0))).hasMessageContaining("schema mismatch");
+                }
+            } else {
+                assertThatThrownBy(() -> factory(limits(1)).open(command, POLICIES)).hasMessage("Cannot open private document workspace");
+            }
+            assertThat(directory.resolve("seal")).exists();
+            JdbcDocumentPreparationWorkspaceFactory.deletePrivateDirectory(directory);
+        }
+    }
+
+    @Test
+    void pinCountAndRootDiskGrowthAreAdmissionLimitsAndSameObservationCannotBeLeasedTwice() throws Exception {
+        var command = command("same-observation");
+        var factory = factory(limits(1));
+        try (var workspace = factory.open(command, POLICIES)) {
+            assertThatThrownBy(() -> factory.open(command, POLICIES)).hasRootCauseMessage("Document workspace is already leased");
+            workspace.discard();
+        }
+        Path root = temporary.resolve("workspace");
+        for (int index = 0; index < 128; index++) { Files.createDirectory(root.resolve(ArtifactIdentityDefinition.sha256("pin-" + index))); }
+        assertThatThrownBy(() -> factory.open(command, POLICIES)).hasRootCauseMessage("Document preparation disk admission exhausted");
+        for (int index = 0; index < 128; index++) {
+            JdbcDocumentPreparationWorkspaceFactory.deletePrivateDirectory(root.resolve(ArtifactIdentityDefinition.sha256("pin-" + index)));
+        }
+        var small = new DocumentPreparationLimits(1048576, 64, 4096, 2048, 131072, 262144, 1);
+        try (var workspace = factory(small).open(command("root-growth"), POLICIES)) {
+            Files.write(root.resolve("outside-pin-growth"), new byte[262145]);
+            assertThatThrownBy(() -> workspace.seal(descriptors(), summary(0))).hasMessageContaining("disk quota exhausted");
+            workspace.discard();
+        }
+        Files.delete(root.resolve("outside-pin-growth"));
+    }
+
+    @Test
+    void pinHashAndCopyPropagateCancellationBeforeConsumingMoreInput() throws Exception {
+        var command = command("pin-cancel");
+        Thread.currentThread().interrupt();
+        try {
+            assertThatThrownBy(() -> JdbcDocumentPreparationWorkspace.hash(command.source())).hasMessageContaining("hashing interrupted");
+            assertThatThrownBy(() -> DocumentWorkspaceFiles.copy(command.source(), temporary.resolve("cancelled-copy"), 4096))
+                    .isInstanceOf(java.io.IOException.class);
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+            assertThat(Files.size(temporary.resolve("cancelled-copy"))).isZero();
+        } finally { Thread.interrupted(); }
+    }
+
+    private static byte[] encoded(IoWrite write) throws Exception {
+        var bytes = new java.io.ByteArrayOutputStream();
+        try (var data = new java.io.DataOutputStream(bytes)) { write.accept(data); }
+        return bytes.toByteArray();
+    }
+    private static void text(java.io.DataOutputStream data, String text) throws java.io.IOException {
+        if (text == null) { data.writeInt(-1); return; }
+        byte[] bytes = text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        data.writeInt(bytes.length); data.write(bytes);
+    }
+    @FunctionalInterface private interface IoWrite { void accept(java.io.DataOutputStream data) throws java.io.IOException; }
+
+    @Test
     void rowCodecRejectsMalformedVersionTrailingBytesAndInvalidUtf8() throws Exception {
         var codec = new DocumentRowCodec(4096, 2048);
         byte[] valid = codec.encode(row("key", "name", "source", 1));

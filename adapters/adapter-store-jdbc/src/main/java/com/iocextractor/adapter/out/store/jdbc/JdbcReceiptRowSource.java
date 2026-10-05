@@ -153,17 +153,23 @@ final class JdbcReceiptRowSource implements JdbcConnectionRowSource<CanonicalRec
             SQLException failure = null;
             try { positions.close(); } catch (SQLException error) { failure = error; }
             try { statement.close(); } catch (SQLException error) {
-                if (failure == null) { failure = error; } else { failure.addSuppressed(error); }
+                failure = closingFailure(failure, error);
             }
             if (ownsConnection) {
                 try { connection.rollback(); } catch (SQLException error) {
-                    if (failure == null) { failure = error; } else { failure.addSuppressed(error); }
+                    failure = closingFailure(failure, error);
                 }
                 try { connection.close(); } catch (SQLException error) {
-                    if (failure == null) { failure = error; } else { failure.addSuppressed(error); }
+                    failure = closingFailure(failure, error);
                 }
             }
             if (failure != null) { throw new IocExtractorException("Cannot close typed receipt cursor", failure); }
         }
+    }
+
+    private static SQLException closingFailure(SQLException failure, SQLException error) {
+        if (failure == null) { return error; }
+        failure.addSuppressed(error);
+        return failure;
     }
 }

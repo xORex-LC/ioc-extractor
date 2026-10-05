@@ -79,6 +79,43 @@ class IngestionServiceTest {
     private final Clock clock = Clock.fixed(EVENT_TIME, ZoneOffset.UTC);
 
     @Test
+    void orderedRecoveryRejectsLegacyUnrankedWorkBeforeCreatingAnotherRun() {
+        var ledger = new MemoryLedger();
+        var record = new IngestionRecord(new SourceKey("legacy"), IngestionStatus.CLAIMED,
+                Path.of("inbox/legacy.html"), Path.of("processing/legacy.html"), null,
+                Instant.EPOCH, Instant.EPOCH, null);
+        ledger.record = record;
+        ledger.incompleteRecords = List.of(record);
+        var journal = new com.iocextractor.application.port.out.ingest.DocumentAdmissionJournal() {
+            public Optional<com.iocextractor.application.ingest.admission.DocumentAdmission> find(ObservationId id) { return Optional.empty(); }
+            public com.iocextractor.application.ingest.admission.DocumentAdmission reserve(
+                    com.iocextractor.application.ingest.admission.DocumentAdmissionReservation reservation) { throw new AssertionError("recovery must not reserve"); }
+            public boolean replace(com.iocextractor.application.ingest.admission.DocumentAdmission before,
+                    com.iocextractor.application.ingest.admission.DocumentAdmission after) { throw new AssertionError("recovery must not mutate"); }
+            public List<com.iocextractor.application.ingest.admission.DocumentAdmission> findRecoverable(int limit) { return List.of(); }
+            public List<com.iocextractor.application.ingest.admission.DocumentAdmission> findTerminalBefore(Instant cutoff, int limit) { return List.of(); }
+            public boolean purgeTerminal(ObservationId id, long version) { throw new AssertionError("recovery must not purge"); }
+        };
+        var registrations = (com.iocextractor.application.port.out.observation.ObservationRegistrationStore)
+                java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),
+                        new Class<?>[]{com.iocextractor.application.port.out.observation.ObservationRegistrationStore.class},
+                        (proxy, method, arguments) -> { throw new AssertionError("unranked work must not obtain a new rank"); });
+        var runs = new MemoryRunLedger();
+        var lifecycle = new MemoryLifecycle();
+        var service = new IngestionService(ledger, lifecycle,
+                source -> { throw new AssertionError("unranked work must not extract"); }, extractionFactory(),
+                runs, new CollectingProjection(), new RecordingControlEventPublisher(), clock,
+                NoopDiagnosticSink.INSTANCE, new SynchronousKeyedExecutionGuard(), null,
+                new com.iocextractor.application.ingest.admission.DocumentAdmissionService(journal, registrations, clock));
+        assertThatThrownBy(service::recoverIncomplete).isInstanceOfSatisfying(DiagnosticException.class,
+                failure -> assertThat(failure.diagnostic().context().get("reason").toString())
+                        .contains("legacy unranked ingestion work", "drain legacy work"));
+        assertThat(runs.starts).isZero();
+        assertThat(lifecycle.events).isEmpty();
+        assertThat(ledger.record).isEqualTo(record);
+    }
+
+    @Test
     void processes_claimed_source_into_canonical_storage_projects_and_archives_it() {
         var key = new SourceKey("ABC123");
         var ledger = new MemoryLedger();

@@ -1431,7 +1431,7 @@
     <finding id="CAP-4-SB-002" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="ae68a03c5fe478b3e1e575fb24e73a94" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-4-SQL-TRUST" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspace" />
         <method name="&lt;init&gt;" signature="(Ljava/nio/file/Path;Ljava/nio/file/Path;Lcom/iocextractor/adapter/out/store/jdbc/DocumentPreparationLimits;Lcom/iocextractor/application/port/out/artifact/ArtifactIdentityResolver;Ljava/util/Map;Ljava/lang/Runnable;Ljava/lang/Runnable;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcDocumentPreparationWorkspace.java" startLine="95" bytecode="395" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcDocumentPreparationWorkspace.java" startLine="95" bytecode="391" />
         <suppression><Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" /><Class name="com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspace" /><Method name="&lt;init&gt;" /></suppression>
         <rationale>Reviewed false positive: reducer SQL combines fixed adapter-owned INSERT and conflict clauses only. Artifact, full equality key, ordinal and payload are bound parameters. Both whole-row policies are compared to an independent oracle with small and large native caches.</rationale>
     </finding>

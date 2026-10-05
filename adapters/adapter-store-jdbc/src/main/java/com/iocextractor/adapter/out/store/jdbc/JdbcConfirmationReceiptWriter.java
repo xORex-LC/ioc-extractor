@@ -58,15 +58,8 @@ final class JdbcConfirmationReceiptWriter {
             long batchBytes = 0;
             while (cursor.next()) {
                 CanonicalRecordConfirmation record = cursor.value();
-                List<Object> values = new ArrayList<>(List.of(
-                        receiptId, ordinal, record.rowKey().value(), confirmation.sourceKey(), epochMillis(asOf)));
-                for (String column : businessColumns) {
-                    values.add(record.preparedRow().template().value(column));
-                }
-                long rowBytes = 128;
-                for (Object value : values) {
-                    if (value instanceof String text) { rowBytes += text.length() * 4L + 64; }
-                }
+                var values = receiptValues(receiptId, ordinal, record, confirmation.sourceKey(), asOf, businessColumns);
+                long rowBytes = receiptBytes(values);
                 if (batchBytes > 0 && batchBytes + rowBytes > 1048576) {
                     statement.executeBatch(); statement.clearBatch(); batchBytes = 0;
                 }
@@ -103,6 +96,21 @@ final class JdbcConfirmationReceiptWriter {
                 throw new IocExtractorException("Confirmation receipt is not writable");
             }
         }
+    }
+
+    private static List<Object> receiptValues(String receiptId, int ordinal,
+            CanonicalRecordConfirmation record, String sourceKey, EffectiveTime asOf, List<String> columns) {
+        List<Object> values = new ArrayList<>(List.of(receiptId, ordinal, record.rowKey().value(), sourceKey, epochMillis(asOf)));
+        for (String column : columns) { values.add(record.preparedRow().template().value(column)); }
+        return values;
+    }
+
+    private static long receiptBytes(List<Object> values) {
+        long bytes = 128;
+        for (Object value : values) {
+            if (value instanceof String text) { bytes += text.length() * 4L + 64; }
+        }
+        return bytes;
     }
 
     private void stageFieldPositions(Connection connection,

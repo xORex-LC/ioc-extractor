@@ -67,7 +67,7 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
         try {
             synchronized (this) {
                 initializeRoot();
-                try (var admission = new Lease(root.resolve(".admission"), true)) {
+                try (var ignored = new Lease(root.resolve(".admission"), true)) {
                     pruneExpired();
                     if (active.contains(directory)) { throw new IocExtractorException("Document workspace is already leased"); }
                     reserveDisk(directory);
@@ -75,28 +75,7 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
                     lease = new Lease(directory.resolve("lease"), false);
                     active.add(directory);
                     admitted = true;
-                    String filename = Objects.requireNonNull(command.source().getFileName(), "source filename").toString();
-                    Path snapshot = directory.resolve("source" + extension(filename));
-                    if (Files.size(command.source()) > limits.workspaceBytes() / 4) {
-                        throw new IocExtractorException("Document source snapshot exceeds workspace quota");
-                    }
-                    String sourceHash = JdbcDocumentPreparationWorkspace.hash(command.source());
-                    String identity = "document-workspace-v1\n" + observation + "\n" + fingerprint + "\n"
-                            + sourceHash + "\n" + command.registration() + "\n" + command.lifecycleWriteContext();
-                    if (identity.length() > 32768) { throw new IocExtractorException("Document pin identity exceeds limit"); }
-                    Path pin = directory.resolve("identity");
-                    if (Files.exists(pin, LinkOption.NOFOLLOW_LINKS)) {
-                        if (Files.isSymbolicLink(pin) || Files.size(pin) > 131072 || !Files.readString(pin).equals(identity)
-                                || !sourceHash.equals(JdbcDocumentPreparationWorkspace.hash(snapshot))) {
-                            throw new IocExtractorException("Document preparation pin identity mismatch");
-                        }
-                    } else {
-                        DocumentWorkspaceFiles.copy(command.source(), snapshot, limits.workspaceBytes() / 4);
-                        if (!sourceHash.equals(JdbcDocumentPreparationWorkspace.hash(snapshot))) {
-                            throw new IocExtractorException("Document source changed while pinning");
-                        }
-                        DocumentWorkspaceFiles.write(pin, identity);
-                    }
+                    Path snapshot = pinSource(command, directory, observation);
                     checkDisk(directory);
                     Lease owner = lease;
                     return new JdbcDocumentPreparationWorkspace(directory, snapshot, limits, identities, policies,
@@ -104,16 +83,45 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
                 }
             }
         } catch (IOException | RuntimeException failure) {
-            if (lease != null) {
-                if (!Files.exists(directory.resolve("seal"))) {
-                    try { deletePrivateDirectory(directory); } catch (IOException error) { failure.addSuppressed(error); }
-                }
-                try { lease.close(); } catch (IOException error) { failure.addSuppressed(error); }
-            }
+            closeFailedLease(directory, lease, failure);
             if (admitted) { synchronized (this) { active.remove(directory); } }
             leases.release();
             throw new IocExtractorException("Cannot open private document workspace", failure);
         }
+    }
+
+    private static void closeFailedLease(Path directory, Lease lease, Exception failure) {
+        if (lease == null) { return; }
+        if (!Files.exists(directory.resolve("seal"))) {
+            try { deletePrivateDirectory(directory); } catch (IOException error) { failure.addSuppressed(error); }
+        }
+        try { lease.close(); } catch (IOException error) { failure.addSuppressed(error); }
+    }
+
+    private Path pinSource(ExtractionCommand command, Path directory, String observation) throws IOException {
+        String filename = Objects.requireNonNull(command.source().getFileName(), "source filename").toString();
+        Path snapshot = directory.resolve("source" + extension(filename));
+        if (Files.size(command.source()) > limits.workspaceBytes() / 4) {
+            throw new IocExtractorException("Document source snapshot exceeds workspace quota");
+        }
+        String sourceHash = JdbcDocumentPreparationWorkspace.hash(command.source());
+        String identity = "document-workspace-v1\n" + observation + "\n" + fingerprint + "\n"
+                + sourceHash + "\n" + command.registration() + "\n" + command.lifecycleWriteContext();
+        if (identity.length() > 32768) { throw new IocExtractorException("Document pin identity exceeds limit"); }
+        Path pin = directory.resolve("identity");
+        if (Files.exists(pin, LinkOption.NOFOLLOW_LINKS)) {
+            if (Files.isSymbolicLink(pin) || Files.size(pin) > 131072 || !Files.readString(pin).equals(identity)
+                    || !sourceHash.equals(JdbcDocumentPreparationWorkspace.hash(snapshot))) {
+                throw new IocExtractorException("Document preparation pin identity mismatch");
+            }
+        } else {
+            DocumentWorkspaceFiles.copy(command.source(), snapshot, limits.workspaceBytes() / 4);
+            if (!sourceHash.equals(JdbcDocumentPreparationWorkspace.hash(snapshot))) {
+                throw new IocExtractorException("Document source changed while pinning");
+            }
+            DocumentWorkspaceFiles.write(pin, identity);
+        }
+        return snapshot;
     }
 
     private void initializeRoot() throws IOException {
@@ -153,7 +161,7 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
 
     private boolean leased(Path directory) throws IOException {
         if (active.contains(directory)) { return true; }
-        try (var probe = new Lease(directory.resolve("lease"), false)) { return false; }
+        try (var ignored = new Lease(directory.resolve("lease"), false)) { return false; }
         catch (OverlappingFileLockException | BusyLeaseException busy) { return true; }
     }
 
@@ -167,8 +175,8 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
                         || Files.isSymbolicLink(path) || !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) { continue; }
                 Path age = Files.exists(path.resolve("seal")) ? path.resolve("seal") : path;
                 if (Files.getLastModifiedTime(age).toInstant().isBefore(cutoff)) {
-                    try (var lease = new Lease(path.resolve("lease"), false)) { deletePrivateDirectory(path); }
-                    catch (OverlappingFileLockException | BusyLeaseException busy) { /* Live invocation remains pinned. */ }
+                    try (var ignored = new Lease(path.resolve("lease"), false)) { deletePrivateDirectory(path); }
+                    catch (OverlappingFileLockException | BusyLeaseException busy) { continue; }
                 }
             }
         }

@@ -302,15 +302,26 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                 JdbcLifecycleTransactions.rollback(connection, failure);
                 throw failure;
             } finally {
-                JdbcLifecycleTransactions.restoreAutoCommit(connection, autoCommit, validationFailure);
-                try (var pragma = connection.createStatement()) { pragma.execute("PRAGMA temp_store=" + tempStore); }
-                catch (SQLException restoreFailure) {
-                    if (validationFailure == null) { throw restoreFailure; }
-                    validationFailure.addSuppressed(restoreFailure);
-                }
+                restoreValidationConnection(connection, autoCommit, tempStore, validationFailure);
             }
         } catch (SQLException failure) {
             throw new IocExtractorException("Cannot validate streamed confirmation", failure);
+        }
+    }
+
+    private void restoreValidationConnection(Connection connection, boolean autoCommit,
+            int tempStore, Exception original) throws SQLException {
+        SQLException failure = null;
+        try { connection.setAutoCommit(autoCommit); }
+        catch (SQLException restoreFailure) { failure = restoreFailure; }
+        try (var pragma = connection.createStatement()) { pragma.execute("PRAGMA temp_store=" + tempStore); }
+        catch (SQLException restoreFailure) {
+            if (failure == null) { failure = restoreFailure; }
+            else { failure.addSuppressed(restoreFailure); }
+        }
+        if (failure != null) {
+            if (original == null) { throw failure; }
+            original.addSuppressed(failure);
         }
     }
 
