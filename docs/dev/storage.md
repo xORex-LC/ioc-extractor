@@ -286,6 +286,29 @@ mutation отдельно сообщает update, clear, no-op или TTL confi
 record key, включая очистку всех его значений, не допускается in-place и должно
 создать новую canonical record.
 
+### Очередь операций и наблюдение нагрузки
+
+Один bootstrap-owned `JdbcWriterAdmission` обслуживает canonical promotion,
+expiry, export slots, короткие control updates и maintenance. Свежие запросы
+предпочитаются в порядке CONTROL, EXPIRY, EXPORT_SLOTS, PROMOTION, MAINTENANCE;
+после 100 ms ожидания запрос получает преимущество перед свежими и сохраняет
+FIFO среди ожидающих. Выбор происходит только между atomic units: текущая
+транзакция не прерывается. Вложенная операция входит в внешнюю writer unit.
+Резервирование ID выполняется короткой CONTROL-операцией до promotion.
+
+Service schema v14 сохраняет attempts, retry-after и failure для document
+admission; индекс recovery упорядочивает их по durable admission order.
+Новая схема не меняет canonical dataframe format. Runtime writer scheduling
+не охватывает startup migrations и не объединяет service/dataframe транзакции.
+
+Snapshot reader использует ограниченное число permits из read-бюджета; clock
+и slot transactions завершаются до reader admission. Отказ callback освобождает
+permit и connection. Долгий snapshot может удерживать WAL checkpoint, хотя новые
+canonical writes продолжаются. Capacity health показывает writer wait/hold
+по классам, readers, размер WAL и cached workspace pressure; health не
+сканирует IOC/spill и не выполняет admission transitions. Контракт:
+[ADR-0038](../ADR/0038-durable-bounded-document-execution.md).
+
 ### Export-slot storage path (dataframe v5 and v8)
 
 V5 additively создал в dataframe DB три export-owned структуры:

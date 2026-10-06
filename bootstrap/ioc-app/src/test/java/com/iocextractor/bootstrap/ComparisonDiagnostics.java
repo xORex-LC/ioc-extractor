@@ -263,15 +263,15 @@ public final class ComparisonDiagnostics {
                             hook("count", "attribution_marker_comparisons");
                         }
                         boolean admission = type.endsWith("/JdbcWriterAdmission")
-                                && owner.equals("java/util/concurrent/locks/ReentrantLock");
+                                && owner.endsWith("/JdbcWriterAdmission");
                         boolean canonicalWrite = type.endsWith("/JdbcCanonicalLifecycleWriter")
                                 || type.endsWith("/JdbcCanonicalImportWriter");
                         boolean ownership = canonicalWrite && owner.endsWith("/JdbcLifecycleTransactions")
                                 && name.equals("acquireActiveWriteOwnership");
-                        if (admission && name.equals("lockInterruptibly")) {
+                        if (admission && name.equals("enter")) {
                             hook("start", "writer_admission_wait_nanos");
                         }
-                        if (admission && name.equals("unlock")) {
+                        if (admission && name.equals("leave")) {
                             hook("finish", "writer_admission_hold_nanos");
                         }
                         if (ownership) {
@@ -313,7 +313,7 @@ public final class ComparisonDiagnostics {
                             hook("count", "psl_domain_parses");
                         }
                         super.visitMethodInsn(opcode, owner, name, desc, isInterface);
-                        if (admission && name.equals("lockInterruptibly")) {
+                        if (admission && name.equals("enter")) {
                             hook("finish", "writer_admission_wait_nanos");
                             hook("start", "writer_admission_hold_nanos");
                             hook("count", "writer_admissions");

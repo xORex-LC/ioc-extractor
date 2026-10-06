@@ -150,7 +150,60 @@ class JdbcSnapshotSliceReaderIT {
         assertThatThrownBy(() -> fixture.reader().stream(new SnapshotRequest(fixture.plan()), consumer))
                 .isSameAs(failure);
         assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+        assertThat(fixture.reader().activeReaders()).isZero();
         assertThat(dataSource.getHikariPoolMXBean().getIdleConnections()).isPositive();
+    }
+
+    @Test
+    void boundedReaderWaitsWithoutTakingWriterConnectionAndPinnedWalDrainsAfterClose() throws Exception {
+        Fixture fixture = fixture();
+        fixture.write("masks", row("id", "1", "mask", "initial.example"));
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("PRAGMA wal_checkpoint(TRUNCATE)");
+        }
+        var reader = new JdbcSnapshotSliceReader(dataSource, fixture.schemas(), CLOCK,
+                () -> EffectiveTime.at(NOW), new CollectingDiagnosticSink(), new DiagnosticFactory(CLOCK),
+                new JdbcWriterAdmission(), 1);
+        var began = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var firstConsumer = new BlockingConsumer(began, release);
+        var workers = Executors.newFixedThreadPool(2);
+        try {
+            var first = workers.submit(() -> reader.stream(new SnapshotRequest(fixture.plan()), firstConsumer));
+            assertThat(began.await(5, TimeUnit.SECONDS)).isTrue();
+            var second = workers.submit(() -> reader.stream(new SnapshotRequest(fixture.plan()), new RecordingConsumer()));
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (reader.queuedReaders() == 0 && System.nanoTime() < deadline) {
+                new CountDownLatch(1).await(1, TimeUnit.MILLISECONDS);
+            }
+            assertThat(reader.activeReaders()).isOne();
+            assertThat(reader.queuedReaders()).isOne();
+            assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isOne();
+            for (int index = 2; index <= 129; index++) {
+                fixture.write("masks", row("id", Integer.toString(index), "mask", index + "-" + "x".repeat(8192)));
+            }
+            long walBytes = java.nio.file.Files.size(tempDir.resolve("snapshot.db-wal"));
+            try (var connection = dataSource.getConnection(); var statement = connection.createStatement();
+                 var checkpoint = statement.executeQuery("PRAGMA wal_checkpoint(PASSIVE)")) {
+                assertThat(checkpoint.next()).isTrue();
+                assertThat(checkpoint.getInt(2)).isGreaterThan(checkpoint.getInt(3));
+            }
+            assertThat(walBytes).isPositive();
+            release.countDown();
+            first.get(5, TimeUnit.SECONDS);
+            second.get(5, TimeUnit.SECONDS);
+            assertThat(firstConsumer.rowsByArtifact.get("masks")).containsExactly("1");
+            assertThat(reader.activeReaders()).isZero();
+            assertThat(reader.queuedReaders()).isZero();
+            try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+                statement.execute("PRAGMA wal_checkpoint(TRUNCATE)");
+            }
+            assertThat(java.nio.file.Files.size(tempDir.resolve("snapshot.db-wal"))).isZero();
+            System.out.println("CAP5_WAL pinned_bytes=" + walBytes + " rows_written=128 drained_bytes=0 reader_limit=1");
+        } finally {
+            release.countDown(); workers.shutdownNow();
+            assertThat(workers.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
     }
 
     @Test

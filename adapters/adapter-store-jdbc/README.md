@@ -188,8 +188,18 @@ runtime JDBC drivers.
 - Service schema v13 admits one active immutable export run per profile.
   `JdbcSnapshotSliceReader` bounds concurrent read transactions by the configured
   read budget; slot/clock writes precede read admission.
+- Service schema v14 stores document execution attempts, retry-after and failure
+  evidence. Recoverable journal selection is indexed by durable admission order.
+  Reopening never assigns a new observation/order to queued work.
+- One composition-root `JdbcWriterAdmission` is shared by canonical promotion,
+  expiry, export slots, lifecycle control and maintenance. Selection prefers
+  fresh control work and ages waiting requests into FIFO progress after 100 ms.
+  It cannot interrupt an atomic transaction. ID reservation uses CONTROL before
+  promotion. Snapshot streaming and workspace preparation do not own this guard.
+  Health reads aggregate wait/hold counters and cached workspace pressure without
+  listing IOC rows or scanning spill files.
 - `JdbcExportRunLedger` stores immutable-slice formation checkpoints in
-  `export_run`. A partial unique index enforces one global active run; all state
+  `export_run`. A partial unique index enforces one active run per profile; all state
   changes use expected-status CAS. `COMPLETED`/`SKIPPED` and `export_progress`
   are committed atomically, while an active row survives process crash and blocks
   new work until recovery.

@@ -491,6 +491,12 @@ ioc:
       type: file
       path: "./var/ledger"
     concurrency: 1             # required in 0.3.0; parallel ingestion is not supported
+    execution:
+      preparation-workers: 2
+      window: 4
+      max-pending-documents: 64
+      max-pending-source-bytes: 4294967296
+      max-source-bytes: 536870912
 
   # Fresh-install preset. Upgrade preserves the existing operator-owned YAML
   # and requires the documented two-step cutover before fixed validity starts.

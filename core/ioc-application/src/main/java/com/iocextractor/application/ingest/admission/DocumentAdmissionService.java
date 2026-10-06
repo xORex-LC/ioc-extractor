@@ -78,6 +78,21 @@ public final class DocumentAdmissionService {
         return journal.findRecoverable(limit).stream().map(this::recoverOne).toList();
     }
 
+    /** Read-only queue discovery; workers resume/verify their own durable token. */
+    public List<DocumentAdmission> pending(int limit) { return journal.findRecoverable(limit); }
+
+    public DocumentAdmission beginExecution(ObservationId id) {
+        DocumentAdmission current = required(id);
+        return advance(current, current.execution(new DocumentExecutionState(
+                Math.addExact(current.execution().attempts(), 1), Instant.EPOCH, null), clock.instant()));
+    }
+
+    public DocumentAdmission retryExecution(ObservationId id, Instant retryAfter, String failure) {
+        DocumentAdmission current = required(id);
+        return advance(current, current.execution(new DocumentExecutionState(
+                current.execution().attempts(), retryAfter, failure), clock.instant()));
+    }
+
     public int purgeTerminalBefore(Instant cutoff, int limit) {
         Objects.requireNonNull(cutoff, "cutoff");
         if (limit < 1) {

@@ -5,6 +5,8 @@ import com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspa
 import com.iocextractor.diagnostics.DiagnosticException;
 import java.nio.file.Path;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
+import com.iocextractor.application.port.in.PreparedExtraction;
+import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
 import com.iocextractor.application.port.in.ExtractionCommand;
 import com.iocextractor.application.port.in.ExtractionResult;
 import com.iocextractor.application.pipeline.PipelineMetaAttributes;
@@ -119,6 +121,62 @@ public final class IocExtractionService implements ExtractIocsUseCase {
         }
     }
 
+    /** Prepares a private sealed workspace without holding canonical source/writer ownership. */
+    public PreparedExtraction prepare(ExtractionCommand command) {
+        if (workspaces == null) { throw new IllegalStateException("Preparation requires a workspace"); }
+        var workspace = workspaces.open(command, writePolicies);
+        var pinned = new ExtractionCommand(command.runId(), workspace.source(), command.dryRun(),
+                command.lifecycleWriteContext(), command.registration());
+        int writeIndex = pipeline.stages().size() - 1;
+        Pipeline<ExtractionCommand, PreparedArtifacts> preparation =
+                new Pipeline<>(pipeline.stages().subList(0, writeIndex));
+        Pipeline<PreparedArtifacts, ArtifactWriteSummary> promotion =
+                new Pipeline<>(pipeline.stages().subList(writeIndex, writeIndex + 1));
+        try {
+            var result = runner.runPreparation(initialEnvelope(pinned, workspace, command.source()), preparation);
+            return new OwnedPreparation(workspace, result.envelope(), promotion);
+        } catch (RuntimeException failure) {
+            try { try { workspace.discard(); } finally { workspace.close(); } }
+            catch (RuntimeException cleanup) { failure.addSuppressed(cleanup); }
+            throw failure;
+        }
+    }
+
+    private final class OwnedPreparation implements PreparedExtraction {
+        private final DocumentPreparationWorkspace workspace;
+        private final Envelope<PreparedArtifacts> prepared;
+        private final Pipeline<PreparedArtifacts, ArtifactWriteSummary> promotion;
+        private boolean attempted;
+        private boolean closed;
+
+        private OwnedPreparation(DocumentPreparationWorkspace workspace, Envelope<PreparedArtifacts> prepared,
+                                 Pipeline<PreparedArtifacts, ArtifactWriteSummary> promotion) {
+            this.workspace = workspace;
+            this.prepared = prepared;
+            this.promotion = promotion;
+        }
+
+        @Override
+        public ExtractionResult promote() {
+            if (attempted || closed) { throw new IllegalStateException("Preparation is already consumed"); }
+            attempted = true;
+            var result = runner.runWithOutcome(prepared, promotion);
+            workspace.discard();
+            return extractionResult(result);
+        }
+
+        @Override
+        public void close() {
+            if (closed) { return; }
+            closed = true;
+            try { if (!attempted) { runner.finishPreparation(prepared); } }
+            finally {
+                try { if (!workspace.promotionStarted()) { workspace.discard(); } }
+                finally { workspace.close(); }
+            }
+        }
+    }
+
     private ExtractionResult extractOwned(ExtractionCommand command,
             DocumentPreparationWorkspace workspace) {
         return extractOwned(command, workspace, command.source());
@@ -126,34 +184,32 @@ public final class IocExtractionService implements ExtractIocsUseCase {
 
     private ExtractionResult extractOwned(ExtractionCommand command,
             DocumentPreparationWorkspace workspace, Path originalSource) {
+        return extractionResult(runner.runWithOutcome(initialEnvelope(command, workspace, originalSource), pipeline));
+    }
+
+    private Envelope<ExtractionCommand> initialEnvelope(ExtractionCommand command,
+            DocumentPreparationWorkspace workspace, Path originalSource) {
         var normalizedSource = originalSource.toAbsolutePath().normalize();
         var meta = EnvelopeMeta.initial(command.runId(), normalizedSource.toString(), clock)
                 .withAttribute(PipelineMetaAttributes.SOURCE_PATH, normalizedSource)
                 .withAttribute(PipelineMetaAttributes.DRY_RUN, command.dryRun())
                 .withAttribute(PipelineMetaAttributes.MODE, observabilityMode);
         if (command.lifecycleWriteContext() != null) {
-            meta = meta.withAttribute(
-                    PipelineMetaAttributes.LIFECYCLE_WRITE_CONTEXT, command.lifecycleWriteContext());
+            meta = meta.withAttribute(PipelineMetaAttributes.LIFECYCLE_WRITE_CONTEXT, command.lifecycleWriteContext());
         }
         if (command.registration() != null) {
-            meta = meta.withAttribute(
-                    PipelineMetaAttributes.REGISTERED_OBSERVATION, command.registration());
+            meta = meta.withAttribute(PipelineMetaAttributes.REGISTERED_OBSERVATION, command.registration());
         }
-        if (workspace != null) { meta = meta.withAttribute(com.iocextractor.application.pipeline.PipelineMetaAttributes.DOCUMENT_PREPARATION_WORKSPACE, workspace); }
-        var pipelineResult = runner.runWithOutcome(Envelope.of(command, meta), pipeline);
-        var output = pipelineResult.envelope();
-        var summary = output.payload();
-        var diagnosticSummary = pipelineResult.diagnosticSummary();
+        if (workspace != null) { meta = meta.withAttribute(PipelineMetaAttributes.DOCUMENT_PREPARATION_WORKSPACE, workspace); }
+        return Envelope.of(command, meta);
+    }
 
-        return new ExtractionResult(
-                output.meta().runId(),
-                summary.extracted(),
-                summary.retained(),
-                new LinkedHashMap<>(summary.writtenPerArtifact()),
-                summary.changedArtifacts(),
-                CompletionStatus.from(diagnosticSummary),
-                output.diagnostics(),
-                diagnosticSummary);
+    private ExtractionResult extractionResult(com.iocextractor.platform.etl.PipelineRunResult<ArtifactWriteSummary> result) {
+        var output = result.envelope();
+        var summary = output.payload();
+        return new ExtractionResult(output.meta().runId(), summary.extracted(), summary.retained(),
+                new LinkedHashMap<>(summary.writtenPerArtifact()), summary.changedArtifacts(),
+                CompletionStatus.from(result.diagnosticSummary()), output.diagnostics(), result.diagnosticSummary());
     }
 
     private static Pipeline<ExtractionCommand, ArtifactWriteSummary> pipeline(

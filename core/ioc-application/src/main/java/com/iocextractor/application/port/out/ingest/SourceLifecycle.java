@@ -32,9 +32,10 @@ public interface SourceLifecycle {
 
     /**
      * Detaches the claimed bytes from producer-held file descriptors before hashing.
+     * The copy must never exceed the durably admitted source byte allowance.
      * Implementations that already provide immutable ownership may return {@code claimed}.
      */
-    default ClaimedSource sealClaim(ClaimedSource claimed) {
+    default ClaimedSource sealClaim(ClaimedSource claimed, long maximumBytes) {
         return Objects.requireNonNull(claimed, "claimed");
     }
 

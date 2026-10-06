@@ -62,6 +62,17 @@ class IocConfigPreflightTest {
     }
 
     @Test
+    void rejectsExecutionWindowAndSourceBudgetThatCannotFitPrivateWorkspace() {
+        var source = defaults();
+        var original = source.ingestion();
+        var invalid = new IocProperties.Ingestion(original.dirs(), original.patterns(), original.detect(),
+                original.stability(), original.retry(), original.ledger(), 1,
+                new IocProperties.Ingestion.Execution(3, 2, 1, Long.MAX_VALUE, Long.MAX_VALUE));
+        assertThat(fields(validate(withLifecycleAndIngestion(source, source.lifecycle(), invalid))))
+                .contains("ingestion.execution", "ingestion.execution.maxSourceBytes");
+    }
+
+    @Test
     void requiresFixedLifecycleWhenManagedImportIsEnabled() {
         IocProperties source = defaults();
         IocProperties.DataframeImport enabled = new IocProperties.DataframeImport(

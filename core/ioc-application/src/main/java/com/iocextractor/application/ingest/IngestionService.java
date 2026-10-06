@@ -53,7 +53,8 @@ import java.util.Set;
  * one {@link KeyedExecutionGuard}. Convenience constructors create a private
  * guard and therefore provide exclusion only among calls to that service instance.
  */
-public final class IngestionService implements IngestSourceUseCase, RecoverIngestionUseCase, RejectIngestionUseCase {
+public final class IngestionService implements IngestSourceUseCase, RecoverIngestionUseCase, RejectIngestionUseCase,
+        com.iocextractor.application.port.in.ingest.PrepareIngestionUseCase {
 
     private final IngestionLedger ledger;
     private final SourceLifecycle sourceLifecycle;
@@ -182,9 +183,69 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         return executionGuard.execute(workKey(command.key()), () -> ingestGuarded(command));
     }
 
+    @Override
+    public com.iocextractor.application.port.in.ingest.PreparedIngestion prepare(IngestSourceCommand command) {
+        Objects.requireNonNull(command, "command");
+        SourceUnit unit = command.claimedSourceOptional().orElseThrow(
+                () -> new IllegalArgumentException("Parallel preparation requires a durable claimed source"));
+        var preparers = sourcePreparerFactory.createFor(unit);
+        var run = runLedger.startIngest(unit.key().value(), preparers.artifactNames());
+        try {
+            var context = lifecycleSupport == null ? null : lifecycleSupport.context(unit, preparers.artifactNames().size());
+            boolean reusable = lifecycleSupport != null && lifecycleSupport.receiptReplay()
+                    .hasReusableReceipt(new ConfirmationReceiptReplayCommand(context));
+            var extraction = reusable ? null : extractionFactory.create(preparers.preparers(), NoopArtifactProjection.INSTANCE)
+                    .prepare(new ExtractionCommand(run.runId(), unit.processingPath(), false, context, command.registration()));
+            return new PreparedDocument(command, run, extraction);
+        } catch (RuntimeException failure) {
+            try { runLedger.markFailed(run.runId(), failure.getMessage()); }
+            catch (RuntimeException accounting) { failure.addSuppressed(accounting); }
+            throw failure;
+        }
+    }
+
+    private final class PreparedDocument implements com.iocextractor.application.port.in.ingest.PreparedIngestion {
+        private final IngestSourceCommand command;
+        private final com.iocextractor.application.artifact.IngestRun run;
+        private final com.iocextractor.application.port.in.PreparedExtraction extraction;
+        private boolean attempted;
+        private boolean closed;
+
+        private PreparedDocument(IngestSourceCommand command, com.iocextractor.application.artifact.IngestRun run,
+                                 com.iocextractor.application.port.in.PreparedExtraction extraction) {
+            this.command = command;
+            this.run = run;
+            this.extraction = extraction;
+        }
+
+        @Override
+        public IngestSourceResult promote() {
+            if (attempted || closed) { throw new IllegalStateException("Prepared document is already consumed"); }
+            attempted = true;
+            return executionGuard.execute(workKey(command.key()), () -> ingestGuarded(command, this));
+        }
+
+        @Override
+        public void close() {
+            if (closed) { return; }
+            closed = true;
+            try {
+                if (!attempted) { runLedger.markFailed(run.runId(), "Preparation cancelled before promotion"); }
+            } finally { if (extraction != null) { extraction.close(); } }
+        }
+    }
+
     private IngestSourceResult ingestGuarded(IngestSourceCommand command) {
+        return ingestGuarded(command, null);
+    }
+
+    private IngestSourceResult ingestGuarded(IngestSourceCommand command, PreparedDocument prepared) {
         var existing = ledger.find(command.observationId());
         if (existing.isPresent()) {
+            if (prepared != null && existing.orElseThrow().status() == IngestionStatus.CLAIMED) {
+                return processClaimed(prepared.command.claimedSource(), command.registration(), prepared);
+            }
+            if (prepared != null) { runLedger.markFailed(prepared.run.runId(), "Occurrence was already terminal"); }
             return handleExisting(command, existing.get());
         }
 
@@ -210,7 +271,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
             }
             throw failure;
         }
-        return processClaimed(unit, command.registration());
+        return processClaimed(unit, command.registration(), prepared);
     }
 
     @Override
@@ -283,6 +344,13 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
             }
         }
         try {
+            if (record.isEmpty()) {
+                for (var owned : sourceLifecycle.findProcessingSources()) {
+                    if (owned.observationId().equals(observationId)) {
+                        sourceLifecycle.fail(owned, reason);
+                    }
+                }
+            }
             requireCompleted(key, "mark-failed", ledger.markFailed(observationId, key, reason));
         } catch (RuntimeException failure) {
             throw ledgerFailure(key, "mark-failed", failure);
@@ -436,8 +504,12 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     }
 
     private IngestSourceResult processClaimed(SourceUnit unit, RegisteredObservation registration) {
+        return processClaimed(unit, registration, null);
+    }
+
+    private IngestSourceResult processClaimed(SourceUnit unit, RegisteredObservation registration, PreparedDocument prepared) {
         var sourcePreparers = sourcePreparerFactory.createFor(unit);
-        var run = runLedger.startIngest(unit.key().value(), sourcePreparers.artifactNames());
+        var run = prepared == null ? runLedger.startIngest(unit.key().value(), sourcePreparers.artifactNames()) : prepared.run;
         boolean dbCommitted = false;
         ExtractionResult extraction = null;
         boolean receiptReplayed = false;
@@ -453,7 +525,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                 receiptReplayed = true;
                 changedArtifacts = replay.orElseThrow().changedArtifacts();
             } else {
-                extraction = extractionFactory.create(
+                extraction = prepared != null && prepared.extraction != null ? prepared.extraction.promote() : extractionFactory.create(
                                 sourcePreparers.preparers(), NoopArtifactProjection.INSTANCE)
                         .extract(new ExtractionCommand(
                                 run.runId(), unit.processingPath(), false, lifecycleContext, registration));
@@ -498,7 +570,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     }
 
     private void completeDocument(ObservationId observationId, DocumentTerminalOutcome outcome) {
-        if (documentAdmissions != null) {
+        if (documentAdmissions != null && documentAdmissions.find(observationId).isPresent()) {
             documentAdmissions.complete(observationId, outcome);
         }
     }

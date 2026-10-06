@@ -52,6 +52,19 @@ public final class OrderedDocumentAdmissionHandler {
     }
 
     public AdmittedDocument admit(Path source, ObservationId observationId, Instant detectedAt) {
+        return finish(claim(source, observationId, detectedAt).observationId());
+    }
+
+    /** Short intake boundary: durable order and atomic ownership, without snapshot copy or hashing. */
+    public DocumentAdmission claim(Path source, ObservationId observationId, Instant detectedAt) {
+        var evidence = admissions.find(observationId).map(DocumentAdmission::candidateEvidence)
+                .orElseGet(() -> evidenceReader.read(source));
+        return claim(source, observationId, detectedAt, evidence);
+    }
+
+    /** Uses the same metadata evidence that passed the driving adapter's byte admission. */
+    public DocumentAdmission claim(Path source, ObservationId observationId, Instant detectedAt,
+                                   DocumentCandidateEvidence evidence) {
         Path normalized = Objects.requireNonNull(source, "source").toAbsolutePath().normalize();
         DocumentAdmission existing = admissions.find(observationId).orElse(null);
         if (existing != null && !existing.candidatePath().equals(normalized)) {
@@ -59,12 +72,45 @@ public final class OrderedDocumentAdmissionHandler {
         }
         var reservation = existing == null
                 ? new DocumentAdmissionReservation(observationId, normalized,
-                        evidenceReader.read(normalized),
+                        evidence,
                         sources.prehashClaimPath(normalized, observationId), detectedAt)
                 : new DocumentAdmissionReservation(
                         observationId, existing.candidatePath(), existing.candidateEvidence(),
                         existing.claimPath(), existing.createdAt());
-        return advanceToLinked(admissions.admit(reservation));
+        DocumentAdmission admitted = admissions.admit(reservation);
+        if (admitted.phase() != DocumentAdmissionPhase.ORDERED) { return admitted; }
+        ClaimedSource claimed = claimOrRecover(admitted);
+        DocumentCandidateEvidence claimedEvidence = evidenceReader.read(claimed.processingPath());
+        return admissions.recordClaim(admitted.observationId(), claimedEvidence);
+    }
+
+    public AdmittedDocument finish(ObservationId id) {
+        DocumentAdmission current = admissions.find(id).orElseThrow();
+        if (current.phase() == DocumentAdmissionPhase.RESERVED) {
+            current = admissions.admit(new DocumentAdmissionReservation(current.observationId(),
+                    current.candidatePath(), current.candidateEvidence(), current.claimPath(), current.createdAt()));
+        }
+        return advanceToLinked(current);
+    }
+
+    public List<DocumentAdmission> pending(int limit) {
+        return admissions.pending(limit).stream().filter(value -> {
+            if (value.phase() == DocumentAdmissionPhase.TERMINAL) {
+                admissions.complete(value.observationId(), value.terminalOutcome().orElseThrow());
+                return false;
+            }
+            return !completeFromIngestionLedger(value);
+        })
+                .filter(value -> value.phase() != DocumentAdmissionPhase.TERMINAL).toList();
+    }
+
+    /** Read-only bounded metadata for health; reconciliation remains an execution responsibility. */
+    public List<DocumentAdmission> inspectPending(int limit) { return admissions.pending(limit); }
+
+    public DocumentAdmission beginExecution(ObservationId id) { return admissions.beginExecution(id); }
+
+    public void retryExecution(ObservationId id, Instant retryAfter, String failure) {
+        admissions.retryExecution(id, retryAfter, failure);
     }
 
     public List<AdmittedDocument> recover(int limit) {
@@ -116,7 +162,10 @@ public final class OrderedDocumentAdmissionHandler {
         } else {
             claimed = claimedSource(current);
         }
-        claimed = sources.sealClaim(claimed);
+        claimed = sources.sealClaim(claimed, current.candidateEvidence().size());
+        if (evidenceReader.read(claimed.processingPath()).size() != current.candidateEvidence().size()) {
+            throw new IllegalStateException("Document size changed after bounded admission");
+        }
         SourceKey key = stableHash(claimed.processingPath());
         SourceUnit unit = sources.adoptClaim(claimed, key);
         if (current.phase() == DocumentAdmissionPhase.CLAIMED) {

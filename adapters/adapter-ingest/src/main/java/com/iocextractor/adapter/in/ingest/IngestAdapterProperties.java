@@ -19,7 +19,18 @@ public record IngestAdapterProperties(Dirs dirs,
                                       Stability stability,
                                       Retry retry,
                                       Ledger ledger,
-                                      int concurrency) {
+                                      int concurrency, Execution execution) {
+        @org.springframework.boot.context.properties.bind.ConstructorBinding
+        public IngestAdapterProperties { execution = execution == null ? Execution.defaults() : execution; }
+        public IngestAdapterProperties(Dirs dirs, Patterns patterns, Detect detect, Stability stability,
+                Retry retry, Ledger ledger, int concurrency) {
+            this(dirs, patterns, detect, stability, retry, ledger, concurrency, Execution.defaults());
+        }
+        public record Execution(int preparationWorkers, int window, int maxPendingDocuments,
+                                long maxPendingSourceBytes, long maxSourceBytes) {
+            public static Execution defaults() { return new Execution(2, 4, 64, 4294967296L, 536870912L); }
+        }
+
 
     public record Dirs(String inbox, String processing, String done, String failed) {
     }

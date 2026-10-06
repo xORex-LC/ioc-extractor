@@ -9,5 +9,8 @@ import java.util.Optional;
 @FunctionalInterface
 public interface ReplayConfirmationReceiptUseCase {
 
+    /** Advisory precommit lookup; promotion must revalidate the receipt before applying it. */
+    default boolean hasReusableReceipt(ConfirmationReceiptReplayCommand command) { return false; }
+
     Optional<ConfirmationReceiptReplayResult> replay(ConfirmationReceiptReplayCommand command);
 }

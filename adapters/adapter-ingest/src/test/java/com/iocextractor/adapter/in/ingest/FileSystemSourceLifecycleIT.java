@@ -188,6 +188,21 @@ class FileSystemSourceLifecycleIT {
     }
 
     @Test
+    void grownClaimStopsAtTheAdmittedByteAllowanceAndRemovesPartialCopy() throws Exception {
+        var lifecycle = new FileSystemSourceLifecycle(
+                tempDir.resolve("processing"), tempDir.resolve("done"), tempDir.resolve("failed"));
+        Path source = Files.writeString(tempDir.resolve("growing.html"), "original");
+        var claimed = lifecycle.claimBeforeHash(source, new ObservationId("growing-delivery"), Instant.EPOCH);
+        Files.writeString(claimed.processingPath(), "original-with-extra-bytes");
+
+        assertThatThrownBy(() -> lifecycle.sealClaim(claimed, 8))
+                .hasMessageContaining("size changed after bounded admission");
+        assertThat(claimed.processingPath()).hasContent("original-with-extra-bytes");
+        assertThat(Path.of(claimed.processingPath() + ".sealing")).doesNotExist();
+        assertThat(Path.of(claimed.processingPath() + ".sealed")).doesNotExist();
+    }
+
+    @Test
     void sealedClaimIsUnaffectedByProducerOpenFileDescriptor() throws Exception {
         var lifecycle = new FileSystemSourceLifecycle(
                 tempDir.resolve("processing"), tempDir.resolve("done"), tempDir.resolve("failed"));
@@ -196,14 +211,15 @@ class FileSystemSourceLifecycleIT {
         ClaimedSource claimed = lifecycle.claimBeforeHash(source, observationId, Instant.EPOCH);
 
         try (FileChannel producerHandle = FileChannel.open(claimed.processingPath(), StandardOpenOption.WRITE)) {
-            ClaimedSource sealed = lifecycle.sealClaim(claimed);
+            ClaimedSource sealed = lifecycle.sealClaim(claimed, Files.size(claimed.processingPath()));
             producerHandle.position(0);
             producerHandle.write(ByteBuffer.wrap("mutated!".getBytes(StandardCharsets.UTF_8)));
             producerHandle.force(true);
 
             assertThat(sealed.processingPath()).hasContent("original");
             assertThat(claimed.processingPath()).doesNotExist();
-            assertThat(lifecycle.sealClaim(claimed).processingPath()).isEqualTo(sealed.processingPath());
+            assertThat(lifecycle.sealClaim(claimed, Files.size(sealed.processingPath())).processingPath())
+                    .isEqualTo(sealed.processingPath());
         }
     }
 

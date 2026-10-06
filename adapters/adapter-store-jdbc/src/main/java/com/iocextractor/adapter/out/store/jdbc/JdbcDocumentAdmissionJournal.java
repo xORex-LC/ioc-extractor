@@ -32,22 +32,22 @@ public final class JdbcDocumentAdmissionJournal implements DocumentAdmissionJour
             occurrence_id, candidate_path, candidate_file_key, candidate_size, candidate_mtime_ns,
             claim_path, claimed_file_key, claimed_size, claimed_mtime_ns, version, phase,
             dataframe_namespace, admission_order, source_key, terminal_outcome,
-            registration_finalized, created_at_ms, updated_at_ms
+            registration_finalized, created_at_ms, updated_at_ms, execution_attempts, retry_after_ms, execution_failure
             """;
     private static final String RECOVERABLE_QUERY = """
             SELECT occurrence_id, candidate_path, candidate_file_key, candidate_size,
                    candidate_mtime_ns, claim_path, claimed_file_key, claimed_size,
                    claimed_mtime_ns, version, phase, dataframe_namespace, admission_order,
-                   source_key, terminal_outcome, registration_finalized, created_at_ms, updated_at_ms
+                   source_key, terminal_outcome, registration_finalized, created_at_ms, updated_at_ms, execution_attempts, retry_after_ms, execution_failure
             FROM document_admission
             WHERE phase <> 'TERMINAL' OR registration_finalized = 0
-            ORDER BY created_at_ms, occurrence_id LIMIT ?
+            ORDER BY admission_order, created_at_ms, occurrence_id LIMIT ?
             """;
     private static final String TERMINAL_QUERY = """
             SELECT occurrence_id, candidate_path, candidate_file_key, candidate_size,
                    candidate_mtime_ns, claim_path, claimed_file_key, claimed_size,
                    claimed_mtime_ns, version, phase, dataframe_namespace, admission_order,
-                   source_key, terminal_outcome, registration_finalized, created_at_ms, updated_at_ms
+                   source_key, terminal_outcome, registration_finalized, created_at_ms, updated_at_ms, execution_attempts, retry_after_ms, execution_failure
             FROM document_admission
             WHERE phase = 'TERMINAL' AND registration_finalized = 1 AND updated_at_ms < ?
             ORDER BY updated_at_ms, occurrence_id LIMIT ?
@@ -107,7 +107,8 @@ public final class JdbcDocumentAdmissionJournal implements DocumentAdmissionJour
                      UPDATE document_admission SET
                        claimed_file_key = ?, claimed_size = ?, claimed_mtime_ns = ?,
                        version = ?, phase = ?, dataframe_namespace = ?, admission_order = ?,
-                       source_key = ?, terminal_outcome = ?, registration_finalized = ?, updated_at_ms = ?
+                       source_key = ?, terminal_outcome = ?, registration_finalized = ?, updated_at_ms = ?,
+                       execution_attempts = ?, retry_after_ms = ?, execution_failure = ?
                      WHERE occurrence_id = ? AND version = ? AND phase = ?
                      """)) {
             bindOptionalEvidence(statement, 1, updated.claimedEvidence());
@@ -118,9 +119,12 @@ public final class JdbcDocumentAdmissionJournal implements DocumentAdmissionJour
             statement.setString(9, updated.terminalOutcome().map(Enum::name).orElse(null));
             statement.setInt(10, updated.registrationFinalized() ? 1 : 0);
             statement.setLong(11, updated.updatedAt().toEpochMilli());
-            statement.setString(12, expected.observationId().value());
-            statement.setLong(13, expected.version());
-            statement.setString(14, expected.phase().name());
+            statement.setInt(12, updated.execution().attempts());
+            statement.setLong(13, updated.execution().retryAfter().toEpochMilli());
+            statement.setString(14, updated.execution().failure());
+            statement.setString(15, expected.observationId().value());
+            statement.setLong(16, expected.version());
+            statement.setString(17, expected.phase().name());
             return statement.executeUpdate() == 1;
         } catch (SQLException failure) {
             throw new IocExtractorException("Failed to advance document admission", failure);
@@ -236,7 +240,11 @@ public final class JdbcDocumentAdmissionJournal implements DocumentAdmissionJour
                         .map(DocumentTerminalOutcome::valueOf),
                 result.getInt("registration_finalized") == 1,
                 Instant.ofEpochMilli(result.getLong("created_at_ms")),
-                Instant.ofEpochMilli(result.getLong("updated_at_ms")));
+                Instant.ofEpochMilli(result.getLong("updated_at_ms")),
+                new com.iocextractor.application.ingest.admission.DocumentExecutionState(
+                        result.getInt("execution_attempts"),
+                        Instant.ofEpochMilli(result.getLong("retry_after_ms")),
+                        result.getString("execution_failure")));
     }
 
     private Long nullableLong(ResultSet result, String column) throws SQLException {

@@ -180,6 +180,40 @@ class JdbcObservationRegistrationStoreIT {
         }
     }
 
+    @Test
+    void documentRetryStateAndAdmissionOrderSurviveJournalReopening() throws Exception {
+        try (HikariDataSource dataframe = dataSource("dataframe", "retry-dataframe.db");
+             HikariDataSource service = dataSource("service", "retry-service.db")) {
+            new SqliteUserVersionSchemaMigrator(dataframe, DataframeFormatMigrations.sqlite()).migrate();
+            new SqliteUserVersionSchemaMigrator(service, ServiceSchemaMigrations.sqlite()).migrate();
+            var registrations = new JdbcObservationRegistrationStore(dataframe, CLOCK);
+            var documents = new DocumentAdmissionService(new JdbcDocumentAdmissionJournal(service), registrations, CLOCK);
+            var firstId = new ObservationId("z-first");
+            var secondId = new ObservationId("a-second");
+            var evidence = new DocumentCandidateEvidence(Optional.of("inode"), 8, 10);
+            var first = documents.admit(new DocumentAdmissionReservation(firstId,
+                    tempDir.resolve("first.html"), evidence, tempDir.resolve("first.claim"), NOW));
+            documents.admit(new DocumentAdmissionReservation(secondId,
+                    tempDir.resolve("second.html"), evidence, tempDir.resolve("second.claim"), NOW.minusSeconds(1)));
+            documents.beginExecution(firstId);
+            documents.retryExecution(firstId, NOW.plusSeconds(20), "preparation failed");
+
+            var reopened = new DocumentAdmissionService(new JdbcDocumentAdmissionJournal(service), registrations, CLOCK);
+            assertThat(reopened.pending(2)).extracting(value -> value.observationId())
+                    .containsExactly(firstId, secondId);
+            assertThat(reopened.find(firstId)).get().satisfies(value -> {
+                assertThat(value.registration()).isEqualTo(first.registration());
+                assertThat(value.execution().attempts()).isOne();
+                assertThat(value.execution().retryAfter()).isEqualTo(NOW.plusSeconds(20));
+                assertThat(value.execution().failure()).isEqualTo("preparation failed");
+            });
+            var resumed = reopened.beginExecution(firstId);
+            assertThat(resumed.execution().attempts()).isEqualTo(2);
+            assertThat(resumed.execution().retryAfter()).isEqualTo(Instant.EPOCH);
+            assertThat(resumed.registration()).isEqualTo(first.registration());
+        }
+    }
+
     private void markImportTerminal(HikariDataSource dataSource, ImportDeliveryId deliveryId) throws Exception {
         try (var connection = dataSource.getConnection();
              var statement = connection.prepareStatement("""

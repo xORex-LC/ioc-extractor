@@ -1,265 +1,165 @@
-# Инжест файлов в daemon-режиме
+# Daemon document ingestion
 
-Документ описывает устойчивый путь от файла в локальном inbox до canonical
-SQLite и CSV-проекции. Точная конфигурация находится в `application.yml`, а
-состав портов и классов — в co-located `README.md` соответствующих пакетов и
-модулей.
+This capability takes stabilized files from a local inbox to canonical SQLite,
+recoverable CSV projection and source disposition. Spring Integration is a driving
+adapter. Extraction, routing, lifecycle rules and storage authority remain behind
+application ports. See [processing.md](processing.md), [storage.md](storage.md)
+and [ADR-0038](../ADR/0038-durable-bounded-document-execution.md).
 
-## Поток выполнения
-
-```text
-inbox
-  -> periodic directory scan (supported)
-     / optional WatchService event path
-  -> include/exclude glob filter
-  -> quiet-period stability check
-  -> reserve document occurrence
-  -> allocate dataframe admission order
-  -> atomic token claim + private seal
-  -> content hash
-  -> link source key to admission journal
-  -> IngestionService
-       -> extraction pipeline
-       -> failure-policy checkpoint
-       -> canonical SQLite commit
-       -> CSV projection
-       -> run completion
-  -> archive into done
-
-post-claim terminal failure -> failed + error sidecar
-pre-claim terminal failure  -> may remain in inbox (ING-13)
-```
-
-Spring Integration является только driving adapter в `adapter-ingest`.
-Application-слой принимает уже обнаруженную единицу через
-`IngestSourceUseCase`; он не зависит от Spring Integration или файлового
-poller-а.
-
-Daemon использует синхронный Spring Integration channel. Обработка следующего
-сообщения не начинается параллельно в скрытом executor-е. Значение
-`ioc.ingestion.concurrency` закреплено на `1`: semantic preflight отклоняет
-любое другое значение, поскольку параллельный intake пока не реализован.
-
-## Границы ответственности
-
-- `adapter-ingest` обнаруживает и стабилизирует файлы, вычисляет fingerprint,
-  управляет каталогами `inbox/processing/done/failed` и вызывает use case.
-- `ioc-application` владеет orchestration, ingestion ledger и write→project
-  run-saga.
-- `adapter-store-jdbc` реализует durable ledgers и canonical repository.
-- `adapter-csv` готовит строки и строит CSV-проекцию из canonical truth.
-- bootstrap выбирает daemon wiring и запускает recovery/retention/schedulers.
-
-Инжест не владеет правилами извлечения, схемой хранения или export slices: он
-координирует эти capability через порты.
-
-Managed dataframe import использует тот же startup admission barrier и
-post-commit canonical-change path, но не является веткой обычного document
-ingest. Его local lifecycle adapter переиспользует filesystem primitives для
-claim/snapshot/disposition, тогда как versioned recognition, FIFO delivery
-ledger, sealed staging и atomic promotion остаются отдельным application use
-case. Каталоги и ledgers двух intake-контуров не взаимозаменяемы.
-
-## Инварианты корректности
-
-1. **SQLite — источник истины.** CSV после commit является восстанавливаемой
-   проекцией, а не отдельной системой записи.
-2. **Polling — production correctness-path и default.** При
-   `use-watch-service=false` каждый detection cycle полностью сканирует inbox.
-   WatchService остаётся opt-in latency optimization для локальной filesystem:
-   matching-файл, отклонённый только из-за quiet period, возвращается в
-   retry-set через `DiscardAwareFileListFilter` и проверяется следующим poll.
-   Это закрывает `ING-14`, но не превращает delivery событий ОС в полный
-   directory rescan; на network/unreliable filesystem используйте polling.
-3. **Файл должен стабилизироваться до claim.** Quiet period защищает от чтения
-   во время записи; producer-side `*.part` + atomic rename остаётся лучшим
-   входным контрактом.
-4. **Идентичность whole-file — SHA-256 содержимого.** Путь/размер/mtime
-   используются только как terminal identity, если файл невозможно прочитать.
-5. **Claim предшествует обработке.** Атомарное перемещение в `processing`
-   исключает штатную двойную обработку одним процессом.
-6. **Повтор безопасен на уровне данных.** Canonical identity не допускает
-   дублирующих строк; разрешённые артефактом public mutations (для aggregate —
-   ordered update поля `name`) разрешаются durable policy. Повторная проекция
-   строится из БД целиком.
-7. **Failure policy проверяется до durable write.** Ошибочные результаты не
-   должны частично попасть в canonical storage из-за решения политики.
-8. **Событие изменения canonical данных публикуется только после завершения
-   durable run.** Оно ускоряет export, но periodic scheduler остаётся backstop.
-9. **Recovery предшествует intake.** Spring Integration flow имеет
-   `autoStartup=false`; один startup coordinator последовательно восстанавливает
-   run ledger, затем source ledger, выполняет common canonical lifecycle
-   admission и только после этого запускает flow. Admission валидирует safe
-   clock/control state, возобновляет activation, закрывает уже due rows и
-   доводит mutable projections. Его
-   `ApplicationRunner` order равен `HIGHEST_PRECEDENCE`, поэтому будущий runner
-   не сможет случайно опередить barrier.
-10. **`SourceKey` не является identity попытки.** Каждая принятая доставка
-    получает новый durable `ObservationId`; retry/recovery/reject одной попытки
-    сохраняют его. Одинаковый content-key по-прежнему выполняется
-    последовательно через keyed guard; после admission recovery
-    перечитывает текущее ledger-state вместо доверия snapshot-у scan-а. Все
-    сервисы над общими source namespace и ledger обязаны разделять один guard;
-    production composition inject-ит singleton.
-11. **Terminal source state монотонен.** Адаптеры применяют expected-state/CAS
-    переходы: повтор того же terminal результата идемпотентен, а конкурирующий
-    `SOURCE_ARCHIVED`/`FAILED` возвращает conflict и не перезаписывает победителя.
-
-## Durable состояния и recovery
-
-Ingestion ledger хранит terminal lifecycle каждой observation; `source_key`
-остаётся неуникальным content identity для receipt lookup и сериализации:
+## Execution flow
 
 ```text
-ABSENT -> CLAIMED -> SOURCE_ARCHIVED
-   |          \----> FAILED
-   \---------------> FAILED (pre-claim ING-13 seam)
+periodic full listing -> include/exclude -> quiet-period stability
+  -> durable observation reservation -> dataframe admission order
+  -> atomic private token claim -> detector returns
+
+bounded preparation workers:
+  durable token -> private sealed source -> SHA-256 -> journal link
+    -> read-only receipt lookup or extraction/routing -> sealed workspace
+
+one promotion worker, oldest unresolved document first:
+  prepared reference -> content-key guard -> receipt revalidation
+    -> failure-policy checkpoint -> canonical commit -> projection
+    -> source archive -> terminal CAS -> post-commit change hint
 ```
 
-Run ledger отдельно фиксирует write→project saga:
+The detector remains single-threaded (`ioc.ingestion.concurrency=1`). It performs
+metadata checks, short durable admission and atomic ownership only. Hashing,
+source copying and extraction do not run on the poller. The dispatcher queues
+job/workspace references, rather than documents or IOC collections. Every daemon
+document uses admission, including artifacts with only KEEP_FIRST policies.
 
-```text
-STARTED -> DB_COMMITTED -> PROJECTION_COMPLETED -> COMPLETED
-       \------------------------------------------> FAILED
-```
+Preparation uses the repeatable bounded workspace described in
+[processing.md](processing.md). Up to two workers may prepare independently. Only
+the oldest unresolved admission may promote; a newer ready document cannot
+change whole-row KEEP_FIRST by finishing preparation first. Registered mutable
+field precedence still uses the durable dataframe rank. The source-key guard is
+acquired at promotion, so a newer duplicate cannot hold it while waiting for an
+older document. Preparation and promotion remain separate application operations.
 
-Для artifact policy с приоритетом по моменту поступления application содержит
-отдельный admission state machine `RESERVED -> ORDERED -> CLAIMED -> LINKED ->
-TERMINAL`. Dataframe DB назначает order; JDBC service journal либо отдельный
-fsync-backed file journal сохраняет recovery reference. После token-only atomic
-claim адаптер создаёт private sealed copy до hashing: producer, который держит
-старый file descriptor открытым, больше не может изменить обрабатываемый inode.
-Bootstrap включает этот путь, когда хотя бы один enabled artifact содержит
-`latest-registered` field policy. Для shipping `ioc_aggregate` это обычный
-daemon path. При отсутствии таких policies сохраняется прежний прямой
-hash/claim flow без лишней registration. File-ledger и JDBC-ledger используют
-одну application state machine; различается только durable journal adapter.
+## Admission and pressure
 
-На старте recovery действует по durable состоянию, а не по одному наличию
-файла:
+`ioc.ingestion.execution` configures preparation workers, window, pending count,
+total pending source bytes and per-source bytes. Defaults are 2 workers, window 4,
+64 pending documents, 4 GiB total source bytes and 512 MiB per source. Worker
+count cannot exceed two or the window; the window cannot exceed the pending
+count, which cannot exceed 256. Per-source bytes cannot exceed the workspace
+source-pin allowance (one quarter of the workspace disk quota).
 
-- незавершённый `CLAIMED` источник проходит полный идемпотентный replay;
-- `DB_COMMITTED` доводится вперёд повторной CSV-проекцией;
-- orphan в `processing`, для которого нет ledger-записи, изолируется как
-  failure, а не молча считается обработанным;
-- завершённые `SOURCE_ARCHIVED` и `FAILED` не запускаются заново.
-- admission journal сначала восстанавливает pre-hash claim и исходный rank,
-  затем обычный source recovery продолжает linked ingestion; legacy
-  nonterminal work без registration при активной ordered policy блокирует
-  startup с инструкцией drain/restore и никогда не получает новый rank.
+These are separate budgets: admission bounds owned input; the preparation window
+bounds handles; workspace admission bounds shared cache, memory and disk. It does
+not make Tika/source text or the extractor's upstream materialization streaming.
+Oversized or saturated unclaimed input remains in the listed inbox. Full polling
+rediscovers it without an AcceptOnce filter. Claimed input never disappears because
+an executor rejects a hint: the journal remains the recoverable queue. A coalesced
+hint accelerates dispatch; a one-second journal scan is its correctness backstop.
 
-После run/source recovery тот же coordinator вызывает lifecycle admission.
-Ошибка safe clock, control/reconciliation или projection convergence оставляет
-intake остановленным и переводит startup lifecycle в failed. Recoverable
-runtime lag после успешного admission может отображаться как `DEGRADED`, пока
-active-read predicate остаётся доказуемым; это не отменяет periodic lifecycle
-backstop.
+WatchService remains an opt-in latency path for reliable local filesystems.
+Quiet-period rejects enter its retry set, but OS events do not replace full
+listing on network or unreliable filesystems. Producer `*.part` plus atomic rename
+remains the preferred input contract.
 
-Это at-least-once orchestration с идемпотентными durable шагами, а не обещание
-распределённого exactly-once.
+## Identity and ownership
 
-В active fixed-validity mode перед parsing выполняется lookup complete receipt
-по `(source_key, processing-policy fingerprint)`. Совпавший неистёкший receipt
-воспроизводит typed prepared rows через тот же canonical writer и подтверждает
-freshness без ETL. Receipt отсутствует, устарел или fingerprint изменился —
-выполняется обычный ETL и публикуется новый receipt. Retention по умолчанию
-`30d`; это bounded optimization, а не источник истины. Fingerprint включает
-явный code-policy epoch: при любом изменении parsing/mapping semantics, которое
-не выражено конфигурацией, этот epoch должен быть повышен, чтобы старые typed
-receipts гарантированно ушли на ETL fallback.
+Each delivered occurrence gets a new UUID `ObservationId`. Retry and recovery keep
+that identity and admission rank. Content identity is SHA-256 of the sealed source;
+path, size and mtime are metadata, never a substitute content key.
 
-Гарантии keyed guard и file-ledger critical section относятся к одному daemon
-process. Поддерживаемый deployment 0.3.0 именно такой; несколько процессов над
-одним inbox/ledger потребовали бы lease/fencing protocol.
+The admission journal follows `RESERVED -> ORDERED -> CLAIMED -> LINKED -> TERMINAL`.
+Dataframe storage owns rank allocation; the service DB or fsync-backed file journal
+owns the source/job recovery reference. Atomic token claim is no-replace and has no
+copy/non-atomic fallback. After claim, `sealClaim` publishes a private inode using
+fsync and atomic move; an open producer descriptor cannot modify the source read
+by hashing and processing. Stable hash evidence is checked before and after read.
+Growth after bounded admission is rejected before processing.
 
-## Ошибки, retry и lifecycle
+The ingest ledger follows `ABSENT -> CLAIMED -> SOURCE_ARCHIVED|FAILED`. Terminal
+CAS is monotonic: same outcome is idempotent; opposite outcome conflicts. The run
+saga follows `STARTED -> DB_COMMITTED -> PROJECTION_COMPLETED -> COMPLETED`, with
+precommit failure marked FAILED. Canonical truth is SQLite; projection failure is
+recovered forward. Service-journal and dataframe transactions are independent;
+the terminal registration handshake is retried from durable state.
 
-Retry чтения, hashing и обработки реализован явно в file message handler с
-bounded backoff. Spring Retry не является частью текущего контракта. После
-успешного claim исчерпание попыток перемещает источник в `failed`; сбой до claim
-может оставить его в `inbox` из-за ING-13. В обоих случаях ledger получает
-terminal состояние, а причина сохраняется без утечки исходного IOC в INFO/WARN
-логи. Поддерживаемого requeue/clear use case пока нет.
+## Receipts and retry
 
-Retention ограничивает рост рабочих каталогов по времени/количеству. Она не
-должна удалять источник, который всё ещё нужен recovery. Health отражает
-готовность poller-а, состояние recovery и durable backlog. Компонент
-`ingestionLifecycle` имеет `DOWN` в `PENDING`, `RECOVERING` и `FAILED`, и `UP`
-только в `RUNNING` при действительно запущенном intake. Он публикует timestamps,
-число восстановленных source/run записей и только aggregate contention counts
-(`activeSourceKeys`, `executing`, `waiting`), не сами ключи; при сбое health
-показывает только класс исключения, без потенциально чувствительного message.
-Spring Boot не
-переводит application readiness в `ACCEPTING_TRAFFIC`, пока startup coordinator
-как `ApplicationRunner` не завершил barrier; recovery failure роняет startup и
-оставляет intake остановленным.
-`IngestionLifecycleState` имеет single-writer/multi-reader contract: coordinator
-единолично меняет immutable snapshot, а health только читает его через volatile
-publication.
+With active fixed lifecycle, a read-only complete receipt lookup can avoid
+preparation for `(source_key, processing-policy fingerprint)`. It does not renew
+canonical rows. Promotion revalidates the receipt using effective time and replays
+its typed rows through the canonical writer. If it expired or was purged, the
+same ordered job falls back to extraction. Default receipt retention is 30 days.
+A parsing/mapping semantics change outside configuration must advance the explicit
+code-policy epoch in the fingerprint.
 
-Startup barrier имеет отдельный operational contract. Одна логическая операция
-`ingest_recover` публикует start с `event.outcome=unknown`, затем ровно один
-terminal event: `success` с `event.duration`,
-`ioc.ingest.recovered_runs`/`ioc.ingest.recovered_sources` либо `failure` с
-`event.duration` и безопасным `error.type`. Это логи lifecycle, а не
-`ControlEventPublisher`: они ничего не запускают и не участвуют в ordering.
+Execution attempts and retry-after are durable in service schema v14. A transient
+failure retains the private source and original observation/rank. Retries use
+bounded configured backoff without sleeping on the poller. Once a verified
+content key exists, exhausted failure uses the existing source rejection/dead-letter
+lifecycle. Each failed attempt emits a typed diagnostic with its cause; terminal
+logging is observation only and cannot retry a successful canonical operation.
 
-Нарушение expected-state ledger contract переносится как
-`INGEST.STATE_TRANSITION_CONFLICT` с operation, source key, фактическим и
-ожидаемым результатом. Startup boundary доставляет этот diagnostic один раз,
-не подменяя его общим `INGEST.RECOVERY_FAILED`; уже выпущенный recovery
-diagnostic также не дублируется. Duplicate admission остаётся успешным terminal
-`source_ingest`, но receipt replay явно получает
-`ioc.ingest.disposition=duplicate`, поэтому no-ETL confirmation можно отличить
-от обработки без extraction по структурированному полю, а не по `message`.
+An exhausted pre-hash failure has no trustworthy content key. Its admission stays
+blocked with the owned token (`retry_after_ms=Long.MAX_VALUE`), blocks later document
+promotion and makes capacity health DOWN. There is no automatic requeue/clear API;
+the operator must investigate the token/permissions and perform a supported
+recovery or coordinated restore. Startup cannot silently skip a broken token or
+invent an identity. Pre-reservation failure may leave the input in the inbox;
+ING-13 remains open. The partial-run resume limitation ING-11 also remains open.
+See [KNOWN-ISSUES.md](../KNOWN-ISSUES.md).
 
-Открыты два соседних lifecycle seam-а, которые нельзя скрывать документацией:
+## Startup, recovery and shutdown
 
-- **ING-11:** retry после частичного run не имеет полноценного resume protocol;
-- **ING-13:** fate файла при сбое до durable claim закрыта временным
-  durable-once механизмом, но не окончательным протоколом.
+`CanonicalIntakeStartupCoordinator` is the highest-precedence ApplicationRunner.
+It keeps intake closed while recovering run saga, document admissions, ordinary
+source work, lifecycle admission and managed imports. Only then do document
+execution and ordinary intake start. A failed barrier stops both intake paths,
+fails readiness and reports the original diagnostic once. Admission recovery
+preserves the existing rank; unresolved legacy work without rank under ordered
+field policy requires drain/restore and never receives an invented new rank.
 
-Актуальный scope и критерии закрытия этих долгов находятся в
-[KNOWN-ISSUES.md](../KNOWN-ISSUES.md).
+The dispatcher closes admission, joins the coordinator/preparation/promotion
+workers within a bounded grace period, then closes unpromoted handles. Cancelled
+preparation closes its run/workspace and preserves the claimed delivery. A worker
+that fails to terminate causes an explicit shutdown failure; its live handle is
+not discarded underneath it. Periodic journal discovery resumes pending work on
+restart. This is at-least-once orchestration with idempotent durable steps.
 
-## Как расширять
+One daemon process per inbox/database namespace is supported. Multiple processes
+would need a separate lease/fencing contract. Managed CSV import uses its own
+intake, delivery ledger, workspace and atomic promotion; document queue order does
+not replace the import ordering contract.
 
-- Новый способ обнаружения файлов добавляется в driving adapter и всё равно
-  вызывает `IngestSourceUseCase`.
-- Новый lifecycle/storage backend реализует существующие application-порты; не
-  переносит Spring или JDBC в core.
-- Tail/streaming source требует отдельной checkpoint identity
-  (`file identity + offset + rotation marker`) и не должен притворяться
-  whole-file content hash flow.
-- Параллелизм вводится только вместе с явной моделью ordering, admission,
-  ledger claims и SQLite contention. Одного включения executor-а недостаточно.
-- Новый post-commit consumer должен опираться на durable state и иметь
-  reconcile/backstop, если fast-path может потеряться.
+## Operational evidence
 
-## Источники истины
+`ingestionLifecycle` is UP only after recovery and running intake. The daemon's
+`dataProcessingCapacity` health view adds metadata-only document phase counts,
+pending source bytes and oldest age, completed documents/rows/bytes, saturation and
+blocked counts. It also reports writer wait/hold totals and maxima by operation
+class, active/queued snapshot readers, WAL bytes and cached workspace pressure.
+Health reads do not advance admissions or enumerate IOC rows. Failure summaries
+expose the exception type; detailed causes belong to diagnostics.
 
-- Runtime flow и filters:
-  `adapters/adapter-ingest/src/main/java/com/iocextractor/adapter/in/ingest/`.
-- Orchestration/recovery contract:
-  `core/ioc-application/src/main/java/com/iocextractor/application/ingest/README.md`.
-- Composition/lifecycle:
-  `bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/`.
-- Defaults and validation:
-  `bootstrap/ioc-app/src/main/resources/application.yml` и `IocProperties`.
-- Open lifecycle seams: [KNOWN-ISSUES.md](../KNOWN-ISSUES.md).
+The existing export/publish health views report durable publication lag. Writer
+admission is non-preemptive: priority and aging apply between transactions and
+cannot bound an already-running atomic promotion. Long snapshot readers can pin
+WAL checkpoint progress even while canonical writes continue.
 
-## Когда обновлять документ
+Terminal `source_ingest` logs preserve run id, completion and diagnostic severity
+counts; COMPLETED_WITH_ERRORS has failure outcome. Receipt replay carries
+`ioc.ingest.disposition=duplicate` without fabricated extraction completion.
+Startup recovery logs one start and one terminal outcome with duration and counts.
+Events remain latency hints; durable ledgers and periodic reconcile own correctness.
 
-Обновите его при изменении file lifecycle, ledger/run states, retry/recovery,
-stability/claim semantics, daemon ordering или границы driving adapter-а. Новый
-класс или переименование метода сами по себе обновления не требуют.
+## Extension and maintenance
 
-## Связанные документы
+New detection transports still need stable candidates, durable occurrence
+identity and private ownership. Streaming/tailing requires its own checkpoint
+identity, including offset/rotation. New storage implementations implement inward
+ports; Spring/JDBC remain outside core. Parallel promotion or transaction chunking
+requires an explicit visibility/ordering/recovery decision, rather than executor
+configuration alone.
 
-- [processing.md](processing.md) — extraction и policy checkpoint.
-- [storage.md](storage.md) — canonical write и projection semantics.
-- [artifact-export.md](artifact-export.md) — export после canonical change.
-- [event-coordination.md](event-coordination.md) — ingest→export fast-path.
-- [dataframe-import.md](dataframe-import.md) — отдельный structured CSV intake
-  поверх общего canonical admission.
-- [ADR-0001](../ADR/0001-streaming-ingestion.md) — исходное решение daemon ingest.
+Update this document when claim/identity, phase order, admission limits, retry,
+shutdown, startup recovery or terminal semantics change. Module references live in
+[adapter-ingest](../../adapters/adapter-ingest/README.md); related capabilities are
+[artifact export](artifact-export.md), [event coordination](event-coordination.md)
+and [managed import](dataframe-import.md).

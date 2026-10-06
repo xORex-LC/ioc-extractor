@@ -245,6 +245,24 @@ class PipelineRunnerTest {
         assertThat(events).containsOnlyOnce("summary");
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void preparedDiagnosticsFinishOnceOnContinuationOrCancellation(boolean continueRun) {
+        var diagnostics = new CollectingDiagnosticSink();
+        var pipeline = Pipeline.<String>start()
+                .then(new DiagnosticStage(diagnostic(DiagnosticSeverity.WARN)))
+                .then(new DiagnosticStage(diagnostic(DiagnosticSeverity.WARN)));
+        var runner = new PipelineRunner(FailurePolicy.collectAndContinue(),
+                new NoopPipelineObserver(), diagnostics, new DiagnosticFactory(CLOCK), 1);
+        var prepared = runner.runPreparation(Envelope.of("start", meta()), pipeline);
+        assertThat(diagnostics.diagnostics()).noneMatch(
+                diagnostic -> diagnostic.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED);
+        if (continueRun) { runner.runWithOutcome(prepared.envelope(), Pipeline.<String>start()); }
+        else { runner.finishPreparation(prepared.envelope()); }
+        assertThat(diagnostics.diagnostics()).filteredOn(
+                diagnostic -> diagnostic.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED).hasSize(1);
+    }
+
     @Test
     void emits_typed_stage_exception_once_and_preserves_it() {
         var diagnostic = diagnostic(DiagnosticSeverity.FATAL);

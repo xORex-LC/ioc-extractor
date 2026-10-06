@@ -34,6 +34,8 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
     private final Duration retention;
     private final Semaphore leases;
     private final Set<Path> active = new HashSet<>();
+    private final int leaseLimit;
+    private volatile long lastCheckedDiskBytes;
 
     public JdbcDocumentPreparationWorkspaceFactory(Path root, DocumentPreparationLimits limits,
             ArtifactIdentityResolver identities, String fingerprint) {
@@ -48,7 +50,8 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
         this.fingerprint = Objects.requireNonNull(fingerprint, "fingerprint");
         this.retention = Objects.requireNonNull(retention, "retention");
         if (retention.isNegative() || retention.isZero()) { throw new IllegalArgumentException("Pin retention must be positive"); }
-        this.leases = new Semaphore(Math.toIntExact(Math.min(MAXIMUM_PINS, limits.memoryBytes() / limits.leaseBytes())), true);
+        leaseLimit = Math.toIntExact(Math.min(MAXIMUM_PINS, limits.memoryBytes() / limits.leaseBytes()));
+        this.leases = new Semaphore(leaseLimit, true);
     }
 
     @Override
@@ -197,7 +200,9 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
 
     private synchronized void checkDisk(Path directory) {
         try {
-            if (bytes(directory) > limits.workspaceBytes() || bytes(root) > limits.totalDiskBytes()) {
+            long workspaceBytes = bytes(directory);
+            lastCheckedDiskBytes = bytes(root);
+            if (workspaceBytes > limits.workspaceBytes() || lastCheckedDiskBytes > limits.totalDiskBytes()) {
                 throw new IocExtractorException("Document preparation disk quota exhausted");
             }
         } catch (IOException failure) { throw new IocExtractorException("Cannot account document workspace disk", failure); }
@@ -215,6 +220,15 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
             return bytes;
         }
     }
+
+    /** Cached pressure from quota checks; health never scans or locks an active source copy. */
+    public Pressure pressure() {
+        return new Pressure(leaseLimit - leases.availablePermits(), leaseLimit,
+                lastCheckedDiskBytes, limits.totalDiskBytes(), limits.memoryBytes());
+    }
+
+    public record Pressure(int leasedWorkspaces, int leaseLimit, long lastCheckedDiskBytes,
+                           long diskLimitBytes, long memoryLimitBytes) { }
 
     static void deletePrivateDirectory(Path directory) throws IOException {
         try (var paths = Files.list(directory)) {

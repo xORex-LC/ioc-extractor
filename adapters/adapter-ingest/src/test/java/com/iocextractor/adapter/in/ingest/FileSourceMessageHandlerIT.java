@@ -1,535 +1,381 @@
 package com.iocextractor.adapter.in.ingest;
 
-import com.iocextractor.application.tck.junit.IntegrationTest;
-import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
-import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
-import com.iocextractor.application.ingest.SourceKey;
+import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
+import com.iocextractor.application.ingest.admission.DocumentTerminalOutcome;
 import com.iocextractor.application.observation.ObservationOrder;
 import com.iocextractor.application.observation.ObservationOrigin;
 import com.iocextractor.application.observation.RegisteredObservation;
-import com.iocextractor.application.pipeline.CompletionStatus;
-import com.iocextractor.application.port.in.ExtractionResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
 import com.iocextractor.application.port.in.ingest.IngestSourceResult;
-import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
 import com.iocextractor.application.port.in.ingest.IngestionRejectionResult;
-import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
+import com.iocextractor.application.port.in.ingest.PreparedIngestion;
+import com.iocextractor.application.port.in.ingest.PrepareIngestionUseCase;
 import com.iocextractor.application.port.out.observation.ObservationRegistrationStore;
-import com.iocextractor.common.IocExtractorException;
-import com.iocextractor.diagnostics.Diagnostic;
-import com.iocextractor.diagnostics.DiagnosticException;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
-import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
-import com.iocextractor.diagnostics.result.DiagnosticSummary;
+import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
-import com.iocextractor.observability.EventAction;
-import com.iocextractor.observability.EventOutcome;
-import com.iocextractor.observability.LogField;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
-import org.slf4j.LoggerFactory;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/** Real private files and durable journal, with controlled preparation/promotion. */
 @IntegrationTest
+@Timeout(20)
 class FileSourceMessageHandlerIT {
-
-    private final Logger logger = (Logger) LoggerFactory.getLogger(FileSourceMessageHandler.class);
-
-    @TempDir
-    Path tempDir;
-
-    @AfterEach
-    void resetLogger() {
-        logger.detachAndStopAllAppenders();
-        logger.setAdditive(true);
-        logger.setLevel(null);
-    }
-
-    @ParameterizedTest
-    @MethodSource("completionOutcomes")
-    void logs_structured_terminal_completion_for_extracted_source(
-            CompletionStatus status,
-            DiagnosticSummary summary,
-            Level expectedLevel,
-            EventOutcome expectedOutcome,
-            String expectedMessage) throws Exception {
-        Path source = Files.writeString(tempDir.resolve("source-" + status + ".html"), "ioc");
-        var appender = appender();
-        var handler = handler(command -> new IngestSourceResult(
-                command.key(),
-                IngestionStatus.SOURCE_ARCHIVED,
-                false,
-                new ExtractionResult("run-17", 2, 1, Map.of(), status, List.of(), summary)));
-
-        handler.handle(source.toFile());
-
-        assertThat(appender.list).hasSize(1);
-        ILoggingEvent event = appender.list.getFirst();
-        assertThat(event.getLevel()).isEqualTo(expectedLevel);
-        assertThat(event.getFormattedMessage()).isEqualTo(expectedMessage);
-        assertThat(eventFields(event))
-                .containsEntry(LogField.EVENT_ACTION.key(), EventAction.SOURCE_INGEST.value())
-                .containsEntry(LogField.EVENT_OUTCOME.key(), expectedOutcome.value())
-                .containsEntry(LogField.IOC_RUN_ID.key(), "run-17")
-                .containsEntry(LogField.IOC_COMPLETION_STATUS.key(), status.toString())
-                .containsEntry(LogField.IOC_DIAGNOSTIC_TOTAL.key(), summary.total())
-                .containsEntry(LogField.IOC_DIAGNOSTIC_SUPPRESSED.key(), summary.suppressed())
-                .containsEntry(LogField.IOC_DIAGNOSTIC_FATAL_COUNT.key(), summary.count(DiagnosticSeverity.FATAL))
-                .containsEntry(LogField.IOC_DIAGNOSTIC_ERROR_COUNT.key(), summary.count(DiagnosticSeverity.ERROR))
-                .containsEntry(LogField.IOC_DIAGNOSTIC_WARN_COUNT.key(), summary.count(DiagnosticSeverity.WARN));
-    }
+    @TempDir Path directory;
 
     @Test
-    void logs_duplicate_without_fabricating_extraction_completion() throws Exception {
-        Path source = Files.writeString(tempDir.resolve("duplicate.html"), "ioc");
-        var appender = appender();
-        var handler = handler(command -> new IngestSourceResult(
-                command.key(), IngestionStatus.SOURCE_ARCHIVED, true, null));
-
-        handler.handle(source.toFile());
-
-        assertThat(appender.list).hasSize(1);
-        ILoggingEvent event = appender.list.getFirst();
-        assertThat(event.getFormattedMessage()).isEqualTo("source confirmation receipt replayed");
-        assertThat(eventFields(event))
-                .containsEntry(LogField.EVENT_ACTION.key(), EventAction.SOURCE_INGEST.value())
-                .containsEntry(LogField.EVENT_OUTCOME.key(), EventOutcome.SUCCESS.value())
-                .containsEntry(LogField.IOC_INGEST_DISPOSITION.key(), "duplicate")
-                .doesNotContainKeys(LogField.IOC_RUN_ID.key(), LogField.IOC_COMPLETION_STATUS.key());
-    }
-
-    @Test
-    void rejects_source_only_after_retries_are_exhausted() throws Exception {
-        Path source = Files.writeString(tempDir.resolve("source.html"), "ioc");
-        var ingest = new FailingIngestUseCase();
-        var reject = new RecordingRejectUseCase();
-        var handler = new FileSourceMessageHandler(
-                new FileSourceHasher(),
-                ingest,
-                reject,
-                Clock.fixed(Instant.parse("2026-06-22T00:00:00Z"), ZoneOffset.UTC),
-                2,
-                Duration.ZERO,
-                new CollectingDiagnosticSink());
-
-        assertThatThrownBy(() -> handler.handle(source.toFile()))
-                .hasMessageContaining("Source ingestion failed after retries");
-
-        assertThat(ingest.attempts).isEqualTo(2);
-        assertThat(reject.key).isNotNull();
-        assertThat(reject.reason).isEqualTo("boom");
-    }
-
-    @Test
-    void unreadableSourceIsDurablyRejectedAndDiagnosedOnlyOnce() {
-        var ingestCalls = new AtomicInteger();
-        var reject = new RecordingRejectUseCase();
-        var diagnostics = new CollectingDiagnosticSink();
-        var handler = new FileSourceMessageHandler(
-                new FileSourceHasher(),
-                command -> {
-                    ingestCalls.incrementAndGet();
-                    throw new AssertionError("unreadable source must not reach ingestion");
-                },
-                reject,
-                Clock.fixed(Instant.parse("2026-06-22T00:00:00Z"), ZoneOffset.UTC),
-                2,
-                Duration.ZERO,
-                diagnostics);
-
-        handler.handle(tempDir.toFile());
-        SourceKey firstKey = reject.key;
-        handler.handle(tempDir.toFile());
-
-        assertThat(ingestCalls).hasValue(0);
-        assertThat(reject.attempts).isEqualTo(2);
-        assertThat(reject.key).isEqualTo(firstKey);
-        assertThat(diagnostics.diagnostics()).singleElement().satisfies(diagnostic -> {
-            assertThat(diagnostic.code()).isEqualTo(IngestDiagnosticCodes.SOURCE_UNREADABLE);
-            assertThat(diagnostic.context())
-                    .containsEntry("source", tempDir)
-                    .containsKey("reason");
-        });
-    }
-
-    @Test
-    void positiveBackoffSchedulesContinuationWithoutBlockingPollerThread() throws Exception {
-        Path source = Files.writeString(tempDir.resolve("retry.html"), "ioc");
-        CountDownLatch rejected = new CountDownLatch(1);
-        AtomicInteger attempts = new AtomicInteger();
-        var handler = new FileSourceMessageHandler(
-                new FileSourceHasher(),
-                command -> {
-                    attempts.incrementAndGet();
-                    throw new IllegalStateException("transient");
-                },
-                (key, reason) -> {
-                    rejected.countDown();
-                    return IngestionRejectionResult.REJECTED;
-                },
-                Clock.systemUTC(),
-                2,
-                Duration.ofMillis(100),
-                new CollectingDiagnosticSink());
-
-        long startedAt = System.nanoTime();
-        try {
-            handler.handle(source.toFile());
-            long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
-
-            assertThat(elapsedMillis).isLessThan(100);
-            assertThat(rejected.await(2, TimeUnit.SECONDS)).isTrue();
-            assertThat(attempts).hasValue(2);
-        } finally {
-            handler.close();
-        }
-    }
-
-    @Test
-    void emitsTypedIngestDiagnosticOnceAfterRetriesAndRejection() throws Exception {
-        Path source = Files.writeString(tempDir.resolve("source.html"), "ioc");
-        var diagnostic = Diagnostic.builder(IngestDiagnosticCodes.CLAIM_FAILED,
-                        Clock.fixed(Instant.parse("2026-06-22T00:00:00Z"), ZoneOffset.UTC))
-                .with("source", source)
-                .with("reason", "claim failed")
-                .build();
-        var diagnostics = new CollectingDiagnosticSink();
-        var handler = new FileSourceMessageHandler(
-                new FileSourceHasher(),
-                command -> {
-                    throw new DiagnosticException(diagnostic);
-                },
-                (key, reason) -> IngestionRejectionResult.REJECTED,
-                Clock.systemUTC(),
-                3,
-                Duration.ZERO,
-                diagnostics);
-
-        assertThatThrownBy(() -> handler.handle(source.toFile()))
-                .hasMessageContaining("Source ingestion failed after retries");
-
-        assertThat(diagnostics.diagnostics()).containsExactly(diagnostic);
-    }
-
-    @Test
-    void rejectionDiagnosticReplacesEarlierAttemptDiagnostic() throws Exception {
-        Path source = Files.writeString(tempDir.resolve("source.html"), "ioc");
-        Clock clock = Clock.fixed(Instant.parse("2026-06-22T00:00:00Z"), ZoneOffset.UTC);
-        var claimFailure = Diagnostic.builder(IngestDiagnosticCodes.CLAIM_FAILED, clock)
-                .with("source", source)
-                .with("reason", "claim failed")
-                .build();
-        var deadLetterFailure = Diagnostic.builder(IngestDiagnosticCodes.DEAD_LETTER_FAILED, clock)
-                .with("source", "ABC123")
-                .with("reason", "failed area unavailable")
-                .build();
-        var diagnostics = new CollectingDiagnosticSink();
-        var handler = new FileSourceMessageHandler(
-                new FileSourceHasher(),
-                command -> {
-                    throw new DiagnosticException(claimFailure);
-                },
-                (key, reason) -> {
-                    throw new DiagnosticException(deadLetterFailure);
-                },
-                clock,
-                2,
-                Duration.ZERO,
-                diagnostics);
-
-        assertThatThrownBy(() -> handler.handle(source.toFile()))
-                .hasCauseInstanceOf(DiagnosticException.class);
-
-        assertThat(diagnostics.diagnostics()).containsExactly(deadLetterFailure);
-    }
-
-    @Test
-    void durableFailedRetryPreservesEarlierTypedFailureWithoutSecondRejection() throws Exception {
-        Path source = Files.writeString(tempDir.resolve("source.html"), "ioc");
-        Clock clock = Clock.fixed(Instant.parse("2026-06-22T00:00:00Z"), ZoneOffset.UTC);
-        var diagnostic = Diagnostic.builder(IngestDiagnosticCodes.LEDGER_WRITE_FAILED, clock)
-                .with("source", "ABC123")
-                .with("reason", "ledger unavailable")
-                .build();
-        var diagnostics = new CollectingDiagnosticSink();
-        var reject = new RecordingRejectUseCase();
-        var ingest = new FailedAfterFirstAttemptUseCase(diagnostic);
-        var handler = new FileSourceMessageHandler(
-                new FileSourceHasher(), ingest, reject, clock, 3, Duration.ZERO, diagnostics);
-
-        assertThatThrownBy(() -> handler.handle(source.toFile()))
-                .hasCauseInstanceOf(DiagnosticException.class);
-
-        assertThat(ingest.attempts).isEqualTo(2);
-        assertThat(reject.key).isNull();
-        assertThat(diagnostics.diagnostics()).containsExactly(diagnostic);
-    }
-
-    @Test
-    void alreadyRejectedSourceDoesNotCreateAPerPollFailure() throws Exception {
-        Path source = Files.writeString(tempDir.resolve("failed.html"), "ioc");
-        var reject = new RecordingRejectUseCase();
-        var diagnostics = new CollectingDiagnosticSink();
-        var handler = new FileSourceMessageHandler(
-                new FileSourceHasher(),
-                command -> new IngestSourceResult(
-                        command.key(), IngestionStatus.FAILED, false, null),
-                reject,
-                Clock.systemUTC(),
-                2,
-                Duration.ZERO,
-                diagnostics);
-
-        handler.handle(source.toFile());
-
-        assertThat(reject.attempts).isZero();
-        assertThat(diagnostics.diagnostics()).isEmpty();
-    }
-
-    @Test
-    void identical_later_deliveries_have_distinct_observations_but_the_same_content_key()
-            throws Exception {
-        Path first = Files.writeString(tempDir.resolve("first.html"), "same-ioc");
-        Path second = Files.writeString(tempDir.resolve("second.html"), "same-ioc");
-        List<IngestSourceCommand> commands = new java.util.ArrayList<>();
-        var handler = handler(command -> {
-            commands.add(command);
-            return new IngestSourceResult(
-                    command.key(), IngestionStatus.SOURCE_ARCHIVED, false, null);
-        });
-
-        handler.handle(first.toFile());
-        handler.handle(second.toFile());
-
-        assertThat(commands).hasSize(2);
-        assertThat(commands.get(0).key()).isEqualTo(commands.get(1).key());
-        assertThat(commands.get(0).observationId()).isNotEqualTo(commands.get(1).observationId());
-    }
-
-    @Test
-    void adapter_retries_and_terminal_rejection_keep_one_observation_identity() throws Exception {
-        Path source = Files.writeString(tempDir.resolve("retry.html"), "ioc");
-        List<ObservationId> attempts = new java.util.ArrayList<>();
-        var reject = new RecordingRejectUseCase();
-        var handler = new FileSourceMessageHandler(
-                new FileSourceHasher(),
-                command -> {
-                    attempts.add(command.observationId());
-                    throw new IllegalStateException("boom");
-                },
-                reject,
-                Clock.systemUTC(),
-                2,
-                Duration.ZERO,
-                new CollectingDiagnosticSink());
-
-        assertThatThrownBy(() -> handler.handle(source.toFile()))
-                .isInstanceOf(IocExtractorException.class);
-
-        assertThat(attempts).hasSize(2).allMatch(attempts.getFirst()::equals);
-        assertThat(reject.observationId).isEqualTo(attempts.getFirst());
-    }
-
-    @Test
-    void orderedAdmissionRetryKeepsOneRegistrationAndPassesThePrivateClaim() throws Exception {
-        Path source = Files.writeString(tempDir.resolve("ordered-retry.html"), "ioc");
-        AtomicInteger moves = new AtomicInteger();
-        var ownership = new StrictAtomicFileOwnership((from, to) -> {
-            if (moves.incrementAndGet() == 1) {
-                throw new java.io.IOException("transient ownership failure");
-            }
-            Files.move(from, to, StandardCopyOption.ATOMIC_MOVE);
-        });
-        var lifecycle = new FileSystemSourceLifecycle(
-                tempDir.resolve("processing"), tempDir.resolve("done"),
-                tempDir.resolve("failed"), ownership);
-        var registrations = new MemoryRegistrationStore();
-        Clock clock = Clock.fixed(Instant.parse("2026-09-25T12:00:00Z"), ZoneOffset.UTC);
-        var admissions = new OrderedDocumentAdmissionHandler(
-                new DocumentAdmissionService(
-                        new FileDocumentAdmissionJournal(tempDir.resolve("admissions")),
-                        registrations, clock),
-                lifecycle, new FileDocumentCandidateEvidenceReader(), new FileSourceHasher());
-        List<IngestSourceCommand> commands = new java.util.ArrayList<>();
-
-        try (var handler = new FileSourceMessageHandler(
-                new FileSourceHasher(),
-                command -> {
-                    commands.add(command);
-                    return new IngestSourceResult(
-                            command.key(), IngestionStatus.SOURCE_ARCHIVED, false, null);
-                },
-                (key, reason) -> IngestionRejectionResult.REJECTED,
-                clock, 2, Duration.ZERO, new CollectingDiagnosticSink(), admissions)) {
-            handler.handle(source.toFile());
-        }
-
-        assertThat(moves).hasValue(2);
-        assertThat(registrations.nextOrder).isEqualTo(2);
-        assertThat(commands).singleElement().satisfies(command -> {
-            assertThat(command.source()).isEqualTo(source.toAbsolutePath().normalize());
-            assertThat(command.claimedSourceOptional()).hasValueSatisfying(claimed ->
-                    assertThat(claimed.processingPath()).exists());
-            assertThat(command.registrationOptional()).hasValueSatisfying(registration -> {
-                assertThat(registration.admissionOrder().value()).isEqualTo(1);
-                assertThat(registration.observationId()).isEqualTo(command.observationId());
-            });
-        });
-    }
-
-    private FileSourceMessageHandler handler(IngestSourceUseCase useCase) {
-        return new FileSourceMessageHandler(
-                new FileSourceHasher(),
-                useCase,
-                (key, reason) -> IngestionRejectionResult.REJECTED,
-                Clock.systemUTC(),
-                1,
-                Duration.ZERO,
-                new CollectingDiagnosticSink());
-    }
-
-    private ListAppender<ILoggingEvent> appender() {
-        logger.detachAndStopAllAppenders();
-        logger.setAdditive(false);
-        logger.setLevel(Level.TRACE);
-        var appender = new PreparingListAppender();
+    void terminalObservationPreservesCompletionAndDuplicateFields() {
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(DocumentCompletionObserver.class);
+        var previousLevel = logger.getLevel();
+        boolean previousAdditive = logger.isAdditive();
+        var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
         appender.start();
         logger.addAppender(appender);
-        return appender;
-    }
-
-    private static Map<String, Object> eventFields(ILoggingEvent event) {
-        var fields = new LinkedHashMap<String, Object>();
-        event.getKeyValuePairs().forEach(pair -> fields.put(pair.key, pair.value));
-        return fields;
-    }
-
-    private static Stream<Arguments> completionOutcomes() {
-        return Stream.of(
-                Arguments.of(CompletionStatus.COMPLETED, DiagnosticSummary.empty(),
-                        Level.INFO, EventOutcome.SUCCESS, "source ingested"),
-                Arguments.of(CompletionStatus.COMPLETED_WITH_WARNINGS,
-                        new DiagnosticSummary(1, 0, Map.of(DiagnosticSeverity.WARN, 1L)),
-                        Level.WARN, EventOutcome.SUCCESS, "source ingested with warnings"),
-                Arguments.of(CompletionStatus.COMPLETED_WITH_ERRORS,
-                        new DiagnosticSummary(2, 1, Map.of(DiagnosticSeverity.ERROR, 2L)),
-                        Level.WARN, EventOutcome.FAILURE, "source ingested with errors"));
-    }
-
-    private static final class FailingIngestUseCase implements IngestSourceUseCase {
-        private int attempts;
-
-        @Override
-        public IngestSourceResult ingest(IngestSourceCommand command) {
-            attempts++;
-            throw new IllegalStateException("boom");
-        }
-    }
-
-    private static final class FailedAfterFirstAttemptUseCase implements IngestSourceUseCase {
-        private final Diagnostic diagnostic;
-        private int attempts;
-
-        private FailedAfterFirstAttemptUseCase(Diagnostic diagnostic) {
-            this.diagnostic = diagnostic;
-        }
-
-        @Override
-        public IngestSourceResult ingest(IngestSourceCommand command) {
-            attempts++;
-            if (attempts == 1) {
-                throw new DiagnosticException(diagnostic);
+        logger.setLevel(ch.qos.logback.classic.Level.TRACE);
+        logger.setAdditive(false);
+        var key = new com.iocextractor.application.ingest.SourceKey("digest");
+        try {
+            for (var status : com.iocextractor.application.pipeline.CompletionStatus.values()) {
+                var extraction = new com.iocextractor.application.port.in.ExtractionResult("run-17", 1, 1,
+                        Map.of("masks", 1), status, List.of(), com.iocextractor.diagnostics.result.DiagnosticSummary.empty());
+                DocumentCompletionObserver.completed(new IngestSourceResult(key, IngestionStatus.SOURCE_ARCHIVED,
+                        false, extraction), directory.resolve("source.html"), key);
+                var event = appender.list.getLast();
+                Map<String, Object> fields = new java.util.HashMap<>();
+                event.getKeyValuePairs().forEach(pair -> fields.put(pair.key, pair.value));
+                assertThat(fields).containsEntry("ioc.run.id", "run-17")
+                        .containsEntry(com.iocextractor.observability.LogField.IOC_COMPLETION_STATUS.key(), status.toString())
+                        .containsEntry(com.iocextractor.observability.LogField.EVENT_OUTCOME.key(),
+                                status == com.iocextractor.application.pipeline.CompletionStatus.COMPLETED_WITH_ERRORS
+                                        ? "failure" : "success");
             }
-            return new IngestSourceResult(command.key(), IngestionStatus.FAILED, false, null);
+            DocumentCompletionObserver.completed(new IngestSourceResult(key, IngestionStatus.SOURCE_ARCHIVED,
+                    true, null), directory.resolve("duplicate.html"), key);
+            Map<String, Object> fields = new java.util.HashMap<>();
+            appender.list.getLast().getKeyValuePairs().forEach(pair -> fields.put(pair.key, pair.value));
+            assertThat(fields).containsEntry(com.iocextractor.observability.LogField.IOC_INGEST_DISPOSITION.key(), "duplicate")
+                    .doesNotContainKeys(com.iocextractor.observability.LogField.IOC_RUN_ID.key(),
+                            com.iocextractor.observability.LogField.IOC_COMPLETION_STATUS.key());
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+            logger.setLevel(previousLevel);
+            logger.setAdditive(previousAdditive);
         }
     }
 
-    private static final class RecordingRejectUseCase implements RejectIngestionUseCase {
-        private ObservationId observationId;
-        private SourceKey key;
-        private String reason;
-        private int attempts;
+    @Test
+    void newerPreparationCannotOvertakeCanonicalPromotionAndFloodedHintsCoalesce() throws Exception {
+        var release = new CountDownLatch(1);
+        var newerReady = new CountDownLatch(1);
+        var done = new CountDownLatch(2);
+        var order = java.util.Collections.synchronizedList(new ArrayList<String>());
+        var ranks = java.util.Collections.synchronizedList(new ArrayList<Long>());
+        Fixture fixture = new Fixture(4, 100);
+        Path first = fixture.file("first.html", "old");
+        Path second = fixture.file("second.html", "new");
+        try (var dispatcher = fixture.dispatcher(command -> {
+            if (command.source().equals(first)) { await(release); }
+            else { newerReady.countDown(); }
+            return fixture.prepared(command, () -> {
+                order.add(command.source().getFileName().toString());
+                ranks.add(command.registration().admissionOrder().value());
+                done.countDown();
+            });
+        })) {
+            dispatcher.start();
+            dispatcher.handle(first.toFile());
+            dispatcher.handle(second.toFile());
+            for (int i = 0; i < 1000; i++) { dispatcher.nudge(); }
+            assertThat(newerReady.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(order).isEmpty();
+            assertThat(dispatcher.snapshot().pending()).isEqualTo(2);
+            assertThat(dispatcher.snapshot().preparing() + dispatcher.snapshot().ready()).isLessThanOrEqualTo(4);
+            release.countDown();
+            assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        } finally { release.countDown(); }
+        assertThat(order).containsExactly("first.html", "second.html");
+        assertThat(ranks).containsExactly(1L, 2L);
+        assertThat(fixture.handler.pending(10)).isEmpty();
+    }
 
-        @Override
-        public IngestionRejectionResult reject(SourceKey key, String reason) {
-            attempts++;
-            this.key = key;
-            this.reason = reason;
-            return attempts == 1
-                    ? IngestionRejectionResult.REJECTED
-                    : IngestionRejectionResult.ALREADY_REJECTED;
+    @Test
+    void countAndByteSaturationLeaveUnclaimedInputDiscoverableAndBacklogDrains() throws Exception {
+        var release = new CountDownLatch(1);
+        var prepared = new CountDownLatch(2);
+        var done = new CountDownLatch(3);
+        Fixture fixture = new Fixture(2, 6);
+        Path first = fixture.file("first.html", "one");
+        Path second = fixture.file("second.html", "two");
+        Path third = fixture.file("third.html", "tri");
+        try (var dispatcher = fixture.dispatcher(command -> {
+            prepared.countDown();
+            if (command.source().equals(first)) { await(release); }
+            return fixture.prepared(command, done::countDown);
+        })) {
+            dispatcher.start();
+            dispatcher.handle(first.toFile());
+            dispatcher.handle(second.toFile());
+            assertThat(prepared.await(5, TimeUnit.SECONDS)).isTrue();
+            for (int i = 0; i < 100; i++) { dispatcher.handle(third.toFile()); dispatcher.nudge(); }
+            assertThat(third).exists();
+            assertThat(dispatcher.snapshot().pending()).isEqualTo(2);
+            assertThat(dispatcher.snapshot().sourceBytes()).isEqualTo(6);
+            assertThat(dispatcher.snapshot().saturationCount()).isEqualTo(100);
+            release.countDown();
+            // Terminal CAS happens before this preparation's completion notification.
+            awaitCount(done, 1);
+            dispatcher.handle(third.toFile());
+            assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        } finally { release.countDown(); }
+        assertThat(fixture.handler.pending(10)).isEmpty();
+        assertThat(third).doesNotExist();
+    }
+
+    @Test
+    void periodicJournalScanFindsClaimPersistedBeforeAnyEnqueueOrHint() throws Exception {
+        Fixture fixture = new Fixture(4, 100);
+        Path source = fixture.file("recover.html", "ioc");
+        var id = new ObservationId("persisted-before-enqueue");
+        fixture.handler.claim(source, id, fixture.clock.instant());
+        var done = new CountDownLatch(1);
+        try (var dispatcher = fixture.dispatcher(command -> {
+            assertThat(command.observationId()).isEqualTo(id);
+            assertThat(command.claimedSourceOptional()).isPresent();
+            return fixture.prepared(command, done::countDown);
+        })) {
+            assertThat(fixture.handler.pending(10)).hasSize(1);
+            dispatcher.start();
+            assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
         }
+        assertThat(fixture.registrations.next.get()).isEqualTo(1);
+        assertThat(fixture.handler.pending(10)).isEmpty();
+    }
 
-        @Override
-        public IngestionRejectionResult reject(
-                ObservationId observationId, SourceKey key, String reason) {
-            this.observationId = observationId;
-            return reject(key, reason);
+    @Test
+    void retriesReuseDurableIdentityAndRankAndPersistAttemptCount() throws Exception {
+        Fixture fixture = new Fixture(4, 100);
+        var attempts = new AtomicInteger();
+        var ids = java.util.Collections.synchronizedList(new ArrayList<ObservationId>());
+        var done = new CountDownLatch(1);
+        try (var dispatcher = fixture.dispatcher(command -> {
+            ids.add(command.observationId());
+            if (attempts.incrementAndGet() == 1) { throw new IllegalStateException("transient preparation"); }
+            return fixture.prepared(command, done::countDown);
+        })) {
+            dispatcher.start();
+            dispatcher.handle(fixture.file("retry.html", "ioc").toFile());
+            assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        }
+        assertThat(ids).hasSize(2).allMatch(ids.getFirst()::equals);
+        assertThat(fixture.registrations.next.get()).isEqualTo(1);
+        var reopened = new FileDocumentAdmissionJournal(fixture.journalPath);
+        assertThat(reopened.find(ids.getFirst()).orElseThrow().execution().attempts()).isEqualTo(2);
+    }
+
+    @Test
+    void oversizeInputDoesNotAcquireOwnershipOrAllocateRank() throws Exception {
+        Fixture fixture = new Fixture(2, 6);
+        var calls = new AtomicInteger();
+        Path source = fixture.file("large.html", "too many bytes");
+        try (var dispatcher = fixture.dispatcher(command -> {
+            calls.incrementAndGet();
+            throw new AssertionError("oversize source reached preparation");
+        })) {
+            dispatcher.start();
+            dispatcher.handle(source.toFile());
+            assertThat(dispatcher.snapshot().pending()).isZero();
+            assertThat(dispatcher.snapshot().saturationCount()).isEqualTo(1);
+        }
+        assertThat(source).exists();
+        assertThat(calls).hasValue(0);
+        assertThat(fixture.registrations.next).hasValue(0);
+    }
+
+    @Test
+    void prehashFailureIsDurablyBlockedWithOwnedFileInsteadOfInventingContentIdentity() throws Exception {
+        Fixture fixture = new Fixture(4, 100);
+        Path source = fixture.file("changing.html", "ioc");
+        var id = new ObservationId("changed-after-claim");
+        var admitted = fixture.handler.claim(source, id, fixture.clock.instant());
+        Files.writeString(admitted.claimPath(), "changed-size");
+        try (var dispatcher = fixture.dispatcher(command -> {
+            throw new AssertionError("unstable snapshot reached preparation");
+        })) {
+            dispatcher.start();
+            awaitBlocked(dispatcher);
+            assertThat(dispatcher.snapshot().blocked()).isEqualTo(1);
+            assertThat(dispatcher.snapshot().pending()).isEqualTo(1);
+        }
+        var durable = new FileDocumentAdmissionJournal(fixture.journalPath).find(id).orElseThrow();
+        assertThat(durable.sourceKey()).isEmpty();
+        assertThat(durable.execution().attempts()).isEqualTo(2);
+        assertThat(durable.execution().failure()).contains("size changed");
+        assertThat(Files.exists(admitted.claimPath()) || Files.exists(Path.of(admitted.claimPath() + ".sealed"))).isTrue();
+        assertThat(fixture.diagnostics.diagnostics()).hasSize(2);
+    }
+
+    @Test
+    void exhaustedPreparationRejectsOneDurableOccurrenceAndUnblocksTheNext() throws Exception {
+        Fixture fixture = new Fixture(4, 100);
+        var rejected = new AtomicInteger();
+        var done = new CountDownLatch(1);
+        Path bad = fixture.file("bad.html", "bad");
+        Path good = fixture.file("good.html", "good");
+        try (var dispatcher = new DurableDocumentDispatcher(fixture.handler, command -> {
+            if (command.source().equals(bad)) { throw new IllegalStateException("invalid document"); }
+            return fixture.prepared(command, done::countDown);
+        }, (key, reason) -> {
+            rejected.incrementAndGet();
+            return IngestionRejectionResult.REJECTED;
+        }, fixture.properties, fixture.clock, fixture.diagnostics)) {
+            dispatcher.start();
+            dispatcher.handle(bad.toFile());
+            dispatcher.handle(good.toFile());
+            assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(rejected).hasValue(1);
+            assertThat(dispatcher.snapshot().completedDocuments()).isLessThanOrEqualTo(1);
+        }
+        assertThat(fixture.handler.pending(10)).isEmpty();
+    }
+
+    @Test
+    void gracefulStopClosesReadyPreparationAndDurableOwnershipSurvivesRestart() throws Exception {
+        Fixture fixture = new Fixture(4, 100);
+        var olderEntered = new CountDownLatch(1);
+        var releaseOlder = new CountDownLatch(1);
+        var newerReady = new CountDownLatch(1);
+        var closed = new AtomicInteger();
+        Path older = fixture.file("older.html", "old");
+        Path newer = fixture.file("newer.html", "new");
+        var dispatcher = fixture.dispatcher(command -> {
+            if (command.source().equals(older)) { olderEntered.countDown(); await(releaseOlder); }
+            else { newerReady.countDown(); }
+            return new PreparedIngestion() {
+                public IngestSourceResult promote() { throw new AssertionError("stopped preparation promoted"); }
+                public void close() { closed.incrementAndGet(); }
+            };
+        });
+        var shutdown = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            dispatcher.start(); dispatcher.handle(older.toFile()); dispatcher.handle(newer.toFile());
+            assertThat(olderEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(newerReady.await(5, TimeUnit.SECONDS)).isTrue();
+            var stopped = shutdown.submit(dispatcher::close);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (dispatcher.snapshot().running() && System.nanoTime() < deadline) {
+                new CountDownLatch(1).await(10, TimeUnit.MILLISECONDS);
+            }
+            assertThat(dispatcher.snapshot().running()).isFalse();
+            releaseOlder.countDown();
+            stopped.get(5, TimeUnit.SECONDS);
+            assertThat(closed).hasValue(2);
+            assertThat(fixture.handler.pending(10)).hasSize(2);
+            var done = new CountDownLatch(2);
+            try (var restarted = fixture.dispatcher(command -> fixture.prepared(command, done::countDown))) {
+                restarted.start();
+                assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+            }
+            assertThat(fixture.registrations.next).hasValue(2);
+            assertThat(fixture.handler.pending(10)).isEmpty();
+        } finally {
+            releaseOlder.countDown(); dispatcher.close(); shutdown.shutdownNow();
+            assertThat(shutdown.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
         }
     }
 
-    private static final class MemoryRegistrationStore implements ObservationRegistrationStore {
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(10, TimeUnit.SECONDS)) { throw new IllegalStateException("test coordination timeout"); }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("test interrupted", interrupted);
+        }
+    }
+
+    private static void awaitCount(CountDownLatch latch, long count) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (latch.getCount() > count && System.nanoTime() < deadline) {
+            new CountDownLatch(1).await(10, TimeUnit.MILLISECONDS);
+        }
+        assertThat(latch.getCount()).isEqualTo(count);
+    }
+
+    private static void awaitBlocked(DurableDocumentDispatcher dispatcher) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (dispatcher.snapshot().blocked() == 0 && System.nanoTime() < deadline) {
+            new CountDownLatch(1).await(10, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private final class Fixture {
+        private final Clock clock = Clock.systemUTC();
+        private final Path journalPath = directory.resolve("admission");
+        private final MemoryRegistrations registrations = new MemoryRegistrations();
+        private final FileSystemSourceLifecycle sources = new FileSystemSourceLifecycle(
+                directory.resolve("processing"), directory.resolve("done"), directory.resolve("failed"));
+        private final DocumentAdmissionService service = new DocumentAdmissionService(
+                new FileDocumentAdmissionJournal(journalPath), registrations, clock);
+        private final OrderedDocumentAdmissionHandler handler = new OrderedDocumentAdmissionHandler(
+                service, sources, new FileDocumentCandidateEvidenceReader(), new FileSourceHasher());
+        private final CollectingDiagnosticSink diagnostics = new CollectingDiagnosticSink();
+        private final IngestAdapterProperties properties;
+        private Fixture(int pending, long bytes) {
+            properties = new IngestAdapterProperties(null, null, null, null,
+                    new IngestAdapterProperties.Retry(2, Duration.ZERO), null, 1,
+                    new IngestAdapterProperties.Execution(2, Math.min(4, pending), pending, bytes, bytes));
+        }
+        private Path file(String name, String content) throws Exception {
+            return Files.writeString(directory.resolve(name), content).toAbsolutePath();
+        }
+        private DurableDocumentDispatcher dispatcher(PrepareIngestionUseCase prepare) {
+            return new DurableDocumentDispatcher(handler, prepare,
+                    (key, reason) -> IngestionRejectionResult.REJECTED, properties, clock, diagnostics);
+        }
+        private PreparedIngestion prepared(IngestSourceCommand command, Runnable callback) {
+            return new PreparedIngestion() {
+                @Override public IngestSourceResult promote() {
+                    sources.archive(command.claimedSourceOptional().orElseThrow());
+                    service.complete(command.observationId(), DocumentTerminalOutcome.SUCCEEDED);
+                    callback.run();
+                    return new IngestSourceResult(command.key(), IngestionStatus.SOURCE_ARCHIVED, false, null);
+                }
+                @Override public void close() { }
+            };
+        }
+    }
+
+    private static final class MemoryRegistrations implements ObservationRegistrationStore {
         private static final String NAMESPACE = "0123456789abcdef0123456789abcdef";
-        private final Map<ObservationId, RegisteredObservation> values = new LinkedHashMap<>();
-        private long nextOrder = 1;
-
-        @Override
-        public RegisteredObservation registerNew(ObservationId id, ObservationOrigin origin) {
-            return values.computeIfAbsent(id, ignored -> new RegisteredObservation(
-                    id, NAMESPACE, new ObservationOrder(nextOrder++), origin));
+        private final Map<ObservationId, RegisteredObservation> values = new ConcurrentHashMap<>();
+        private final AtomicInteger next = new AtomicInteger();
+        @Override public RegisteredObservation registerNew(ObservationId id, ObservationOrigin origin) {
+            return values.computeIfAbsent(id, ignored -> new RegisteredObservation(id, NAMESPACE,
+                    new ObservationOrder(next.incrementAndGet()), origin));
         }
-
-        @Override
-        public RegisteredObservation resume(ObservationId id, String expectedNamespace) {
-            if (!NAMESPACE.equals(expectedNamespace) || !values.containsKey(id)) {
-                throw new IllegalStateException("Missing registered observation on recovery");
-            }
-            return values.get(id);
+        @Override public RegisteredObservation resume(ObservationId id, String namespace) {
+            assertThat(namespace).isEqualTo(NAMESPACE);
+            return java.util.Objects.requireNonNull(values.get(id));
         }
-
-        @Override
-        public void markTerminal(ObservationId id, String expectedNamespace) {
-            resume(id, expectedNamespace);
-        }
-
-        @Override
-        public boolean purgeTerminal(RegisteredObservation registration) {
+        @Override public void markTerminal(ObservationId id, String namespace) { resume(id, namespace); }
+        @Override public boolean purgeTerminal(RegisteredObservation registration) {
             return values.remove(registration.observationId(), registration);
-        }
-    }
-
-    private static final class PreparingListAppender extends ListAppender<ILoggingEvent> {
-
-        @Override
-        protected void append(ILoggingEvent eventObject) {
-            eventObject.prepareForDeferredProcessing();
-            super.append(eventObject);
         }
     }
 }

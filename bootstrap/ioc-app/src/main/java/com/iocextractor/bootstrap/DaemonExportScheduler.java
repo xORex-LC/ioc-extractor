@@ -63,7 +63,7 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
     private final ExportNudgePolicy nudgePolicy;
     private final Supplier<ScheduledExecutorService> executorFactory;
     private final Supplier<ExecutorService> workerFactory;
-    private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
+    private final Set<String> inFlight = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
     private final CanonicalDataAdmissionState admission;
     private final AtomicBoolean running = new AtomicBoolean();
     private final AtomicBoolean nudgeScheduled = new AtomicBoolean();

@@ -1,89 +1,64 @@
 # adapters/adapter-ingest
 
-## Назначение
+Inbound filesystem adapter for daemon document ingestion and local managed CSV
+import. It translates stabilized candidates into inward application ports and
+owns private file claim/seal/archive/dead-letter mechanics. It does not implement
+IOC extraction rules or write canonical artifacts.
 
-Inbound file-ingestion adapter for daemon mode. Owns Spring Integration file
-watch/poll wiring, filesystem source lifecycle, file-backed ingestion ledger and
-retry/dead-letter side effects.
+## Contents
 
-**Правило слоя:** translates filesystem events into `IngestSourceUseCase` calls;
-it does not implement IOC extraction rules and does not write canonical
-artifacts directly.
-
-## Структура
-
-| Подпапка / файл | Назначение |
+| Component | Responsibility |
 |---|---|
-| `pom.xml` | Maven module descriptor |
-| `src/main/java/com/iocextractor/adapter/in/ingest/` | Spring Integration flow and filesystem adapters |
-| `LocalManagedImportSourceLifecycle` | Strict local claim, producer-stability proof, claimed-byte access and source disposition |
-| `LocalFilesystemImportSnapshotStore` | One protected immutable snapshot publication/resolution/purge implementation shared by local, SMB and replay flows through an application port |
-| `LocalImportChangeSignalSource` | Optional WatchService doorbell that discards event filenames |
-| `LocalImportTerminalStore` | Atomic protected source/report unit, replay materialization and idempotent delete/archive retention |
+| `IngestFlowConfiguration` | Single detector, full listing/glob/stability filters and explicit startup |
+| `DurableDocumentDispatcher` | Bounded durable job references, parallel preparation, ordered promotion, retry and shutdown |
+| `OrderedDocumentAdmissionHandler` | Short token claim; worker seal/hash/link and terminal reconciliation |
+| `FileDocumentAdmissionJournal` | Fsync-backed CAS admission/execution journal for file-ledger mode |
+| `DocumentCompletionObserver` | Terminal structured logging, without execution authority |
+| `FileSystemSourceLifecycle` | No-replace private source lifecycle and recoverable disposition |
+| `StrictAtomicFileOwnership` | Shared fail-closed regular-file ownership primitives |
+| `LocalManagedImportSourceLifecycle` | Local structured-import claim and disposition |
+| `LocalFilesystemImportSnapshotStore` | Protected immutable snapshots shared by local, SMB and replay through a port |
+| `LocalImportChangeSignalSource` | Optional WatchService doorbell; filenames are not authority |
+| `LocalImportTerminalStore` | Atomic protected source/report publication and retention |
 
-## Зависимости
+## Dependencies and layer rule
 
-**Зависит от:** `ioc-application`, platform errors/diagnostics/observability/
-concurrency, Spring Integration file support.
+Depends on application ports, platform errors/diagnostics/observability/concurrency
+and Spring Integration file support. It does not depend on bootstrap, JDBC or
+concrete CSV implementation. Cross-module execution is explained in
+[ingestion](../../docs/dev/ingestion.md) and
+[ADR-0038](../../docs/ADR/0038-durable-bounded-document-execution.md).
 
-**Не импортируется:** domain internals, concrete CSV sink internals, bootstrap.
+## Runtime contracts
 
-## Инварианты
+The bootstrap startup barrier recovers durable work and lifecycle admission before
+starting the dispatcher or file flow. Detector concurrency remains one. Every
+daemon document receives durable occurrence/order before atomic claim. Hashing
+and snapshot/preparation run on bounded workers, outside poller and canonical
+writer ownership. Only the oldest unresolved document promotes; source-key
+exclusion applies at that boundary.
 
-- `iocIngestionFlow` не стартует автоматически. Единственный bootstrap-owned
-  `CanonicalIntakeStartupCoordinator` сначала восстанавливает ordinary run/source
-  ledgers, выполняет common canonical lifecycle admission и managed-import
-  recovery, запускает import reconcile, и только после этого открывает ordinary
-  intake. Ошибка оставляет оба intake закрытыми. Lifecycle policy/SQL остаются
-  за application/JDBC; этот driving adapter знает только admission ports.
-- Все application entry points для одного content `SourceKey` используют общий
-  synchronous keyed guard. File ledger отдельно сериализует read/decide/replace
-  внутри одного adapter instance; сервисы над общими namespace/ledger обязаны
-  разделять guard, cross-process coordination не заявлена. Release-инвариант не
-  маскирует primary work failure: secondary failure становится suppressed.
-- Source-ledger terminal transitions монотонны: same-target retry идемпотентен,
-  opposite-target transition конфликтует и не переписывает победителя.
-- Каждая принятая file delivery получает новый UUID `ObservationId`; один и тот
-  же id сохраняется через handler retry и terminal reject. Processing filename
-  и ledger key включают observation identity, поэтому одинаковые bytes из двух
-  доставок не перезаписывают друг друга. Старые content-keyed ledger/files
-  читаются как `legacy:<sourceKey>` для recovery.
+Count/source-byte saturation leaves input discoverable in the inbox. Claimed jobs
+survive rejected/lost hints because periodic journal discovery is authoritative.
+The preparation window holds references, with shared workspace quotas limiting
+cache/memory/disk independently. Attempts and backoff survive restart. Exhausted
+pre-hash failure retains a blocked token and rank; it never uses path/mtime as a
+content identity. A verified-key failure can use the normal terminal rejection.
+The pre-reservation disposition seam ING-13 remains open.
 
-- Managed-import snapshot persistence не является local-source policy:
-  `LocalFilesystemImportSnapshotStore` принимает transport-supplied writer,
-  владеет byte bound/hash/fsync/no-replace publication и понимает старые
-  `local-snapshot-v1`/`smb-snapshot-v1` references без их переписывания.
+Private seal publishes a new inode with fsync/atomic move before SHA-256. The
+producer's old descriptor cannot change processed bytes. File and JDBC journals
+share one application state machine. Terminal source/registration CAS is
+monotonic and recoverable. Startup refuses unresolved legacy rankless work when
+registered-field policy needs an order. One daemon per namespace is supported;
+cross-process ingestion fencing is not claimed.
 
-- `FileSourceMessageHandler` владеет final retry boundary: после исчерпания
-  попыток он выполняет reject/dead-letter transition, если use case ещё
-  не вернул durable `FAILED`, затем эмитит один typed `INGEST.*` diagnostic.
-- Content hashing входит в тот же bounded retry/backoff. Если содержимое
-  прочитать нельзя, handler использует fingerprint `path+size+mtime` только как
-  terminal ledger identity и один раз эмитит `INGEST.SOURCE_UNREADABLE`.
-  Повторный poll того же durable `FAILED` завершается тихо; физический
-  pre-claim quarantine остаётся отдельным ING-13.
-- После структурно завершённой extraction handler публикует terminal
-  `source_ingest` с durable run id, completion и отдельными severity counts.
-  `COMPLETED_WITH_ERRORS` имеет `event.outcome=failure`; no-ETL receipt replay не
-  получает вымышленный extraction completion и помечается
-  `ioc.ingest.disposition=duplicate`.
-- `IngestionStartupObserver` публикует одну операцию `ingest_recover`: start и
-  один terminal outcome с duration/counts или safe error type. Он доставляет
-  ещё не выпущенный `INGEST.*` carrier на startup boundary, но не дублирует
-  `INGEST.RECOVERY_FAILED`, уже выпущенный application recovery.
-- Локальный error-log не дублирует canonical diagnostic delivery.
-- `StrictAtomicFileOwnership` — общий fail-closed primitive обычного и managed
-  intake: только regular non-symlink source, private target, no-replace и без
-  copy/non-atomic fallback. Managed intake дополнительно revalidate-ит stable
-  candidate после claim и фиксирует read-only snapshot с SHA-256/size/fsync.
-- Ordered document admission использует отдельный fsync-backed CAS journal в
-  file-ledger mode и тот же `SourceLifecycle` port в JDBC mode. После pre-hash
-  atomic claim `sealClaim` публикует private inode через fsync + atomic move и
-  удаляет старый inode path; открытый producer descriptor поэтому не меняет
-  bytes, которые хешируются и передаются application use case. Bootstrap
-  подключает путь только при наличии enabled `latest-registered` field policy;
-  shipping `ioc_aggregate` активирует его. Startup сначала восстанавливает
-  admission journal, затем обычный ingestion ledger. Legacy незавершённая
-  работа без rank отклоняется с drain/restore instruction.
-- Positive retry backoff обычного ingest планируется на daemon scheduler;
-  poller thread больше не удерживается через `Thread.sleep`.
+Shutdown stops dispatch, joins owned workers with a bounded grace period and
+closes remaining unpromoted handles while preserving recoverable sources. A
+non-terminating worker fails shutdown explicitly. Diagnostics retain detailed
+causes; health snapshots expose bounded metadata and safe failure types.
+
+Terminal logs carry supported completion/diagnostic counts; duplicate receipt
+replay has a disposition field without fabricated extraction completion. Logging
+failure cannot repeat a committed document. Control events accelerate reconcile
+and never become processing authority.

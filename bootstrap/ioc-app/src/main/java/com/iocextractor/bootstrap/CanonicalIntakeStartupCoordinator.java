@@ -2,6 +2,7 @@ package com.iocextractor.bootstrap;
 
 import com.iocextractor.adapter.in.ingest.IngestionLifecycleState;
 import com.iocextractor.adapter.in.ingest.IngestionStartupObserver;
+import com.iocextractor.adapter.in.ingest.DurableDocumentDispatcher;
 import com.iocextractor.application.artifact.IngestRunRecoveryService;
 import com.iocextractor.application.port.in.artifact.lifecycle.PrepareLifecycleAdmissionUseCase;
 import com.iocextractor.application.port.in.ingest.RecoverIngestionUseCase;
@@ -26,6 +27,12 @@ final class CanonicalIntakeStartupCoordinator implements ApplicationRunner, Orde
     private final IngestionStartupObserver observer;
     private final OrderedDocumentStartupRecovery documentRecovery;
     private final Clock clock;
+    private DurableDocumentDispatcher documents;
+
+    CanonicalIntakeStartupCoordinator withDocuments(DurableDocumentDispatcher dispatcher) {
+        documents = Objects.requireNonNull(dispatcher, "dispatcher");
+        return this;
+    }
 
     CanonicalIntakeStartupCoordinator(
             IngestRunRecoveryService runRecovery,
@@ -82,6 +89,7 @@ final class CanonicalIntakeStartupCoordinator implements ApplicationRunner, Orde
                 importRuntime.recoverBeforeIntake();
                 importRuntime.start();
             }
+            if (documents != null) { documents.start(); }
             intakeFlow.start();
             if (!intakeFlow.isRunning()) {
                 throw new IllegalStateException("Ingestion intake did not start after successful recovery");
@@ -110,6 +118,10 @@ final class CanonicalIntakeStartupCoordinator implements ApplicationRunner, Orde
             intakeFlow.stop();
         } catch (RuntimeException stopFailure) {
             failure.addSuppressed(stopFailure);
+        }
+        if (documents != null) {
+            try { documents.close(); }
+            catch (RuntimeException stopFailure) { failure.addSuppressed(stopFailure); }
         }
         if (importRuntime != null) {
             try {

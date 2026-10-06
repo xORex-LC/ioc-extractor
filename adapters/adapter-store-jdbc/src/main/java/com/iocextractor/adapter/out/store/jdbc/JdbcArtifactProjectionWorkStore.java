@@ -60,7 +60,7 @@ public final class JdbcArtifactProjectionWorkStore implements ArtifactProjection
         String artifact = DataframeColumn.requireSqlIdentifier(
                 acknowledgement.artifactName(), "artifact name");
         long installed = acknowledgement.installedGeneration().value();
-        return writerAdmission.execute(() -> acknowledgeAdmitted(artifact, installed));
+        return writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL, () -> acknowledgeAdmitted(artifact, installed));
     }
 
     private boolean acknowledgeAdmitted(String artifact, long installed) {
@@ -93,7 +93,7 @@ public final class JdbcArtifactProjectionWorkStore implements ArtifactProjection
         if (failureCode == null || failureCode.isBlank()) {
             throw new IllegalArgumentException("failureCode must not be blank");
         }
-        return writerAdmission.execute(() -> recordFailureAdmitted(
+        return writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL, () -> recordFailureAdmitted(
                 artifact, expectedGeneration, failureCode));
     }
 

@@ -28,6 +28,7 @@ public final class JdbcConfirmationReceiptStore
         implements ConfirmationReceiptStore, CanonicalObservationStore {
 
     private final DataSource dataSource;
+    private final JdbcWriterAdmission writerAdmission;
     private final Map<String, DataframeArtifactSchema> schemas;
     private final Duration stagingRetention;
 
@@ -38,6 +39,12 @@ public final class JdbcConfirmationReceiptStore
     public JdbcConfirmationReceiptStore(DataSource dataSource,
                                         List<DataframeArtifactSchema> schemas,
                                         Duration stagingRetention) {
+        this(dataSource, schemas, stagingRetention, new JdbcWriterAdmission());
+    }
+
+    public JdbcConfirmationReceiptStore(DataSource dataSource, List<DataframeArtifactSchema> schemas,
+            Duration stagingRetention, JdbcWriterAdmission writerAdmission) {
+        this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.stagingRetention = Objects.requireNonNull(stagingRetention, "stagingRetention");
         if (stagingRetention.isZero() || stagingRetention.isNegative()) {
@@ -80,6 +87,11 @@ public final class JdbcConfirmationReceiptStore
 
     @Override
     public PurgeResult purgeExpired(EffectiveTime asOf, int batchSize) {
+        return writerAdmission.execute(JdbcWriterAdmission.OperationClass.MAINTENANCE,
+                () -> purgeAdmitted(asOf, batchSize));
+    }
+
+    private PurgeResult purgeAdmitted(EffectiveTime asOf, int batchSize) {
         Objects.requireNonNull(asOf, "asOf");
         if (batchSize <= 0) {
             throw new IllegalArgumentException("Receipt purge batch size must be positive");
@@ -112,6 +124,13 @@ public final class JdbcConfirmationReceiptStore
     public void markTerminal(ObservationId observationId,
                              EffectiveTime completedAt,
                              Duration retention) {
+        writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL, () -> {
+            markTerminalAdmitted(observationId, completedAt, retention);
+            return null;
+        });
+    }
+
+    private void markTerminalAdmitted(ObservationId observationId, EffectiveTime completedAt, Duration retention) {
         Objects.requireNonNull(observationId, "observationId");
         Objects.requireNonNull(completedAt, "completedAt");
         Objects.requireNonNull(retention, "retention");

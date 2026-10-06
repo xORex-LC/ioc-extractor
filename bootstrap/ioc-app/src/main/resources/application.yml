@@ -453,7 +453,13 @@ ioc:
     ledger:
       type: file
       path: "./var/ledger"
-    concurrency: 1
+    concurrency: 1 # serial canonical promotion
+    execution:
+      preparation-workers: 2
+      window: 4
+      max-pending-documents: 64
+      max-pending-source-bytes: 4294967296
+      max-source-bytes: 536870912
 
 # ============================================================================
 #  Complete SMB example. This document is inert unless the `smb-example` Spring

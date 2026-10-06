@@ -337,9 +337,11 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                 throw new IocExtractorException(
                         "Public id allocator is not configured for artifact: " + schema.artifactName());
             }
-            publicIds = allocator.reserve(schema.artifactName(), publicCount);
+            publicIds = writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
+                    () -> allocator.reserve(schema.artifactName(), publicCount));
         }
-        return new ReservedIds(publicIds, lifecycleIdAllocator.reserve(records.size()));
+        return new ReservedIds(publicIds, writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
+                () -> lifecycleIdAllocator.reserve(records.size())));
     }
 
     private Optional<LifecycleWriteResult> loadCommitted(CanonicalArtifactConfirmation confirmation) {

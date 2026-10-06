@@ -358,6 +358,23 @@ reconciliation создаёт схему, но не строит строки и
   baseline: `GoldenPipelineIT`.
 - Generated reference: `DIAGNOSTICS-CATALOG.md`.
 
+## Раздельная подготовка и запись документа
+
+Для daemon `IocExtractionService.prepare` завершает precommit stages и передаёт
+owned `PreparedExtraction`: sealed row sources и bounded diagnostics без
+сохранения исходного IOC-графа. `promote` выполняет прежний write checkpoint
+один раз. Отмена закрывает workspace/run, завершает diagnostic suppression
+summary и сохраняет claimed source для recovery. Ошибка после начала promotion
+оставляет sealed pin; атомарность canonical write не меняется.
+
+`IngestionService.prepare` не захватывает content-key guard. Его получает
+последовательный promotion worker по durable document order. Read-only receipt
+lookup может пропустить подготовку; перед canonical confirmation receipt
+проверяется заново. Если он истёк, тот же ordered job выполняет ETL fallback.
+Обычный oneshot `extract` сохраняет синхронный контракт. Подробнее:
+[ingestion.md](ingestion.md),
+[ADR-0038](../ADR/0038-durable-bounded-document-execution.md).
+
 ## Когда обновлять документ
 
 Обновить при изменении порядка стадий, supported IOC/document contract,

@@ -22,9 +22,11 @@ public record DocumentAdmission(ObservationId observationId,
                                 Optional<DocumentTerminalOutcome> terminalOutcome,
                                 boolean registrationFinalized,
                                 Instant createdAt,
-                                Instant updatedAt) {
+                                Instant updatedAt,
+                                DocumentExecutionState execution) {
 
     public DocumentAdmission {
+        Objects.requireNonNull(execution, "execution");
         Objects.requireNonNull(observationId, "observationId");
         Objects.requireNonNull(candidatePath, "candidatePath");
         Objects.requireNonNull(candidateEvidence, "candidateEvidence");
@@ -54,6 +56,23 @@ public record DocumentAdmission(ObservationId observationId,
         if (registrationFinalized && phase != DocumentAdmissionPhase.TERMINAL) {
             throw new IllegalArgumentException("Only terminal admission can finalize registration");
         }
+    }
+
+    public DocumentAdmission(ObservationId observationId, Path candidatePath,
+            DocumentCandidateEvidence candidateEvidence, Path claimPath,
+            Optional<DocumentCandidateEvidence> claimedEvidence, DocumentAdmissionPhase phase, long version,
+            Optional<RegisteredObservation> registration, Optional<SourceKey> sourceKey,
+            Optional<DocumentTerminalOutcome> terminalOutcome, boolean registrationFinalized,
+            Instant createdAt, Instant updatedAt) {
+        this(observationId, candidatePath, candidateEvidence, claimPath, claimedEvidence, phase,
+                version, registration, sourceKey, terminalOutcome, registrationFinalized,
+                createdAt, updatedAt, DocumentExecutionState.NEW);
+    }
+
+    public DocumentAdmission execution(DocumentExecutionState state, Instant at) {
+        return new DocumentAdmission(observationId, candidatePath, candidateEvidence, claimPath,
+                claimedEvidence, phase, version + 1, registration, sourceKey, terminalOutcome,
+                registrationFinalized, createdAt, at, state);
     }
 
     public static DocumentAdmission reserved(DocumentAdmissionReservation reservation) {
@@ -109,7 +128,7 @@ public record DocumentAdmission(ObservationId observationId,
                                    Instant at) {
         return new DocumentAdmission(observationId, candidatePath, candidateEvidence, claimPath,
                 nextClaimedEvidence, next, version + 1, nextRegistration, nextSourceKey,
-                nextOutcome, finalized, createdAt, Objects.requireNonNull(at, "at"));
+                nextOutcome, finalized, createdAt, Objects.requireNonNull(at, "at"), execution);
     }
 
     private void requirePhase(DocumentAdmissionPhase expected) {

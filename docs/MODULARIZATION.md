@@ -163,7 +163,7 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ io
 | `adapter-store-jdbc` | Service/dataframe SQLite: canonical/revision/lifecycle storage, typed history/receipts, reusable export-slot registry, bounded reconcile checkpoint, strict active snapshot reader, ingest/export/fetch/publish/import ledgers, private sealed document preparation/import staging, migrations и health |
 | `adapter-transport-smb` | smbj boundary: shared lazy SMB2/3 sessions, streaming get, atomic slice publish, server-side managed-import claim/materialization/disposition и `CHANGE_NOTIFY` doorbells за application ports |
 | `adapter-psl` | HostClassifier (PSL/Guava) |
-| `adapter-ingest` | Watch ingest: `IngestSourceUseCase`(in), `SourceLifecycle`, file `IngestionLedger`; SourceFeed adapter-local (Spring Integration); local managed-import claim/snapshot/disposition; `FileSystemRetentionStore` (reaper IO) |
+| `adapter-ingest` | Single document detector, bounded durable dispatcher и ordered promotion через `PrepareIngestionUseCase`; `SourceLifecycle`, file `IngestionLedger`/admission journal; local managed-import claim/snapshot/disposition; `FileSystemRetentionStore` (reaper IO) |
 | `adapter-cli-picocli` | входной CLI: `extract`, lazy `export`, `sync fetch|publish|all`, remote daemon `health` |
 | `ioc-app` (bootstrap) | composition root, lazy export/sync graphs, transport registry; fetch/export/publish/retention/lifecycle/import schedulers, strict lifecycle/import config compilation, local/SMB import routing, conditional web и health |
 | `build-quality` (build-support tooling) | Общий JDK-only fail-fast scope/report verifier и synthetic-reactor contract matrix; не является Maven reactor project |

@@ -23,14 +23,25 @@ public final class JdbcObservationRegistrationStore implements ObservationRegist
 
     private final DataSource dataSource;
     private final Clock clock;
+    private final JdbcWriterAdmission writerAdmission;
 
     public JdbcObservationRegistrationStore(DataSource dataSource, Clock clock) {
+        this(dataSource, clock, new JdbcWriterAdmission());
+    }
+
+    public JdbcObservationRegistrationStore(DataSource dataSource, Clock clock, JdbcWriterAdmission writerAdmission) {
+        this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     @Override
     public RegisteredObservation registerNew(ObservationId observationId, ObservationOrigin origin) {
+        return writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
+                () -> registerAdmitted(observationId, origin));
+    }
+
+    private RegisteredObservation registerAdmitted(ObservationId observationId, ObservationOrigin origin) {
         Objects.requireNonNull(observationId, "observationId");
         Objects.requireNonNull(origin, "origin");
         try (Connection connection = dataSource.getConnection()) {
@@ -94,6 +105,13 @@ public final class JdbcObservationRegistrationStore implements ObservationRegist
 
     @Override
     public void markTerminal(ObservationId observationId, String expectedNamespace) {
+        writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL, () -> {
+            finalizeAdmitted(observationId, expectedNamespace);
+            return null;
+        });
+    }
+
+    private void finalizeAdmitted(ObservationId observationId, String expectedNamespace) {
         RegisteredObservation registration = resume(observationId, expectedNamespace);
         try (Connection connection = dataSource.getConnection();
              PreparedStatement update = connection.prepareStatement("""
@@ -116,8 +134,12 @@ public final class JdbcObservationRegistrationStore implements ObservationRegist
     }
 
     @Override
-    public ObservationRegistrationPurgeOutcome purgeTerminalSafely(
-            RegisteredObservation registration) {
+    public ObservationRegistrationPurgeOutcome purgeTerminalSafely(RegisteredObservation registration) {
+        return writerAdmission.execute(JdbcWriterAdmission.OperationClass.MAINTENANCE,
+                () -> purgeAdmitted(registration));
+    }
+
+    private ObservationRegistrationPurgeOutcome purgeAdmitted(RegisteredObservation registration) {
         Objects.requireNonNull(registration, "registration");
         try (Connection connection = dataSource.getConnection()) {
             int deleted;
@@ -154,6 +176,11 @@ public final class JdbcObservationRegistrationStore implements ObservationRegist
 
     @Override
     public int purgeTerminalOneshotBefore(Instant cutoff, int limit) {
+        return writerAdmission.execute(JdbcWriterAdmission.OperationClass.MAINTENANCE,
+                () -> purgeOneshotAdmitted(cutoff, limit));
+    }
+
+    private int purgeOneshotAdmitted(Instant cutoff, int limit) {
         Objects.requireNonNull(cutoff, "cutoff");
         if (limit < 1) {
             throw new IllegalArgumentException("Observation purge limit must be positive");

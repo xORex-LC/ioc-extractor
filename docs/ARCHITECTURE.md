@@ -111,6 +111,7 @@ checkpoint. Writer и receipts читают повторяемые курсор�
 | `CanonicalArtifactRepository` / `ArtifactProjection` | driven (out) | Canonical write/read с provenance и генерация CSV-проекций |
 | `PatternEngine` | domain SPI | Движок regex (RE2/J по умолчанию, JDK — замена) |
 | `IngestSourceUseCase` | driving (in) | Обработка одного daemon source unit |
+| `PrepareIngestionUseCase` / `PreparedIngestion` / `PreparedExtraction` | driving (in) | Подготовка sealed workspace отдельно от ordered canonical promotion; отмена освобождает owned handle |
 | `RunRetentionUseCase` / `RetentionStore` | driving (in) / driven (out) | Reaper растущих каталогов по возрасту/количеству (delete/archive) |
 | `RemoteFetchUseCase` / `ArtifactPublishUseCase` | driving (in) | Remote → inbox и verified export slice → targets |
 | `ControlEventPublisher` | platform driving port | Publish-only control-plane notification; delivery adapter живёт в bootstrap |

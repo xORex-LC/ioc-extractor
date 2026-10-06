@@ -75,7 +75,7 @@ public final class JdbcLifecycleClock implements LifecycleTimeSource, LifecycleC
 
     @Override
     public EffectiveTime now() {
-        return writerAdmission.execute(this::nowAdmitted);
+        return writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL, this::nowAdmitted);
     }
 
     private EffectiveTime nowAdmitted() {

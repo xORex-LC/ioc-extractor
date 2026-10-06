@@ -355,6 +355,18 @@ public class AppConfig {
     }
 
     @Bean
+    public com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspaceFactory documentPreparationWorkspaces(
+            IocProperties props, ArtifactIdentityResolver artifactIdentityResolver) {
+        var workspace = props.processing().workspace();
+        return new com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspaceFactory(
+                java.nio.file.Path.of(workspace.directory()),
+                new com.iocextractor.adapter.out.store.jdbc.DocumentPreparationLimits(
+                        workspace.memoryBytes(), workspace.cacheKib(), workspace.maximumRowBytes(),
+                        workspace.maximumFieldBytes(), workspace.workspaceBytes(), workspace.totalDiskBytes(), workspace.batchRows()),
+                artifactIdentityResolver, ProcessingPolicyFingerprint.from(props), workspace.retention());
+    }
+
+    @Bean
     public IocExtractionServiceFactory iocExtractionServiceFactory(SourceReader reader,
                                                                    Refanger refanger,
                                                                    IndicatorExtractor extractor,
@@ -368,15 +380,9 @@ public class AppConfig {
                                                                    ProcessingPlanBindings processingPlans,
                                                                    ObjectProvider<CamelRouteRuntime> routerRuntime,
                                                                    Clock clock,
+                                                                   com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspaceFactory workspaces,
                                                                    IocProperties props) {
         var documentPlan = processingPlans.requireDocumentPlan();
-        var workspace = props.processing().workspace();
-        var workspaces = new com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspaceFactory(
-                java.nio.file.Path.of(workspace.directory()),
-                new com.iocextractor.adapter.out.store.jdbc.DocumentPreparationLimits(
-                        workspace.memoryBytes(), workspace.cacheKib(), workspace.maximumRowBytes(),
-                        workspace.maximumFieldBytes(), workspace.workspaceBytes(), workspace.totalDiskBytes(), workspace.batchRows()),
-                artifactIdentityResolver, ProcessingPolicyFingerprint.from(props), workspace.retention());
         DocumentProcessingPlanFactory documentPlanFactory = preparers ->
                 new DocumentProcessingAdapter(documentPlan, routerRuntime.getObject(),
                         new com.iocextractor.processing.classification.IndicatorClassifier(matchPolicy),
@@ -607,8 +613,8 @@ public class AppConfig {
     public ObservationRegistrationStore observationRegistrationStore(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             @Qualifier("dataframeFormatSchemaMigration") SchemaMigrationResult dataframeFormatSchemaMigration,
-            Clock clock) {
-        return new JdbcObservationRegistrationStore(dataframeStorageDataSource, clock);
+            Clock clock, JdbcWriterAdmission jdbcWriterAdmission) {
+        return new JdbcObservationRegistrationStore(dataframeStorageDataSource, clock, jdbcWriterAdmission);
     }
 
     @Bean
@@ -726,11 +732,11 @@ public class AppConfig {
     public JdbcConfirmationReceiptStore confirmationReceiptStore(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             DataframeSchemaPlan dataframeSchemaReconciliation,
-            IocProperties props) {
+            IocProperties props, JdbcWriterAdmission jdbcWriterAdmission) {
         return new JdbcConfirmationReceiptStore(
                 dataframeStorageDataSource,
                 dataframeSchemas(props),
-                props.lifecycle().receiptRetention());
+                props.lifecycle().receiptRetention(), jdbcWriterAdmission);
     }
 
     @Bean
@@ -794,16 +800,16 @@ public class AppConfig {
     @Bean
     public LifecycleReconciliationStore lifecycleReconciliationStore(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
-            DataframeSchemaPlan dataframeSchemaReconciliation) {
-        return new JdbcLifecycleReconciliationStore(dataframeStorageDataSource);
+            DataframeSchemaPlan dataframeSchemaReconciliation, JdbcWriterAdmission jdbcWriterAdmission) {
+        return new JdbcLifecycleReconciliationStore(dataframeStorageDataSource, jdbcWriterAdmission);
     }
 
     @Bean
     public LifecycleHistoryStore lifecycleHistoryStore(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             DataframeSchemaPlan dataframeSchemaReconciliation,
-            IocProperties props) {
-        return new JdbcLifecycleHistoryStore(dataframeStorageDataSource, dataframeSchemas(props));
+            IocProperties props, JdbcWriterAdmission jdbcWriterAdmission) {
+        return new JdbcLifecycleHistoryStore(dataframeStorageDataSource, dataframeSchemas(props), jdbcWriterAdmission);
     }
 
     @Bean
@@ -932,14 +938,14 @@ public class AppConfig {
             ArtifactIdentityResolver artifactIdentityResolver,
             IocProperties props,
             Clock clock,
-            JdbcLifecycleClock lifecycleClock) {
+            JdbcLifecycleClock lifecycleClock, JdbcWriterAdmission jdbcWriterAdmission) {
         Objects.requireNonNull(artifactIdentityValidation, "artifactIdentityValidation");
         return new JdbcCanonicalArtifactRepository(
                 dataframeStorageDataSource,
                 dataframeSchemas(props),
                 artifactIdentityResolver,
                 clock,
-                lifecycleClock);
+                lifecycleClock, jdbcWriterAdmission);
     }
 
     @Bean
@@ -969,7 +975,7 @@ public class AppConfig {
 
     @Bean
     @Lazy
-    public SnapshotSliceReader snapshotSliceReader(
+    public JdbcSnapshotSliceReader snapshotSliceReader(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             DataframeSchemaPlan dataframeSchemaReconciliation,
             IocProperties props,
@@ -1276,6 +1282,17 @@ public class AppConfig {
 
     @Bean
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
+    DataProcessingCapacityHealthIndicator dataProcessingCapacityHealthIndicator(
+            com.iocextractor.adapter.in.ingest.DurableDocumentDispatcher documents,
+            JdbcWriterAdmission writers, JdbcSnapshotSliceReader readers,
+            com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspaceFactory workspaces,
+            IocProperties props) {
+        return new DataProcessingCapacityHealthIndicator(documents, writers, readers, workspaces,
+                props.storage().dataframe().url());
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public CanonicalIntakeStartupCoordinator canonicalIntakeStartupCoordinator(
             IngestRunRecoveryService runRecovery,
             RecoverIngestionUseCase sourceRecovery,
@@ -1285,23 +1302,23 @@ public class AppConfig {
             Clock clock,
             @Qualifier("iocIngestionFlow") IntegrationFlow intakeFlow,
             ObjectProvider<DataframeImportRuntimeLifecycle> importRuntime,
-            OrderedDocumentStartupRecovery documentRecovery) {
+            OrderedDocumentStartupRecovery documentRecovery,
+            com.iocextractor.adapter.in.ingest.DurableDocumentDispatcher documents) {
         if (!(intakeFlow instanceof Lifecycle lifecycle)) {
             throw new IllegalStateException("iocIngestionFlow does not expose lifecycle control");
         }
         return new CanonicalIntakeStartupCoordinator(
                 runRecovery, sourceRecovery, lifecycleAdmission, lifecycle,
                 importRuntime.getIfAvailable(), lifecycleState, startupObserver, clock,
-                documentRecovery);
+                documentRecovery).withDocuments(documents);
     }
 
     @Bean
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public OrderedDocumentStartupRecovery orderedDocumentStartupRecovery(
             OrderedDocumentAdmissionHandler admissions,
-            IngestSourceUseCase ingestion,
-            ObservationOrderingPolicy orderingPolicy) {
-        return new OrderedDocumentStartupRecovery(admissions, ingestion, orderingPolicy);
+            IngestSourceUseCase ingestion) {
+        return new OrderedDocumentStartupRecovery(admissions, ingestion);
     }
 
     @Bean
@@ -1349,7 +1366,7 @@ public class AppConfig {
                 diagnosticSink,
                 ingestionExecutionGuard,
                 lifecycleSupport,
-                orderingPolicy.enabled() ? documentAdmissions : null);
+                documentAdmissions);
     }
 
     @Bean

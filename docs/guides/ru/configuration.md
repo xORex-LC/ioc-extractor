@@ -482,11 +482,15 @@ filesystem, чтобы claims использовали atomic move. Concurrency 
 | `ioc.ingestion.detect.reconcile-interval` | positive duration | `30s` | Период полного directory scan в default polling-режиме; с WatchService — период опроса event/retry queue. Меньше — ниже latency, больше scanning или wakeups. |
 | `ioc.ingestion.detect.max-messages-per-poll` | positive integer | `50` | Ограничивает claims одного detection cycle. |
 | `ioc.ingestion.stability.quiet-period` | positive duration | `10s` | Увеличьте для медленного копирования; слишком мало — риск incomplete file. |
-| `ioc.ingestion.retry.max-attempts` | positive integer | `3` | Попытки до перемещения в failed. |
+| `ioc.ingestion.retry.max-attempts` | positive integer | `3` | После исчерпания попыток ошибка с подтверждённым ключом приводит к отклонению. До вычисления ключа сохраняется заблокированный claimed-файл для расследования. |
 | `ioc.ingestion.retry.backoff` | positive duration | `5s` | Задержка local ingestion retry. |
 | `ioc.ingestion.ledger.type` | `file`, `jdbc` | `file` | `jdbc` для durable run-ledger integration; следуйте deployment baseline. |
 | `ioc.ingestion.ledger.path` | путь | `./var/ledger` | Filesystem ledger при type `file`. |
-| `ioc.ingestion.concurrency` | integer, только `1` | `1` | Parallel ingestion в 0.3.0 не поддерживается. Startup отклоняет любое другое значение, а не молча игнорирует его. |
+| `ioc.ingestion.concurrency` | integer, только `1` | `1` | Детектор и приём последовательны; параллельная подготовка задаётся отдельно, canonical запись остаётся последовательной. Startup отклоняет любое другое значение, а не молча игнорирует его. |
+
+Ограничения `ioc.ingestion.execution`: `ioc.ingestion.execution.preparation-workers` (1–2 потока подготовки), `ioc.ingestion.execution.window` (ожидающие, выполняемые и готовые подготовки), `ioc.ingestion.execution.max-pending-documents`, `ioc.ingestion.execution.max-pending-source-bytes` и `ioc.ingestion.execution.max-source-bytes`. При насыщении входной файл остаётся в inbox для следующего полного сканирования. По умолчанию: 2 потока, 4 подготовки, 64 документа, 4 GiB суммарных исходников и 512 MiB на исходник. Canonical запись последовательна в durable порядке приёма.
+
+Лимит размера действует во время копирования исходника. Health `dataProcessingCapacity` показывает насыщение, заблокированные файлы и состояние writer/readers. При исчерпании попыток до вычисления ключа сохраните claimed-файл, журнал и БД для расследования; не возвращайте файл во входной каталог вручную. Перед обновлением до service schema v14 остановите сервис и сохраните обе БД вместе с принадлежащими сервису файлами. Откат требует восстановления этой копии.
 
 ## Безопасность runtime canonical lifecycle
 

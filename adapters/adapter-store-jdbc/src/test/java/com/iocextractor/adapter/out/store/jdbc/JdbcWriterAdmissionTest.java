@@ -125,6 +125,59 @@ class JdbcWriterAdmissionTest {
         }
     }
 
+    @Test
+    void agedMaintenanceRunsBeforeFreshControlAndFreshPriorityAppliesAtBoundaries() throws Exception {
+        var time = new java.util.concurrent.atomic.AtomicLong();
+        var admission = new JdbcWriterAdmission(time::get);
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        List<String> order = Collections.synchronizedList(new ArrayList<>());
+        var workers = Executors.newFixedThreadPool(6);
+        try {
+            var holder = workers.submit(() -> admission.execute(() -> { entered.countDown(); await(release); return null; }));
+            assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+            var old = workers.submit(() -> admission.execute(JdbcWriterAdmission.OperationClass.MAINTENANCE,
+                    () -> { order.add("aged"); return null; }));
+            awaitQueueDepth(admission, 1);
+            time.set(TimeUnit.MILLISECONDS.toNanos(101));
+            var promotion = workers.submit(() -> admission.execute(JdbcWriterAdmission.OperationClass.PROMOTION,
+                    () -> { order.add("promotion"); return null; }));
+            awaitQueueDepth(admission, 2);
+            var control = workers.submit(() -> admission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
+                    () -> { order.add("control"); return null; }));
+            awaitQueueDepth(admission, 3);
+            var slots = workers.submit(() -> admission.execute(JdbcWriterAdmission.OperationClass.EXPORT_SLOTS,
+                    () -> { order.add("slots"); return null; }));
+            awaitQueueDepth(admission, 4);
+            var expiry = workers.submit(() -> admission.execute(JdbcWriterAdmission.OperationClass.EXPIRY,
+                    () -> { order.add("expiry"); return null; }));
+            awaitQueueDepth(admission, 5);
+            release.countDown();
+            for (var task : List.of(holder, old, promotion, control, slots, expiry)) { task.get(5, TimeUnit.SECONDS); }
+            assertThat(order).containsExactly("aged", "control", "expiry", "slots", "promotion");
+            assertThat(admission.snapshot().get(JdbcWriterAdmission.OperationClass.MAINTENANCE).maximumWaitNanos())
+                    .isEqualTo(TimeUnit.MILLISECONDS.toNanos(101));
+        } finally {
+            release.countDown();
+            workers.shutdownNow();
+            assertThat(workers.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    @Test
+    void nestedControlAndFailedWorkReleaseTheAtomicOwnerWithOneOuterMeasurement() {
+        var admission = new JdbcWriterAdmission();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> admission.execute(() ->
+                admission.execute(JdbcWriterAdmission.OperationClass.CONTROL, () -> {
+                    throw new IllegalStateException("rollback");
+                }))).hasMessage("rollback");
+        assertThat(admission.execute(JdbcWriterAdmission.OperationClass.CONTROL, () -> "available"))
+                .isEqualTo("available");
+        assertThat(admission.queuedWriters()).isZero();
+        assertThat(admission.snapshot().get(JdbcWriterAdmission.OperationClass.PROMOTION).completed()).isOne();
+        assertThat(admission.snapshot().get(JdbcWriterAdmission.OperationClass.CONTROL).completed()).isOne();
+    }
+
     private Void admitted(JdbcWriterAdmission admission,
                           AtomicInteger active,
                           AtomicInteger maximum) {

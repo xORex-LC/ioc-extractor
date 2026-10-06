@@ -66,13 +66,16 @@ public final class DocumentWorkspaceCapacity {
             var activating = disabled.beginActivation("capacity-fixed-1h");
             require(control.compareAndSet(disabled, activating), "activate");
             require(control.compareAndSet(activating, activating.completeActivation(EffectiveTime.at(NOW))), "activation complete");
+            var admission = new JdbcWriterAdmission();
             var observation = new ObservationId("capacity");
-            var registration = new JdbcObservationRegistrationStore(dataSource, clock)
+            var registration = new JdbcObservationRegistrationStore(dataSource, clock, admission)
                     .registerNew(observation, ObservationOrigin.ONESHOT);
             var writer = new JdbcCanonicalLifecycleWriter(dataSource, schemas,
                     definitions.stream().map(definition -> new ArtifactIdAllocatorDefinition(definition.artifactName(),
                             ArtifactIdStrategy.ASCENDING, 1, 1)).toList(),
-                    (LifecycleTimeSource) () -> EffectiveTime.at(NOW), new FixedRecordValidityPolicy(Duration.ofHours(1)), clock, definitions);
+                    new JdbcLifecycleClock(dataSource, clock,
+                            new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30)), admission),
+                    new FixedRecordValidityPolicy(Duration.ofHours(1)), clock, definitions, admission);
             var factory = new JdbcDocumentPreparationWorkspaceFactory(root.resolve("workspace"), limits, identities, "capacity-v1");
             long baselineHeap = liveHeap();
             metrics.put("baseline_live_heap_bytes", baselineHeap);
@@ -112,6 +115,7 @@ public final class DocumentWorkspaceCapacity {
                             plan.artifactName(), HEADER, records, registration)).created() == count, "canonical rows");
                 }
                 metrics.put("promotion_nanos", System.nanoTime() - promotion);
+                metrics.put("writer_operations", admission.snapshot());
                 metrics.put("promoted_live_heap_bytes", liveHeap());
                 metrics.put("promoted_rss_kib", currentRssKiB());
                 long replay = System.nanoTime();

@@ -105,8 +105,17 @@ class ProcessingRouteComparisonTest {
             bytes = ComparisonDiagnostics.instrument(type, java.util.Objects.requireNonNull(source).readAllBytes());
         }
         Class<?> woven = new ClassLoader(getClass().getClassLoader()) {
-            Class<?> loadProbe() { return defineClass(type.replace('/', '.'), bytes, 0, bytes.length); }
-        }.loadProbe();
+            @Override protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+                if (!name.startsWith(type.replace('/', '.'))) { return super.loadClass(name, resolve); }
+                Class<?> loaded = findLoadedClass(name);
+                if (loaded != null) { return loaded; }
+                try (var input = getParent().getResourceAsStream(name.replace('.', '/') + ".class")) {
+                    byte[] implementation = name.equals(type.replace('/', '.')) ? bytes
+                            : java.util.Objects.requireNonNull(input).readAllBytes();
+                    return defineClass(name, implementation, 0, implementation.length);
+                } catch (java.io.IOException failure) { throw new ClassNotFoundException(name, failure); }
+            }
+        }.loadClass(type.replace('/', '.'));
         Object admission = woven.getConstructor().newInstance();
         ComparisonDiagnostics.premain("", org.mockito.Mockito.mock(Instrumentation.class));
         ComparisonDiagnostics.begin();

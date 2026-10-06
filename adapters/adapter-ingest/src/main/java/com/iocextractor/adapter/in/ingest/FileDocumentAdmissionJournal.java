@@ -84,7 +84,9 @@ public final class FileDocumentAdmissionJournal implements DocumentAdmissionJour
         return all().stream()
                 .filter(value -> value.phase() != DocumentAdmissionPhase.TERMINAL
                         || !value.registrationFinalized())
-                .sorted(Comparator.comparing(DocumentAdmission::createdAt)
+                .sorted(Comparator.comparingLong((DocumentAdmission value) -> value.registration()
+                        .map(item -> item.admissionOrder().value()).orElse(Long.MIN_VALUE))
+                        .thenComparing(DocumentAdmission::createdAt)
                         .thenComparing(value -> value.observationId().value()))
                 .limit(limit)
                 .toList();
@@ -170,7 +172,11 @@ public final class FileDocumentAdmissionJournal implements DocumentAdmissionJour
                 optional(values, "terminalOutcome").map(DocumentTerminalOutcome::valueOf),
                 Boolean.parseBoolean(required(values, "registrationFinalized")),
                 Instant.parse(required(values, "createdAt")),
-                Instant.parse(required(values, "updatedAt")));
+                Instant.parse(required(values, "updatedAt")),
+                new com.iocextractor.application.ingest.admission.DocumentExecutionState(
+                        Integer.parseInt(values.getProperty("executionAttempts", "0")),
+                        Instant.parse(values.getProperty("retryAfter", Instant.EPOCH.toString())),
+                        values.getProperty("executionFailure")));
     }
 
     private void write(DocumentAdmission admission) {
@@ -227,6 +233,11 @@ public final class FileDocumentAdmissionJournal implements DocumentAdmissionJour
         values.setProperty("registrationFinalized", Boolean.toString(admission.registrationFinalized()));
         values.setProperty("createdAt", admission.createdAt().toString());
         values.setProperty("updatedAt", admission.updatedAt().toString());
+        values.setProperty("executionAttempts", Integer.toString(admission.execution().attempts()));
+        values.setProperty("retryAfter", admission.execution().retryAfter().toString());
+        if (admission.execution().failure() != null) {
+            values.setProperty("executionFailure", admission.execution().failure());
+        }
         return values;
     }
 

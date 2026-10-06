@@ -179,7 +179,8 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
             return replayed(committed.orElseThrow());
         }
         VerifiedStage stage = verifyStage(command);
-        ReservedIds reservations = reserveWorstCase(stage);
+        ReservedIds reservations = writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
+                () -> reserveWorstCase(stage));
         return writerAdmission.execute(() -> promoteAdmitted(command, stage, reservations));
     }
 

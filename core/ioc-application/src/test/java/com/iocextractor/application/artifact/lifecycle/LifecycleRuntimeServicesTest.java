@@ -738,7 +738,7 @@ class LifecycleRuntimeServicesTest {
         };
         List<CanonicalArtifactConfirmation> confirmations = new ArrayList<>();
         ObservationId currentObservation = new ObservationId("observation-current");
-        var result = new ConfirmationReceiptReplayService(
+        var service = new ConfirmationReceiptReplayService(
                 receipts,
                 confirmation -> {
                     confirmations.add(confirmation);
@@ -746,7 +746,8 @@ class LifecycleRuntimeServicesTest {
                             currentObservation, confirmation.artifactName(), AS_OF,
                             0, 0, 0, 7, new ProjectionGeneration(0), false);
                 },
-                () -> AS_OF).replay(new ConfirmationReceiptReplayCommand(
+                () -> AS_OF);
+        var command = new ConfirmationReceiptReplayCommand(
                         new LifecycleWriteContext(
                                 currentObservation,
                                 "source-a",
@@ -754,7 +755,10 @@ class LifecycleRuntimeServicesTest {
                                         new ConfirmationReceiptId("receipt-current"),
                                         "policy-a",
                                         1,
-                                        java.time.Duration.ofDays(30)))));
+                                        java.time.Duration.ofDays(30))));
+        assertThat(service.hasReusableReceipt(command)).isTrue();
+        assertThat(confirmations).isEmpty();
+        var result = service.replay(command);
 
         assertThat(result).isPresent();
         assertThat(result.orElseThrow().insertedPerArtifact()).isEqualTo(Map.of("masks", 0));

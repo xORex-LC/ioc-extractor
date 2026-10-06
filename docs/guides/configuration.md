@@ -484,11 +484,15 @@ baseline for SQLite and deterministic file handling.
 | `ioc.ingestion.detect.reconcile-interval` | positive duration | `30s` | Full directory scan cadence with the default polling mode; with WatchService it is the event/retry-queue poll cadence. Lower values reduce latency but increase scanning or wakeups. |
 | `ioc.ingestion.detect.max-messages-per-poll` | positive integer | `50` | Bounds work claimed per detection cycle. |
 | `ioc.ingestion.stability.quiet-period` | positive duration | `10s` | Increase for slow copies; too small risks reading an incomplete file. |
-| `ioc.ingestion.retry.max-attempts` | positive integer | `3` | Attempts before moving a file to failed. |
+| `ioc.ingestion.retry.max-attempts` | positive integer | `3` | Verified-key failures become rejected after exhaustion; pre-hash failures retain blocked ownership for investigation. |
 | `ioc.ingestion.retry.backoff` | positive duration | `5s` | Delay between local ingestion retries. |
 | `ioc.ingestion.ledger.type` | `file`, `jdbc` | `file` | Use `jdbc` when durable run-ledger integration is required; follow the deployment baseline. |
 | `ioc.ingestion.ledger.path` | path | `./var/ledger` | Filesystem ledger location when type is `file`. |
-| `ioc.ingestion.concurrency` | integer, exactly `1` | `1` | Parallel ingestion is not supported in 0.3.0. Startup rejects any other value instead of silently ignoring it. |
+| `ioc.ingestion.concurrency` | integer, exactly `1` | `1` | Single detection/claim path. Bounded parallel preparation is configured separately below; canonical promotion stays serial. |
+
+Document execution admission (`ioc.ingestion.execution`) bounds private work: `ioc.ingestion.execution.preparation-workers` (1–2), `ioc.ingestion.execution.window` (queued/running/ready preparations), `ioc.ingestion.execution.max-pending-documents`, `ioc.ingestion.execution.max-pending-source-bytes`, and `ioc.ingestion.execution.max-source-bytes`. Saturated input stays in the inbox for a later complete listing. Defaults are 2 workers, 4 preparations, 64 pending documents, 4 GiB pending source bytes and 512 MiB per source. Canonical promotion remains serial in durable admission order.
+
+Preparation and claim sealing enforce the admitted byte allowance during copying. The `dataProcessingCapacity` health view reports saturation, blocked ownership and writer/readers. Exhausted pre-hash work remains owned in processing; preserve its token, journal and databases for investigation rather than moving it back into intake. Service schema v14 requires a stopped-service backup of both databases and owned files before upgrade; rollback requires restoring that backup.
 
 ## Canonical lifecycle runtime safety
 

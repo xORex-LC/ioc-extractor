@@ -71,8 +71,9 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
     }
 
     @Override
-    public ClaimedSource sealClaim(ClaimedSource claimed) {
+    public ClaimedSource sealClaim(ClaimedSource claimed, long maximumBytes) {
         Objects.requireNonNull(claimed, "claimed");
+        if (maximumBytes < 0) { throw new IllegalArgumentException("Source byte allowance must not be negative"); }
         Path source = claimed.processingPath();
         Path fileName = Objects.requireNonNull(source.getFileName(), "claim path requires a file name");
         Path parent = Objects.requireNonNull(source.getParent(), "claim path requires a parent");
@@ -80,6 +81,9 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
         Path temporary = parent.resolve(fileName + ".sealing");
         try {
             if (Files.isRegularFile(sealed)) {
+                if (Files.size(sealed) > maximumBytes) {
+                    throw new IocExtractorException("Document size changed after bounded admission");
+                }
                 Files.deleteIfExists(source);
                 Files.deleteIfExists(temporary);
                 forceDirectory(parent);
@@ -89,7 +93,8 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
                 throw new IocExtractorException("Claimed ingest source is missing: " + source);
             }
             Files.deleteIfExists(temporary);
-            Files.copy(source, temporary, StandardCopyOption.COPY_ATTRIBUTES);
+            copyBounded(source, temporary, maximumBytes);
+            Files.setLastModifiedTime(temporary, Files.getLastModifiedTime(source));
             try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
                 channel.force(true);
             }
@@ -102,10 +107,27 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
             deleteTemporary(temporary, failure);
             throw new IocExtractorException("Atomic claim sealing is not supported", failure);
         } catch (IocExtractorException failure) {
+            deleteTemporary(temporary, failure);
             throw failure;
         } catch (IOException failure) {
             deleteTemporary(temporary, failure);
             throw new IocExtractorException("Failed to seal claimed ingest source", failure);
+        }
+    }
+
+    private static void copyBounded(Path source, Path target, long maximumBytes) throws IOException {
+        byte[] buffer = new byte[8192];
+        long copied = 0;
+        try (var input = Files.newInputStream(source);
+             var output = Files.newOutputStream(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                if (count > maximumBytes - copied) {
+                    throw new IocExtractorException("Document size changed after bounded admission");
+                }
+                output.write(buffer, 0, count);
+                copied += count;
+            }
         }
     }
 

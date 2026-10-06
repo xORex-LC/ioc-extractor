@@ -41,16 +41,14 @@ public final class JdbcCanonicalArtifactRepository
     private final Map<String, DataframeArtifactSchema> schemas;
     private final LifecycleTimeSource activeTimeSource;
     private final JdbcCompatibilityArtifactWriter compatibilityWriter;
+    private final JdbcWriterAdmission writerAdmission;
 
     public JdbcCanonicalArtifactRepository(DataSource dataSource,
                                            List<DataframeArtifactSchema> schemas,
                                            ArtifactIdentityResolver identityResolver,
                                            Clock clock) {
-        this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
-        this.schemas = schemasByName(schemas);
-        this.compatibilityWriter = new JdbcCompatibilityArtifactWriter(
-                dataSource, this.schemas, identityResolver, clock);
-        this.activeTimeSource = () -> EffectiveTime.at(clock.instant());
+        this(dataSource, schemas, identityResolver, clock, () -> EffectiveTime.at(clock.instant()),
+                new JdbcWriterAdmission());
     }
 
     /** Creates a repository whose active reads use the safe lifecycle clock. */
@@ -59,6 +57,13 @@ public final class JdbcCanonicalArtifactRepository
                                            ArtifactIdentityResolver identityResolver,
                                            Clock clock,
                                            LifecycleTimeSource activeTimeSource) {
+        this(dataSource, schemas, identityResolver, clock, activeTimeSource, new JdbcWriterAdmission());
+    }
+
+    public JdbcCanonicalArtifactRepository(DataSource dataSource, List<DataframeArtifactSchema> schemas,
+            ArtifactIdentityResolver identityResolver, Clock clock, LifecycleTimeSource activeTimeSource,
+            JdbcWriterAdmission writerAdmission) {
+        this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
         this.compatibilityWriter = new JdbcCompatibilityArtifactWriter(
@@ -160,12 +165,12 @@ public final class JdbcCanonicalArtifactRepository
 
     @Override
     public CanonicalWriteResult write(String artifactName, CanonicalArtifact artifact) {
-        return compatibilityWriter.write(artifactName, artifact);
+        return writerAdmission.execute(() -> compatibilityWriter.write(artifactName, artifact));
     }
 
     @Override
     public CanonicalWriteResult write(CanonicalWriteCommand command) {
-        return compatibilityWriter.write(command);
+        return writerAdmission.execute(() -> compatibilityWriter.write(command));
     }
 
     private Map<String, DataframeArtifactSchema> schemasByName(List<DataframeArtifactSchema> source) {

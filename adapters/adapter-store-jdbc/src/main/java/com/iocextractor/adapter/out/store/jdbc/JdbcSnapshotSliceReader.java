@@ -153,7 +153,7 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
         JdbcExportSlotRegistry.SnapshotChangedException lastRace = null;
         for (int attempt = 1; attempt <= MAX_SLOT_SNAPSHOT_ATTEMPTS; attempt++) {
             try {
-                writerAdmission.execute(() -> {
+                writerAdmission.execute(JdbcWriterAdmission.OperationClass.EXPORT_SLOTS, () -> {
                     try {
                         reconcileExportSlots(plan, expectedState, asOf);
                         return null;

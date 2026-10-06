@@ -21,6 +21,7 @@ import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.artifact.PreparedArtifactRow;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
+import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptReplayCommand;
 import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptReplayResult;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.LifecycleWriteResult;
@@ -926,6 +927,74 @@ class IngestionServiceTest {
         assertArtifactsChanged(events, "run-1", List.of("masks"));
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void preparedReceiptIsReadOnlyUntilPromotionAndRevalidatedBeforeReuse(boolean stillAvailable) {
+        var key = new SourceKey("ABC123");
+        var observation = new ObservationId("prepared-delivery");
+        var ledger = new MemoryLedger();
+        var lifecycle = new MemoryLifecycle();
+        var runLedger = new MemoryRunLedger();
+        var preparer = new CountingPreparer();
+        var replays = new java.util.concurrent.atomic.AtomicInteger();
+        var replay = new com.iocextractor.application.port.in.artifact.lifecycle.ReplayConfirmationReceiptUseCase() {
+            public boolean hasReusableReceipt(ConfirmationReceiptReplayCommand command) { return true; }
+            public Optional<ConfirmationReceiptReplayResult> replay(ConfirmationReceiptReplayCommand command) {
+                replays.incrementAndGet();
+                return stillAvailable ? Optional.of(new ConfirmationReceiptReplayResult(java.util.Map.of(
+                        "masks", new LifecycleWriteResult(observation, "masks", EffectiveTime.at(EVENT_TIME),
+                                0, 1, 0, 4, new ProjectionGeneration(1), false)))) : Optional.empty();
+            }
+        };
+        var service = new IngestionService(ledger, lifecycle,
+                source -> new SourcePreparers(List.of(preparer)),
+                stillAvailable ? failingExtractionFactory() : extractionFactory(confirmation ->
+                        new LifecycleWriteResult(observation, confirmation.artifactName(), EffectiveTime.at(EVENT_TIME),
+                                1, 0, 0, 1, new ProjectionGeneration(1), true)), runLedger,
+                new CollectingProjection(), new RecordingControlEventPublisher(), clock,
+                NoopDiagnosticSink.INSTANCE, new SynchronousKeyedExecutionGuard(),
+                new IngestionLifecycleSupport(replay, (id, at, retention) -> { },
+                        () -> EffectiveTime.at(EVENT_TIME), "processing-policy-v1", java.time.Duration.ofDays(30)));
+        var source = new SourceUnit(observation, key, Path.of("inbox/source.html"),
+                Path.of("processing/source.html"), Instant.EPOCH);
+        try (var prepared = service.prepare(new IngestSourceCommand(source, null))) {
+            assertThat(replays).hasValue(0);
+            assertThat(ledger.find(observation)).isEmpty();
+            assertThat(preparer.written).isZero();
+            var result = prepared.promote();
+            assertThat(result.duplicate()).isEqualTo(stillAvailable);
+            assertThat(result.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
+            assertThat(preparer.written).isEqualTo(stillAvailable ? 0 : 1);
+            assertThatThrownBy(prepared::promote).hasMessage("Prepared document is already consumed");
+        }
+        assertThat(replays).hasValue(1);
+        assertThat(lifecycle.events).containsExactly("archive");
+        assertThat(runLedger.status).isEqualTo(IngestRunStatus.COMPLETED);
+    }
+
+    @Test
+    void cancellingPreparedDocumentClosesRunWithoutClaimingOrWritingCanonicalStorage() {
+        var key = new SourceKey("ABC123");
+        var observation = new ObservationId("cancelled-delivery");
+        var ledger = new MemoryLedger();
+        var lifecycle = new MemoryLifecycle();
+        var runLedger = new MemoryRunLedger();
+        var projection = new CollectingProjection();
+        var service = new IngestionService(ledger, lifecycle,
+                source -> new SourcePreparers(List.of(new CountingPreparer())), extractionFactory(),
+                runLedger, projection, new RecordingControlEventPublisher(), clock);
+        var source = new SourceUnit(observation, key, Path.of("inbox/source.html"),
+                Path.of("processing/source.html"), Instant.EPOCH);
+        var prepared = service.prepare(new IngestSourceCommand(source, null));
+        prepared.close();
+        prepared.close();
+        assertThat(runLedger.status).isEqualTo(IngestRunStatus.FAILED);
+        assertThat(ledger.find(observation)).isEmpty();
+        assertThat(lifecycle.events).isEmpty();
+        assertThat(projection.requests).isEmpty();
+        assertThatThrownBy(prepared::promote).hasMessage("Prepared document is already consumed");
+    }
+
     @Test
     void recovery_marks_processing_orphans_as_failed() {
         var key = new SourceKey("ABC123");
@@ -1063,6 +1132,11 @@ class IngestionServiceTest {
     }
 
     private IocExtractionServiceFactory extractionFactory() {
+        return extractionFactory(null);
+    }
+
+    private IocExtractionServiceFactory extractionFactory(
+            com.iocextractor.application.port.out.artifact.lifecycle.CanonicalArtifactWriter writer) {
         return new IocExtractionServiceFactory(
                 source -> "example.com",
                 text -> new RefangOutcome(text, List.of()),
@@ -1074,7 +1148,7 @@ class IngestionServiceTest {
                 "daemon",
                 new NoopPipelineObserver(),
                 NoopDiagnosticSink.INSTANCE,
-                FailurePolicy.failFast(), 10_000, new MemoryRepository(), null,
+                FailurePolicy.failFast(), 10_000, new MemoryRepository(), writer,
                 (artifact, row) -> Optional.of(new com.iocextractor.application.artifact.ArtifactRowKey(row.value("value"))),
                 NoopPipelineDecisionTracer.INSTANCE,
                 preparers -> occurrence -> {

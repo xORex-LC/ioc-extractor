@@ -95,12 +95,12 @@ public final class IocExtractionServiceFactory {
      * @param projection projection invoked after each successful canonical commit
      * @return extraction use case
      */
-    public ExtractIocsUseCase create(List<ArtifactPreparer> preparers, ArtifactProjection projection) {
+    public IocExtractionService create(List<ArtifactPreparer> preparers, ArtifactProjection projection) {
         return create(preparers, projection, documentPlanFactory.create(preparers), routedWritePolicies);
     }
 
     /** Creates a document use case that resolves candidates after routing on final fields. */
-    public ExtractIocsUseCase create(List<ArtifactPreparer> preparers, ArtifactProjection projection,
+    public IocExtractionService create(List<ArtifactPreparer> preparers, ArtifactProjection projection,
                                      DocumentProcessingPlan documentPlan,
                                      Map<String, ArtifactWritePolicy> writePolicies) {
         var components = new IocExtractionService.Components(reader, refanger, extractor,

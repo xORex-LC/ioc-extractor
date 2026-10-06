@@ -91,7 +91,7 @@ public final class JdbcExpiredArtifactStore implements ExpiredArtifactStore {
         if (batchSize <= 0) {
             throw new IllegalArgumentException("Expiry batch size must be positive");
         }
-        return writerAdmission.execute(() -> expireDueAdmitted(schema, cycleAsOf, batchSize));
+        return writerAdmission.execute(JdbcWriterAdmission.OperationClass.EXPIRY, () -> expireDueAdmitted(schema, cycleAsOf, batchSize));
     }
 
     private ExpiryBatchResult expireDueAdmitted(DataframeArtifactSchema schema,

@@ -110,11 +110,26 @@ public final class PipelineRunner {
      * @return typed pipeline outcome
      */
     public <I, O> PipelineRunResult<O> runWithOutcome(Envelope<I> input, Pipeline<I, O> pipeline) {
+        return runPart(input, pipeline, true);
+    }
+
+    /** Runs a precommit segment; its suppression summary is emitted on failure or final continuation. */
+    public <I, O> PipelineRunResult<O> runPreparation(Envelope<I> input, Pipeline<I, O> pipeline) {
+        return runPart(input, pipeline, false);
+    }
+
+    /** Completes diagnostic delivery when a prepared segment is cancelled without continuation. */
+    public void finishPreparation(Envelope<?> prepared) {
+        emitSuppressionSummary(Objects.requireNonNull(prepared, "prepared").diagnostics(), null);
+    }
+
+    private <I, O> PipelineRunResult<O> runPart(Envelope<I> input, Pipeline<I, O> pipeline,
+                                               boolean complete) {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(pipeline, "pipeline");
 
         try (var ignored = observer.openRun(input.meta())) {
-            return executeInRunScope(input, pipeline);
+            return executeInRunScope(input, pipeline, complete);
         } catch (RuntimeException ex) {
             throw ex;
         } catch (Exception ex) {
@@ -122,7 +137,7 @@ public final class PipelineRunner {
         }
     }
 
-    private <I, O> PipelineRunResult<O> executeInRunScope(Envelope<I> input, Pipeline<I, O> pipeline) {
+    private <I, O> PipelineRunResult<O> executeInRunScope(Envelope<I> input, Pipeline<I, O> pipeline, boolean complete) {
         var bounded = new BoundedNotification(maxDiagnosticsPerRun, diagnosticFactory);
         bounded.addAll(new DiagnosticBatch(input.diagnostics().stream()
                 .filter(diagnostic -> diagnostic.code() != PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED).toList(),
@@ -163,7 +178,7 @@ public final class PipelineRunner {
             runFailure = ex;
             throw ex;
         } finally {
-            emitSuppressionSummary(current.diagnostics(), runFailure);
+            if (complete || runFailure != null) { emitSuppressionSummary(current.diagnostics(), runFailure); }
         }
     }
 
