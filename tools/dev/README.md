@@ -26,6 +26,7 @@
 | `processing-route-comparison.py …` | Попарно сравнить совместимый и выбранный путь на одинаковом документе с повторами и processed import; проверить равенство результата и измерить время, throughput, allocations, heap/RSS |
 | `processing-stage-capacity.py …` | Измерить CAP-3 attribution/diagnostics в попарных JVM со снимками классов; автоматически удалить временные файлы |
 | `document-workspace-capacity.py …` | Диагностика CAP-4: инкрементальный дисковый reducer, canonical writer и receipts; удалить все временные базы даже при отказе |
+| `service-capacity.py …` | CAP-6: отдельный user-systemd, фактические cgroup limits, прогретый полный локальный цикл, дисковый oracle и очистка |
 | `logs.sh …` | Читать и фильтровать ECS JSON по level/event/run/diagnostic |
 | `release-notes-context.sh …` | Собрать read-only Git/PR inventory для ручной подготовки release notes |
 

@@ -48,3 +48,8 @@ CAP-3 JVM pairs, отказ при потере samples или semantic mismatch
 `python3 tools/tests/document-workspace-capacity-test.py` проверяет отказ
 неполного evidence и удаление приватного runtime/SQLite state при oracle failure
 и timeout JVM.
+
+`python3 tools/tests/service-capacity-test.py` проверяет равенство HTML/DOCX
+fixtures, выбор победителей в дисковом oracle, отказ при повреждении CSV и
+слотов, единицы PSI, регрессию счётчиков и отказ сборщика метрик. Полный запуск
+под user-systemd выполняется отдельно через `make service-capacity`.

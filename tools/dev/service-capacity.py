@@ -1,0 +1,670 @@
+#!/usr/bin/env python3
+"""CAP-6 private, resource-limited service qualification; failures retain facts, never databases."""
+import argparse
+from contextlib import closing
+import csv
+from datetime import datetime
+import hashlib
+from html import escape
+import importlib.util
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import sqlite3
+import statistics
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import urllib.request
+import uuid
+import zipfile
+
+import yaml
+
+sys.dont_write_bytecode = True
+REPO = Path(__file__).resolve().parents[2]
+SPEC = importlib.util.spec_from_file_location('capacity_base', Path(__file__).with_name('data-processing-capacity.py'))
+BASE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(BASE)
+FLAGS = ['-Xms128m', '-Xmx512m']
+
+
+def command(arguments, timeout=40):
+    result = subprocess.run(arguments, capture_output=True, text=True, timeout=timeout, check=False)
+    if result.returncode:
+        # No environment values/credentials are passed as command arguments.
+        raise RuntimeError(f'{arguments[0]} failed: {result.stderr[-2000:]}')
+    return result.stdout.strip()
+
+
+def save(path, value):
+    staging = path.with_suffix(path.suffix + '.part')
+    staging.write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n')
+    staging.replace(path)
+
+
+def normalize(values):
+    return {key: None if value is None or value == 'NULL' else str(value) for key, value in values.items()}
+
+
+class DiskOracle(BASE.FixtureOracle):
+    """Independent fixture semantics with disk-backed expected rows and provenance, bounded Python memory."""
+    def __init__(self, config, path):
+        super().__init__(config)
+        self.db = sqlite3.connect(path)
+        self.db.execute('PRAGMA cache_size=-2048')
+        self.db.execute('CREATE TABLE expected(artifact TEXT,key TEXT,fields TEXT,PRIMARY KEY(artifact,key)) WITHOUT ROWID')
+        self.db.execute('CREATE TABLE origins(artifact TEXT,key TEXT,source TEXT,PRIMARY KEY(artifact,key,source)) WITHOUT ROWID')
+        self.db.execute('CREATE TABLE seen(key TEXT PRIMARY KEY,slot INTEGER UNIQUE) WITHOUT ROWID')
+        self.source_key = None
+
+    def add(self, artifact, supplied, last=False, source_key=None):
+        values = normalize({name: supplied.get(name) for name in self.columns[artifact]})
+        key = self.key(artifact, values)
+        clause = 'DO UPDATE SET fields=excluded.fields' if last else 'DO NOTHING'
+        self.db.execute('INSERT INTO expected VALUES(?,?,?) ON CONFLICT(artifact,key) ' + clause,
+                        (artifact, key, json.dumps(values, sort_keys=True, ensure_ascii=False)))
+        self.db.execute('INSERT OR IGNORE INTO origins VALUES(?,?,?)',
+                        (artifact, key, source_key or self.source_key))
+
+    def key(self, artifact, values):
+        return hashlib.sha256(json.dumps([values[name] for name in self.keys[artifact]],
+                                          separators=(',', ':')).encode()).hexdigest()
+
+    def counts(self):
+        self.db.commit()
+        return {artifact: self.db.execute('SELECT count(*) FROM expected WHERE artifact=?', (artifact,)).fetchone()[0]
+                for artifact in BASE.ARTIFACTS}
+
+    def wanted(self, artifact, key, values):
+        row = self.db.execute('SELECT fields FROM expected WHERE artifact=? AND key=?', (artifact, key)).fetchone()
+        if row is None or json.loads(row[0]) != values:
+            raise RuntimeError(f'Independent fields/key oracle failed: {artifact} {key}')
+
+    def check_database(self, database):
+        result = {}
+        with closing(sqlite3.connect(f'file:{database}?mode=ro', uri=True)) as actual:
+            actual.execute('BEGIN')
+            for artifact, expected_count in self.counts().items():
+                names = self.columns[artifact]
+                checksum, count = hashlib.sha256(), 0
+                for row in actual.execute(f'SELECT row_key,{",".join(names)},id,_lifecycle_id,_valid_until_epoch_ms FROM {artifact} ORDER BY row_key'):
+                    key, *fields = row
+                    values = normalize(dict(zip(names, fields[:len(names)])))
+                    self.wanted(artifact, key, values)
+                    if any(value <= 0 for value in fields[-3:]):
+                        raise RuntimeError(f'Invalid canonical identity/lifecycle: {artifact}')
+                    checksum.update(json.dumps([key, values], sort_keys=True, ensure_ascii=False).encode() + b'\n')
+                    count += 1
+                if count != expected_count:
+                    raise RuntimeError(f'Missing canonical rows: {artifact}: {count}/{expected_count}')
+                origins_count = 0
+                for key, source, occurrences in actual.execute(f'SELECT c.row_key,s.source_key,s.occurrences FROM {artifact} c JOIN {artifact}_sources s ON s.row_id=c.id'):
+                    if occurrences != 1 or self.db.execute('SELECT 1 FROM origins WHERE artifact=? AND key=? AND source=?',
+                                                          (artifact, key, source)).fetchone() is None:
+                        raise RuntimeError(f'Independent provenance oracle failed: {artifact}')
+                    origins_count += 1
+                wanted_origins = self.db.execute('SELECT count(*) FROM origins WHERE artifact=?', (artifact,)).fetchone()[0]
+                if origins_count != wanted_origins:
+                    raise RuntimeError(f'Missing provenance: {artifact}')
+                result[artifact] = {'rows': count, 'origins': origins_count, 'public_fields_sha256': checksum.hexdigest()}
+        return result
+
+    def check_csv(self, artifact, path, database, profile):
+        self.db.execute('DELETE FROM seen')
+        count = 0
+        with path.open(newline='') as contents, closing(sqlite3.connect(f'file:{database}?mode=ro', uri=True)) as canonical:
+            reader = csv.DictReader(contents, delimiter=';')
+            names = self.columns[artifact]
+            has_id = 'id' in reader.fieldnames
+            if set(reader.fieldnames) != set(names) | ({'id'} if has_id else set()):
+                raise RuntimeError(f'CSV schema mismatch: {artifact}')
+            for row in reader:
+                values = normalize({name: row[name] for name in names})
+                key = self.key(artifact, values)
+                self.wanted(artifact, key, values)
+                slot = int(row['id']) if has_id else None
+                if has_id:
+                    assignment = canonical.execute(f'SELECT a.slot FROM export_slot_assignment a JOIN {artifact} c '
+                        'ON c._lifecycle_id=a.lifecycle_id WHERE a.profile=? AND a.artifact=? AND c.row_key=?',
+                        (profile, artifact, key)).fetchone()
+                    if slot <= 0 or assignment != (slot,):
+                        raise RuntimeError(f'Public slot/registry mismatch: {artifact}')
+                try:
+                    self.db.execute('INSERT INTO seen VALUES(?,?)', (key, slot))
+                except sqlite3.IntegrityError as failure:
+                    raise RuntimeError(f'Duplicate public row/slot: {artifact}') from failure
+                count += 1
+            if count != self.counts()[artifact]:
+                raise RuntimeError(f'CSV missing rows: {artifact}')
+        self.db.execute('DELETE FROM seen')
+        self.db.commit()
+
+    def close(self):
+        self.db.close()
+
+
+def fixture(path, count, shape='mostly-unique', seed=43):
+    """Generate HTML or an actual DOCX package incrementally from the same six-type paragraph corpus."""
+    def paragraphs():
+        for number in range(count):
+            if number % 250 == 0:
+                yield 'h2', f'БИБ-{number // 250 + 1:04d}'
+            ordinal = number % 60 if shape == 'collapse' else number
+            if shape == 'mostly-unique' and number % 10 == 9:
+                ordinal -= 6
+            index, kind = ordinal // 6 + 1, ordinal % 6
+            host = f'ioc-{index}-s{seed:x}.example.test'
+            ip = 10 * 2**24 + (seed * 100000 + index) % (2**24 - 1)
+            values = ['.'.join(str((ip >> shift) & 255) for shift in (24, 16, 8, 0)), host,
+                      f'https://{host}/path/{index}?sample={index}',
+                      hashlib.md5(f'{seed}:{index}:md5'.encode()).hexdigest().upper(),
+                      hashlib.sha1(f'{seed}:{index}:sha1'.encode()).hexdigest().upper(),
+                      hashlib.sha256(f'{seed}:{index}:sha256'.encode()).hexdigest().upper()]
+            value = values[kind]
+            if number % 5 == 0 and kind < 3:
+                value = value.replace('https://', 'hxxps[:]//').replace('.', '[.]')
+            yield 'p', f'sample-{number + 1} :: {value}'
+    if path.suffix == '.html':
+        with path.open('w') as output:
+            output.write('<!doctype html><html><head><meta charset="utf-8"></head><body>\n')
+            for tag, text in paragraphs():
+                output.write(f'<{tag}>{escape(text)}</{tag}>\n')
+            output.write('</body></html>\n')
+    elif path.suffix == '.docx':
+        with zipfile.ZipFile(path, 'w', compression=zipfile.ZIP_DEFLATED) as package:
+            package.writestr('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
+            package.writestr('_rels/.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
+            with package.open('word/document.xml', 'w') as output:
+                output.write(b'<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>')
+                for _, text in paragraphs():
+                    output.write(f'<w:p><w:r><w:t>{escape(text)}</w:t></w:r></w:p>'.encode())
+                output.write(b'<w:sectPr/></w:body></w:document>')
+    else:
+        raise ValueError('Fixture requires .html or .docx')
+    return {'rows': count, 'sections': (count + 249) // 250, 'shape': shape, 'seed': seed,
+            'format': path.suffix[1:], 'bytes': path.stat().st_size, 'sha256': BASE.digest(path)}
+
+
+def feed_fixture(oracle, path):
+    oracle.source_key = BASE.digest(path)
+    oracle.source = None
+    if path.suffix == '.html':
+        with path.open() as source:
+            while chunk := source.read(65536):
+                oracle.feed(chunk)
+    else:
+        import xml.etree.ElementTree as ET
+        with zipfile.ZipFile(path) as package, package.open('word/document.xml') as source:
+            parents = []
+            for event, element in ET.iterparse(source, events=('start', 'end')):
+                if event == 'start':
+                    parents.append(element)
+                    continue
+                if element.tag.endswith('}p'):
+                    value = ''.join(element.itertext())
+                    tag = 'h2' if value.startswith('БИБ-') else 'p'
+                    oracle.feed(f'<{tag}>{escape(value)}</{tag}>')
+                    parents[-2].remove(element)
+                    element.clear()
+                parents.pop()
+    oracle.db.commit()
+
+
+def counters(text):
+    return {key: int(value) for key, value in (line.split() for line in text.splitlines())}
+
+
+def pressure(text):
+    return {line.split()[0]: int(re.search(r'total=(\d+)', line)[1]) for line in text.splitlines()}
+
+
+def difference(before, after):
+    if set(before) != set(after) or any(after[key] < before[key] for key in before):
+        raise RuntimeError('Missing or regressed resource counters')
+    return {key: after[key] - before[key] for key in before}
+
+
+class ResourceSampler:
+    """Fail-closed sampler of one JVM and its effective cgroup; bounded retained aggregate plus JSONL."""
+    def __init__(self, pid, cgroup, root):
+        self.pid, self.cgroup, self.root = pid, cgroup, root
+        self.stop = threading.Event()
+        self.failure, self.latest = None, None
+        self.lock = threading.Lock()
+        self.peak = {}
+        self.samples = 0
+        self.first = self.read()
+        self.latest = self.first
+        self.worker = threading.Thread(target=self.run, name='service-capacity-resources', daemon=False)
+        self.worker.start()
+
+    def read(self):
+        status = Path(f'/proc/{self.pid}/status').read_text()
+        rss = int(re.search(r'^VmRSS:\s+(\d+)', status, re.M)[1]) * 1024
+        hwm = int(re.search(r'^VmHWM:\s+(\d+)', status, re.M)[1]) * 1024
+        memory = counters((self.cgroup / 'memory.stat').read_text())
+        stat = Path(f'/proc/{self.pid}/stat').read_text().rsplit(')', 1)[1].split()
+        paths = [self.root / 'var', self.root / 'dataframe']
+        sizes = {'wal_bytes': 0, 'workspace_bytes': 0, 'output_bytes': 0}
+        for directory in paths:
+            for path in directory.rglob('*'):
+                if path.is_file() and not path.is_symlink():
+                    try:
+                        size = path.stat().st_size
+                    except FileNotFoundError:
+                        # Owned spool files may be removed between directory enumeration and stat.
+                        continue
+                    if path.name.endswith('-wal'):
+                        sizes['wal_bytes'] += size
+                    if 'document-workspaces' in path.parts or 'staging' in path.parts:
+                        sizes['workspace_bytes'] += size
+                    if path.suffix == '.csv':
+                        sizes['output_bytes'] += size
+        return dict(monotonic=time.monotonic(), rss_bytes=rss, hwm_bytes=hwm,
+            process_cpu_seconds=(int(stat[11]) + int(stat[12])) / os.sysconf('SC_CLK_TCK'),
+            anon_bytes=memory['anon'], file_bytes=memory['file'], kernel_bytes=memory['kernel'],
+            non_file_bytes=memory['anon'] + memory['kernel'],
+            cgroup_current_bytes=int((self.cgroup / 'memory.current').read_text()),
+            swap_bytes=int((self.cgroup / 'memory.swap.current').read_text()),
+            psi=pressure((self.cgroup / 'memory.pressure').read_text()),
+            events=counters((self.cgroup / 'memory.events').read_text()),
+            cpu=counters((self.cgroup / 'cpu.stat').read_text()), **sizes)
+
+    def run(self):
+        try:
+            with (self.root / 'resources.jsonl').open('w') as output:
+                while not self.stop.wait(.1):
+                    sample = self.read()
+                    with self.lock:
+                        self.latest = sample
+                        self.samples += 1
+                        for name, value in sample.items():
+                            if name.endswith('_bytes'):
+                                self.peak[name] = max(self.peak.get(name, 0), value)
+                    output.write(json.dumps(sample) + '\n')
+        except Exception as failure:
+            self.failure = failure
+
+    def begin(self):
+        with self.lock:
+            self.peak.clear()
+            self.first = self.latest
+
+    def summary(self):
+        if self.failure:
+            raise RuntimeError('Resource sampler failed') from self.failure
+        with self.lock:
+            last = dict(self.latest)
+            wall = last['monotonic'] - self.first['monotonic']
+            psi = difference(self.first['psi'], last['psi'])
+            return {'samples': self.samples, 'sample_interval_seconds': .1, 'wall_seconds': wall,
+                    'process_cpu_seconds': last['process_cpu_seconds'] - self.first['process_cpu_seconds'],
+                    'peaks': dict(self.peak), 'process_hwm_bytes': last['hwm_bytes'],
+                    'cpu_delta': difference(self.first['cpu'], last['cpu']),
+                    'memory_events_delta': difference(self.first['events'], last['events']),
+                    'psi_microseconds_delta': psi, 'psi_full_fraction': psi['full'] / (wall * 1e6) if wall > 0 else None}
+
+    def close(self):
+        self.stop.set()
+        self.worker.join(5)
+        if self.worker.is_alive() or self.failure or self.samples == 0:
+            raise RuntimeError('Resource sampler failed or did not terminate') from self.failure
+
+
+def gate_sample(sample, size):
+    limits = {'local_max_seconds': 270 if size >= 1000000 else 45,
+              'rss_bytes': 512 * 1024**2, 'non_file_bytes': 576 * 1024**2, 'writer_hold_nanos': 5 * 10**9}
+    resource = sample['resources']
+    violations = []
+    # The window is conservative (cadence remains included), never a fabricated exact Tlocal.
+    if sample['local_window_upper_seconds'] > limits['local_max_seconds']:
+        violations.append('conservative_local_window')
+    for name in ('rss_bytes', 'non_file_bytes'):
+        if resource['peaks'][name] > limits[name]:
+            violations.append(name)
+    if resource['psi_full_fraction'] is None or resource['psi_full_fraction'] > .01:
+        violations.append('memory_psi_full')
+    if resource['memory_events_delta']['oom'] or resource['memory_events_delta']['oom_kill']:
+        violations.append('oom')
+    if max((value['maximumHoldNanos'] for value in sample['health']['writerOperations'].values()), default=0) > limits['writer_hold_nanos']:
+        violations.append('writer_hold')
+    return {'limits': limits, 'violations': violations, 'status': 'FAIL' if violations else 'SCREEN_PASS',
+            'scope': 'Conservative complete-window and resource screens; exact Tlocal/remaining G6 criteria remain separate'}
+
+
+class PrivateUnit:
+    """Own exactly one user-systemd JVM; verify applied cgroup ceilings before intake."""
+    def __init__(self, root):
+        self.root, self.name = root, 'ioc-cap6-' + uuid.uuid4().hex
+        self.pid, self.cgroup = None, None
+
+    def start(self, jar, config, environment=None, diagnostic=False):
+        arguments = ['systemd-run', '--user', '--quiet', '--unit=' + self.name,
+                     '-p', 'WorkingDirectory=' + str(self.root), '-p', 'CPUQuota=200%',
+                     '-p', 'MemoryHigh=768M', '-p', 'MemoryMax=1G', '-p', 'TimeoutStopSec=40s',
+                     '-p', 'StandardOutput=append:' + str(self.root / 'daemon.log'),
+                     '-p', 'StandardError=append:' + str(self.root / 'daemon.log')]
+        if environment:
+            arguments += ['-p', 'EnvironmentFile=' + str(environment)]
+        flags = FLAGS + (['-XX:NativeMemoryTracking=summary',
+                         '-XX:StartFlightRecording=filename=' + str(self.root / 'diagnostic.jfr') + ',settings=profile,dumponexit=true'] if diagnostic else [])
+        command(arguments + [shutil.which('java'), *flags,
+                '-Dlogging.config=file:' + str(self.root / 'logback.xml'),
+                '-Dspring.config.additional-location=file:' + str(config), '-jar', str(jar),
+                '--ioc.runtime.mode=daemon'])
+        for _ in range(100):
+            properties = self.properties()
+            if int(properties['MainPID']):
+                self.pid = int(properties['MainPID'])
+                self.cgroup = Path('/sys/fs/cgroup') / properties['ControlGroup'].lstrip('/')
+                limits = {name: (self.cgroup / name).read_text().strip()
+                          for name in ('cpu.max', 'memory.high', 'memory.max', 'memory.swap.max')}
+                quota, period = limits['cpu.max'].split()
+                if quota == 'max' or int(quota) != 2 * int(period) or limits['memory.high'] != str(768 * 1024**2) or limits['memory.max'] != str(1024**3):
+                    raise RuntimeError('Effective unit limits differ from frozen envelope')
+                return {'unit': self.name, 'pid': self.pid, 'cgroup': str(self.cgroup), 'effective_limits': limits,
+                        'flags': flags, 'environment_owner': 'systemd EnvironmentFile; never sourced in a shell'}
+            self.assert_running()
+            time.sleep(.05)
+        raise RuntimeError('Private unit did not start a JVM')
+
+    def properties(self):
+        output = command(['systemctl', '--user', 'show', self.name,
+                          '-p', 'MainPID', '-p', 'ControlGroup', '-p', 'ActiveState', '-p', 'Result', '-p', 'ExecMainStatus'])
+        return dict(line.split('=', 1) for line in output.splitlines())
+
+    def assert_running(self):
+        properties = self.properties()
+        if properties['ActiveState'] in ('failed', 'inactive'):
+            raise RuntimeError('Private unit exited: ' + json.dumps(properties))
+
+    def close(self):
+        before = self.properties()
+        command(['systemctl', '--user', 'stop', self.name], timeout=55)
+        after = self.properties()
+        if int(after['MainPID']) != 0:
+            raise RuntimeError('Private JVM did not terminate')
+        subprocess.run(['systemctl', '--user', 'reset-failed', self.name], capture_output=True, timeout=5, check=False)
+        return {'before_stop': before, 'after_stop': after, 'process_terminated': True}
+
+
+def health(port, component=None):
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(f'http://127.0.0.1:{port}/actuator/health' + ('/' + component if component else ''), timeout=3) as response:
+        return json.load(response)
+
+
+def ready(unit, port):
+    started, deadline = time.monotonic(), time.monotonic() + 90
+    while time.monotonic() < deadline:
+        unit.assert_running()
+        try:
+            value = health(port)
+            if value['status'] == 'UP':
+                return {'seconds': time.monotonic() - started, 'health': value}
+        except (OSError, ValueError):
+            pass
+        time.sleep(.2)
+    raise RuntimeError('Private service readiness timeout')
+
+
+def quiet_seconds(config):
+    duration = config['ioc']['ingestion']['stability']['quiet-period']
+    match = re.fullmatch(r'(\d+(?:\.\d+)?)(ms|s)', duration)
+    if not match:
+        raise ValueError('Harness requires an explicit seconds/milliseconds quiet-period')
+    return float(match[1]) / (1000 if match[2] == 'ms' else 1)
+
+
+def local_handoff(path, root):
+    target = root / 'var/inbox' / path.name
+    staging = target.with_suffix(target.suffix + '.part')
+    shutil.copyfile(path, staging)
+    os.utime(staging, None)
+    staging.replace(target)
+    return {'monotonic': time.monotonic(), 'epoch_seconds': time.time(), 'kind': 'producer atomic local rename completed'}
+
+
+def local_slices(unit, root, oracle, config, source_key, timeout):
+    service, dataframe = root / 'var/db/ioc-service.db', root / 'var/db/ioc-dataframe.db'
+    profiles = {profile['name']: set(profile['artifacts']) for profile in config['ioc']['export']['profiles']}
+    deadline, found, transitions = time.monotonic() + timeout, {}, []
+    previous = None
+    while time.monotonic() < deadline:
+        unit.assert_running()
+        admissions = BASE.rows(service, 'SELECT occurrence_id,phase,created_at_ms,updated_at_ms,terminal_outcome,registration_finalized '
+                                       'FROM document_admission WHERE source_key=?', (source_key,))
+        if admissions and admissions[0] != previous:
+            previous = admissions[0]
+            transitions.append(dict(observed_monotonic=time.monotonic(), **previous))
+        runs = BASE.rows(service, 'SELECT * FROM ingest_run WHERE source_key=? AND status=?', (source_key, 'COMPLETED'))
+        if runs:
+            revisions = {row['artifact']: row['revision'] for row in BASE.rows(dataframe, 'SELECT * FROM artifact_revision')}
+            for run in BASE.rows(service, 'SELECT * FROM export_run WHERE status=?', ('COMPLETED',)):
+                if run['profile'] not in profiles:
+                    continue
+                folder = root / 'var/export' / run['profile'] / run['slice_name']
+                manifest_path = folder / 'manifest.json'
+                if not manifest_path.is_file():
+                    continue
+                manifest = json.loads(manifest_path.read_text())
+                entries = {entry['artifact']: entry for entry in manifest['artifacts']}
+                if set(entries) != profiles[run['profile']] or any(entry['coverage']['revision'] != revisions.get(name, 0) for name, entry in entries.items()):
+                    continue
+                if BASE.digest(manifest_path) != run['manifest_sha256'] or (folder / '_SUCCESS').read_text().strip() != run['manifest_sha256']:
+                    raise RuntimeError('Local slice marker/manifest mismatch')
+                found[run['profile']] = dict(run=run, manifest=manifest, path=str(folder))
+            if set(found) == set(profiles) and admissions and admissions[0]['phase'] == 'TERMINAL' and admissions[0]['registration_finalized'] == 1:
+                if admissions[0]['terminal_outcome'] != 'SUCCEEDED':
+                    raise RuntimeError('Document terminal outcome failed')
+                # Stop timing before independent output readback/verification.
+                return {'complete_monotonic': time.monotonic(), 'profiles': found,
+                        'admission_transitions': transitions, 'run': runs[0], 'revisions': revisions}
+        time.sleep(.1)
+    raise RuntimeError('Complete local slices timeout')
+
+
+def verify_slices(local, oracle, dataframe):
+    evidence = {}
+    for profile, value in local['profiles'].items():
+        folder, manifest = Path(value['path']), value['manifest']
+        for entry in manifest['artifacts']:
+            if Path(entry['file']).name != entry['file']:
+                raise RuntimeError('Unsafe manifest filename')
+            path = folder / entry['file']
+            if BASE.digest(path) != entry['sha256'] or entry['rows'] != oracle.counts()[entry['artifact']]:
+                raise RuntimeError('Local CSV manifest hash/count mismatch')
+            oracle.check_csv(entry['artifact'], path, dataframe, profile)
+        evidence[profile] = {'manifest_sha256': value['run']['manifest_sha256'], 'artifacts': manifest['artifacts'],
+                             'slice_id': value['run']['run_id']}
+    return evidence
+
+
+def private_config(source, root, port):
+    config = yaml.safe_load(source.read_text())
+    config.setdefault('server', {})['port'] = port
+    # All storage and workload paths must remain in this unit's private cwd.
+    for store in ('service', 'dataframe'):
+        config['ioc']['storage'][store]['url'] = f'jdbc:sqlite:./var/db/ioc-{store}.db'
+    config['ioc']['export']['root'] = './var/export'
+    config['ioc']['ingestion']['dirs'] = {name: './var/' + name for name in ('inbox', 'processing', 'done', 'failed')}
+    config['ioc']['sync']['enabled'] = False
+    config['ioc']['sync']['fetch'] = {'enabled': False, 'interval': '10s', 'sources': []}
+    config['ioc']['sync']['publish'] = {'enabled': False, 'interval': '10s', 'targets': []}
+    config['ioc']['sync']['endpoints'] = []
+    for source_spec in config['ioc']['dataframe-import']['sources']:
+        if source_spec['transport'] == 'local':
+            source_spec['location'] = './var/import/inbox'
+    config['ioc']['dataframe-import']['sources'] = [source for source in config['ioc']['dataframe-import']['sources'] if source['transport'] == 'local']
+    config['logging'] = {'level': {'root': 'WARN'}}
+    (root / 'application.yml').write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True))
+    shutil.copyfile(REPO / 'bootstrap/ioc-app/src/test/resources/logback-capacity.xml', root / 'logback.xml')
+    return config
+
+
+def diagnostics(unit):
+    result = {}
+    for name, action in (('heap_before', 'GC.heap_info'), ('native', 'VM.native_memory summary'),
+                         ('forced_gc', 'GC.run'), ('heap_after', 'GC.heap_info'), ('retained_histogram', 'GC.class_histogram')):
+        result[name] = command(['jcmd', str(unit.pid), *action.split()], timeout=60)
+    return result
+
+
+def sample(args, jar, report, index, evidence_root):
+    unit, sampler, oracle = None, None, None
+    result = {'index': index, 'status': 'RUNNING', 'started_epoch_seconds': time.time()}
+    report['samples'].append(result)
+    # State cleanup is unconditional, including exceptions and collection failure.
+    temporary = tempfile.mkdtemp(prefix='ioc-cap6-', dir=REPO / '.dev')
+    root = Path(temporary)
+    try:
+        config = private_config(args.config, root, args.port)
+        result['policy_sha256'] = BASE.digest(root / 'application.yml')
+        result['policy_changes'] = ['Private state/inbox/import paths and loopback port', 'Sync disabled for local reference', 'Log phase observer enabled']
+        oracle = DiskOracle(config, root / 'oracle.db')
+        unit = PrivateUnit(root)
+        result['runtime'] = unit.start(jar, root / 'application.yml', diagnostic=args.diagnostic)
+        result['startup'] = ready(unit, args.port)
+        sampler = ResourceSampler(unit.pid, unit.cgroup, root)
+        warmup = root / 'warmup.html'
+        fixture(warmup, 60, seed=1)
+        feed_fixture(oracle, warmup)
+        local_handoff(warmup, root)
+        local = local_slices(unit, root, oracle, config, BASE.digest(warmup), args.timeout)
+        verify_slices(local, oracle, root / 'var/db/ioc-dataframe.db')
+        if args.initial_rows:
+            initial = root / 'initial.html'
+            result['initial_fixture'] = fixture(initial, args.initial_rows, seed=2)
+            feed_fixture(oracle, initial)
+            local_handoff(initial, root)
+            local = local_slices(unit, root, oracle, config, BASE.digest(initial), args.timeout)
+            verify_slices(local, oracle, root / 'var/db/ioc-dataframe.db')
+        document = root / ('reference.' + args.format)
+        result['input'] = fixture(document, args.rows, args.shape)
+        feed_fixture(oracle, document)
+        result['expected_final_rows'] = oracle.counts()
+        result['health_before'] = health(args.port, 'dataProcessingCapacity')['details']
+        sampler.begin()
+        handoff = local_handoff(document, root)
+        result['handoff'] = handoff
+        local = local_slices(unit, root, oracle, config, BASE.digest(document), args.timeout)
+        result['local_window_upper_seconds'] = local['complete_monotonic'] - handoff['monotonic'] - quiet_seconds(config)
+        result['configured_stability_seconds'] = quiet_seconds(config)
+        result['raw_local_handoff_to_slices_seconds'] = local['complete_monotonic'] - handoff['monotonic']
+        result['timeline'] = {key: value for key, value in local.items() if key != 'profiles'}
+        result['resources'] = sampler.summary()
+        result['health'] = health(args.port, 'dataProcessingCapacity')['details']
+        result['canonical_oracle'] = oracle.check_database(root / 'var/db/ioc-dataframe.db')
+        result['local_slices'] = verify_slices(local, oracle, root / 'var/db/ioc-dataframe.db')
+        result['gates'] = gate_sample(result, args.rows)
+        result['status'] = result['gates']['status']
+        if args.diagnostic:
+            result['diagnostics'] = diagnostics(unit)
+    except Exception as failure:
+        result.update(status='ERROR', failure=str(failure))
+        if sampler:
+            try:
+                result['resources_at_failure'] = sampler.summary()
+            except Exception as collector_failure:
+                result['collection_failure'] = str(collector_failure)
+    finally:
+        errors = []
+        if sampler:
+            try:
+                sampler.close()
+            except Exception as failure:
+                errors.append(str(failure))
+        if unit:
+            try:
+                result['cleanup'] = unit.close()
+            except Exception as failure:
+                errors.append(str(failure))
+        if oracle:
+            oracle.close()
+        # Keep small evidence and separate diagnostic recording, no SQLite/CSV copies.
+        folder = evidence_root / str(index)
+        folder.mkdir()
+        for name in ('resources.jsonl', 'daemon.log', 'application.yml', 'diagnostic.jfr'):
+            path = root / name
+            if path.is_file():
+                shutil.copy2(path, folder / name)
+        result['cleanup_errors'] = errors
+        if errors:
+            result['status'] = 'ERROR'
+        if unit is None or result.get('cleanup', {}).get('process_terminated'):
+            shutil.rmtree(root)
+        else:
+            result['state_preserved_until_unit_termination'] = str(root)
+    result['temporary_state_removed'] = not root.exists()
+    result['finished_epoch_seconds'] = time.time()
+    save(evidence_root / 'report.json', report)
+    print(json.dumps({'sample': index, 'status': result['status'], 'seconds': result.get('local_window_upper_seconds'),
+                      'failure': result.get('failure'), 'gates': result.get('gates'), 'state_removed': result['temporary_state_removed']}), flush=True)
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--jar', type=Path, required=True)
+    parser.add_argument('--config', type=Path, required=True)
+    parser.add_argument('--output', type=Path, required=True, help='New repo-local .dev evidence directory')
+    parser.add_argument('--rows', type=int, default=100000)
+    parser.add_argument('--format', choices=('html', 'docx'), default='html')
+    parser.add_argument('--shape', choices=('mostly-unique', 'unique', 'collapse'), default='mostly-unique')
+    parser.add_argument('--initial-rows', type=int, default=0)
+    parser.add_argument('--samples', type=int, default=3)
+    parser.add_argument('--timeout', type=int, default=900)
+    parser.add_argument('--port', type=int, default=18206)
+    parser.add_argument('--diagnostic', action='store_true')
+    args = parser.parse_args()
+    root = args.output.absolute()
+    if args.rows < 1 or args.initial_rows < 0 or args.samples < 1 or args.timeout < 1:
+        parser.error('Positive workload, samples and timeout required')
+    if not root.is_relative_to(REPO / '.dev') or root.exists() or root.resolve() != root:
+        parser.error('Use a new private repo-local .dev output without symlinks')
+    if command(['git', '-C', str(REPO), 'status', '--porcelain']):
+        parser.error('Commit the harness and policy before measuring')
+    root.mkdir(parents=True)
+    head = command(['git', '-C', str(REPO), 'rev-parse', 'HEAD'])
+    report = {'source_commit': head, 'jar_sha256': BASE.digest(args.jar), 'driver_sha256': BASE.digest(__file__),
+              'base_oracle_sha256': BASE.digest(BASE.__file__), 'policy_sha256': BASE.digest(args.config),
+              'java': command(['java', '-version']), 'rows': args.rows, 'format': args.format, 'shape': args.shape,
+              'initial_rows': args.initial_rows, 'requested_samples': args.samples, 'mode': 'diagnostic' if args.diagnostic else 'primary',
+              'samples': [], 'acceptance': 'NOT_ACCEPTED; exact Tlocal and complete G6 matrix are separate'}
+    save(root / 'report.json', report)
+    # Freeze packaged bytes once; a rebuild cannot alter later samples.
+    with tempfile.TemporaryDirectory(prefix='ioc-cap6-runtime-', dir=REPO / '.dev') as temporary:
+        jar = Path(temporary) / 'ioc-app.jar'
+        shutil.copyfile(args.jar, jar)
+        if BASE.digest(jar) != report['jar_sha256']:
+            raise RuntimeError('Jar changed during freeze')
+        for index in range(args.samples):
+            if shutil.disk_usage(REPO / '.dev').free < 5 * 1024**3:
+                report['failure'] = 'Less than 5 GiB free; no new JVM started'
+                break
+            value = sample(args, jar, report, index, root)
+            if value['status'] != 'SCREEN_PASS':
+                report['stopped_after_failed_screen'] = True
+                break
+    report['temporary_runtime_removed'] = not Path(temporary).exists()
+    values = [value['local_window_upper_seconds'] for value in report['samples'] if value['status'] == 'SCREEN_PASS']
+    if len(values) == args.samples:
+        report['summary'] = {'n': len(values), 'median_upper_seconds': statistics.median(values), 'range_upper_seconds': [min(values), max(values)]}
+        median_budget = 180 if args.rows >= 1000000 else 30
+        report['status'] = 'SCREEN_PASS' if statistics.median(values) <= median_budget else 'FAIL'
+    else:
+        report['status'] = 'FAIL'
+    if command(['git', '-C', str(REPO), 'rev-parse', 'HEAD']) != head or command(['git', '-C', str(REPO), 'status', '--porcelain']):
+        report.update(status='ERROR', identity_failure='HEAD/worktree changed during qualification')
+    save(root / 'report.json', report)
+    if report['status'] != 'SCREEN_PASS':
+        raise SystemExit(1)
+
+
+if __name__ == '__main__':
+    main()

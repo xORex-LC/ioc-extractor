@@ -274,6 +274,10 @@ processing-stage-capacity: ## CAP-3 paired stage probes; STAGE_CAPACITY_ARGS sel
 document-workspace-capacity: ## CAP-4 incremental disk-reducer/writer/receipt diagnostic; WORKSPACE_CAPACITY_ARGS selects output and sizes
 	@python3 tools/dev/document-workspace-capacity.py $(WORKSPACE_CAPACITY_ARGS)
 
+.PHONY: service-capacity
+service-capacity: ## CAP-6 private cgroup-limited whole-service screens; SERVICE_CAPACITY_ARGS selects jar, policy and covering cell
+	@python3 tools/dev/service-capacity.py $(SERVICE_CAPACITY_ARGS)
+
 db: ## Inspect SQLite read-only; DB=service|dataframe DB_COMMAND=shell|schema|tables
 	@tools/dev/database.sh --workspace "$(WORKSPACE)" --db "$(DB)" "$(DB_COMMAND)"
 
