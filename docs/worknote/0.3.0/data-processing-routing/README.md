@@ -157,3 +157,8 @@ measurement forks. Whole-service resource acceptance remains a later gate.
 streamed canonical confirmations/receipts, failure and cleanup contracts, and
 the G4 10k/100k/1m memory plateau. Separate upstream memory and whole-service
 latency limits remain open.
+
+[CAP-5 execution](cap-5-execution.md) records independent profile formation,
+durable bounded document execution, ordered promotion and shared writer
+admission. Controlled concurrency/recovery tests and the writer/WAL diagnostics
+are separate from the remaining absolute resource and whole-service gates.

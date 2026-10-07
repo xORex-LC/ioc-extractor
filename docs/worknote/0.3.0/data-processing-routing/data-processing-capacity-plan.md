@@ -596,7 +596,7 @@ Document completion promotes durable decisions into an ADR, capability docs,
 operator guide/root map or known-issue disposition; this worknote remains an
 execution plan, not runtime truth.
 
-Current status (2026-10-05): CAP-0, CAP-1A and CAP-1B implementation and scoped
+Current status (2026-10-07): CAP-0, CAP-1A and CAP-1B implementation and scoped
 qualification are recorded in the [execution report](cap-0-1-execution.md).
 CAP-2 implementation and G2 qualification are complete in the
 [projection ownership report](cap-2-execution.md). CAP-3 implementation and G3
@@ -606,10 +606,25 @@ exact counts and rejecting checkpoints have regression and paired measurement
 evidence. CAP-4 and G4 are complete in the
 [workspace report](cap-4-execution.md): private sealed preparation, bounded
 canonical/receipt cursors, failure/ownership tests and 10k/100k/1m memory plateau.
-CAP-5–CAP-7 remain unimplemented. The separate million-occurrence
-reader/extractor graph still reaches about 730 MiB RSS in its diagnostic; G6
-latency and total-process resource acceptance remain open. The 100k document RSS and maximum
-writer-hold budgets remain open; scoped stage qualification is not whole-service
+CAP-5A/CAP-5B implementation is recorded in the
+[execution and admission report](cap-5-execution.md): independent bounded
+profile formation, a durable document-reference queue, ordered promotion,
+shared non-preemptive writer admission and bounded operational telemetry.
+Controlled isolation, saturation, retry/reopen, out-of-order preparation,
+shutdown and WAL diagnostics qualify those mechanisms. Absolute CAP-5 resource
+acceptance remains open; a supported small-budget writer diagnostic already
+exceeds the frozen five-second occupancy screen. CAP-7C is activated as the
+explicit atomicity/visibility decision track; it is not implemented by CAP-5.
+Largest imports and complete mixed-service control/export latency remain CAP-6
+qualification cells, rather than inferred passes from this diagnostic.
+
+CAP-6 and CAP-7 implementation/qualification remain outside this slice. The
+separate million-occurrence reader/extractor graph still reaches about 730 MiB
+RSS in its CAP-4 diagnostic; overlapping preparation can multiply that graph.
+The queue/window and workspace budgets do not close upstream/whole-process
+memory acceptance. G6 latency and resource budgets remain open; CAP-7A remains
+the source/extraction investigation track if the supported complete workload
+fails after qualification. Scoped stage qualification is not whole-service
 acceptance.
 
 Historical planning validation: `make docs`, an explicit offline link check of this plan,

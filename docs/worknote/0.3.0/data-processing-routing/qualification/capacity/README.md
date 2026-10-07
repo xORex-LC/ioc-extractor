@@ -2,7 +2,7 @@
 
 Diagnostic evidence for the
 [capacity and scheduling review](../../data-processing-capacity-review.md).
-Recorded 2026-10-04–2026-10-05. The incident files describe the old deployed runtime;
+Recorded 2026-10-04–2026-10-07. The incident files describe the old deployed runtime;
 CAP-0/1 evidence additionally qualifies isolated corrected executables.
 
 ## Evidence files
@@ -16,6 +16,7 @@ CAP-0/1 evidence additionally qualifies isolated corrected executables.
 | [cap-0-1-20261004.json](cap-0-1-20261004.json) | CAP-0/1 frozen identities, 40 paired primary forks, ten diagnostic phase forks, exact-driver work/plans and all-five live SMB/oracle checks |
 | [cap-3-stages.json](cap-3-stages.json) | CAP-3 stage mechanisms: 60 alternating primary JVM forks, 100k/1m attribution and bounded 100k diagnostics, identical semantic signatures, no retained database state |
 | [cap-4-workspace.json](cap-4-workspace.json) | CAP-4 G4: three incremental workspace/canonical/receipt JVM forks (10k/100k/1m rows per artifact) and three separate actual Spring/Tika/extraction forks; frozen bytecode, full-row oracle, explicit-GC diagnostics and verified removal of all private runtime/state |
+| [cap-5-writer.json](cap-5-writer.json) | CAP-5 writer-occupancy diagnostic: 100k/1m incremental rows per artifact, real atomic lifecycle writer and receipts, operation wait/hold counters, full-row oracle and mandatory private-state cleanup; no whole-service or mixed-load acceptance |
 
 `artifact_revision.changed_at` is transaction effective time sampled before
 the mutation loop. It must not be used as commit completion wall time. The
@@ -111,3 +112,11 @@ candidates and 2*N canonical winners for each reported N; it does not time
 Router, source reading or SMB. The separate upstream series measures those
 input graphs through attribution, without routing or writes. All six forks
 remove their databases/source files; only this compact JSON is retained.
+
+[CAP-5 execution](../../cap-5-execution.md) separates the controlled profile,
+durable-order, saturation and shutdown screens from the writer responsiveness
+budget. The writer series reuses the CAP-4 two-artifact small-budget diagnostic
+with operation telemetry; it does not reproduce the upstream series or run
+Router, exports, largest imports or SMB. One fresh JVM per size is a diagnostic
+sample, not a primary median or speedup comparison. Frozen source/bytecode
+identity and verified cleanup are in the JSON; no replayable database is retained.

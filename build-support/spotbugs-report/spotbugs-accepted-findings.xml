@@ -1458,7 +1458,7 @@
             <Class name="com.iocextractor.adapter.out.sink.csv.NioExportOperationGuard" />
             <Method name="acquire" />
         </suppression>
-        <rationale>Reviewed exception-policy signal: profile lease acquisition preserves the original runtime failure after closing a partial channel and removing local admission. NioExportOperationGuardTest and ProfileExportIsolationIT qualify same-profile exclusion, independent profile progress and scoped recovery.</rationale>
+        <rationale>Reviewed exception-policy signal: profile lease acquisition preserves the original runtime failure after closing a partial channel and removing local admission. NioExportOperationGuardIT and OnDemandExportIntegrationIT qualify same-profile exclusion, independent profile progress and scoped recovery.</rationale>
     </finding>
     <finding id="CAP-5-SB-002" module="adapters/adapter-ingest" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="f91608d08b4c2edc1bb5ea1ca103b683" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-5-OWNERSHIP" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.adapter.in.ingest.DurableDocumentDispatcher" />

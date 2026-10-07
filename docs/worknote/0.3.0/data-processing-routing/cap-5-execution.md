@@ -1,6 +1,9 @@
 # CAP-5 execution evidence
 
-Status: implementation in progress. Scope: CAP-5A and CAP-5B only. No stand deployment.
+Date: 2026-10-07. Scope: CAP-5A and CAP-5B only. No stand deployment.
+Status: implementation and controlled functional qualification complete;
+absolute CAP-5 resource acceptance remains open. CAP-7C is activated for the
+writer-occupancy decision, without changing existing atomicity.
 Baseline: `0b56321c1571811369fba0114db067571cd34398` (CAP-4).
 
 ## Export isolation findings
@@ -81,15 +84,23 @@ progress. Private state is owned by JUnit TempDir.
 
 ## Gates and limits
 
-Focused export scheduler tests, the real Spring isolation test, service migration
-and reader/WAL tests have passed. The real prepared-document test also passed:
-newer preparation completed first, both artifacts remained empty until promotion,
-the earlier masks row retained its source and aggregate name used the later rank.
-The bounded-sealing regression and the existing source lifecycle recovery suite passed (17 cases; 36.851 s including the upstream build). Complete analyzer gates are still pending.
-G5A/G5B are not closed. The frozen five-second maximum canonical writer occupancy
-must be measured; scheduling cannot preempt an existing atomic transaction.
-CAP-7C remains the required follow-up if that unit exceeds the accepted budget.
-All measurement states must be private and removed after evidence capture.
+| Gate / task group | Status | Evidence and boundary |
+| --- | --- | --- |
+| CAP-5A / G5A controlled isolation | PASS | Real Spring/SQLite/CSV test completes a second profile while the first reader is blocked; profile-scoped formation/recovery, bounded scheduler and reader admission preserve namespaces |
+| CAP-5B intake / ownership / recovery | PASS | Durable count/byte admission, lost hints, retry attempts/reopen, saturation, bounded sealing, blocked pre-hash ownership, shutdown/restart and startup barrier regressions |
+| CAP-5B order / winner semantics | PASS | Real Spring/Router preparation finishes newer work first; both artifacts remain empty until promotion; earlier masks source wins while aggregate name uses the later registered rank |
+| CAP-5B writer selection | PASS (mechanism) | All five classes progress under controlled aging; nested operations remain one outer unit; cancellation and failure release admission |
+| Long-reader WAL diagnostic | PASS (mechanism) | Actual read snapshot and permit contention; 6,427,232 pinned WAL bytes drain after reader release; no hard WAL-size guarantee |
+| Writer responsiveness / absolute CAP-5 acceptance | OPEN / diagnostic screen FAIL | Atomic units exceed the frozen five-second screen; see the retained writer measurements. Scheduling cannot preempt them. CAP-7C is activated |
+| Whole-service mixed control/export latency, largest imports / G6 | NOT_RUN / OPEN | No live stand, primary workload matrix or network run in this slice; 10-second control wait and 2-second eligible dispatch budgets are not declared achieved |
+| Whole-process memory | OPEN | CAP-4 upstream materialization remains input-sized; overlapping preparation can multiply it. Workspace/queue limits do not close the 512 MiB RSS target |
+| Candidate deterministic / analyzer gates | PASS | Complete reactor, exact SpotBugs/CPD, PMD policy and ownership watchlist; counts and review below; final committed-HEAD freshness remains mandatory |
+
+The bounded-sealing regression and the existing source lifecycle recovery suite
+passed (17 cases; 36.851 s including the upstream build). Controlled G5A/G5B
+mechanism evidence is not complete capacity acceptance. In particular, the
+frozen five-second maximum applies to a complete admitted canonical transaction,
+not an inner statement batch. No atomic transaction is split by CAP-5.
 
 ## Test universe review
 
@@ -158,14 +169,14 @@ failure-contract review trigger. No SQL/security/null finding is accepted by
 this review. The final scheduler stop aggregation is reviewed with the same
 primary/suppressed contract (`CAP-5-SB-006`). The generated proposal is not copied
 wholesale. Existing identities retain their evidence/owner and review trigger;
-new entries are `CAP-5-SB-001` through `CAP-5-SB-006`.
+new entries are `CAP-5-SB-001` through `CAP-5-SB-006`. The lease/isolation
+entry references the existing `NioExportOperationGuardIT` and
+`OnDemandExportIntegrationIT` suites; no separate isolation suite was added.
 
 The final startup tests cover dispatcher start/close failure, premature intake,
 idempotent scheduler start and a delayed admission arriving after stop. All
 intakes close before startup failure reaches Spring, with cleanup evidence
 retained. No report floor or per-scope missed-count baseline is reduced.
-
-
 ## Candidate quality checks (2026-10-07)
 
 The complete reviewed-candidate reactor passed: 223 fast, 75 integration,
@@ -173,8 +184,8 @@ The complete reviewed-candidate reactor passed: 223 fast, 75 integration,
 coverage was 25,607/28,012 lines (91.41%) and 9,218/10,977 branches (83.98%).
 Every per-scope ratchet passed without a floor/baseline change. External skips
 are not provisioned transport evidence. The verification freshness record was
-invalidated by documentation edits during that run; the committed-HEAD gate
-will be run again after qualification packaging.
+invalidated by documentation edits during that run. This is candidate evidence;
+the final committed-HEAD release gate is a separate completion requirement.
 
 The raw SpotBugs report has 135 exact accepted identities and zero unaccepted
 findings. CAP-5 adds the six reviewed exception-policy entries described above;
@@ -195,7 +206,75 @@ and borrowed iteration variables. Controlled cleanup, interruption and restart
 regressions qualify those boundaries. Existing unrelated deferred watchlist
 signals keep their prior disposition.
 
-Published documentation link checking passed (1,456 total links, 596 unique,
-1,222 OK, zero errors, 234 excluded). Writer-occupancy measurements and the
-final committed-HEAD gates still follow; these checks do not close G6 or the
-frozen absolute resource budgets.
+Published documentation link checking passed (1,461 total links, 598 unique,
+1,227 OK, zero errors, 234 excluded). An explicit offline check of the changed
+execution bundle passed with 82 links, 62 unique, 79 OK, zero errors and three
+excluded. `make ci-packaging` passed ShellCheck, packaging and tools contracts,
+including capacity-harness failure/timeout cleanup checks. The retained writer
+section below records the separate responsiveness miss. Committed-HEAD verification/PMD freshness is
+checked again before handoff through `make context` and its local evidence;
+these candidate checks do not close G6 or the frozen absolute resource budgets.
+
+## Writer occupancy and atomic-unit decision (2026-10-07)
+
+The [retained raw evidence](qualification/capacity/cap-5-writer.json) uses
+implementation commit `21785ba90b5e4cf3db88f6a30f7670883557698e` and frozen
+runtime SHA-256
+`e204d1853f9c89a368c9d607edfe6b3bf1f3a1d77c27a5936671bbceb18875f5`.
+It ran on WSL2/Linux with the Java version recorded in the JSON,
+11:46:58–11:55:37 UTC. The command was:
+
+```bash
+make document-workspace-capacity WORKSPACE_CAPACITY_ARGS='--output docs/worknote/0.3.0/data-processing-routing/qualification/capacity/cap-5-writer.json --sizes 100000 1000000 --upstream-sizes'
+```
+
+This reuses the CAP-4 incremental small-budget diagnostic: `-Xms32m -Xmx64m`,
+one 64 KiB native workspace cache, shared 2 MiB preparation admission and a
+single low-memory canonical connection. N is rows **per artifact**; two
+synthetic artifact policies create 2.2*N candidates, including ten percent
+duplicates, and 2*N canonical winners. KEEP_FIRST/LAST_NONEMPTY, complete rows,
+field positions, first-key order and COMPLETE receipts pass the independent
+oracle. There is one fresh JVM sample per size. No timing ratio, primary median,
+percentile or whole-service performance claim is made.
+
+| N per artifact | Prepare/seal, s | Complete two-artifact promotion phase, s | Admitted PROMOTION units | Total admitted hold, s | Maximum complete writer hold, s | Frozen 5 s screen |
+| ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 100,000 | 25.618 | 13.355 | 2 | 10.642 | 5.401 | FAIL |
+| 1,000,000 | 315.415 | 143.209 | 2 | 117.303 | 59.194 | FAIL |
+
+The complete promotion phase also includes work outside writer admission; it
+must not be substituted for transaction hold. Each measured hold includes one
+artifact's complete canonical/lifecycle/receipt atomic unit, rather than an
+inner binding batch. Nested clock/control work is attributed to its outer unit.
+The separate CONTROL counters have five completed units per fork, with maximum
+hold 17.70/80.77 ms. They have no contending mixed load and therefore do not
+qualify the ten-second control-queue budget.
+
+This supported diagnostic fails the frozen five-second occupancy screen at
+both sizes. CAP-7C is activated for an explicit atomicity/visibility decision.
+A control request becoming eligible just after a long writer unit starts cannot
+be admitted until that unit ends; this implication follows from non-preemption,
+not a measured mixed-workload percentile. Increasing executor count or changing
+fresh-request priority cannot remove that wait. Production-profile and largest
+import/mixed-load measurements remain CAP-6 requirements before choosing the
+final storage/visibility design. CAP-5 does not publish partial transactions,
+relax the budget or claim complete service acceptance.
+
+| N per artifact | Post-GC live heap after receipt, MiB | Sampled peak heap, MiB | Sampled peak RSS, MiB | Total private state, MiB |
+| ---: | ---: | ---: | ---: | ---: |
+| 100,000 | 13.313 | 30.344 | 166.24 | 308.62 |
+| 1,000,000 | 13.075 | 29.352 | 178.74 | 3138.86 |
+
+These explicit-GC/small-heap samples preserve the G4 preparation/promotion
+plateau; they exclude Tika, occurrence graphs, Router, export/publication and
+other overlapping service workers. They cannot close the whole-process RSS
+budget. The earlier CAP-4 upstream diagnostic and concurrent-preparation risk
+remain visible in the ingestion capability documentation and capacity plan.
+
+Both forks removed their private databases/source state after the oracle.
+The frozen runtime was also removed and the harness reports
+`temporary_runtime_and_state_removed=true`; no `ioc-cap4-*` directory remains
+from this run. The largest private state was 3,138.86 MiB during measurement,
+not a retained repository artifact or canonical production quota. Only the
+compact JSON is committed. Existing harness failure/timeout cleanup contracts
+remain in the tools gate.

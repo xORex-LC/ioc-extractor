@@ -1,0 +1,130 @@
+{
+  "source_commit": "21785ba90b5e4cf3db88f6a30f7670883557698e",
+  "scope": "G4 diagnostic: incremental routed candidates through canonical confirmation and receipt replay; explicit GC live samples; no source reader/Router/SMB timing",
+  "flags": [
+    "-Xms32m",
+    "-Xmx64m"
+  ],
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "java": "openjdk version \"21.0.12.1\" 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-24.04.4-Ubuntu)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-24.04.4-Ubuntu, mixed mode, sharing)",
+  "samples": [
+    {
+      "rows_per_artifact": 100000,
+      "limits": {
+        "memoryBytes": 2097152,
+        "cacheKiB": 64,
+        "maximumRowBytes": 4096,
+        "maximumFieldBytes": 2048,
+        "workspaceBytes": 2147483648,
+        "totalDiskBytes": 2147483648,
+        "batchRows": 128
+      },
+      "lease_bytes": 163840,
+      "live_workspace_connections": 1,
+      "summed_workspace_cache_bytes": 65536,
+      "canonical_connection_cache_bytes": 2048000,
+      "confirmation_validation_cache_bytes": 65536,
+      "state_disk_budget_bytes": 8589934592,
+      "baseline_live_heap_bytes": 13621776,
+      "baseline_rss_kib": 103772,
+      "prepare_seal_nanos": 25618459007,
+      "sealed_live_heap_bytes": 13799512,
+      "sealed_rss_kib": 126536,
+      "workspace_disk_bytes": 61428271,
+      "winner_validation_nanos": 741221420,
+      "promotion_nanos": 13354658305,
+      "writer_operations": {
+        "CONTROL": {
+          "completed": 5,
+          "totalWaitNanos": 3063592,
+          "maximumWaitNanos": 2909661,
+          "totalHoldNanos": 22351056,
+          "maximumHoldNanos": 17701460
+        },
+        "PROMOTION": {
+          "completed": 2,
+          "totalWaitNanos": 52187,
+          "maximumWaitNanos": 37392,
+          "totalHoldNanos": 10642101496,
+          "maximumHoldNanos": 5400623099
+        }
+      },
+      "promoted_live_heap_bytes": 13942488,
+      "promoted_rss_kib": 164728,
+      "receipt_read_nanos": 1183374886,
+      "receipt_live_heap_bytes": 13959520,
+      "receipt_rss_kib": 170232,
+      "signatures": {
+        "first": "aab5f349a64c68383ccdf290e1067c16109813e1a8f428f132f99059422d3218",
+        "last": "bdf27afa0d8a23e5039a8c5758e8ee801a920b0941fb5290cbe7444465fd2550"
+      },
+      "total_state_disk_bytes": 323616033,
+      "peak_heap_bytes": 31818408,
+      "peak_rss_kib": 170232
+    },
+    {
+      "rows_per_artifact": 1000000,
+      "limits": {
+        "memoryBytes": 2097152,
+        "cacheKiB": 64,
+        "maximumRowBytes": 4096,
+        "maximumFieldBytes": 2048,
+        "workspaceBytes": 2147483648,
+        "totalDiskBytes": 2147483648,
+        "batchRows": 128
+      },
+      "lease_bytes": 163840,
+      "live_workspace_connections": 1,
+      "summed_workspace_cache_bytes": 65536,
+      "canonical_connection_cache_bytes": 2048000,
+      "confirmation_validation_cache_bytes": 65536,
+      "state_disk_budget_bytes": 8589934592,
+      "baseline_live_heap_bytes": 13651600,
+      "baseline_rss_kib": 105808,
+      "prepare_seal_nanos": 315414740715,
+      "sealed_live_heap_bytes": 13570240,
+      "sealed_rss_kib": 139172,
+      "workspace_disk_bytes": 635056691,
+      "winner_validation_nanos": 6036528708,
+      "promotion_nanos": 143209410020,
+      "writer_operations": {
+        "CONTROL": {
+          "completed": 5,
+          "totalWaitNanos": 2646511,
+          "maximumWaitNanos": 2467914,
+          "totalHoldNanos": 85890462,
+          "maximumHoldNanos": 80767256
+        },
+        "PROMOTION": {
+          "completed": 2,
+          "totalWaitNanos": 50694,
+          "maximumWaitNanos": 36492,
+          "totalHoldNanos": 117303101699,
+          "maximumHoldNanos": 59193742722
+        }
+      },
+      "promoted_live_heap_bytes": 13689000,
+      "promoted_rss_kib": 173580,
+      "receipt_read_nanos": 11566586907,
+      "receipt_live_heap_bytes": 13709792,
+      "receipt_rss_kib": 167632,
+      "signatures": {
+        "first": "5470702a98bb00104cd9a50100fdad35f93e822db4713a123b90f82339c3aca6",
+        "last": "c72ba0f5d9c94fbf620d400bd1634a3df95adaf57cb9cbdb97543964bb830ed3"
+      },
+      "total_state_disk_bytes": 3291336813,
+      "peak_heap_bytes": 30777952,
+      "peak_rss_kib": 183032
+    }
+  ],
+  "upstream_samples": [],
+  "upstream_flags": [
+    "-Xms32m",
+    "-Xmx512m"
+  ],
+  "upstream_scope": "Separate actual Spring/Tika/read/refang/extract/attribute graph; explicit GC stage boundaries; no routing or writes",
+  "started_epoch_seconds": 1791373618.1317134,
+  "runtime_sha256": "e204d1853f9c89a368c9d607edfe6b3bf1f3a1d77c27a5936671bbceb18875f5",
+  "temporary_runtime_and_state_removed": true,
+  "completed_epoch_seconds": 1791374137.7136858
+}
