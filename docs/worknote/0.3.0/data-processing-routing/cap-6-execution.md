@@ -82,3 +82,9 @@ retains failure evidence and still removes DB/WAL/workspace/output copies.
   the actual Java process before any measured input.
 - Existing CAP-5 evidence already fails the 5s writer screen at 100k and 1m.
   This activates CAP-7C; CAP-6 must quantify whole-service consequences.
+- The first smoke exposed a harness boundary error: the actual stand uses a
+  file-backed admission journal, while the monitor waited for the JDBC table.
+  The warmup completed and all profiles exported, but the harness timed out.
+  Preserve `.dev/cap6-smoke-html/report.json` as failed harness evidence; the
+  corrected monitor reads the configured durable backend. This is not a
+  successful workload sample or a production performance failure.

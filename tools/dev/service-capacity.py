@@ -430,6 +430,28 @@ def local_handoff(path, root):
     return {'monotonic': time.monotonic(), 'epoch_seconds': time.time(), 'kind': 'producer atomic local rename completed'}
 
 
+def admission_rows(root, config, source_key):
+    ledger = config['ioc']['ingestion']['ledger']
+    if ledger['type'] == 'jdbc':
+        return BASE.rows(root / 'var/db/ioc-service.db',
+            'SELECT occurrence_id,phase,created_at_ms,updated_at_ms,terminal_outcome,registration_finalized '
+            'FROM document_admission WHERE source_key=?', (source_key,))
+    if ledger['type'] != 'file':
+        raise ValueError('Capacity requires a durable file or JDBC admission journal')
+    result = []
+    for path in (root / ledger['path'] / 'document-admission').glob('*.properties'):
+        # Selected journal fields are ASCII; timestamps have Properties.store escaped colons.
+        fields = dict(line.split('=', 1) for line in path.read_text().splitlines()
+                      if line and not line.startswith('#') and '=' in line)
+        if fields.get('sourceKey') == source_key:
+            result.append({'occurrence_id': fields['observationId'], 'phase': fields['phase'],
+                'created_at_ms': datetime.fromisoformat(fields['createdAt'].replace('\\:', ':')).timestamp() * 1000,
+                'updated_at_ms': datetime.fromisoformat(fields['updatedAt'].replace('\\:', ':')).timestamp() * 1000,
+                'terminal_outcome': fields.get('terminalOutcome'),
+                'registration_finalized': int(fields['registrationFinalized'] == 'true')})
+    return result
+
+
 def local_slices(unit, root, oracle, config, source_key, timeout):
     service, dataframe = root / 'var/db/ioc-service.db', root / 'var/db/ioc-dataframe.db'
     profiles = {profile['name']: set(profile['artifacts']) for profile in config['ioc']['export']['profiles']}
@@ -437,8 +459,7 @@ def local_slices(unit, root, oracle, config, source_key, timeout):
     previous = None
     while time.monotonic() < deadline:
         unit.assert_running()
-        admissions = BASE.rows(service, 'SELECT occurrence_id,phase,created_at_ms,updated_at_ms,terminal_outcome,registration_finalized '
-                                       'FROM document_admission WHERE source_key=?', (source_key,))
+        admissions = admission_rows(root, config, source_key)
         if admissions and admissions[0] != previous:
             previous = admissions[0]
             transitions.append(dict(observed_monotonic=time.monotonic(), **previous))

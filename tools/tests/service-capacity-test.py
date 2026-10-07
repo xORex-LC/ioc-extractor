@@ -161,6 +161,23 @@ class ServiceCapacityTest(unittest.TestCase):
             self.assertEqual(list((repo / '.dev').iterdir()), [])
             self.assertEqual(json.loads((evidence / 'report.json').read_text())['samples'][0]['failure'], 'readiness failure')
 
+    def test_file_ledger_terminal_anchor_preserves_the_configured_journal_backend(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            directory = root / 'var/ledger/document-admission'
+            directory.mkdir(parents=True)
+            (directory / 'fixture.properties').write_text('#ioc document admission\n'
+                'sourceKey=sha\nobservationId=occurrence\nphase=TERMINAL\n'
+                'createdAt=2026-10-07T13\\:52\\:21.331827039Z\n'
+                'updatedAt=2026-10-07T13\\:52\\:22.123Z\n'
+                'terminalOutcome=SUCCEEDED\nregistrationFinalized=true\n')
+            config = {'ioc': {'ingestion': {'ledger': {'type': 'file', 'path': './var/ledger'}}}}
+            rows = CAP.admission_rows(root, config, 'sha')
+            self.assertEqual(rows[0]['registration_finalized'], 1)
+            self.assertEqual(rows[0]['terminal_outcome'], 'SUCCEEDED')
+            self.assertGreater(rows[0]['updated_at_ms'], rows[0]['created_at_ms'])
+            self.assertEqual(CAP.admission_rows(root, config, 'other'), [])
+
 
 if __name__ == '__main__':
     unittest.main()
