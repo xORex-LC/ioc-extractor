@@ -23,7 +23,9 @@ def policy():
     keys = {'masks': ['mask'], 'ip_list': ['ip', 'score'], 'hashes': ['hash_md5', 'hash_sha256', 'hash_sha1'],
             'address_blacklist': columns['address_blacklist'], 'ioc_aggregate': columns['ioc_aggregate'][1:]}
     return {'ioc': {'refang': {'rules': [{'from': 'hxxps', 'to': 'https'}, {'from': '[.]', 'to': '.'}, {'from': '[:]', 'to': ':'}]},
-                    'sink': {'artifacts': [{'name': name, 'columns': [{'name': column} for column in names]} for name, names in columns.items()]},
+                    'sink': {'artifacts': [{'name': name, 'columns': [{'name': column} for column in
+                                (['id'] if name in ('masks', 'ip_list', 'hashes') else []) + names]}
+                               for name, names in columns.items()]},
                     'artifact-identity': {'artifacts': [{'name': name, 'key-columns': names} for name, names in keys.items()]}}}
 
 
@@ -48,8 +50,7 @@ class ServiceCapacityTest(unittest.TestCase):
         config = policy()
         config['ioc']['dataframe-import'] = {'contracts': [
             {'id': spec['name'], 'mode': 'as-is', 'artifacts': [{'name': spec['name']}],
-             'recognition': {'required-columns': (['id'] if spec['name'] in ('ip_list', 'masks', 'hashes') else [])
-                             + [item['name'] for item in spec['columns']]}}
+             'recognition': {'required-columns': [item['name'] for item in spec['columns']]}}
             for spec in config['ioc']['sink']['artifacts']]}
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -122,6 +123,8 @@ class ServiceCapacityTest(unittest.TestCase):
                 oracle.check_csv('ip_list', path, root / 'actual.db', 'p')
                 for value, error in ((valid.replace('first', 'wrong'), 'fields/key'),
                                      ('id;ip;score;source\n', 'missing rows'),
+                                     ('ip;score;source\n192.0.2.1;NULL;first\n', 'schema'),
+                                     ('id;source;score;ip\n60;first;NULL;192.0.2.1\n', 'schema'),
                                      (valid + valid.splitlines()[1] + '\n', 'Duplicate'),
                                      (valid.replace('60;', '61;'), 'slot/registry')):
                     path.write_text(value)
@@ -218,6 +221,46 @@ class ServiceCapacityTest(unittest.TestCase):
             self.assertEqual(rows[0]['terminal_outcome'], 'SUCCEEDED')
             self.assertGreater(rows[0]['updated_at_ms'], rows[0]['created_at_ms'])
             self.assertEqual(CAP.admission_rows(root, config, 'other'), [])
+
+    def test_worker_oom_fails_even_when_the_jvm_unit_is_active(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            unit = CAP.PrivateUnit(root)
+            log = root / 'daemon.log'
+            log.write_text('unrelated startup\njava.lang.OutOf')
+            with patch.object(unit, 'properties', return_value={'ActiveState': 'active'}):
+                unit.assert_running()
+                with log.open('a') as contents:
+                    contents.write('MemoryError: Java heap space\n')
+                with self.assertRaisesRegex(CAP.WorkloadFailure, 'OutOfMemoryError'):
+                    unit.assert_running()
+
+    def test_evidence_copy_failure_still_removes_terminated_private_state(self):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            (repo / '.dev').mkdir()
+            evidence = repo / 'evidence'
+            evidence.mkdir()
+            args = SimpleNamespace(config=repo / 'policy.yml', port=18206, diagnostic=False)
+            unit = MagicMock()
+            unit.start.return_value = {}
+            def stop():
+                state = next((repo / '.dev').iterdir())
+                (state / 'daemon.log').write_text('failure evidence')
+                return {'process_terminated': True}
+            unit.close.side_effect = stop
+            with patch.object(CAP, 'REPO', repo), patch.object(CAP, 'PrivateUnit', return_value=unit), \
+                    patch.object(CAP, 'private_config', return_value=policy()), \
+                    patch.object(CAP.BASE, 'digest', return_value='sha'), \
+                    patch.object(CAP, 'ready', side_effect=RuntimeError('readiness failure')), \
+                    patch.object(CAP.shutil, 'copy2', side_effect=OSError('disk full')):
+                value = CAP.sample(args, repo / 'jar', {'samples': []}, 0, evidence)
+            self.assertTrue(value['temporary_state_removed'])
+            self.assertEqual(value['status'], 'ERROR')
+            self.assertIn('Evidence copy: disk full', value['cleanup_errors'])
+            self.assertTrue((evidence / 'report.json').is_file())
 
 
 if __name__ == '__main__':

@@ -51,5 +51,6 @@ CAP-3 JVM pairs, отказ при потере samples или semantic mismatch
 
 `python3 tools/tests/service-capacity-test.py` проверяет равенство HTML/DOCX
 fixtures, выбор победителей в дисковом oracle, отказ при повреждении CSV и
-слотов, единицы PSI, регрессию счётчиков и отказ сборщика метрик. Полный запуск
-под user-systemd выполняется отдельно через `make service-capacity`.
+слотов и схемы, единицы PSI, регрессию счётчиков и отказ сборщика метрик,
+обнаружение OOM живой JVM и очистку после ошибки сохранения evidence. Полный
+запуск под user-systemd выполняется отдельно через `make service-capacity`.

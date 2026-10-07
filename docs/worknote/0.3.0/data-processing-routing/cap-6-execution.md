@@ -129,3 +129,21 @@ retains failure evidence and still removes DB/WAL/workspace/output copies.
   were removed. `.dev/cap6-smb-smoke/report.json` and its log retain the failure.
   Live full-cycle measurement awaits available server connection capacity;
   transport acceptance cannot be inferred from the local tests.
+- The first mostly-unique HTML 1m screen failed at `READ_SOURCE` with
+  `java.lang.OutOfMemoryError: Java heap space` in Tika's HTML SAX traversal.
+  No measured document commit or final slices occurred. The preparation worker
+  died while the JVM remained active; the private unit was explicitly stopped
+  instead of waiting for a meaningless publication timeout. Its DB/WAL/source
+  and frozen runtime copy were removed. The sampler then lost its process and
+  correctly refused a successful summary. Raw partial observations already
+  show RSS 743.79 MiB, anon+kernel 723.65 MiB and sampled used heap 469.82 MiB;
+  these are partial diagnostic maxima, not a successful complete resource
+  window. `.dev/cap6-html-1m/report.json` records the interrupted/failed screen;
+  its log is the OOM authority. CAP-7A is now demonstrated by the whole service,
+  rather than inferred from an upstream-only profile.
+- The harness now detects worker OOM from the owned incremental log before
+  systemd considers the JVM dead. It captures resource facts before stopping
+  that unit and distinguishes workload failure from collector errors. CSV
+  headers are checked against the configured ordered schema, including required
+  IDs. A failure to retain an evidence file still removes terminated private
+  state and fails the report; regression tests cover both ownership paths.

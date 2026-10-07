@@ -36,6 +36,10 @@ INPUT_SPEC.loader.exec_module(INPUTS)
 FLAGS = ['-Xms128m', '-Xmx512m']
 
 
+class WorkloadFailure(RuntimeError):
+    """A fatal workload result, distinct from a collector or external provisioning failure."""
+
+
 def jdk_tool(name):
     binary = shutil.which(name)
     if binary:
@@ -73,6 +77,8 @@ class DiskOracle(BASE.FixtureOracle):
         self.db.execute('CREATE TABLE origins(artifact TEXT,key TEXT,source TEXT,PRIMARY KEY(artifact,key,source)) WITHOUT ROWID')
         self.db.execute('CREATE TABLE seen(key TEXT PRIMARY KEY,slot INTEGER UNIQUE) WITHOUT ROWID')
         self.source_key = None
+        self.headers = {item['name']: [column['name'] for column in item['columns']]
+                        for item in config['ioc']['sink']['artifacts']}
 
     def add(self, artifact, supplied, last=False, source_key=None):
         values = normalize({name: supplied.get(name) for name in self.columns[artifact]})
@@ -132,8 +138,8 @@ class DiskOracle(BASE.FixtureOracle):
         with path.open(newline='') as contents, closing(sqlite3.connect(f'file:{database}?mode=ro', uri=True)) as canonical:
             reader = csv.DictReader(contents, delimiter=';')
             names = self.columns[artifact]
-            has_id = 'id' in reader.fieldnames
-            if set(reader.fieldnames) != set(names) | ({'id'} if has_id else set()):
+            has_id = 'id' in self.headers[artifact]
+            if reader.fieldnames != self.headers[artifact]:
                 raise RuntimeError(f'CSV schema mismatch: {artifact}')
             for row in reader:
                 values = normalize({name: row[name] for name in names})
@@ -378,6 +384,7 @@ class PrivateUnit:
     def __init__(self, root):
         self.root, self.name = root, 'ioc-cap6-' + uuid.uuid4().hex
         self.pid, self.cgroup = None, None
+        self.log_offset, self.log_tail = 0, ''
 
     def start(self, jar, config, environment=None, diagnostic=False):
         arguments = ['systemd-run', '--user', '--quiet', '--unit=' + self.name,
@@ -415,6 +422,18 @@ class PrivateUnit:
         return dict(line.split('=', 1) for line in output.splitlines())
 
     def assert_running(self):
+        # A Java worker can die from OOM while systemd still reports an active JVM.
+        # Read incrementally so a failed reference does not wait for its publication timeout.
+        path = self.root / 'daemon.log'
+        if path.is_file():
+            with path.open() as log:
+                log.seek(self.log_offset)
+                while chunk := log.read(65536):
+                    text = self.log_tail + chunk
+                    if 'java.lang.OutOfMemoryError' in text:
+                        raise WorkloadFailure('Java OutOfMemoryError; measured worker failed (see daemon.log)')
+                    self.log_tail = text[-128:]
+                self.log_offset = log.tell()
         properties = self.properties()
         if properties['ActiveState'] in ('failed', 'inactive'):
             raise RuntimeError('Private unit exited: ' + json.dumps(properties))
@@ -526,6 +545,8 @@ def local_slices(unit, root, oracle, config, source_key, timeout, import_manifes
         if admissions and admissions[0] != previous:
             previous = admissions[0]
             transitions.append(dict(observed_monotonic=time.monotonic(), **previous))
+        if admissions and admissions[0]['phase'] == 'TERMINAL' and admissions[0]['terminal_outcome'] != 'SUCCEEDED':
+            raise WorkloadFailure('Document admission reached a failed terminal outcome')
         imported = import_completion(root, import_manifest) if import_manifest else None
         runs = [imported] if imported else ([] if import_manifest else BASE.rows(service, 'SELECT * FROM ingest_run WHERE source_key=? AND status=?', (source_key, 'COMPLETED')))
         if runs:
@@ -691,12 +712,18 @@ def sample(args, jar, report, index, evidence_root):
         if args.diagnostic:
             result['diagnostics'] = diagnostics(unit)
     except Exception as failure:
-        result.update(status='ERROR', failure=str(failure))
+        result.update(status='FAIL' if isinstance(failure, WorkloadFailure) else 'ERROR', failure=str(failure),
+                      failure_kind='workload' if isinstance(failure, WorkloadFailure) else 'collection_or_execution')
         if sampler:
             try:
                 result['resources_at_failure'] = sampler.summary()
             except Exception as collector_failure:
                 result['collection_failure'] = str(collector_failure)
+        if args.diagnostic and isinstance(failure, WorkloadFailure):
+            try:
+                result['diagnostics_after_failure'] = diagnostics(unit)
+            except Exception as diagnostic_failure:
+                result['diagnostic_failure'] = str(diagnostic_failure)
     finally:
         errors = []
         if sampler:
@@ -716,21 +743,30 @@ def sample(args, jar, report, index, evidence_root):
             except Exception as failure:
                 errors.append(str(failure))
         if oracle:
-            oracle.close()
+            try:
+                oracle.close()
+            except Exception as failure:
+                errors.append('Oracle close: ' + str(failure))
         # Keep small evidence and separate diagnostic recording, no SQLite/CSV copies.
         folder = evidence_root / str(index)
         folder.mkdir()
         for name in ('resources.jsonl', 'daemon.log', 'application.yml', 'diagnostic.jfr'):
             path = root / name
             if path.is_file():
-                shutil.copy2(path, folder / name)
+                try:
+                    shutil.copy2(path, folder / name)
+                except Exception as failure:
+                    errors.append('Evidence copy: ' + str(failure))
+        if unit is None or result.get('cleanup', {}).get('process_terminated'):
+            try:
+                shutil.rmtree(root)
+            except Exception as failure:
+                errors.append('State removal: ' + str(failure))
+        else:
+            result['state_preserved_until_unit_termination'] = str(root)
         result['cleanup_errors'] = errors
         if errors:
             result['status'] = 'ERROR'
-        if unit is None or result.get('cleanup', {}).get('process_terminated'):
-            shutil.rmtree(root)
-        else:
-            result['state_preserved_until_unit_termination'] = str(root)
     result['temporary_state_removed'] = not root.exists()
     result['finished_epoch_seconds'] = time.time()
     save(evidence_root / 'report.json', report)

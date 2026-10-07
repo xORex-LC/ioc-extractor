@@ -25,6 +25,18 @@
 | ING-11 | **Retry × run-ledger: нет resume-протокола.** CAP-5 сохраняет attempts/backoff в durable admission, но полный resume-протокол run-ledger ещё отсутствует; новая попытка `DurableDocumentDispatcher` создаёт новый run; `processClaimed` безусловно `startIngest` на каждой попытке; `markFailed` — только при `!dbCommitted` → сбой проекции (диск/права) даёт N `DB_COMMITTED`-ранов одного source; `IngestRunRecoveryService` не синхронизирован с file-ledger (`CLAIMED`) → после рестарта лишняя полная экстракция. Данные целы, платим CPU/diagnostics/проекции + id-gaps; самовосстанавливается. Нужен resume-протокол: после `DB_COMMITTED` повторять только projection/archive (не extraction/commit) + синхронизация run-ledger ↔ file-ledger; требует мини-дизайна (меняется сага ING-4a). **План: 0.3.0.** | открыт | M | стенд-тест 2026-07-14 (pre-retarget RC 0.1.1) |
 | ING-13 | **Failed claim превращает файл в вечный poison.** В candidate-линии 0.2.0 реализована полумера: rejection возвращает `REJECTED/ALREADY_REJECTED`, повторный poll durable `FAILED` завершается без повторного generic/typed лога. Полный дефект остаётся: `markFailed` синтезирует `Path.of("unknown")`, файл остаётся в inbox и не получает явной физической судьбы. Нужен pre-claim dead-letter/quarantine (с реальными path/detectedAt и идемпотентным terminal-фильтром). Поддерживаемой clear/requeue-команды пока нет: source/logs сохраняются для разбора, а recovery выполняется только по reviewed procedure без ручного удаления ledger/SQLite state. **Полный фикс — 0.3.0.** | открыт | M | стенд-тест 2026-07-14 (pre-retarget RC 0.1.1), полумера 2026-07-15 |
 
+**ING-15 — ограничение больших документов и отказ рабочего потока (открыт, L).**
+Прогон полного сервиса на 1 млн IOC в HTML при `-Xmx512m` падает с
+`OutOfMemoryError` на чтении Tika до канонической записи. Рабочий поток
+завершается, но JVM остаётся активной: это не успешная обработка и не
+подтверждение перегрузочной безопасности. Нужны ограничение/потоковая обработка
+источника и явная политика фатального отказа с восстановлением admission;
+увеличение heap не закрывает дефект. Владелец: ingestion/source, архитектурный
+трек CAP-7A; проверка — крупный допустимый документ и превышение его лимитов
+при исходном ресурсном конверте. Наблюдаемая RSS уже превышает 512 MiB;
+артефакты этого документа не опубликованы. Протокол полного сервиса:
+`service-capacity.py`; устройство чтения описано в [processing](dev/processing.md).
+
 ## 2. Обогащение вывода (`OUT`)
 
 | ID | Долг | Статус | Эфф. | Источник |
