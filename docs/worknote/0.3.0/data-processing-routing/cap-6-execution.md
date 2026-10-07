@@ -112,3 +112,20 @@ retains failure evidence and still removes DB/WAL/workspace/output copies.
   absent from PATH. The current Java runtime has `jdk.jcmd`; use its matching
   JDK module launcher when a diagnostic binary is absent. Retain this failed
   collection attempt separately, with cleanup proof; it is not an import result.
+- A second pre-admission import attempt exposed optional GC columns with `-`
+  (unsupported counter); only the required defined columns are now parsed.
+  The corrected 1k IP import passed in 4.876s (conservative window including
+  import stability/reconcile), accepted 1,000 of 1,001 source rows, removed the
+  duplicate without slot reuse, and verified the COMMITTED receipt, all local
+  slices, mutable files, complete keys, provenance and requested slots. Sampled
+  RSS: 335.64 MiB, used heap: 76.15 MiB; state and process removed.
+- SMB smoke is **unavailable**, not passed: server tree-connect returned
+  `STATUS_REQUEST_NOT_ACCEPTED` before document admission. Credential-backed
+  encrypted smbclient namespace provisioning and removal succeeded, but the
+  service's persistent share connection failed and readiness timed out. This
+  status reports exhausted server connections
+  ([MS-ERREF](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-erref/596a1078-e883-4972-9bbc-49e60bebca55)).
+  The owning unit, authentication file, private local state and remote namespace
+  were removed. `.dev/cap6-smb-smoke/report.json` and its log retain the failure.
+  Live full-cycle measurement awaits available server connection capacity;
+  transport acceptance cannot be inferred from the local tests.
