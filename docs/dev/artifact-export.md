@@ -146,6 +146,12 @@ CLI запускает named profile вручную. Daemon поддержива
 quiet-period/max-cap policy; ingest event только вызывает coalesced `nudge()`, а
 periodic cadence остаётся backstop.
 
+Остановка scheduler отменяет новые проверки и завершает timer и profile workers.
+Ошибка остановки одного executor не отменяет попытку остановить второй;
+последующие ошибки сохраняются как suppressed. Пока завершение не подтверждено,
+ссылки на executors сохраняются и повторный старт запрещён. Поздний admission
+после остановки не открывает scheduler заново.
+
 Managed import с public mutation публикует тот же artifact-level
 `CanonicalArtifactsChanged` только после общей dataframe transaction. Поэтому
 delivery из сотен тысяч rows создаёт один quiet-period burst, а не slice после

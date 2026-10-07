@@ -136,7 +136,7 @@ public final class IocExtractionService implements ExtractIocsUseCase {
             var result = runner.runPreparation(initialEnvelope(pinned, workspace, command.source()), preparation);
             return new OwnedPreparation(workspace, result.envelope(), promotion);
         } catch (RuntimeException failure) {
-            try { try { workspace.discard(); } finally { workspace.close(); } }
+            try (workspace) { workspace.discard(); }
             catch (RuntimeException cleanup) { failure.addSuppressed(cleanup); }
             throw failure;
         }

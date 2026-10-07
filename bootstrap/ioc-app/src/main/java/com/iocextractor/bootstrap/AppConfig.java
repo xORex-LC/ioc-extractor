@@ -367,26 +367,26 @@ public class AppConfig {
     }
 
     @Bean
+    public DocumentProcessingPlanFactory documentProcessingPlanFactory(ProcessingPlanBindings processingPlans,
+            ObjectProvider<CamelRouteRuntime> routerRuntime, MatchPolicy matchPolicy, Clock clock) {
+        var documentPlan = processingPlans.requireDocumentPlan();
+        return preparers -> new DocumentProcessingAdapter(documentPlan, routerRuntime.getObject(),
+                new com.iocextractor.processing.classification.IndicatorClassifier(matchPolicy), clock, preparers);
+    }
+
+    @Bean
     public IocExtractionServiceFactory iocExtractionServiceFactory(SourceReader reader,
                                                                    Refanger refanger,
                                                                    IndicatorExtractor extractor,
                                                                    SourceAttributor attributor,
-                                                                   MatchPolicy matchPolicy,
                                                                    DiagnosticSink diagnosticSink,
                                                                    PipelineDecisionTracer decisionTracer,
                                                                    JdbcCanonicalArtifactRepository repository,
                                                                    CanonicalArtifactWriter canonicalArtifactWriter,
                                                                    ArtifactIdentityResolver artifactIdentityResolver,
-                                                                   ProcessingPlanBindings processingPlans,
-                                                                   ObjectProvider<CamelRouteRuntime> routerRuntime,
-                                                                   Clock clock,
+                                                                   DocumentProcessingPlanFactory documentPlanFactory,
                                                                    com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspaceFactory workspaces,
                                                                    IocProperties props) {
-        var documentPlan = processingPlans.requireDocumentPlan();
-        DocumentProcessingPlanFactory documentPlanFactory = preparers ->
-                new DocumentProcessingAdapter(documentPlan, routerRuntime.getObject(),
-                        new com.iocextractor.processing.classification.IndicatorClassifier(matchPolicy),
-                        clock, preparers);
         return new IocExtractionServiceFactory(reader, refanger, extractor, attributor,
                 props.pipeline().deduplicate(), props.observability().mode().token(),
                 new LoggingPipelineObserver(), diagnosticSink,

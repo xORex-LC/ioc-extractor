@@ -345,11 +345,28 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
     @Override
     public synchronized void stop() {
         active = false;
-        terminate(executor);
+        stopExecutors();
         executor = null;
-        terminate(workers);
         workers = null;
         inFlight.clear();
+    }
+
+    private void stopExecutors() {
+        RuntimeException failure = null;
+        for (ExecutorService owned : new ExecutorService[] {executor, workers}) {
+            try {
+                terminate(owned);
+            } catch (RuntimeException stopping) {
+                if (failure == null) {
+                    failure = stopping;
+                } else {
+                    failure.addSuppressed(stopping);
+                }
+            }
+        }
+        if (failure != null) {
+            throw failure;
+        }
     }
 
     private void terminate(ExecutorService owned) {

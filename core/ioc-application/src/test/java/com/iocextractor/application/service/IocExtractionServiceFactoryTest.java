@@ -29,7 +29,6 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -71,16 +70,24 @@ class IocExtractionServiceFactoryTest {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void sourceFailureClosesOwnershipAndPreservesOnlyAPreviousPromotionPin(boolean promoting) {
+    @org.junit.jupiter.params.provider.CsvSource({"false,false,false", "true,false,false",
+            "false,true,false", "false,true,true"})
+    void sourceFailureClosesOwnershipAndPreservesOnlyAPreviousPromotionPin(
+            boolean promoting, boolean prepare, boolean cleanupFailure) {
         Path snapshot = Path.of("pinned-source.html");
         var discarded = new AtomicInteger();
         var closed = new AtomicInteger();
         var workspace = new com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspace() {
             public Path source() { return snapshot; }
             public boolean promotionStarted() { return promoting; }
-            public void discard() { discarded.incrementAndGet(); }
-            public void close() { closed.incrementAndGet(); }
+            public void discard() {
+                discarded.incrementAndGet();
+                if (cleanupFailure) { throw new IllegalStateException("discard failure"); }
+            }
+            public void close() {
+                closed.incrementAndGet();
+                if (cleanupFailure) { throw new IllegalStateException("close failure"); }
+            }
             public void beginPromotion() { throw new AssertionError("source failure must not promote"); }
             public boolean firstOriginal(String key) { throw new AssertionError("source failure must not route"); }
             public void append(RoutedArtifactCandidate candidate, boolean eligible, boolean retained) {
@@ -105,10 +112,22 @@ class IocExtractionServiceFactoryTest {
                 new CanonicalArtifactIdentityResolver(List.of()), NoopPipelineDecisionTracer.INSTANCE,
                 preparers -> occurrence -> Result.success(List.<RoutedArtifactCandidate>of()),
                 Map.of(), (command, policies) -> workspace);
-        assertThatThrownBy(() -> factory.create(List.of(), request -> {
+        var service = factory.create(List.of(), request -> {
             throw new AssertionError("source failure must not project");
-        }).extract(new ExtractionCommand("failure", Path.of("original.html"), false)))
-                .isInstanceOf(com.iocextractor.diagnostics.DiagnosticException.class);
+        });
+        var command = new ExtractionCommand("failure", Path.of("original.html"), false);
+        assertThatThrownBy(() -> {
+            if (prepare) { service.prepare(command); } else { service.extract(command); }
+        }).isInstanceOfSatisfying(com.iocextractor.diagnostics.DiagnosticException.class, failure -> {
+            assertThat(failure).hasRootCauseMessage("source failure");
+            if (cleanupFailure) {
+                assertThat(failure.getSuppressed()).singleElement().satisfies(discard -> {
+                    assertThat(discard).hasMessage("discard failure");
+                    assertThat(discard.getSuppressed()).singleElement()
+                            .satisfies(close -> assertThat(close).hasMessage("close failure"));
+                });
+            } else { assertThat(failure.getSuppressed()).isEmpty(); }
+        });
         assertThat(discarded).hasValue(promoting ? 0 : 1);
         assertThat(closed).hasValue(1);
     }

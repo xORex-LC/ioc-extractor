@@ -973,6 +973,33 @@ class IngestionServiceTest {
     }
 
     @Test
+    void preparedRetryResumesOwnedClaimWithoutReclaimingOrPreparingTwice() {
+        var observation = new ObservationId("prepared-retry");
+        var source = new SourceUnit(observation, new SourceKey("ABC123"),
+                Path.of("inbox/source.html"), Path.of("processing/source.html"), Instant.EPOCH);
+        var ledger = new MemoryLedger();
+        ledger.markClaimed(source);
+        ledger.claimFailure = new IllegalStateException("An owned retry must not claim again");
+        var lifecycle = new MemoryLifecycle();
+        var runLedger = new MemoryRunLedger();
+        var preparer = new CountingPreparer();
+        var service = new IngestionService(ledger, lifecycle,
+                unit -> new SourcePreparers(List.of(preparer)), extractionFactory(),
+                runLedger, new CollectingProjection(), new RecordingControlEventPublisher(), clock);
+
+        try (var prepared = service.prepare(new IngestSourceCommand(source, null))) {
+            assertThat(preparer.written).isEqualTo(1);
+            var result = prepared.promote();
+            assertThat(result.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
+            assertThat(result.extractionResultOptional()).hasValueSatisfying(extraction ->
+                    assertThat(extraction.writtenPerArtifact()).containsEntry("masks", 1));
+        }
+        assertThat(preparer.written).isEqualTo(1);
+        assertThat(lifecycle.events).containsExactly("archive");
+        assertThat(runLedger.status).isEqualTo(IngestRunStatus.COMPLETED);
+    }
+
+    @Test
     void cancellingPreparedDocumentClosesRunWithoutClaimingOrWritingCanonicalStorage() {
         var key = new SourceKey("ABC123");
         var observation = new ObservationId("cancelled-delivery");

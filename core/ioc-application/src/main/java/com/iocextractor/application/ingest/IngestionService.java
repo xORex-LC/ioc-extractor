@@ -525,10 +525,8 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                 receiptReplayed = true;
                 changedArtifacts = replay.orElseThrow().changedArtifacts();
             } else {
-                extraction = prepared != null && prepared.extraction != null ? prepared.extraction.promote() : extractionFactory.create(
-                                sourcePreparers.preparers(), NoopArtifactProjection.INSTANCE)
-                        .extract(new ExtractionCommand(
-                                run.runId(), unit.processingPath(), false, lifecycleContext, registration));
+                extraction = extractClaimed(prepared, sourcePreparers, new ExtractionCommand(
+                        run.runId(), unit.processingPath(), false, lifecycleContext, registration));
                 changedArtifacts = extraction.changedArtifacts();
             }
             runLedger.markDbCommitted(run.runId());
@@ -567,6 +565,14 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         publishArtifactsChanged(run.runId(), List.copyOf(changedArtifacts));
         return new IngestSourceResult(
                 unit.key(), IngestionStatus.SOURCE_ARCHIVED, receiptReplayed, extraction);
+    }
+
+    private ExtractionResult extractClaimed(PreparedDocument prepared, SourcePreparers sourcePreparers,
+            ExtractionCommand command) {
+        if (prepared != null && prepared.extraction != null) {
+            return prepared.extraction.promote();
+        }
+        return extractionFactory.create(sourcePreparers.preparers(), NoopArtifactProjection.INSTANCE).extract(command);
     }
 
     private void completeDocument(ObservationId observationId, DocumentTerminalOutcome outcome) {

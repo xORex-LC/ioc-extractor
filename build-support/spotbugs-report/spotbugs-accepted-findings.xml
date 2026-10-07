@@ -894,16 +894,16 @@
         </suppression>
         <rationale>Reviewed cleanup-boundary signal: every owned watch is closed in reverse order, the first cleanup failure remains primary, later failures are attached as suppressed, and the lifecycle owner decides shutdown handling.</rationale>
     </finding>
-    <finding id="DATA-IMPORT-P7-SB-002" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="33647f9283725fba8bd5d784ee39b0b3" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P7-STARTUP-BARRIER" review="ingestion-cleanup-propagation-change">
+    <finding id="DATA-IMPORT-P7-SB-002" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="33647f9283725fba8bd5d784ee39b0b3" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P7-STARTUP-BARRIER/CAP-5-OWNERSHIP" review="ingestion-cleanup-propagation-change">
         <class name="com.iocextractor.bootstrap.CanonicalIntakeStartupCoordinator" />
         <method name="run" signature="(Lorg/springframework/boot/ApplicationArguments;)V" />
-        <anchor sourcePath="com/iocextractor/bootstrap/CanonicalIntakeStartupCoordinator.java" startLine="98" bytecode="228" />
+        <anchor sourcePath="com/iocextractor/bootstrap/CanonicalIntakeStartupCoordinator.java" startLine="106" bytecode="242" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.bootstrap.CanonicalIntakeStartupCoordinator" />
             <Method name="run" />
         </suppression>
-        <rationale>Reviewed startup-boundary signal: a recovery or intake failure must abort Spring startup after both intake runtimes are stopped; cleanup and observer failures are attached as suppressed evidence without replacing the primary failure.</rationale>
+        <rationale>Reviewed startup-boundary signal: a recovery or intake failure must abort Spring startup after both intake runtimes are stopped; cleanup and observer failures are attached as suppressed evidence without replacing the primary failure. CAP-5 adds the document dispatcher to the same recovery-before-intake barrier; startup failure still stops all intake runtimes and preserves the primary failure.</rationale>
     </finding>
     <finding id="DATA-IMPORT-P7-SB-003" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="eba8ed1425f8460fd63af71b801701eb" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P7-STARTUP-BARRIER" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.bootstrap.ManagedDataframeImportRuntime" />
@@ -1212,27 +1212,27 @@
         </suppression>
         <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-C/HARDEN-02.</rationale>
     </finding>
-    <finding id="FUP-SB-01" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="26ca8efc8ada84b88a4e9f1f98d7847d" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="FUP-SB-01" review="ingestion-cleanup-propagation-change">
+    <finding id="FUP-SB-01" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="c603e8f8b925afbf2f85accaf6ac2423" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="FUP-SB-01/CAP-5-OWNERSHIP" review="ingestion-cleanup-propagation-change">
         <class name="com.iocextractor.application.ingest.IngestionService" />
-        <method name="ingestGuarded" signature="(Lcom/iocextractor/application/port/in/ingest/IngestSourceCommand;)Lcom/iocextractor/application/port/in/ingest/IngestSourceResult;" />
-        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="186" bytecode="182" />
+        <method name="ingestGuarded" signature="(Lcom/iocextractor/application/port/in/ingest/IngestSourceCommand;Lcom/iocextractor/application/ingest/IngestionService$PreparedDocument;)Lcom/iocextractor/application/port/in/ingest/IngestSourceResult;" />
+        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="272" bytecode="249" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.application.ingest.IngestionService" />
             <Method name="ingestGuarded" />
         </suppression>
-        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under FUP-SB-01.</rationale>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under FUP-SB-01. CAP-5 passes an optional prepared document under the same source-key guard; IngestionServiceTest covers prepared retry without a second claim.</rationale>
     </finding>
-    <finding id="SB04-096" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="b9e6d8bca26fdea52cbcc2035538b3e0" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-B/HARDEN-01" review="cleanup-ownership-accounting-change">
+    <finding id="SB04-096" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="2e13b4e0b2d7769c9f835c3caebcc76b" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-B/HARDEN-01/CAP-5-OWNERSHIP" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.application.ingest.IngestionService" />
-        <method name="processClaimed" signature="(Lcom/iocextractor/application/ingest/SourceUnit;Lcom/iocextractor/application/observation/RegisteredObservation;)Lcom/iocextractor/application/port/in/ingest/IngestSourceResult;" />
-        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="488" bytecode="410" />
+        <method name="processClaimed" signature="(Lcom/iocextractor/application/ingest/SourceUnit;Lcom/iocextractor/application/observation/RegisteredObservation;Lcom/iocextractor/application/ingest/IngestionService$PreparedDocument;)Lcom/iocextractor/application/port/in/ingest/IngestSourceResult;" />
+        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="558" bytecode="413" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.application.ingest.IngestionService" />
             <Method name="processClaimed" />
         </suppression>
-        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-B/HARDEN-01.</rationale>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-B/HARDEN-01. CAP-5 selects prepared promotion or fallback extraction after the same owned claim; failed-run accounting remains suppressed under the original extraction failure.</rationale>
     </finding>
     <finding id="SB04-097" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="1073f127fb3e9ae67c97ccba01a43fa" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-D" review="recovery-diagnostic-contract-change">
         <class name="com.iocextractor.application.ingest.IngestionService" />
@@ -1311,49 +1311,49 @@
         </suppression>
         <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E.</rationale>
     </finding>
-    <finding id="SB04-101" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="bffd062e9915fa3e76d30e8510c74f45" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E/HARDEN-02" review="pipeline-observer-failure-contract-change">
+    <finding id="SB04-101" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="f71318b64109abe8368abb66a32e5ae4" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E/HARDEN-02/CAP-5-OWNERSHIP" review="pipeline-observer-failure-contract-change">
         <class name="com.iocextractor.platform.etl.PipelineRunner" />
-        <method name="executeInRunScope" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
-        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="150" bytecode="257" />
+        <method name="executeInRunScope" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;Z)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
+        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="165" bytecode="262" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.platform.etl.PipelineRunner" />
             <Method name="executeInRunScope" />
         </suppression>
-        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E/HARDEN-02.</rationale>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E/HARDEN-02. CAP-5 defers the diagnostic summary during preparation; PipelineRunnerTest preserves observer failure and final summary semantics.</rationale>
     </finding>
-    <finding id="SB04-102" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="bffd062e9915fa3e76d30e8510c74f45" occurrence="1" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E/HARDEN-02" review="pipeline-observer-failure-contract-change">
+    <finding id="SB04-102" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="f71318b64109abe8368abb66a32e5ae4" occurrence="1" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E/HARDEN-02/CAP-5-OWNERSHIP" review="pipeline-observer-failure-contract-change">
         <class name="com.iocextractor.platform.etl.PipelineRunner" />
-        <method name="executeInRunScope" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
-        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="155" bytecode="309" />
+        <method name="executeInRunScope" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;Z)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
+        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="170" bytecode="314" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.platform.etl.PipelineRunner" />
             <Method name="executeInRunScope" />
         </suppression>
-        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E/HARDEN-02.</rationale>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E/HARDEN-02. CAP-5 defers the diagnostic summary during preparation; observer cleanup preserves the original failure.</rationale>
     </finding>
-    <finding id="SB04-103" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="bffd062e9915fa3e76d30e8510c74f45" occurrence="2" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E/HARDEN-02" review="pipeline-observer-failure-contract-change">
+    <finding id="SB04-103" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="f71318b64109abe8368abb66a32e5ae4" occurrence="2" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E/HARDEN-02/CAP-5-OWNERSHIP" review="pipeline-observer-failure-contract-change">
         <class name="com.iocextractor.platform.etl.PipelineRunner" />
-        <method name="executeInRunScope" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
-        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="164" bytecode="381" />
+        <method name="executeInRunScope" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;Z)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
+        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="179" bytecode="396" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.platform.etl.PipelineRunner" />
             <Method name="executeInRunScope" />
         </suppression>
-        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E/HARDEN-02.</rationale>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E/HARDEN-02. CAP-5 defers the diagnostic summary during preparation; failure callbacks cannot replace the original failure.</rationale>
     </finding>
-    <finding id="SB04-104" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="304748d9178334ff7558bfff33701d2d" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E" review="pipeline-observer-failure-contract-change">
+    <finding id="SB04-104" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="a8dfe2398c456e8981b96ec90113c72e" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E/CAP-5-OWNERSHIP" review="pipeline-observer-failure-contract-change">
         <class name="com.iocextractor.platform.etl.PipelineRunner" />
-        <method name="runWithOutcome" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
-        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="118" bytecode="78" />
+        <method name="runPart" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;Z)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
+        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="134" bytecode="86" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.platform.etl.PipelineRunner" />
-            <Method name="runWithOutcome" />
+            <Method name="runPart" />
         </suppression>
-        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E.</rationale>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E. CAP-5 relocates run-scope ownership into runPart with a final-summary flag; unchecked scope-close failures retain their established propagation contract.</rationale>
     </finding>
     <finding id="CAP-1B-SB-001" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="e1a5c78063272bc247c3cc7a1fe7cb78" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-1B-SQL-TRUST" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalMatchSession" />
@@ -1448,5 +1448,67 @@
         <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcReceiptRowSource.java" startLine="44" bytecode="136" />
         <suppression><Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" /><Class name="com.iocextractor.adapter.out.store.jdbc.JdbcReceiptRowSource" /><Method name="validateCount" /></suppression>
         <rationale>Reviewed false positive: COUNT uses the same quoted schema-owned receipt-table identifier and binds receipt identity. The COMPLETE header and exact row count are checked in the cursor transaction; a removed zero-row receipt is rejected by JdbcCanonicalLifecycleWriterIT.</rationale>
+    </finding>
+    <finding id="CAP-5-SB-001" module="adapters/adapter-csv" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="185034ca0bcc0e606821ef988eceac8e" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-5-OWNERSHIP" review="cleanup-ownership-accounting-change">
+        <class name="com.iocextractor.adapter.out.sink.csv.NioExportOperationGuard" />
+        <method name="acquire" signature="(Ljava/lang/String;)Lcom/iocextractor/application/port/out/export/ExportOperationGuard$Lease;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/NioExportOperationGuard.java" startLine="60" bytecode="184" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.adapter.out.sink.csv.NioExportOperationGuard" />
+            <Method name="acquire" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal: profile lease acquisition preserves the original runtime failure after closing a partial channel and removing local admission. NioExportOperationGuardTest and ProfileExportIsolationIT qualify same-profile exclusion, independent profile progress and scoped recovery.</rationale>
+    </finding>
+    <finding id="CAP-5-SB-002" module="adapters/adapter-ingest" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="f91608d08b4c2edc1bb5ea1ca103b683" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-5-OWNERSHIP" review="cleanup-ownership-accounting-change">
+        <class name="com.iocextractor.adapter.in.ingest.DurableDocumentDispatcher" />
+        <method name="closePreparedJobs" signature="()V" />
+        <anchor sourcePath="com/iocextractor/adapter/in/ingest/DurableDocumentDispatcher.java" startLine="275" bytecode="112" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.adapter.in.ingest.DurableDocumentDispatcher" />
+            <Method name="closePreparedJobs" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal: after all workers terminate, shutdown closes every prepared handle and suppresses subsequent cleanup failures under the first. FileSourceMessageHandlerIT qualifies both handle failures, exact release attempts and durable restart recovery.</rationale>
+    </finding>
+    <finding id="CAP-5-SB-003" module="adapters/adapter-ingest" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="d1a600edef0fbb334a8095aa0f362a40" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-5-OWNERSHIP" review="cleanup-ownership-accounting-change">
+        <class name="com.iocextractor.adapter.in.ingest.DurableDocumentDispatcher" />
+        <method name="stopWorkers" signature="()V" />
+        <anchor sourcePath="com/iocextractor/adapter/in/ingest/DurableDocumentDispatcher.java" startLine="259" bytecode="75" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.adapter.in.ingest.DurableDocumentDispatcher" />
+            <Method name="stopWorkers" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal: shutdown attempts termination of every owned worker, preserving primary and suppressed failures. Prepared handles are never released after a worker termination failure. Timed integration fixtures qualify bounded cancellation and restart ownership.</rationale>
+    </finding>
+    <finding id="CAP-5-SB-004" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="aab1dcb2db3a591de1abaa16a41abdbe" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-5-OWNERSHIP" review="ingestion-cleanup-propagation-change">
+        <class name="com.iocextractor.application.ingest.IngestionService" />
+        <method name="prepare" signature="(Lcom/iocextractor/application/port/in/ingest/IngestSourceCommand;)Lcom/iocextractor/application/port/in/ingest/PreparedIngestion;" />
+        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="203" bytecode="224" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.application.ingest.IngestionService" />
+            <Method name="prepare" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal: preparation preserves its original failure and suppresses independent run-accounting failure, leaving owned source recovery authoritative. IngestionServiceTest qualifies prepared retry, failed preparation and ledger accounting.</rationale>
+    </finding>
+    <finding id="CAP-5-SB-005" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="ee696557e58204f28093055437168702" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-5-OWNERSHIP" review="cleanup-ownership-accounting-change">
+        <class name="com.iocextractor.application.service.IocExtractionService" />
+        <method name="prepare" signature="(Lcom/iocextractor/application/port/in/ExtractionCommand;)Lcom/iocextractor/application/port/in/PreparedExtraction;" />
+        <anchor sourcePath="com/iocextractor/application/service/IocExtractionService.java" startLine="141" bytecode="236" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.application.service.IocExtractionService" />
+            <Method name="prepare" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal: source preparation preserves the source failure while try-with-resources retains both workspace discard and close failures. IocExtractionServiceFactoryTest asserts the exact primary/suppressed chain and single ownership release for promoting and non-promoting paths.</rationale>
+    </finding>
+    <finding id="CAP-5-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="f3c7d49ac61e33a8b2883161746144a5" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-5-OWNERSHIP" review="cleanup-ownership-accounting-change">
+        <class name="com.iocextractor.bootstrap.DaemonExportScheduler" />
+        <method name="stopExecutors" signature="()V" />
+        <anchor sourcePath="com/iocextractor/bootstrap/DaemonExportScheduler.java" startLine="368" bytecode="77" />
+        <suppression><Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" /><Class name="com.iocextractor.bootstrap.DaemonExportScheduler" /><Method name="stopExecutors" /></suppression>
+        <rationale>Reviewed exception-policy signal: timer termination failure must not skip profile worker termination. Both executors are stopped, the first failure remains primary and a second is suppressed. References remain pinned after failure to prevent an unsafe restart. DaemonExportSchedulerTest qualifies double failure, bounded cancellation escalation, retrying termination and the preserved interruption signal.</rationale>
     </finding>
 </spotbugs-accepted-findings>

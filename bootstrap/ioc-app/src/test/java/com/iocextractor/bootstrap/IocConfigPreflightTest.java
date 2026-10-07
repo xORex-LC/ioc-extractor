@@ -2,6 +2,8 @@ package com.iocextractor.bootstrap;
 
 import com.iocextractor.domain.model.IndicatorType;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
@@ -70,6 +72,58 @@ class IocConfigPreflightTest {
                 new IocProperties.Ingestion.Execution(3, 2, 1, Long.MAX_VALUE, Long.MAX_VALUE));
         assertThat(fields(validate(withLifecycleAndIngestion(source, source.lifecycle(), invalid))))
                 .contains("ingestion.execution", "ingestion.execution.maxSourceBytes");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "0, 4, 64, 1000, 100",
+            "3, 4, 64, 1000, 100",
+            "2, 1, 64, 1000, 100",
+            "2, 5, 4, 1000, 100",
+            "2, 4, 257, 1000, 100",
+            "2, 4, 64, 1000, 0",
+            "2, 4, 64, 99, 100"
+    })
+    void rejectsEachInvalidDocumentAdmissionBound(int workers, int window, int pending,
+            long pendingBytes, long sourceBytes) {
+        var source = defaults();
+        var original = source.ingestion();
+        var ingestion = new IocProperties.Ingestion(original.dirs(), original.patterns(), original.detect(),
+                original.stability(), original.retry(), original.ledger(), 1,
+                new IocProperties.Ingestion.Execution(workers, window, pending, pendingBytes, sourceBytes));
+
+        assertThat(fields(validate(withLifecycleAndIngestion(source, source.lifecycle(), ingestion))))
+                .containsExactly("ingestion.execution");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"1, 1, 1", "2, 256, 256"})
+    void acceptsInclusiveDocumentAdmissionAndSourcePinLimits(int workers, int window, int pending) {
+        var source = defaults();
+        var original = source.ingestion();
+        long sourceBytes = source.processing().workspace().workspaceBytes() / 4;
+        var ingestion = new IocProperties.Ingestion(original.dirs(), original.patterns(), original.detect(),
+                original.stability(), original.retry(), original.ledger(), 1,
+                new IocProperties.Ingestion.Execution(workers, window, pending, sourceBytes, sourceBytes));
+
+        assertThat(validate(withLifecycleAndIngestion(source, source.lifecycle(), ingestion)).hasErrors()).isFalse();
+
+        var oversized = new IocProperties.Ingestion(original.dirs(), original.patterns(), original.detect(),
+                original.stability(), original.retry(), original.ledger(), 1,
+                new IocProperties.Ingestion.Execution(workers, window, pending, sourceBytes + 1, sourceBytes + 1));
+        assertThat(fields(validate(withLifecycleAndIngestion(source, source.lifecycle(), oversized))))
+                .containsExactly("ingestion.execution.maxSourceBytes");
+    }
+
+    @Test
+    void omittedDocumentExecutionBindsTheSupportedDefaults() {
+        var source = defaults();
+        var original = source.ingestion();
+        var ingestion = new IocProperties.Ingestion(original.dirs(), original.patterns(), original.detect(),
+                original.stability(), original.retry(), original.ledger(), 1, null);
+
+        assertThat(ingestion.execution()).isEqualTo(IocProperties.Ingestion.Execution.defaults());
+        assertThat(validate(withLifecycleAndIngestion(source, source.lifecycle(), ingestion)).hasErrors()).isFalse();
     }
 
     @Test

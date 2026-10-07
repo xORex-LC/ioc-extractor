@@ -164,7 +164,10 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
 
     private void promote(Job job) {
         try {
-            if (job.failure != null) { throw job.failure; }
+            if (job.failure != null) {
+                retryOrBlock(job, job.failure);
+                return;
+            }
             var result = job.prepared.promote();
             try { DocumentCompletionObserver.completed(result, job.admission.candidatePath(), job.command.key()); }
             catch (RuntimeException observationFailure) { report(job.admission.observationId().value(), observationFailure); }
@@ -241,6 +244,11 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
         coordinator.shutdown();
         preparers.shutdown();
         promoter.shutdown();
+        stopWorkers();
+        closePreparedJobs();
+    }
+
+    private void stopWorkers() {
         RuntimeException failure = null;
         for (var worker : List.of(coordinator, preparers, promoter)) {
             try { stop(worker); }
@@ -249,6 +257,10 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
             }
         }
         if (failure != null) { throw failure; }
+    }
+
+    private void closePreparedJobs() {
+        RuntimeException failure = null;
         synchronized (monitor) {
             for (var job : jobs.values()) {
                 if (job.prepared != null) {

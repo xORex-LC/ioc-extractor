@@ -30,7 +30,11 @@ job/workspace references, rather than documents or IOC collections. Every daemon
 document uses admission, including artifacts with only KEEP_FIRST policies.
 
 Preparation uses the repeatable bounded workspace described in
-[processing.md](processing.md). Up to two workers may prepare independently. Only
+[processing.md](processing.md). Up to two workers may prepare independently. The
+workspace quotas bound reducer buffers and native caches; source-reader and
+occurrence materialization are still input-sized. Overlapping preparation can
+multiply that upstream memory, so a bounded execution window alone does not
+establish whole-process memory acceptance. Only
 the oldest unresolved admission may promote; a newer ready document cannot
 change whole-row KEEP_FIRST by finishing preparation first. Registered mutable
 field precedence still uses the durable dataframe rank. The source-key guard is

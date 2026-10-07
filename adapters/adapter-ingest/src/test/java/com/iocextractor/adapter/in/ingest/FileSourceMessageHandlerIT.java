@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Real private files and durable journal, with controlled preparation/promotion. */
 @IntegrationTest
@@ -235,6 +236,7 @@ class FileSourceMessageHandlerIT {
     void exhaustedPreparationRejectsOneDurableOccurrenceAndUnblocksTheNext() throws Exception {
         Fixture fixture = new Fixture(4, 100);
         var rejected = new AtomicInteger();
+        var rejectionCompleted = new CountDownLatch(1);
         var done = new CountDownLatch(1);
         Path bad = fixture.file("bad.html", "bad");
         Path good = fixture.file("good.html", "good");
@@ -243,20 +245,27 @@ class FileSourceMessageHandlerIT {
             return fixture.prepared(command, done::countDown);
         }, (key, reason) -> {
             rejected.incrementAndGet();
+            rejectionCompleted.countDown();
             return IngestionRejectionResult.REJECTED;
         }, fixture.properties, fixture.clock, fixture.diagnostics)) {
             dispatcher.start();
             dispatcher.handle(bad.toFile());
             dispatcher.handle(good.toFile());
-            assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+            boolean disposed = rejectionCompleted.await(5, TimeUnit.SECONDS);
+            assertThat(disposed).as("rejection: admissions=%s; diagnostics=%s",
+                    fixture.handler.inspectPending(10), fixture.diagnostics.diagnostics()).isTrue();
+            boolean drained = done.await(5, TimeUnit.SECONDS);
+            assertThat(drained).as("admissions=%s; capacity=%s; diagnostics=%s",
+                    fixture.handler.inspectPending(10), dispatcher.snapshot(), fixture.diagnostics.diagnostics()).isTrue();
             assertThat(rejected).hasValue(1);
             assertThat(dispatcher.snapshot().completedDocuments()).isLessThanOrEqualTo(1);
         }
         assertThat(fixture.handler.pending(10)).isEmpty();
     }
 
-    @Test
-    void gracefulStopClosesReadyPreparationAndDurableOwnershipSurvivesRestart() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void gracefulStopClosesReadyPreparationAndDurableOwnershipSurvivesRestart(boolean cleanupFailure) throws Exception {
         Fixture fixture = new Fixture(4, 100);
         var olderEntered = new CountDownLatch(1);
         var releaseOlder = new CountDownLatch(1);
@@ -269,7 +278,10 @@ class FileSourceMessageHandlerIT {
             else { newerReady.countDown(); }
             return new PreparedIngestion() {
                 public IngestSourceResult promote() { throw new AssertionError("stopped preparation promoted"); }
-                public void close() { closed.incrementAndGet(); }
+                public void close() {
+                    closed.incrementAndGet();
+                    if (cleanupFailure) { throw new IllegalStateException(command.source().getFileName().toString()); }
+                }
             };
         });
         var shutdown = java.util.concurrent.Executors.newSingleThreadExecutor();
@@ -284,7 +296,16 @@ class FileSourceMessageHandlerIT {
             }
             assertThat(dispatcher.snapshot().running()).isFalse();
             releaseOlder.countDown();
-            stopped.get(5, TimeUnit.SECONDS);
+            if (cleanupFailure) {
+                assertThatThrownBy(() -> stopped.get(5, TimeUnit.SECONDS))
+                        .isInstanceOf(java.util.concurrent.ExecutionException.class)
+                        .hasCauseInstanceOf(IllegalStateException.class)
+                        .satisfies(failure -> {
+                            assertThat(failure.getCause()).hasMessage("older.html");
+                            assertThat(failure.getCause().getSuppressed()).singleElement()
+                                    .satisfies(cleanup -> assertThat(cleanup).hasMessage("newer.html"));
+                        });
+            } else { stopped.get(5, TimeUnit.SECONDS); }
             assertThat(closed).hasValue(2);
             assertThat(fixture.handler.pending(10)).hasSize(2);
             var done = new CountDownLatch(2);
@@ -325,7 +346,9 @@ class FileSourceMessageHandlerIT {
     }
 
     private final class Fixture {
-        private final Clock clock = Clock.systemUTC();
+        // Admission/retry policy time is controlled; worker termination uses timed latches.
+        private final Clock clock = Clock.fixed(java.time.Instant.parse("2026-10-06T00:00:00Z"),
+                java.time.ZoneOffset.UTC);
         private final Path journalPath = directory.resolve("admission");
         private final MemoryRegistrations registrations = new MemoryRegistrations();
         private final FileSystemSourceLifecycle sources = new FileSystemSourceLifecycle(
