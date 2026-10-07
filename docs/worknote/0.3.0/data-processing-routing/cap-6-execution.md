@@ -108,3 +108,7 @@ retains failure evidence and still removes DB/WAL/workspace/output copies.
   evidence; other independent process/cgroup/writer/output counters remain
   usable. The corrected sampler includes the configured default
   `var/document-preparation` and import `workspaces/staging` directories.
+- First import smoke stopped before workload admission because `jstat` was
+  absent from PATH. The current Java runtime has `jdk.jcmd`; use its matching
+  JDK module launcher when a diagnostic binary is absent. Retain this failed
+  collection attempt separately, with cleanup proof; it is not an import result.

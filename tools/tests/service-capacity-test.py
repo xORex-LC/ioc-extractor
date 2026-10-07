@@ -28,6 +28,10 @@ def policy():
 
 
 class ServiceCapacityTest(unittest.TestCase):
+    def test_missing_diagnostic_launcher_uses_the_current_jdk_modules(self):
+        with patch.object(CAP.shutil, 'which', side_effect=lambda name: '/usr/bin/java' if name == 'java' else None):
+            self.assertEqual(CAP.jdk_tool('jstat'), ['/usr/bin/java', '-m', 'jdk.jcmd/sun.tools.jstat.Jstat'])
+
     def test_jvm_counters_use_bytes_without_double_counting_class_space(self):
         header = 'S0U S1U EU OU S0C S1C EC OC MU MC CCSU CCSC YGC FGC GCT'
         with patch.object(CAP, 'command', return_value=header + '\n1 2 3 4 10 20 30 40 50 60 7 8 9 0 1.5'):

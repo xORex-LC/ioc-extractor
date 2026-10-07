@@ -36,6 +36,15 @@ INPUT_SPEC.loader.exec_module(INPUTS)
 FLAGS = ['-Xms128m', '-Xmx512m']
 
 
+def jdk_tool(name):
+    binary = shutil.which(name)
+    if binary:
+        return [binary]
+    # This host has the complete JDK modules but omits diagnostic binary launchers.
+    modules = {'jstat': 'jdk.jcmd/sun.tools.jstat.Jstat', 'jcmd': 'jdk.jcmd/sun.tools.jcmd.JCmd'}
+    return [shutil.which('java'), '-m', modules[name]]
+
+
 def command(arguments, timeout=40):
     result = subprocess.run(arguments, capture_output=True, text=True, timeout=timeout, check=False)
     if result.returncode:
@@ -234,7 +243,7 @@ def difference(before, after):
 
 def jvm_sample(pid):
     """JDK 21 HotSpot counters; reject schema drift rather than silently losing columns."""
-    lines = command(['jstat', '-gc', str(pid)], timeout=5).splitlines()
+    lines = command(jdk_tool('jstat') + ['-gc', str(pid)], timeout=5).splitlines()
     if len(lines) != 2 or len(lines[0].split()) != len(lines[1].split()):
         raise RuntimeError('Invalid jstat counter snapshot')
     values = dict(zip(lines[0].split(), lines[1].split()))
@@ -592,7 +601,7 @@ def diagnostics(unit):
     result = {}
     for name, action in (('heap_before', 'GC.heap_info'), ('native', 'VM.native_memory summary'),
                          ('forced_gc', 'GC.run'), ('heap_after', 'GC.heap_info'), ('retained_histogram', 'GC.class_histogram')):
-        result[name] = command(['jcmd', str(unit.pid), *action.split()], timeout=60)
+        result[name] = command(jdk_tool('jcmd') + [str(unit.pid), *action.split()], timeout=60)
     match = re.search(r'total\s+(\d+)K, used\s+(\d+)K', result['heap_after'])
     if not match:
         raise RuntimeError('Missing post-GC heap measurement')
