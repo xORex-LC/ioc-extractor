@@ -30,6 +30,9 @@ REPO = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location('capacity_base', Path(__file__).with_name('data-processing-capacity.py'))
 BASE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(BASE)
+INPUT_SPEC = importlib.util.spec_from_file_location('capacity_inputs', Path(__file__).with_name('service-capacity-inputs.py'))
+INPUTS = importlib.util.module_from_spec(INPUT_SPEC)
+INPUT_SPEC.loader.exec_module(INPUTS)
 FLAGS = ['-Xms128m', '-Xmx512m']
 
 
@@ -129,7 +132,7 @@ class DiskOracle(BASE.FixtureOracle):
                 self.wanted(artifact, key, values)
                 slot = int(row['id']) if has_id else None
                 if has_id:
-                    assignment = canonical.execute(f'SELECT a.slot FROM export_slot_assignment a JOIN {artifact} c '
+                    assignment = canonical.execute(f'SELECT id FROM {artifact} WHERE row_key=?', (key,)).fetchone() if profile is None else canonical.execute(f'SELECT a.slot FROM export_slot_assignment a JOIN {artifact} c '
                         'ON c._lifecycle_id=a.lifecycle_id WHERE a.profile=? AND a.artifact=? AND c.row_key=?',
                         (profile, artifact, key)).fetchone()
                     if slot <= 0 or assignment != (slot,):
@@ -229,6 +232,23 @@ def difference(before, after):
     return {key: after[key] - before[key] for key in before}
 
 
+def jvm_sample(pid):
+    """JDK 21 HotSpot counters; reject schema drift rather than silently losing columns."""
+    lines = command(['jstat', '-gc', str(pid)], timeout=5).splitlines()
+    if len(lines) != 2 or len(lines[0].split()) != len(lines[1].split()):
+        raise RuntimeError('Invalid jstat counter snapshot')
+    values = dict(zip(lines[0].split(), lines[1].split()))
+    required = ('S0U', 'S1U', 'EU', 'OU', 'S0C', 'S1C', 'EC', 'OC', 'MU', 'MC', 'YGC', 'FGC', 'GCT')
+    if any(name not in values for name in required):
+        raise RuntimeError('Missing JDK 21 jstat counters')
+    values = {name: float(value) for name, value in values.items()}
+    return {'heap_used_bytes': int(sum(values[name] for name in ('S0U', 'S1U', 'EU', 'OU')) * 1024),
+            'heap_committed_bytes': int(sum(values[name] for name in ('S0C', 'S1C', 'EC', 'OC')) * 1024),
+            # CCS is part of metaspace; do not double count it.
+            'metaspace_used_bytes': int(values['MU'] * 1024), 'metaspace_committed_bytes': int(values['MC'] * 1024),
+            'gc': {name: values[name] for name in ('YGC', 'FGC', 'GCT')}, 'sample_monotonic': time.monotonic()}
+
+
 class ResourceSampler:
     """Fail-closed sampler of one JVM and its effective cgroup; bounded retained aggregate plus JSONL."""
     def __init__(self, pid, cgroup, root):
@@ -238,12 +258,15 @@ class ResourceSampler:
         self.lock = threading.Lock()
         self.peak = {}
         self.samples = 0
+        self.jvm = None
         self.first = self.read()
         self.latest = self.first
         self.worker = threading.Thread(target=self.run, name='service-capacity-resources', daemon=False)
         self.worker.start()
 
     def read(self):
+        if self.jvm is None or time.monotonic() - self.jvm['sample_monotonic'] >= 1:
+            self.jvm = jvm_sample(self.pid)
         status = Path(f'/proc/{self.pid}/status').read_text()
         rss = int(re.search(r'^VmRSS:\s+(\d+)', status, re.M)[1]) * 1024
         hwm = int(re.search(r'^VmHWM:\s+(\d+)', status, re.M)[1]) * 1024
@@ -261,7 +284,7 @@ class ResourceSampler:
                         continue
                     if path.name.endswith('-wal'):
                         sizes['wal_bytes'] += size
-                    if 'document-workspaces' in path.parts or 'staging' in path.parts:
+                    if any(name in path.parts for name in ('document-preparation', 'workspaces', 'staging')):
                         sizes['workspace_bytes'] += size
                     if path.suffix == '.csv':
                         sizes['output_bytes'] += size
@@ -273,7 +296,7 @@ class ResourceSampler:
             swap_bytes=int((self.cgroup / 'memory.swap.current').read_text()),
             psi=pressure((self.cgroup / 'memory.pressure').read_text()),
             events=counters((self.cgroup / 'memory.events').read_text()),
-            cpu=counters((self.cgroup / 'cpu.stat').read_text()), **sizes)
+            cpu=counters((self.cgroup / 'cpu.stat').read_text()), **sizes, **self.jvm)
 
     def run(self):
         try:
@@ -306,6 +329,8 @@ class ResourceSampler:
                     'process_cpu_seconds': last['process_cpu_seconds'] - self.first['process_cpu_seconds'],
                     'peaks': dict(self.peak), 'process_hwm_bytes': last['hwm_bytes'],
                     'cpu_delta': difference(self.first['cpu'], last['cpu']),
+                    'gc_delta': difference(self.first['gc'], last['gc']),
+                    'jvm_sampling': 'jstat -gc; at most one snapshot/s; metaspace excludes code cache/native allocations',
                     'memory_events_delta': difference(self.first['events'], last['events']),
                     'psi_microseconds_delta': psi, 'psi_full_fraction': psi['full'] / (wall * 1e6) if wall > 0 else None}
 
@@ -333,6 +358,8 @@ def gate_sample(sample, size):
         violations.append('oom')
     if max((value['maximumHoldNanos'] for value in sample['health']['writerOperations'].values()), default=0) > limits['writer_hold_nanos']:
         violations.append('writer_hold')
+    if sample['health']['writerOperations'].get('CONTROL', {}).get('maximumWaitNanos', 0) > 10 * 10**9:
+        violations.append('control_wait')
     return {'limits': limits, 'violations': violations, 'status': 'FAIL' if violations else 'SCREEN_PASS',
             'scope': 'Conservative complete-window and resource screens; exact Tlocal/remaining G6 criteria remain separate'}
 
@@ -452,19 +479,51 @@ def admission_rows(root, config, source_key):
     return result
 
 
-def local_slices(unit, root, oracle, config, source_key, timeout):
+def import_completion(root, manifest):
+    deliveries = BASE.rows(root / 'var/db/ioc-service.db',
+        'SELECT * FROM import_delivery WHERE snapshot_sha256=? AND state=?', (manifest['sha256'], 'TERMINAL'))
+    if not deliveries:
+        return None
+    if len(deliveries) != 1:
+        raise RuntimeError('Unexpected duplicate import delivery')
+    delivery = deliveries[0]
+    if delivery['terminal_outcome'] != 'SUCCEEDED' or delivery['stage_accepted_rows'] != manifest['accepted_rows'] or delivery['stage_rejected_rows'] != 0:
+        raise RuntimeError('AS_IS import outcome/count mismatch')
+    receipts = BASE.rows(root / 'var/db/ioc-dataframe.db',
+                        'SELECT * FROM import_commit WHERE delivery_id=?', (delivery['delivery_id'],))
+    if len(receipts) != 1 or receipts[0]['outcome'] != 'COMMITTED' or receipts[0]['accepted_rows'] != manifest['accepted_rows']:
+        raise RuntimeError('AS_IS import commit receipt mismatch')
+    if manifest['has_slots']:
+        with closing(sqlite3.connect(f'file:{root / "var/db/ioc-dataframe.db"}?mode=ro', uri=True)) as db:
+            count = 0
+            for row in db.execute('SELECT source_row_number,requested_slot,assigned_slot,outcome FROM import_slot_resolution WHERE delivery_id=? ORDER BY source_row_number', (delivery['delivery_id'],)):
+                # The duplicate is last and therefore cannot reclaim an earlier requested slot.
+                count += 1
+                if row != (count + 1, 900000 + count, 900000 + count, 'EXACT'):
+                    raise RuntimeError('Imported sparse slot request/resolution mismatch')
+            if count != manifest['accepted_rows']:
+                raise RuntimeError('Missing imported slot resolutions')
+    return {'delivery': delivery, 'receipt': receipts[0]}
+
+
+def local_slices(unit, root, oracle, config, source_key, timeout, import_manifest=None):
     service, dataframe = root / 'var/db/ioc-service.db', root / 'var/db/ioc-dataframe.db'
     profiles = {profile['name']: set(profile['artifacts']) for profile in config['ioc']['export']['profiles']}
     deadline, found, transitions = time.monotonic() + timeout, {}, []
     previous = None
     while time.monotonic() < deadline:
         unit.assert_running()
-        admissions = admission_rows(root, config, source_key)
+        admissions = [] if import_manifest else admission_rows(root, config, source_key)
         if admissions and admissions[0] != previous:
             previous = admissions[0]
             transitions.append(dict(observed_monotonic=time.monotonic(), **previous))
-        runs = BASE.rows(service, 'SELECT * FROM ingest_run WHERE source_key=? AND status=?', (source_key, 'COMPLETED'))
+        imported = import_completion(root, import_manifest) if import_manifest else None
+        runs = [imported] if imported else ([] if import_manifest else BASE.rows(service, 'SELECT * FROM ingest_run WHERE source_key=? AND status=?', (source_key, 'COMPLETED')))
         if runs:
+            projections = BASE.rows(dataframe, 'SELECT * FROM artifact_projection_state')
+            if any(row['required_generation'] != row['projected_generation'] for row in projections):
+                time.sleep(.1)
+                continue
             revisions = {row['artifact']: row['revision'] for row in BASE.rows(dataframe, 'SELECT * FROM artifact_revision')}
             for run in BASE.rows(service, 'SELECT * FROM export_run WHERE status=?', ('COMPLETED',)):
                 if run['profile'] not in profiles:
@@ -480,12 +539,13 @@ def local_slices(unit, root, oracle, config, source_key, timeout):
                 if BASE.digest(manifest_path) != run['manifest_sha256'] or (folder / '_SUCCESS').read_text().strip() != run['manifest_sha256']:
                     raise RuntimeError('Local slice marker/manifest mismatch')
                 found[run['profile']] = dict(run=run, manifest=manifest, path=str(folder))
-            if set(found) == set(profiles) and admissions and admissions[0]['phase'] == 'TERMINAL' and admissions[0]['registration_finalized'] == 1:
-                if admissions[0]['terminal_outcome'] != 'SUCCEEDED':
+            terminal = imported or admissions and admissions[0]['phase'] == 'TERMINAL' and admissions[0]['registration_finalized'] == 1
+            if set(found) == set(profiles) and terminal:
+                if admissions and admissions[0]['terminal_outcome'] != 'SUCCEEDED':
                     raise RuntimeError('Document terminal outcome failed')
                 # Stop timing before independent output readback/verification.
                 return {'complete_monotonic': time.monotonic(), 'profiles': found,
-                        'admission_transitions': transitions, 'run': runs[0], 'revisions': revisions}
+                        'admission_transitions': transitions, 'run': runs[0], 'revisions': revisions, 'projections': projections}
         time.sleep(.1)
     raise RuntimeError('Complete local slices timeout')
 
@@ -533,11 +593,17 @@ def diagnostics(unit):
     for name, action in (('heap_before', 'GC.heap_info'), ('native', 'VM.native_memory summary'),
                          ('forced_gc', 'GC.run'), ('heap_after', 'GC.heap_info'), ('retained_histogram', 'GC.class_histogram')):
         result[name] = command(['jcmd', str(unit.pid), *action.split()], timeout=60)
+    match = re.search(r'total\s+(\d+)K, used\s+(\d+)K', result['heap_after'])
+    if not match:
+        raise RuntimeError('Missing post-GC heap measurement')
+    result['post_gc_live_heap_bytes'] = int(match[2]) * 1024
+    result['post_gc_live_heap_gate'] = 'PASS' if result['post_gc_live_heap_bytes'] <= 256 * 1024**2 else 'FAIL'
+    result['allocation_scope'] = 'Separate JFR sampled whole-JVM allocations; no exact all-thread or caller byte counter'
     return result
 
 
 def sample(args, jar, report, index, evidence_root):
-    unit, sampler, oracle = None, None, None
+    unit, sampler, oracle, share = None, None, None, None
     result = {'index': index, 'status': 'RUNNING', 'started_epoch_seconds': time.time()}
     report['samples'].append(result)
     # State cleanup is unconditional, including exceptions and collection failure.
@@ -545,11 +611,21 @@ def sample(args, jar, report, index, evidence_root):
     root = Path(temporary)
     try:
         config = private_config(args.config, root, args.port)
+        if getattr(args, 'smb', False):
+            original = yaml.safe_load(args.config.read_text())['ioc']
+            config['ioc']['sync'] = original['sync']
+            config['ioc']['dataframe-import']['sources'] += [item for item in original['dataframe-import']['sources'] if item['transport'] == 'smb']
+            share = INPUTS.PrivateShare(config, args.environment, root, BASE, command)
+            share.provision(config)
+            (root / 'application.yml').write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True))
+            result['smb_namespace'] = share.namespace
         result['policy_sha256'] = BASE.digest(root / 'application.yml')
-        result['policy_changes'] = ['Private state/inbox/import paths and loopback port', 'Sync disabled for local reference', 'Log phase observer enabled']
+        result['policy_changes'] = ['Private state/inbox/import paths and loopback port',
+                                    'Private SMB namespace' if share else 'Sync disabled for local reference', 'Log phase observer enabled']
         oracle = DiskOracle(config, root / 'oracle.db')
         unit = PrivateUnit(root)
-        result['runtime'] = unit.start(jar, root / 'application.yml', diagnostic=args.diagnostic)
+        result['runtime'] = unit.start(jar, root / 'application.yml',
+                                       environment=getattr(args, 'environment', None) if share else None, diagnostic=args.diagnostic)
         result['startup'] = ready(unit, args.port)
         sampler = ResourceSampler(unit.pid, unit.cgroup, root)
         warmup = root / 'warmup.html'
@@ -565,23 +641,42 @@ def sample(args, jar, report, index, evidence_root):
             local_handoff(initial, root)
             local = local_slices(unit, root, oracle, config, BASE.digest(initial), args.timeout)
             verify_slices(local, oracle, root / 'var/db/ioc-dataframe.db')
-        document = root / ('reference.' + args.format)
-        result['input'] = fixture(document, args.rows, args.shape)
-        feed_fixture(oracle, document)
+        import_artifact = getattr(args, 'import_artifact', None)
+        document = root / ('reference.csv' if import_artifact else 'reference.' + args.format)
+        if import_artifact:
+            result['input'] = INPUTS.import_fixture(document, args.rows, import_artifact, config, oracle, BASE.digest)
+        elif getattr(args, 'document', None):
+            shutil.copyfile(args.document, document)
+            result['input'] = {'sha256': BASE.digest(document), 'bytes': document.stat().st_size, 'physical_input': str(args.document)}
+            feed_fixture(oracle, document)
+            if oracle.observations - 60 - args.initial_rows != args.rows:
+                raise RuntimeError('Physical input occurrence count differs from declared workload')
+        else:
+            result['input'] = fixture(document, args.rows, args.shape)
+            feed_fixture(oracle, document)
         result['expected_final_rows'] = oracle.counts()
         result['health_before'] = health(args.port, 'dataProcessingCapacity')['details']
         sampler.begin()
-        handoff = local_handoff(document, root)
+        handoff = share.handoff(document) if share else (INPUTS.import_handoff(document, root) if import_artifact else local_handoff(document, root))
         result['handoff'] = handoff
-        local = local_slices(unit, root, oracle, config, BASE.digest(document), args.timeout)
-        result['local_window_upper_seconds'] = local['complete_monotonic'] - handoff['monotonic'] - quiet_seconds(config)
-        result['configured_stability_seconds'] = quiet_seconds(config)
+        local = local_slices(unit, root, oracle, config, BASE.digest(document), args.timeout,
+                             result['input'] if import_artifact else None)
+        quiet = quiet_seconds(config) if not import_artifact else 0
+        result['local_window_upper_seconds'] = local['complete_monotonic'] - handoff['monotonic'] - quiet
+        result['configured_stability_seconds'] = quiet
         result['raw_local_handoff_to_slices_seconds'] = local['complete_monotonic'] - handoff['monotonic']
         result['timeline'] = {key: value for key, value in local.items() if key != 'profiles'}
         result['resources'] = sampler.summary()
         result['health'] = health(args.port, 'dataProcessingCapacity')['details']
         result['canonical_oracle'] = oracle.check_database(root / 'var/db/ioc-dataframe.db')
         result['local_slices'] = verify_slices(local, oracle, root / 'var/db/ioc-dataframe.db')
+        for artifact in config['ioc']['sink']['artifacts']:
+            oracle.check_csv(artifact['name'], root / artifact['path'], root / 'var/db/ioc-dataframe.db', None)
+        result['mutable_projection_oracle'] = 'PASS; fields, complete keys, canonical ids and durable generations'
+        if share:
+            result['publications'] = share.publications(unit, root, local, oracle, BASE, args.timeout)
+            result['complete_smb_seconds'] = max(value['verified_monotonic'] for value in result['publications'].values()) - handoff['monotonic']
+            result['smb_resource_window'] = sampler.summary()
         result['gates'] = gate_sample(result, args.rows)
         result['status'] = result['gates']['status']
         if args.diagnostic:
@@ -603,6 +698,12 @@ def sample(args, jar, report, index, evidence_root):
         if unit:
             try:
                 result['cleanup'] = unit.close()
+            except Exception as failure:
+                errors.append(str(failure))
+        if share:
+            try:
+                share.close()
+                result['smb_namespace_removed'] = True
             except Exception as failure:
                 errors.append(str(failure))
         if oracle:
@@ -642,10 +743,18 @@ def main():
     parser.add_argument('--timeout', type=int, default=900)
     parser.add_argument('--port', type=int, default=18206)
     parser.add_argument('--diagnostic', action='store_true')
+    parser.add_argument('--import-artifact', choices=BASE.ARTIFACTS)
+    parser.add_argument('--smb', action='store_true')
+    parser.add_argument('--environment', type=Path, help='systemd EnvironmentFile with SMB credentials; never sourced')
+    parser.add_argument('--document', type=Path, help='Existing physical HTML fixture with independently checked occurrence count')
     args = parser.parse_args()
     root = args.output.absolute()
     if args.rows < 1 or args.initial_rows < 0 or args.samples < 1 or args.timeout < 1:
         parser.error('Positive workload, samples and timeout required')
+    if args.smb and (not args.environment or args.import_artifact):
+        parser.error('SMB document reference requires EnvironmentFile and excludes local import mode')
+    if args.document and (args.format != 'html' or args.import_artifact):
+        parser.error('Physical fixture reference currently requires HTML document mode')
     if not root.is_relative_to(REPO / '.dev') or root.exists() or root.resolve() != root:
         parser.error('Use a new private repo-local .dev output without symlinks')
     if command(['git', '-C', str(REPO), 'status', '--porcelain']):
@@ -654,7 +763,8 @@ def main():
     head = command(['git', '-C', str(REPO), 'rev-parse', 'HEAD'])
     report = {'source_commit': head, 'jar_sha256': BASE.digest(args.jar), 'driver_sha256': BASE.digest(__file__),
               'base_oracle_sha256': BASE.digest(BASE.__file__), 'policy_sha256': BASE.digest(args.config),
-              'java': command(['java', '-version']), 'rows': args.rows, 'format': args.format, 'shape': args.shape,
+              'java': command(['java', '--version']), 'rows': args.rows, 'format': args.format, 'shape': args.shape,
+              'input_driver_sha256': BASE.digest(INPUTS.__file__), 'import_artifact': args.import_artifact, 'smb': args.smb,
               'initial_rows': args.initial_rows, 'requested_samples': args.samples, 'mode': 'diagnostic' if args.diagnostic else 'primary',
               'samples': [], 'acceptance': 'NOT_ACCEPTED; exact Tlocal and complete G6 matrix are separate'}
     save(root / 'report.json', report)

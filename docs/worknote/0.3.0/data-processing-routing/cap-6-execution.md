@@ -88,3 +88,23 @@ retains failure evidence and still removes DB/WAL/workspace/output copies.
   Preserve `.dev/cap6-smoke-html/report.json` as failed harness evidence; the
   corrected monitor reads the configured durable backend. This is not a
   successful workload sample or a production performance failure.
+- Corrected HTML smoke passed the implemented screens and independent output
+  oracle (1k, all five artifacts). Conservative local window: 3.920s. The first
+  100k primary screen at `d533a0bb` failed: 57.821s conservative local window,
+  11.860s maximum PROMOTION hold, 467.30 MiB sampled RSS, 453.38 MiB anon+kernel,
+  no OOM or swap, memory PSI full 0.125%. Raw CPU: 53.95s. Final aggregate rows:
+  90,054, including the verified warmup; all profile fields/keys/provenance and
+  slots passed. Its requested three-success series stopped after this failed
+  screen. `.dev/cap6-html-100k/report.json` retains the failure and cleanup proof.
+- The next harness revision adds independent mutable CSV/durable-generation
+  checks, JDK 21 heap/GC counters, large AS_IS import fixtures for each contract,
+  and private SMB publication/readback. Jstat samples are at most once per
+  second; column/schema drift fails collection. Metaspace is reported without
+  double-counting compressed class space; it is not complete non-heap/native
+  accounting. [JDK 21 counter definitions](https://docs.oracle.com/en/java/javase/21/docs/specs/man/jstat.html).
+  NMT and sampled JFR allocation diagnostics remain separate private runs.
+- The initial workspace byte series incorrectly selected the previous directory
+  name and reported zero. This field is invalid in the earlier smoke/100k
+  evidence; other independent process/cgroup/writer/output counters remain
+  usable. The corrected sampler includes the configured default
+  `var/document-preparation` and import `workspaces/staging` directories.

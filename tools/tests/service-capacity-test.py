@@ -28,6 +28,43 @@ def policy():
 
 
 class ServiceCapacityTest(unittest.TestCase):
+    def test_jvm_counters_use_bytes_without_double_counting_class_space(self):
+        header = 'S0U S1U EU OU S0C S1C EC OC MU MC CCSU CCSC YGC FGC GCT'
+        with patch.object(CAP, 'command', return_value=header + '\n1 2 3 4 10 20 30 40 50 60 7 8 9 0 1.5'):
+            value = CAP.jvm_sample(42)
+            self.assertEqual(value['heap_used_bytes'], 10 * 1024)
+            self.assertEqual(value['heap_committed_bytes'], 100 * 1024)
+            self.assertEqual(value['metaspace_used_bytes'], 50 * 1024)
+            self.assertEqual(value['gc']['GCT'], 1.5)
+        with patch.object(CAP, 'command', return_value='EU OU\n1 2'):
+            with self.assertRaisesRegex(RuntimeError, 'Missing JDK'):
+                CAP.jvm_sample(42)
+
+    def test_all_five_import_fixtures_preserve_case_paths_and_duplicate_slot_hole(self):
+        config = policy()
+        config['ioc']['dataframe-import'] = {'contracts': [
+            {'id': spec['name'], 'mode': 'as-is', 'artifacts': [{'name': spec['name']}],
+             'recognition': {'required-columns': (['id'] if spec['name'] in ('ip_list', 'masks', 'hashes') else [])
+                             + [item['name'] for item in spec['columns']]}}
+            for spec in config['ioc']['sink']['artifacts']]}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            oracle = CAP.DiskOracle(config, root / 'oracle.db')
+            try:
+                for artifact in CAP.BASE.ARTIFACTS:
+                    path = root / (artifact + '.csv')
+                    manifest = CAP.INPUTS.import_fixture(path, 10, artifact, config, oracle, CAP.BASE.digest)
+                    self.assertEqual(manifest['accepted_rows'], 10)
+                    self.assertEqual(oracle.counts()[artifact], 10)
+                self.assertIn('https://Preserved-1.Example.test:9090/api?q=1', (root / 'masks.csv').read_text())
+                rows = (root / 'ip_list.csv').read_text().splitlines()
+                self.assertTrue(rows[-1].startswith('900011;'))
+                self.assertIn('Ignored duplicate', rows[-1])
+                kept = [json.loads(row[0]) for row in oracle.db.execute("SELECT fields FROM expected WHERE artifact='ip_list'")]
+                self.assertEqual({row['source'] for row in kept}, {'Original Case'})
+            finally:
+                oracle.close()
+
     def test_html_and_real_docx_have_equal_fields_keys_and_winners(self):
         with tempfile.TemporaryDirectory() as temporary:
             root, outputs = Path(temporary), []
