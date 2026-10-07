@@ -250,7 +250,7 @@ def jvm_sample(pid):
     required = ('S0U', 'S1U', 'EU', 'OU', 'S0C', 'S1C', 'EC', 'OC', 'MU', 'MC', 'YGC', 'FGC', 'GCT')
     if any(name not in values for name in required):
         raise RuntimeError('Missing JDK 21 jstat counters')
-    values = {name: float(value) for name, value in values.items()}
+    values = {name: float(values[name]) for name in required}
     return {'heap_used_bytes': int(sum(values[name] for name in ('S0U', 'S1U', 'EU', 'OU')) * 1024),
             'heap_committed_bytes': int(sum(values[name] for name in ('S0C', 'S1C', 'EC', 'OC')) * 1024),
             # CCS is part of metaspace; do not double count it.

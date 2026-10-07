@@ -33,8 +33,8 @@ class ServiceCapacityTest(unittest.TestCase):
             self.assertEqual(CAP.jdk_tool('jstat'), ['/usr/bin/java', '-m', 'jdk.jcmd/sun.tools.jstat.Jstat'])
 
     def test_jvm_counters_use_bytes_without_double_counting_class_space(self):
-        header = 'S0U S1U EU OU S0C S1C EC OC MU MC CCSU CCSC YGC FGC GCT'
-        with patch.object(CAP, 'command', return_value=header + '\n1 2 3 4 10 20 30 40 50 60 7 8 9 0 1.5'):
+        header = 'S0U S1U EU OU S0C S1C EC OC MU MC CCSU CCSC YGC FGC GCT CGC CGCT'
+        with patch.object(CAP, 'command', return_value=header + '\n1 2 3 4 10 20 30 40 50 60 7 8 9 0 1.5 - -'):
             value = CAP.jvm_sample(42)
             self.assertEqual(value['heap_used_bytes'], 10 * 1024)
             self.assertEqual(value['heap_committed_bytes'], 100 * 1024)
