@@ -47,7 +47,13 @@ class ServiceCapacityTest(unittest.TestCase):
             jar.write_text('frozen executable')
             args = SimpleNamespace(previous=jar, candidate=jar, config=source, output=repo / '.dev/evidence')
             unit = MagicMock()
-            unit.start.return_value = {}
+            def start(executable, policy):
+                self.assertEqual(policy.name, 'previous.yml')
+                self.assertFalse((policy.parent / 'application.yml').exists())
+                self.assertTrue((policy.parent / 'candidate.yml').is_file())
+                self.assertNotIn('workspace', CAP.yaml.safe_load(policy.read_text())['ioc']['processing'])
+                return {}
+            unit.start.side_effect = start
             def stop():
                 root = next((repo / '.dev').glob('ioc-cap6-upgrade-*'))
                 self.assertTrue((root / 'candidate.jar').exists())

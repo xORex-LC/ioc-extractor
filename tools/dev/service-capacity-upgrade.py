@@ -96,6 +96,9 @@ def rehearse(args):
         if 'workspace' not in original['ioc'].get('processing', {}):
             previous_config['ioc']['processing'].pop('workspace', None)
         (root / 'previous.yml').write_text(CAP.yaml.safe_dump(previous_config, sort_keys=False))
+        # Spring also searches cwd/application.yml, even with an explicit additional
+        # location. Keep each executable's policy outside that automatic search.
+        (root / 'application.yml').rename(root / 'candidate.yml')
         oracle = CAP.DiskOracle(config, root / 'oracle.db')
         source = root / 'seed.html'
         report['input'] = CAP.fixture(source, 1000)
@@ -113,7 +116,7 @@ def rehearse(args):
                     raise RuntimeError('Stopped backup restore differs before old executable launch')
                 report['restore_verified_before_old_launch'] = True
             unit = CAP.PrivateUnit(root)
-            policy = root / ('application.yml' if label == 'candidate' else 'previous.yml')
+            policy = root / ('candidate.yml' if label == 'candidate' else 'previous.yml')
             launch = unit.start(executable.resolve(), policy)
             CAP.ready(unit, 18207)
             if label == 'previous':
