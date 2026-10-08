@@ -510,6 +510,14 @@ than requiring zero allocations or treating all filesystem cache as a defect.
 
 ## CAP-7 — Conditional follow-on architecture decisions
 
+**2026-10-08 qualification update:** [CAP-6 execution](cap-6-execution.md)
+retains whole-service first-failure screens and a passing drained private
+upgrade/restore. G6 is NOT_ACCEPTED: 100k local/writer budgets fail, million
+HTML reading OOMs, million DOCX preparation exhausts its workspace cap, and
+live SMB readiness is unavailable. CAP-7A/C/D have demonstrated triggers.
+Failed/dependent cells, exact timing/allocation and mixed-load qualification
+remain open; no budget was relaxed and no candidate was activated on the stand.
+
 Conditional does not mean optional when a required target is still failing.
 Choose the cell that addresses the measured remaining mechanism.
 

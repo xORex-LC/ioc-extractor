@@ -564,6 +564,46 @@ signal/noise disposition first. Before adoption, provide:
 Do not reuse SpotBugs acceptance as a generic suppression framework. Each tool
 has different identity, noise and failure semantics.
 
+## Private whole-service capacity qualification
+
+`make service-capacity SERVICE_CAPACITY_ARGS='…'` selects a frozen executable,
+operator policy and declared document/import reference. The driver starts an
+owned user-systemd unit, checks effective CPU/memory limits, warms the service,
+admits input through public intake and streams an independent disk-backed
+canonical/CSV/manifest/slot oracle. It never seeds canonical state directly.
+Configuration paths are privatized, including admission/import/workspace,
+artifact output and retention paths. Provisioned SMB references own a separate
+remote namespace; credentials are consumed through systemd EnvironmentFile,
+never shell-sourced or passed as Maven properties.
+
+Reports distinguish complete windows, failed windows and incomplete samples;
+missing/regressing counters fail collection. RSS, cgroup anon/file/total kernel,
+PSI, swap, heap, GC, CPU, WAL and workspace/output disk have explicit scopes.
+Writer-window deltas cannot reuse lifetime maxima from warmup/population; an
+unchanged maximum yields a bounded window maximum with uncertainty recorded.
+Separate private JFR/NMT/post-GC diagnostics include all reported heap
+generations and label sampled allocations as estimates. Conservative local
+handoff windows include unresolved detection/export cadence and do not claim
+exact eligible-source timing.
+
+The first failed mandatory screen stops repetitions. Worker OOM and workspace
+`SQLITE_FULL` stop the owned experiment promptly, including when the JVM stays
+alive. Success, failure and evidence-copy failure stop the process before
+removing its private DB/WAL/source/workspace/CSV/runtime; cleanup errors fail
+the report. Only compact evidence is retained. These screens add qualification
+and do not replace deterministic reactor or provisioned transport tests.
+
+`make service-capacity-upgrade UPGRADE_ARGS='…'` additionally freezes previous
+and candidate executables, publicly seeds drained private state, stops the old
+process before a coherent filesystem backup, verifies candidate upgrade, then
+restores and verifies old bytes/schema before launching the old binary.
+Separate policy filenames prevent Spring's automatic working-directory
+`application.yml` discovery from contaminating the old executable's policy.
+This mechanism covers drained backup restoration; in-flight policy recovery
+and deployment acceptance require their own evidence. Tool contracts are in
+[`service-capacity-test.py`](../../tools/tests/service-capacity-test.py).
+
+
 ## Sources of truth
 
 - Reactor, plugin versions, phases and inheritance: root

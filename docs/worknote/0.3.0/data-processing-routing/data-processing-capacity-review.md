@@ -798,6 +798,34 @@ Earlier evidence: [O7 host-collapse](o7-host-collapse-qualification.md),
 
 ## Review deliverable validation
 
+### 2026-10-08 whole-service follow-up
+
+[CAP-6 execution](cap-6-execution.md) and its compact evidence now test the
+CAP-5 executable in the original resource envelope. The corrected matcher
+removed the incident's SQL multiplier; it did not remove the following
+whole-service costs:
+
+- Serial preparation and canonical write already exceed 50s on the mostly
+  unique 100k HTML/DOCX references, before final output convergence. Largest
+  100k imports occupy the writer for 14–25s. This demonstrates CAP-7C's
+  transaction-visibility decision point; priority admission alone cannot
+  preempt an already admitted atomic transaction.
+- Both mostly unique and heavily repeated million HTML inputs OOM while
+  reading. CAP-7A must bound source retention and define fatal worker/admission
+  ownership; winner reduction cannot repair an OOM before routing.
+- Million DOCX reaches preparation but exceeds the private SQLite page cap
+  within the configured disk/journal budget. Separate 100k JFR samples show
+  substantial row decoding/UTF-8/map allocation churn. CAP-7D should compare
+  serialization and index density as well as backend choices; moving the same
+  encoding to another backend is not a demonstrated solution.
+
+The drained schema upgrade and stopped-backup restore pass. Full SMB readiness,
+exact eligibility/allocation counters, complete independent diagnostics/ranks
+and sustainable mixed-load acceptance remain open. These results require
+separate CAP-7 changes and renewed G6 qualification; they do not establish a
+need to replace Camel or add Redis. Earlier review findings and validation
+below describe their historical baseline, not today's acceptance.
+
 The final diagnostic source was rerun against a private 1,000-alias database:
 all three query variants returned the expected hit/miss counts and passed the
 independent matching boundary fixture. This rerun checks reproducibility; it
