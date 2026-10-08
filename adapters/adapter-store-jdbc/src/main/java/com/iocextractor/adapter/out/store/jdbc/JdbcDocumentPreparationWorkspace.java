@@ -52,6 +52,7 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
     private boolean closed;
     private int cursors;
     private RowCursor<PreparedArtifactRow> activeCursor;
+    private JdbcDocumentSourceWorkspace sourceWorkspace;
 
     JdbcDocumentPreparationWorkspace(Path directory, Path snapshot, DocumentPreparationLimits limits,
             ArtifactIdentityResolver identities, Map<String, ArtifactWritePolicy> policies,
@@ -75,7 +76,7 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
             }
             opened = DriverManager.getConnection("jdbc:sqlite:" + database);
             try (var statement = opened.createStatement()) {
-                statement.execute("PRAGMA cache_size=-" + limits.cacheKiB());
+                statement.execute("PRAGMA cache_size=-" + limits.cacheKiB() / 2);
                 statement.execute("PRAGMA mmap_size=0");
                 statement.execute("PRAGMA temp_store=FILE");
                 statement.execute("PRAGMA journal_mode=DELETE");
@@ -99,16 +100,30 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
             String winner = "INSERT INTO winner(artifact,equality_key,first_ordinal,candidate_ordinal) VALUES (?,?,?,?) ON CONFLICT(artifact,equality_key) ";
             keepWinner = replay ? null : opened.prepareStatement(winner + "DO NOTHING");
             replaceWinner = replay ? null : opened.prepareStatement(winner + "DO UPDATE SET candidate_ordinal=excluded.candidate_ordinal");
-        } catch (IOException | SQLException | RuntimeException failure) {
-            if (opened != null) {
-                try { opened.close(); } catch (SQLException closeFailure) { failure.addSuppressed(closeFailure); }
-            }
+        } catch (IOException | SQLException | RuntimeException | Error failure) {
+            closeInitialization(opened, failure);
+            if (failure instanceof Error fatal) { throw fatal; }
             throw new IocExtractorException("Cannot initialize document preparation workspace", failure);
+        }
+    }
+
+    private static void closeInitialization(Connection opened, Throwable failure) {
+        if (opened != null) {
+            try { opened.close(); }
+            catch (SQLException cleanup) { failure.addSuppressed(cleanup); }
         }
     }
 
     @Override
     public Path source() { return snapshot; }
+    @Override
+    public com.iocextractor.application.port.out.artifact.DocumentSourceWorkspace sourceWorkspace() {
+        requireOpen();
+        if (sourceWorkspace != null) { throw new IllegalStateException("Source workspace is already open"); }
+        var owned = new JdbcDocumentSourceWorkspace(directory, limits, diskCheck);
+        sourceWorkspace = owned;
+        return owned;
+    }
     @Override
     public void discard() { discard = true; }
 
@@ -209,6 +224,7 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
             DocumentPreparationSummary summary) {
         requireOpen();
         if (sealed) { throw new IllegalStateException("Document workspace is already sealed"); }
+        closeSourceWorkspace();
         try {
             connection.commit();
             if (count("candidate", null) != candidateOrdinal) {
@@ -343,29 +359,35 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
         return new IocExtractorException("Document preparation storage failed", failure);
     }
 
+    private void closeSourceWorkspace() {
+        var owned = sourceWorkspace;
+        sourceWorkspace = null;
+        if (owned != null) { owned.close(); }
+    }
+
     @Override
     public void close() {
         if (closed) { return; }
         closed = true;
-        RuntimeException failure = null;
+        Throwable failure = null;
         try {
             if (activeCursor != null) { activeCursor.close(); }
-        } catch (RuntimeException error) { failure = error; }
+        } catch (RuntimeException | Error error) { failure = error; }
+        try {
+            closeSourceWorkspace();
+        } catch (RuntimeException | Error error) { failure = DocumentWorkspaceFailures.accumulate(failure, error); }
         try {
             connection.close();
-        } catch (SQLException error) { failure = closingFailure(failure, error); }
+        } catch (SQLException | RuntimeException | Error error) { failure = DocumentWorkspaceFailures.accumulate(failure, error); }
         try {
             if (discard || !sealed && !replay) {
                 JdbcDocumentPreparationWorkspaceFactory.deletePrivateDirectory(directory);
             }
-        } catch (IOException error) { failure = closingFailure(failure, error); }
-        try { release.run(); } catch (RuntimeException error) { failure = closingFailure(failure, error); }
+        } catch (IOException | RuntimeException | Error error) { failure = DocumentWorkspaceFailures.accumulate(failure, error); }
+        try { release.run(); } catch (RuntimeException | Error error) { failure = DocumentWorkspaceFailures.accumulate(failure, error); }
+        if (failure instanceof Error fatal) { throw fatal; }
         if (failure != null) { throw new IocExtractorException("Document workspace close failed", failure); }
     }
 
-    private static RuntimeException closingFailure(RuntimeException failure, Exception error) {
-        if (failure == null) { return new IocExtractorException("Cannot close document preparation workspace", error); }
-        failure.addSuppressed(error);
-        return failure;
-    }
+
 }

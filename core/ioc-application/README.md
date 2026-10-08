@@ -29,6 +29,11 @@ mapped-коллизий. Для `last-nonempty` и планов с выборо�
 повторяемый `RowSource`, а вызывающий код закрывает каждый `RowCursor`.
 Framework-free ports задают контракт; дисковый reducer, квоты и SQLite
 соединения принадлежат JDBC adapter.
+`DocumentSourceWorkspace` этого же invocation предоставляет decoded/refanged
+текст и source cursors. Стадии `ReadSourceStreamStage`, `RefangSourceStreamStage`,
+`ExtractSourceStreamStage`, `AttributeSourceStreamStage` передают Router поток
+атрибутированных occurrences без полного списка. Source scratch закрывается
+перед seal; fatal errors проходят через cleanup и driving fail-stop boundary.
 Альтернативного dedup/classify/prepare dispatcher нет.
 `ArtifactRow` владеет единственным упорядоченным защитным снимком колонок:
 фабрика `ordered` использует снимок конструктора, сохраняет `null` и порядок

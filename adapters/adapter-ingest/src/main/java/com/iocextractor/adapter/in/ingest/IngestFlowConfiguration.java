@@ -83,9 +83,10 @@ public class IngestFlowConfiguration {
                                                              com.iocextractor.diagnostics.sink.DiagnosticSink diagnosticSink,
                                                              IngestAdapterProperties properties,
                                                              Clock ingestClock,
-                                                             OrderedDocumentAdmissionHandler orderedAdmissions) {
+                                                             OrderedDocumentAdmissionHandler orderedAdmissions,
+                                                             com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspaceFactory workspaces) {
         return new DurableDocumentDispatcher(orderedAdmissions, useCase, rejectUseCase,
-                properties, ingestClock, diagnosticSink);
+                properties, ingestClock, diagnosticSink, workspaces.maximumConcurrentWorkspaces());
     }
 
     @Bean

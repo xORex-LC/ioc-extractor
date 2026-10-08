@@ -27,8 +27,16 @@ candidates также сохраняются. Глобальный выбор с
 резервируются. `ArtifactWritePlan` содержит повторно читаемый `RowSource`, а
 writer и receipts читают его через закрываемый `RowCursor` без общего списка
 победителей. Один workspace/cache обслуживает все артефакты; лимиты находятся
-в `ioc.processing.workspace`. Это не ограничивает буферы исходного текста и
-извлечённых occurrences. Состояния, pins и recovery:
+в `ioc.processing.workspace`. Этот же owner хранит decoded/refanged UTF-16
+на диске и предоставляет regex полный `CharSequence` через фиксированный cache.
+Пересечения и решения extraction хранятся в индексированном source scratch;
+атрибуция и Router читают occurrences через cursor. Source scratch удаляется
+до sealing и при отказе. HTML разбирается с удалением завершённых поддеревьев,
+DOCX — через SAX. Превышение лимитов parser region, IOC или marker отклоняет
+подготовку до canonical commit; offsets остаются абсолютными UTF-16 позициями.
+Контракт и ограничения форматов:
+[ADR 0039](../ADR/0039-streamed-document-source-processing.md).
+Состояния, pins и recovery:
 [ADR 0036](../ADR/0036-sealed-document-preparation-workspace.md).
 
 Document plan открывает отдельную `DocumentProcessingSession` на

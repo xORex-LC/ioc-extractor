@@ -1424,14 +1424,14 @@
     <finding id="CAP-4-SB-001" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="38bc2aa391729fc2543be36ec6d0f828" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-4-SQL-TRUST" review="sqlite-pragma-policy-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspace" />
         <method name="&lt;init&gt;" signature="(Ljava/nio/file/Path;Ljava/nio/file/Path;Lcom/iocextractor/adapter/out/store/jdbc/DocumentPreparationLimits;Lcom/iocextractor/application/port/out/artifact/ArtifactIdentityResolver;Ljava/util/Map;Ljava/lang/Runnable;Ljava/lang/Runnable;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcDocumentPreparationWorkspace.java" startLine="77" bytecode="170" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcDocumentPreparationWorkspace.java" startLine="79" bytecode="172" />
         <suppression><Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" /><Class name="com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspace" /><Method name="&lt;init&gt;" /></suppression>
         <rationale>Reviewed false positive: variable PRAGMA operands are validated integral cache and page-count limits. No operator string, row value or SQL identifier enters this grammar. Invalid physical budgets and disk exhaustion fail before promotion in JdbcDocumentPreparationWorkspaceIT.</rationale>
     </finding>
     <finding id="CAP-4-SB-002" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="ae68a03c5fe478b3e1e575fb24e73a94" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-4-SQL-TRUST" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspace" />
         <method name="&lt;init&gt;" signature="(Ljava/nio/file/Path;Ljava/nio/file/Path;Lcom/iocextractor/adapter/out/store/jdbc/DocumentPreparationLimits;Lcom/iocextractor/application/port/out/artifact/ArtifactIdentityResolver;Ljava/util/Map;Ljava/lang/Runnable;Ljava/lang/Runnable;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcDocumentPreparationWorkspace.java" startLine="95" bytecode="391" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcDocumentPreparationWorkspace.java" startLine="96" bytecode="393" />
         <suppression><Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" /><Class name="com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspace" /><Method name="&lt;init&gt;" /></suppression>
         <rationale>Reviewed false positive: reducer SQL combines fixed adapter-owned INSERT and conflict clauses only. Artifact, full equality key, ordinal and payload are bound parameters. Both whole-row policies are compared to an independent oracle with small and large native caches.</rationale>
     </finding>
@@ -1460,16 +1460,16 @@
         </suppression>
         <rationale>Reviewed exception-policy signal: profile lease acquisition preserves the original runtime failure after closing a partial channel and removing local admission. NioExportOperationGuardIT and OnDemandExportIntegrationIT qualify same-profile exclusion, independent profile progress and scoped recovery.</rationale>
     </finding>
-    <finding id="CAP-5-SB-002" module="adapters/adapter-ingest" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="f91608d08b4c2edc1bb5ea1ca103b683" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-5-OWNERSHIP" review="cleanup-ownership-accounting-change">
+    <finding id="CAP-5-SB-002" module="adapters/adapter-ingest" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="f91608d08b4c2edc1bb5ea1ca103b683" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-7A-OWNERSHIP" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.adapter.in.ingest.DurableDocumentDispatcher" />
         <method name="closePreparedJobs" signature="()V" />
-        <anchor sourcePath="com/iocextractor/adapter/in/ingest/DurableDocumentDispatcher.java" startLine="275" bytecode="112" />
+        <anchor sourcePath="com/iocextractor/adapter/in/ingest/DurableDocumentDispatcher.java" startLine="336" bytecode="227" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.adapter.in.ingest.DurableDocumentDispatcher" />
             <Method name="closePreparedJobs" />
         </suppression>
-        <rationale>Reviewed exception-policy signal: after all workers terminate, shutdown closes every prepared handle and suppresses subsequent cleanup failures under the first. FileSourceMessageHandlerIT qualifies both handle failures, exact release attempts and durable restart recovery.</rationale>
+        <rationale>Reviewed exception-policy signal: after all workers terminate, shutdown closes every prepared handle, prefers fatal errors and retains independent secondary failures without self-suppression. FileSourceMessageHandlerIT qualifies runtime/fatal/reused fatal instances, every release attempt and durable restart recovery.</rationale>
     </finding>
     <finding id="CAP-5-SB-003" module="adapters/adapter-ingest" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="d1a600edef0fbb334a8095aa0f362a40" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-5-OWNERSHIP" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.adapter.in.ingest.DurableDocumentDispatcher" />
@@ -1493,22 +1493,32 @@
         </suppression>
         <rationale>Reviewed exception-policy signal: preparation preserves its original failure and suppresses independent run-accounting failure, leaving owned source recovery authoritative. IngestionServiceTest qualifies prepared retry, failed preparation and ledger accounting.</rationale>
     </finding>
-    <finding id="CAP-5-SB-005" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="ee696557e58204f28093055437168702" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-5-OWNERSHIP" review="cleanup-ownership-accounting-change">
-        <class name="com.iocextractor.application.service.IocExtractionService" />
-        <method name="prepare" signature="(Lcom/iocextractor/application/port/in/ExtractionCommand;)Lcom/iocextractor/application/port/in/PreparedExtraction;" />
-        <anchor sourcePath="com/iocextractor/application/service/IocExtractionService.java" startLine="141" bytecode="236" />
-        <suppression>
-            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
-            <Class name="com.iocextractor.application.service.IocExtractionService" />
-            <Method name="prepare" />
-        </suppression>
-        <rationale>Reviewed exception-policy signal: source preparation preserves the source failure while try-with-resources retains both workspace discard and close failures. IocExtractionServiceFactoryTest asserts the exact primary/suppressed chain and single ownership release for promoting and non-promoting paths.</rationale>
-    </finding>
     <finding id="CAP-5-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="f3c7d49ac61e33a8b2883161746144a5" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-5-OWNERSHIP" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.bootstrap.DaemonExportScheduler" />
         <method name="stopExecutors" signature="()V" />
         <anchor sourcePath="com/iocextractor/bootstrap/DaemonExportScheduler.java" startLine="368" bytecode="77" />
         <suppression><Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" /><Class name="com.iocextractor.bootstrap.DaemonExportScheduler" /><Method name="stopExecutors" /></suppression>
         <rationale>Reviewed exception-policy signal: timer termination failure must not skip profile worker termination. Both executors are stopped, the first failure remains primary and a second is suppressed. References remain pinned after failure to prevent an unsafe restart. DaemonExportSchedulerTest qualifies double failure, bounded cancellation escalation, retrying termination and the preserved interruption signal.</rationale>
+    </finding>
+    <finding id="CAP-7A-SB-001" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="8e13e59e2d8ecb2170f48874de6e05e" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-7A-SQL-TRUST" review="sqlite-pragma-policy-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcDocumentSourceWorkspace" />
+        <method name="&lt;init&gt;" signature="(Ljava/nio/file/Path;Lcom/iocextractor/adapter/out/store/jdbc/DocumentPreparationLimits;Ljava/lang/Runnable;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcDocumentSourceWorkspace.java" startLine="55" bytecode="103" />
+        <suppression><Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" /><Class name="com.iocextractor.adapter.out.store.jdbc.JdbcDocumentSourceWorkspace" /><Method name="&lt;init&gt;" /></suppression>
+        <rationale>Reviewed false positive: variable PRAGMA operands are validated integral cache and scratch page limits. Source values and operator strings never enter SQL grammar. Physical source workspace tests qualify field, disk and cursor limits with cleanup before promotion.</rationale>
+    </finding>
+    <finding id="CAP-7A-SB-002" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="92551429d6c50b575009595aa985e748" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-7A-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcDocumentSourceWorkspace$1" />
+        <method name="open" signature="()Lcom/iocextractor/application/port/out/artifact/RowCursor;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcDocumentSourceWorkspace.java" startLine="184" bytecode="45" />
+        <suppression><Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" /><Class name="com.iocextractor.adapter.out.store.jdbc.JdbcDocumentSourceWorkspace$1" /><Method name="open" /></suppression>
+        <rationale>Reviewed false positive: the private rows method accepts exactly three adapter-owned SELECT constants from decisions, indicators and attributions. No public SQL entrypoint or interpolated IOC, field name or configuration exists. Extraction values are bound by the writer, and independent ordered source oracles exercise all three cursors.</rationale>
+    </finding>
+    <finding id="CAP-7A-SB-003" module="adapters/adapter-store-jdbc" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="80c8ec37ec7e0ddf65e628b67e7d960b" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-7A-OWNERSHIP" review="cleanup-ownership-accounting-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.DocumentTextSpool" />
+        <method name="close" signature="()V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/DocumentTextSpool.java" startLine="94" bytecode="147" />
+        <suppression><Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" /><Class name="com.iocextractor.adapter.out.store.jdbc.DocumentTextSpool" /><Method name="close" /></suppression>
+        <rationale>Reviewed exception-policy signal: close attempts every owned handle and both scratch files after IO, runtime or fatal failure; fatal failure has precedence and secondary failures remain suppressed. Physical workspace fixtures qualify all three failure modes, preserving the exact primary and removal of the independent second file.</rationale>
     </finding>
 </spotbugs-accepted-findings>

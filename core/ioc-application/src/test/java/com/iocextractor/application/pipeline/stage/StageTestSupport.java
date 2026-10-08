@@ -36,6 +36,32 @@ final class StageTestSupport {
     private StageTestSupport() {
     }
 
+    static final class RecordingTracer implements com.iocextractor.application.port.out.observability.PipelineDecisionTracer {
+        final java.util.ArrayList<com.iocextractor.application.observability.PipelineItemDecision> decisions = new java.util.ArrayList<>();
+        public boolean isEnabled() { return true; }
+        public void trace(com.iocextractor.application.observability.PipelineItemDecision decision) { decisions.add(decision); }
+    }
+
+    static com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspace sourceOwner(
+            com.iocextractor.application.port.out.artifact.DocumentSourceWorkspace source) {
+        return new com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspace() {
+            public Path source() { return Path.of("input.html"); }
+            public com.iocextractor.application.port.out.artifact.DocumentSourceWorkspace sourceWorkspace() { return source; }
+            public void discard() { }
+            public void close() { }
+            public void beginPromotion() { throw new AssertionError("Source stage must not promote"); }
+            public boolean promotionStarted() { return false; }
+            public boolean firstOriginal(String key) { throw new AssertionError("Source stage must not route"); }
+            public void append(com.iocextractor.application.artifact.RoutedArtifactCandidate row,
+                    boolean eligible, boolean retain) { throw new AssertionError("Source stage must not prepare rows"); }
+            public List<com.iocextractor.application.artifact.ArtifactWritePlan> seal(
+                    List<com.iocextractor.application.artifact.ArtifactWritePlan> plans,
+                    com.iocextractor.application.artifact.DocumentPreparationSummary summary) {
+                throw new AssertionError("Source stage must not seal");
+            }
+        };
+    }
+
     static Envelope<ExtractionCommand> commandEnvelope(boolean dryRun) {
         var command = new ExtractionCommand("test-run", Path.of("input.html"), dryRun);
         return Envelope.of(command, meta(command.source(), dryRun));

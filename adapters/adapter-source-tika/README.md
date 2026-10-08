@@ -1,27 +1,38 @@
 # adapters/adapter-source-tika
 
-## Назначение
+## Purpose
 
-Outbound source adapter implementing `SourceReader` with Apache Tika.
+Outbound document parsing behind the application `SourceReader` port.
+Production writes decoded text to a caller-owned `Writer`; the finite `String`
+API remains an explicit convenience and test oracle.
 
-**Правило слоя:** contains document parsing details only; application sees the
-`SourceReader` port.
+HTML uses `StreamingHtmlParser`: progressive jsoup HTML5 parsing, pruning completed
+subtrees and Tika-compatible body text mapping. Repair regions remain intact until
+complete. DOCX uses Tika's SAX extractor. PDF, DOC, XLSX and other installed Tika
+formats retain their parser implementations and format contracts; their working
+memory needs separate qualification.
 
-## Структура
+## Structure
 
-| Подпапка / файл | Назначение |
+| File or directory | Responsibility |
 |---|---|
-| `pom.xml` | Maven module descriptor |
-| `src/main/java/com/iocextractor/adapter/out/source/` | Tika-backed source reader; typed `SOURCE.READ_FAILED` / `SOURCE.UNSUPPORTED_FORMAT` boundary |
-| `src/test/java/com/iocextractor/adapter/out/source/` | Контракты charset, diagnostics и извлечения текста из PDF/DOCX/XLSX |
+| `pom.xml` | Parent-managed Tika and jsoup integration family |
+| `src/main/java/com/iocextractor/adapter/out/source/` | Reader, admitted HTML parser, typed source diagnostic boundary |
+| `src/test/java/com/iocextractor/adapter/out/source/` | Charset/format contracts, independent finite HTML/DOCX text oracle and parser-limit rejection |
 
-## Зависимости
+## Ownership and limits
 
-**Зависит от:** `ioc-application`, `ioc-platform-diagnostics`,
-`ioc-platform-observability`, Tika, SLF4J API.
+The reader owns its input stream and parser resources; application owns the
+output writer and document workspace. HTML region characters/node count/depth
+have explicit bounds. Oversized regions, nesting over 256 and embedded
+`srcdoc`/data attributes fail preparation without truncation or a full-DOM
+fallback. `ioc.processing.workspace.maximum-row-bytes` also controls the HTML
+region character bound. IOC/marker size and aggregate text/disk bounds are
+workspace responsibilities. See [ADR 0039](../../docs/ADR/0039-streamed-document-source-processing.md).
 
-**Не импортируется:** bootstrap and other adapters.
+## Dependencies
 
-Версия Tika задаётся только parent `dependencyManagement`; текущая baseline —
-`3.3.2`. Транзитивные POI/PDFBox остаются деталями этого адаптера и не
-используются тестами или application-кодом напрямую.
+Depends on `ioc-application`, diagnostics/observability platform contracts,
+Tika, jsoup and SLF4J. Application/domain never import parser classes. Tika,
+jsoup, POI and PDFBox versions belong to parent `dependencyManagement`; no new
+integration module or public parser abstraction is introduced.

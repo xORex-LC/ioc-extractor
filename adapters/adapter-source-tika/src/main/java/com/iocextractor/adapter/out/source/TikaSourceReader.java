@@ -28,15 +28,17 @@ import java.util.Objects;
 
 /**
  * Format-agnostic {@link SourceReader} backed by Apache Tika. Auto-detects the
- * document type (.docx / .htm / .pdf / .xlsx …) and returns its plain text.
- * The {@code -1} content limit disables Tika's default 100k-char truncation.
+ * document type (.docx / .htm / .pdf / .xlsx …) and writes plain text into the
+ * caller-owned writer without Tika's default 100k-character truncation. HTML
+ * prunes completed subtrees; DOCX uses the SAX extractor. The finite-batch
+ * convenience overload explicitly materializes a String.
  *
  * <p>Charset handling (boundary 1 of {@code ioc.source.charset}): with
  * {@code auto} the text/HTML charset is detected by Tika/ICU; an explicit charset
  * <em>forces</em> decoding of text/HTML by installing a constant
  * {@link EncodingDetector}. Binary formats (docx/pdf) carry their own internal
- * encoding via POI/PDFBox and ignore this knob by design. The result is always a
- * Java {@link String} (Unicode), so the rest of the pipeline is charset-agnostic.
+ * encoding via POI/PDFBox and ignore this knob by design. Output is Unicode;
+ * the document workspace preserves absolute UTF-16 offsets.
  */
 public final class TikaSourceReader implements SourceReader {
 
@@ -57,7 +59,7 @@ public final class TikaSourceReader implements SourceReader {
     }
 
     public TikaSourceReader(Charset forcedCharset, DiagnosticFactory diagnosticFactory) {
-        this(new AutoDetectParser(), forcedCharset, diagnosticFactory);
+        this(productionParser(262_144), forcedCharset, diagnosticFactory);
     }
 
     TikaSourceReader(Parser parser, Charset forcedCharset, DiagnosticFactory diagnosticFactory) {
@@ -66,8 +68,28 @@ public final class TikaSourceReader implements SourceReader {
         this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
     }
 
+    public TikaSourceReader(Charset forcedCharset, DiagnosticFactory diagnostics, int maximumParserRegionCharacters) {
+        this(productionParser(maximumParserRegionCharacters), forcedCharset, diagnostics);
+    }
+
+    private static Parser productionParser(int maximumRegionCharacters) {
+        var parser = new AutoDetectParser();
+        var parsers = new java.util.HashMap<>(parser.getParsers());
+        var html = new StreamingHtmlParser(maximumRegionCharacters);
+        html.getSupportedTypes(new ParseContext()).forEach(type -> parsers.put(type, html));
+        parser.setParsers(parsers);
+        return parser;
+    }
+
     @Override
     public String readText(Path source) {
+        var output = new java.io.StringWriter();
+        readText(source, output);
+        return output.toString();
+    }
+
+    @Override
+    public void readText(Path source, java.io.Writer output) {
         String resourceName;
         try {
             resourceName = resourceName(source);
@@ -76,18 +98,16 @@ public final class TikaSourceReader implements SourceReader {
         }
 
         try (InputStream in = Files.newInputStream(source)) {
-            BodyContentHandler handler = new BodyContentHandler(-1);
+            BodyContentHandler handler = new BodyContentHandler(output);
             Metadata metadata = new Metadata();
             metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, resourceName);
             parser.parse(in, handler, metadata, parseContext());
-            var text = handler.toString();
             LogEvents.info(log)
                     .action(EventAction.SOURCE_READ)
                     .outcome(EventOutcome.SUCCESS)
                     .field(LogField.IOC_SOURCE_PATH, source)
                     .message("source read")
                     .log();
-            return text;
         } catch (UnsupportedFormatException failure) {
             var diagnostic = diagnosticFactory.create(SourceDiagnosticCodes.UNSUPPORTED_FORMAT)
                     .with("source", source)
@@ -130,6 +150,10 @@ public final class TikaSourceReader implements SourceReader {
 
     private ParseContext parseContext() {
         ParseContext context = new ParseContext();
+        var office = new org.apache.tika.parser.microsoft.OfficeParserConfig();
+        office.setUseSAXDocxExtractor(true);
+        context.set(org.apache.tika.parser.microsoft.OfficeParserConfig.class, office);
+        context.set(Parser.class, parser);
         if (forcedCharset != null) {
             // Constant detector: text/HTML parsers honor it; binary parsers ignore it.
             EncodingDetector forced = (input, metadata) -> forcedCharset;

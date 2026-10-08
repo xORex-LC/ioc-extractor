@@ -55,6 +55,9 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
     }
 
     @Override
+    public int maximumConcurrentWorkspaces() { return leaseLimit; }
+
+    @Override
     public DocumentPreparationWorkspace open(ExtractionCommand command, Map<String, ArtifactWritePolicy> policies) {
         try { leases.acquire(); }
         catch (InterruptedException failure) {
@@ -85,15 +88,16 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
                             () -> checkDisk(directory), () -> release(directory, owner));
                 }
             }
-        } catch (IOException | RuntimeException failure) {
+        } catch (IOException | RuntimeException | Error failure) {
             closeFailedLease(directory, lease, failure);
             if (admitted) { synchronized (this) { active.remove(directory); } }
             leases.release();
+            if (failure instanceof Error fatal) { throw fatal; }
             throw new IocExtractorException("Cannot open private document workspace", failure);
         }
     }
 
-    private static void closeFailedLease(Path directory, Lease lease, Exception failure) {
+    private static void closeFailedLease(Path directory, Lease lease, Throwable failure) {
         if (lease == null) { return; }
         if (!Files.exists(directory.resolve("seal"))) {
             try { deletePrivateDirectory(directory); } catch (IOException error) { failure.addSuppressed(error); }

@@ -10,6 +10,10 @@ import java.util.List;
 public interface DocumentPreparationWorkspace extends AutoCloseable {
     /** Source snapshot owned by this invocation. */
     Path source();
+    /** Opens invocation-local source scratch, removed before sealing or on close. */
+    default DocumentSourceWorkspace sourceWorkspace() {
+        throw new UnsupportedOperationException("Document source workspace is required");
+    }
     /** Marks private state disposable after success, dry-run or policy rejection. */
     void discard();
     /** Durably enters promotion after the rejecting checkpoint and before any reservation. */

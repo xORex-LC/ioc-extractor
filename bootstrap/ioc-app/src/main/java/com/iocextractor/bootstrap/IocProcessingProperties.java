@@ -40,7 +40,7 @@ public record IocProcessingProperties(String documentPlan, List<Plan> plans,
             return retention != null && !retention.isNegative() && !retention.isZero()
                     && maximumRowBytes >= maximumFieldBytes && maximumRowBytes <= 16 * 1024 * 1024
                     && workspaceBytes >= 65536 && totalDiskBytes >= workspaceBytes
-                    && memoryBytes >= cacheKib * 1024L + maximumRowBytes * 8L + 65536;
+                    && memoryBytes >= cacheKib * 1024L + maximumRowBytes * 64L + 65536;
         }
     }
 

@@ -42,7 +42,7 @@ final class DataProcessingCapacityHealthIndicator implements HealthIndicator {
     @Override public Health health() {
         try {
             var execution = documents.snapshot();
-            var builder = execution.blocked() == 0 ? Health.up() : Health.down();
+            var builder = execution.running() && execution.blocked() == 0 ? Health.up() : Health.down();
             return builder.withDetail("documentExecution", execution)
                     .withDetail("writerOperations", writers.snapshot())
                     .withDetail("queuedWriters", writers.queuedWriters())

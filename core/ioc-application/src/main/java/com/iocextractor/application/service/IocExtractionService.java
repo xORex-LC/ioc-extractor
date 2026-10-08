@@ -2,7 +2,6 @@ package com.iocextractor.application.service;
 
 import com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspaceFactory;
 import com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspace;
-import com.iocextractor.diagnostics.DiagnosticException;
 import java.nio.file.Path;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.in.PreparedExtraction;
@@ -17,10 +16,10 @@ import com.iocextractor.platform.etl.Pipeline;
 import com.iocextractor.platform.etl.PipelineObserver;
 import com.iocextractor.platform.etl.PipelineRunner;
 import com.iocextractor.application.pipeline.payload.ArtifactWriteSummary;
-import com.iocextractor.application.pipeline.stage.AttributeSourceStage;
-import com.iocextractor.application.pipeline.stage.ExtractIndicatorsStage;
-import com.iocextractor.application.pipeline.stage.ReadSourceStage;
-import com.iocextractor.application.pipeline.stage.RefangStage;
+import com.iocextractor.application.pipeline.stage.AttributeSourceStreamStage;
+import com.iocextractor.application.pipeline.stage.ExtractSourceStreamStage;
+import com.iocextractor.application.pipeline.stage.ReadSourceStreamStage;
+import com.iocextractor.application.pipeline.stage.RefangSourceStreamStage;
 import com.iocextractor.application.pipeline.stage.PrepareRoutedArtifactsStage;
 import com.iocextractor.application.pipeline.stage.WriteArtifactsStage;
 import com.iocextractor.application.port.out.SourceReader;
@@ -106,19 +105,25 @@ public final class IocExtractionService implements ExtractIocsUseCase {
     @Override
     public ExtractionResult extract(ExtractionCommand command) {
         if (workspaces == null) { return extractOwned(command, null); }
-        try (var workspace = workspaces.open(command, writePolicies)) {
+        var workspace = workspaces.open(command, writePolicies);
+        Throwable primary = null;
+        try {
             var pinned = new ExtractionCommand(command.runId(), workspace.source(), command.dryRun(),
                     command.lifecycleWriteContext(), command.registration());
             try {
                 var result = extractOwned(pinned, workspace, command.source());
                 workspace.discard();
                 return result;
-            } catch (DiagnosticException failure) {
+            } catch (RuntimeException | Error failure) {
+                primary = failure;
                 // Rejection is precommit. Storage/projection failures retain a sealed promotion pin.
-                if (!workspace.promotionStarted()) { workspace.discard(); }
+                if (!workspace.promotionStarted()) {
+                    try { workspace.discard(); }
+                    catch (RuntimeException | Error cleanup) { if (cleanup != failure) { failure.addSuppressed(cleanup); } }
+                }
                 throw failure;
             }
-        }
+        } finally { closeWorkspace(workspace, primary); }
     }
 
     /** Prepares a private sealed workspace without holding canonical source/writer ownership. */
@@ -135,10 +140,25 @@ public final class IocExtractionService implements ExtractIocsUseCase {
         try {
             var result = runner.runPreparation(initialEnvelope(pinned, workspace, command.source()), preparation);
             return new OwnedPreparation(workspace, result.envelope(), promotion);
-        } catch (RuntimeException failure) {
-            try (workspace) { workspace.discard(); }
-            catch (RuntimeException cleanup) { failure.addSuppressed(cleanup); }
+        } catch (RuntimeException | Error failure) {
+            discardAndCloseWorkspace(workspace, failure);
             throw failure;
+        }
+    }
+
+    private static void discardAndCloseWorkspace(DocumentPreparationWorkspace workspace, Throwable primary) {
+        Throwable discarded = null;
+        try { workspace.discard(); }
+        catch (RuntimeException | Error cleanup) { discarded = cleanup; }
+        closeWorkspace(workspace, discarded == null ? primary : discarded);
+        if (discarded != null && discarded != primary) { primary.addSuppressed(discarded); }
+    }
+
+    private static void closeWorkspace(DocumentPreparationWorkspace workspace, Throwable primary) {
+        try { workspace.close(); }
+        catch (RuntimeException | Error cleanup) {
+            if (primary == null) { throw cleanup; }
+            if (cleanup != primary) { primary.addSuppressed(cleanup); }
         }
     }
 
@@ -216,11 +236,11 @@ public final class IocExtractionService implements ExtractIocsUseCase {
             Components components, Settings settings, Clock clock) {
         var diagnostics = new DiagnosticFactory(clock);
         var attributed = Pipeline.<ExtractionCommand>start()
-                .then(new ReadSourceStage(components.reader(), diagnostics))
-                .then(new RefangStage(components.refanger(), settings.decisionTracer()))
-                .then(new ExtractIndicatorsStage(components.extractor(), diagnostics,
+                .then(new ReadSourceStreamStage(components.reader(), diagnostics))
+                .then(new RefangSourceStreamStage(components.refanger(), settings.decisionTracer()))
+                .then(new ExtractSourceStreamStage(components.extractor(), diagnostics,
                         settings.decisionTracer(), settings.maxDiagnosticsPerRun()))
-                .then(new AttributeSourceStage(components.attributor(), clock,
+                .then(new AttributeSourceStreamStage(components.attributor(), clock,
                         settings.decisionTracer()));
         var prepared = attributed.then(new PrepareRoutedArtifactsStage(
                 Objects.requireNonNull(settings.documentPlan(), "documentPlan"), components.preparers(),

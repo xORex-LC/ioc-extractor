@@ -66,6 +66,22 @@ class DataProcessingCapacityHealthIndicatorTest {
     }
 
     @Test
+    void fatalStoppedDispatcherIsDownEvenWhenNoAdmissionIsMarkedBlocked() {
+        var documents = mock(DurableDocumentDispatcher.class);
+        var snapshot = new DurableDocumentDispatcher.Snapshot(
+                false, 2, 100, 4000, 0, 0, 0, 0, 0, 0, 0, 0, "AssertionError");
+        when(documents.snapshot()).thenReturn(snapshot);
+        var workspaces = mock(JdbcDocumentPreparationWorkspaceFactory.class);
+        when(workspaces.pressure()).thenReturn(new JdbcDocumentPreparationWorkspaceFactory.Pressure(
+                0, 64, 0, 1000, 64));
+        var health = new DataProcessingCapacityHealthIndicator(documents, new JdbcWriterAdmission(),
+                mock(JdbcSnapshotSliceReader.class), workspaces,
+                "jdbc:sqlite::memory:").health();
+        assertThat(health.getStatus()).isEqualTo(Status.DOWN);
+        assertThat(health.getDetails()).containsEntry("documentExecution", snapshot);
+    }
+
+    @Test
     void failedJournalInspectionReportsDegradationInsteadOfHealthyEmptyCounters() {
         var documents = mock(DurableDocumentDispatcher.class);
         when(documents.snapshot()).thenThrow(new IllegalStateException("journal unavailable"));

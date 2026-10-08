@@ -40,8 +40,9 @@ exclusion applies at that boundary.
 
 Count/source-byte saturation leaves input discoverable in the inbox. Claimed jobs
 survive rejected/lost hints because periodic journal discovery is authoritative.
-The preparation window holds references, with shared workspace quotas limiting
-cache/memory/disk independently. Attempts and backoff survive restart. Exhausted
+The preparation window holds references and cannot exceed the global workspace
+lease capacity, with shared quotas limiting cache/memory/disk independently.
+Attempts and backoff survive restart. Exhausted
 pre-hash failure retains a blocked token and rank; it never uses path/mtime as a
 content identity. A verified-key failure can use the normal terminal rejection.
 The pre-reservation disposition seam ING-13 remains open.
@@ -57,6 +58,9 @@ Shutdown stops dispatch, joins owned workers with a bounded grace period and
 closes remaining unpromoted handles while preserving recoverable sources. A
 non-terminating worker fails shutdown explicitly. Diagnostics retain detailed
 causes; health snapshots expose bounded metadata and safe failure types.
+Fatal worker errors stop intake and scheduling, release ready preparations and
+retain durable admissions for restart. Shutdown attempts every owned release
+even after a fatal cleanup failure; cleanup I/O runs outside the dispatch monitor.
 
 Terminal logs carry supported completion/diagnostic counts; duplicate receipt
 replay has a disposition field without fabricated extraction completion. Logging

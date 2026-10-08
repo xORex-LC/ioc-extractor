@@ -98,6 +98,14 @@ checkpoint. Writer и receipts читают повторяемые курсор�
 квоты и восстановление описаны в
 [ADR-0036](ADR/0036-sealed-document-preparation-workspace.md).
 
+Исходный и refanged текст также принадлежат document workspace: UTF-16 файлы
+и фиксированный page cache заменяют полные строки и списки occurrences.
+Domain определяет lazy regex/marker cursors и протоколы refang/overlap;
+application владеет порядком стадий, adapters — файлами, parser и SQLite scratch.
+Scratch удаляется до seal и при отказе. Fatal worker error останавливает dispatcher
+видимо для health; durable admissions восстанавливаются после restart через
+общий recovery barrier. Контракт: [ADR-0039](ADR/0039-streamed-document-source-processing.md).
+
 ## Порты (контракты)
 
 | Порт | Тип | Назначение |

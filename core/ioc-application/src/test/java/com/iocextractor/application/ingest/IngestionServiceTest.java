@@ -1165,12 +1165,11 @@ class IngestionServiceTest {
     private IocExtractionServiceFactory extractionFactory(
             com.iocextractor.application.port.out.artifact.lifecycle.CanonicalArtifactWriter writer) {
         return new IocExtractionServiceFactory(
-                source -> "example.com",
-                text -> new RefangOutcome(text, List.of()),
-                text -> new ExtractionOutcome(
-                        List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of()),
-                (text, indicators) -> new AttributionOutcome(List.of(),
-                        List.of(new AttributionDecision(indicators.getFirst(), Optional.empty()))),
+                com.iocextractor.application.TestDocumentSourceWorkspace.reader(source -> "example.com"),
+                new com.iocextractor.domain.refang.ReplacementRefanger(List.of()),
+                com.iocextractor.application.TestDocumentSourceWorkspace.extractor(text -> new ExtractionOutcome(
+                        List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of())),
+                com.iocextractor.application.TestDocumentSourceWorkspace.noMarkers(),
                 false,
                 "daemon",
                 new NoopPipelineObserver(),
@@ -1194,14 +1193,13 @@ class IngestionServiceTest {
 
     private IocExtractionServiceFactory failingExtractionFactory() {
         return new IocExtractionServiceFactory(
-                source -> {
+                com.iocextractor.application.TestDocumentSourceWorkspace.reader(source -> {
                     throw new IllegalStateException("read failed");
-                },
-                text -> new RefangOutcome(text, List.of()),
-                text -> new ExtractionOutcome(
-                        List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of()),
-                (text, indicators) -> new AttributionOutcome(List.of(),
-                        List.of(new AttributionDecision(indicators.getFirst(), Optional.empty()))),
+                }),
+                new com.iocextractor.domain.refang.ReplacementRefanger(List.of()),
+                com.iocextractor.application.TestDocumentSourceWorkspace.extractor(text -> new ExtractionOutcome(
+                        List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of())),
+                com.iocextractor.application.TestDocumentSourceWorkspace.noMarkers(),
                 false,
                 "daemon",
                 new NoopPipelineObserver(),

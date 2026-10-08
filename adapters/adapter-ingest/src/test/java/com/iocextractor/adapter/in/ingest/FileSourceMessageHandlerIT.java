@@ -116,6 +116,119 @@ class FileSourceMessageHandlerIT {
         assertThat(fixture.handler.pending(10)).isEmpty();
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"false,none", "true,none", "false,shared", "true,shared",
+            "false,secondary", "true,secondary", "true,active-runtime", "true,active-shared", "true,active-fatal"})
+    void fatalWorkerStopsDispatchReleasesPreparationsAndRestartRecoversOrderedAdmissions(
+            boolean duringPromotion, String cleanup) throws Exception {
+        Fixture fixture = new Fixture(4, 100);
+        Path older = fixture.file("fatal.html", "old");
+        Path newer = fixture.file("following.html", "new");
+        var releaseFatal = new CountDownLatch(1);
+        var leasesClosed = new CountDownLatch(duringPromotion ? 2 : 1);
+        var fatal = new AssertionError("synthetic fatal worker");
+        try (var dispatcher = fixture.dispatcher(command -> {
+            if (command.source().equals(older)) {
+                await(releaseFatal);
+                if (!duringPromotion) { throw fatal; }
+            }
+            return new PreparedIngestion() {
+                public IngestSourceResult promote() { throw fatal; }
+                public void close() {
+                    leasesClosed.countDown();
+                    if (command.source().equals(newer)) {
+                        if (cleanup.equals("shared")) { throw fatal; }
+                        if (cleanup.equals("secondary")) { throw new IllegalStateException("secondary cleanup"); }
+                    } else {
+                        if (cleanup.equals("active-runtime")) { throw new IllegalStateException("secondary cleanup"); }
+                        if (cleanup.equals("active-shared")) { throw fatal; }
+                        if (cleanup.equals("active-fatal")) { throw new AssertionError("secondary cleanup"); }
+                    }
+                }
+            };
+        })) {
+            dispatcher.start(); dispatcher.handle(older.toFile()); dispatcher.handle(newer.toFile());
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (dispatcher.snapshot().ready() == 0 && System.nanoTime() < deadline) {
+                new CountDownLatch(1).await(10, TimeUnit.MILLISECONDS);
+            }
+            assertThat(dispatcher.snapshot().ready()).isEqualTo(1);
+            releaseFatal.countDown();
+            assertThat(leasesClosed.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(dispatcher.snapshot()).satisfies(state -> {
+                assertThat(state.running()).isFalse();
+                assertThat(state.lastFailure()).isEqualTo("AssertionError");
+                assertThat(state.pending()).isEqualTo(2);
+                assertThat(state.preparing() + state.ready() + state.promoting()).isZero();
+            });
+            assertThatThrownBy(dispatcher::start).hasMessageContaining("requires restart");
+        } finally { releaseFatal.countDown(); }
+        if (cleanup.equals("secondary") || cleanup.equals("active-runtime") || cleanup.equals("active-fatal")) {
+            assertThat(fatal.getSuppressed()).singleElement()
+                    .satisfies(secondary -> assertThat(secondary).hasMessage("secondary cleanup"));
+        } else { assertThat(fatal.getSuppressed()).isEmpty(); }
+        var order = java.util.Collections.synchronizedList(new ArrayList<String>());
+        var done = new CountDownLatch(2);
+        try (var restarted = fixture.dispatcher(command -> fixture.prepared(command, () -> {
+            order.add(command.source().getFileName().toString()); done.countDown();
+        }))) {
+            restarted.start(); assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        }
+        assertThat(order).containsExactly("fatal.html", "following.html");
+        assertThat(fixture.handler.pending(10)).isEmpty();
+        assertThat(fixture.registrations.next).hasValue(2);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void completedPromotionSurvivesCleanupFailureWithoutReapplyingTheDocument(boolean fatalCleanup) throws Exception {
+        Fixture fixture = new Fixture(4, 100);
+        Path completed = fixture.file("completed.html", "old");
+        Path following = fixture.file("following.html", "new");
+        var releasePromotion = new CountDownLatch(1);
+        var newerReady = new CountDownLatch(1);
+        var activeClosed = new CountDownLatch(1);
+        var promoted = java.util.Collections.synchronizedList(new ArrayList<String>());
+        try (var dispatcher = fixture.dispatcher(command -> {
+            if (command.source().equals(following)) { newerReady.countDown(); }
+            var prepared = fixture.prepared(command, () -> promoted.add(command.source().getFileName().toString()));
+            return new PreparedIngestion() {
+                public IngestSourceResult promote() {
+                    if (command.source().equals(completed)) { await(releasePromotion); }
+                    return prepared.promote();
+                }
+                public void close() {
+                    if (command.source().equals(completed)) {
+                        activeClosed.countDown();
+                        if (fatalCleanup) { throw new AssertionError("completed cleanup"); }
+                        throw new IllegalStateException("completed cleanup");
+                    }
+                }
+            };
+        })) {
+            dispatcher.start(); dispatcher.handle(completed.toFile()); dispatcher.handle(following.toFile());
+            assertThat(newerReady.await(5, TimeUnit.SECONDS)).isTrue();
+            releasePromotion.countDown();
+            assertThat(activeClosed.await(5, TimeUnit.SECONDS)).isTrue();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while ((fatalCleanup ? dispatcher.snapshot().running() : dispatcher.snapshot().pending() != 0)
+                    && System.nanoTime() < deadline) { new CountDownLatch(1).await(10, TimeUnit.MILLISECONDS); }
+            if (fatalCleanup) {
+                assertThat(dispatcher.snapshot().running()).isFalse();
+                assertThat(fixture.handler.pending(10)).hasSize(1);
+            } else { assertThat(fixture.handler.pending(10)).isEmpty(); }
+        } finally { releasePromotion.countDown(); }
+        var recovered = new CountDownLatch(fatalCleanup ? 1 : 0);
+        try (var restarted = fixture.dispatcher(command -> fixture.prepared(command, () -> {
+            promoted.add(command.source().getFileName().toString()); recovered.countDown();
+        }))) {
+            restarted.start(); assertThat(recovered.await(5, TimeUnit.SECONDS)).isTrue();
+        }
+        assertThat(promoted).containsExactly("completed.html", "following.html");
+        assertThat(fixture.handler.pending(10)).isEmpty();
+        assertThat(fixture.registrations.next).hasValue(2);
+    }
+
     @Test
     void countAndByteSaturationLeaveUnclaimedInputDiscoverableAndBacklogDrains() throws Exception {
         var release = new CountDownLatch(1);
@@ -169,15 +282,22 @@ class FileSourceMessageHandlerIT {
         assertThat(fixture.handler.pending(10)).isEmpty();
     }
 
-    @Test
-    void retriesReuseDurableIdentityAndRankAndPersistAttemptCount() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void retriesReuseDurableIdentityAndRankAndPersistAttemptCount(boolean duringPromotion) throws Exception {
         Fixture fixture = new Fixture(4, 100);
         var attempts = new AtomicInteger();
         var ids = java.util.Collections.synchronizedList(new ArrayList<ObservationId>());
         var done = new CountDownLatch(1);
         try (var dispatcher = fixture.dispatcher(command -> {
             ids.add(command.observationId());
-            if (attempts.incrementAndGet() == 1) { throw new IllegalStateException("transient preparation"); }
+            if (attempts.incrementAndGet() == 1) {
+                if (!duringPromotion) { throw new IllegalStateException("transient preparation"); }
+                return new PreparedIngestion() {
+                    public IngestSourceResult promote() { throw new IllegalStateException("transient promotion"); }
+                    public void close() { }
+                };
+            }
             return fixture.prepared(command, done::countDown);
         })) {
             dispatcher.start();
@@ -188,6 +308,17 @@ class FileSourceMessageHandlerIT {
         assertThat(fixture.registrations.next.get()).isEqualTo(1);
         var reopened = new FileDocumentAdmissionJournal(fixture.journalPath);
         assertThat(reopened.find(ids.getFirst()).orElseThrow().execution().attempts()).isEqualTo(2);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {0, -1})
+    void invalidWorkspaceCapacityRejectsDispatchBeforeStartingWorkers(int capacity) {
+        Fixture fixture = new Fixture(4, 100);
+        assertThatThrownBy(() -> new DurableDocumentDispatcher(fixture.handler,
+                command -> { throw new AssertionError("invalid capacity admitted work"); },
+                (key, reason) -> IngestionRejectionResult.REJECTED, fixture.properties,
+                fixture.clock, fixture.diagnostics, capacity)).hasMessage("Workspace capacity must be positive");
+        assertThat(fixture.handler.pending(10)).isEmpty();
     }
 
     @Test
@@ -207,6 +338,37 @@ class FileSourceMessageHandlerIT {
         assertThat(source).exists();
         assertThat(calls).hasValue(0);
         assertThat(fixture.registrations.next).hasValue(0);
+    }
+
+    @Test
+    void orderedWindowCannotOversubscribeOneWorkspaceLease() throws Exception {
+        Fixture fixture = new Fixture(4, 100);
+        var headEntered = new CountDownLatch(1);
+        var releaseHead = new CountDownLatch(1);
+        var done = new CountDownLatch(2);
+        var calls = new AtomicInteger();
+        Path older = fixture.file("one-lease-older.html", "old");
+        Path newer = fixture.file("one-lease-newer.html", "new");
+        try (var dispatcher = new DurableDocumentDispatcher(fixture.handler, command -> {
+            calls.incrementAndGet();
+            if (command.source().equals(older)) { headEntered.countDown(); await(releaseHead); }
+            else { assertThat(done.getCount()).as("head promoted before the next lease").isEqualTo(1); }
+            return fixture.prepared(command, done::countDown);
+        }, (key, reason) -> IngestionRejectionResult.REJECTED, fixture.properties,
+                fixture.clock, fixture.diagnostics, 1)) {
+            try {
+                dispatcher.start();
+                dispatcher.handle(older.toFile());
+                assertThat(headEntered.await(5, TimeUnit.SECONDS)).isTrue();
+                dispatcher.handle(newer.toFile());
+                assertThat(dispatcher.snapshot().pending()).isEqualTo(2);
+                assertThat(calls).hasValue(1);
+                releaseHead.countDown();
+                assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+            } finally { releaseHead.countDown(); }
+        }
+        assertThat(calls).hasValue(2);
+        assertThat(fixture.handler.pending(10)).isEmpty();
     }
 
     @Test
@@ -264,13 +426,14 @@ class FileSourceMessageHandlerIT {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
-    void gracefulStopClosesReadyPreparationAndDurableOwnershipSurvivesRestart(boolean cleanupFailure) throws Exception {
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"none", "runtime", "fatal-first", "fatal-second", "fatal-shared"})
+    void gracefulStopClosesReadyPreparationAndDurableOwnershipSurvivesRestart(String cleanup) throws Exception {
         Fixture fixture = new Fixture(4, 100);
         var olderEntered = new CountDownLatch(1);
         var releaseOlder = new CountDownLatch(1);
         var newerReady = new CountDownLatch(1);
         var closed = new AtomicInteger();
+        var shared = new AssertionError("shared cleanup");
         Path older = fixture.file("older.html", "old");
         Path newer = fixture.file("newer.html", "new");
         var dispatcher = fixture.dispatcher(command -> {
@@ -280,7 +443,11 @@ class FileSourceMessageHandlerIT {
                 public IngestSourceResult promote() { throw new AssertionError("stopped preparation promoted"); }
                 public void close() {
                     closed.incrementAndGet();
-                    if (cleanupFailure) { throw new IllegalStateException(command.source().getFileName().toString()); }
+                    if (cleanup.equals("fatal-shared")) { throw shared; }
+                    String name = command.source().getFileName().toString();
+                    if (cleanup.equals("fatal-first") && command.source().equals(older)
+                            || cleanup.equals("fatal-second") && command.source().equals(newer)) { throw new AssertionError(name); }
+                    if (!cleanup.equals("none")) { throw new IllegalStateException(name); }
                 }
             };
         });
@@ -296,14 +463,21 @@ class FileSourceMessageHandlerIT {
             }
             assertThat(dispatcher.snapshot().running()).isFalse();
             releaseOlder.countDown();
-            if (cleanupFailure) {
+            if (!cleanup.equals("none")) {
+                String primary = cleanup.equals("fatal-second") ? "newer.html" : "older.html";
+                String suppressed = cleanup.equals("fatal-second") ? "older.html" : "newer.html";
                 assertThatThrownBy(() -> stopped.get(5, TimeUnit.SECONDS))
                         .isInstanceOf(java.util.concurrent.ExecutionException.class)
-                        .hasCauseInstanceOf(IllegalStateException.class)
+                        .hasCauseInstanceOf(cleanup.equals("runtime") ? IllegalStateException.class : AssertionError.class)
                         .satisfies(failure -> {
-                            assertThat(failure.getCause()).hasMessage("older.html");
-                            assertThat(failure.getCause().getSuppressed()).singleElement()
-                                    .satisfies(cleanup -> assertThat(cleanup).hasMessage("newer.html"));
+                            if (cleanup.equals("fatal-shared")) {
+                                assertThat(failure.getCause()).isSameAs(shared);
+                                assertThat(shared.getSuppressed()).isEmpty();
+                            } else {
+                                assertThat(failure.getCause()).hasMessage(primary);
+                                assertThat(failure.getCause().getSuppressed()).singleElement()
+                                        .satisfies(secondary -> assertThat(secondary).hasMessage(suppressed));
+                            }
                         });
             } else { stopped.get(5, TimeUnit.SECONDS); }
             assertThat(closed).hasValue(2);

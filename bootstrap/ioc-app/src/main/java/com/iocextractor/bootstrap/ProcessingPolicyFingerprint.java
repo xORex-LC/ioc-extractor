@@ -17,7 +17,7 @@ import java.util.Objects;
 /** Stable identity of every configured input that can alter prepared canonical rows. */
 final class ProcessingPolicyFingerprint {
 
-    private static final String POLICY_EPOCH = "processing-policy:v3";
+    private static final String POLICY_EPOCH = "processing-policy:v4";
     private static final String DOCUMENT_ROUTE_SEMANTICS = "document-route:v1";
     private static final String PROCESSED_IMPORT_ROUTE_SEMANTICS = "processed-import-route:v1";
     private static final String EXACT_PARSE_SEMANTICS = "exact-indicator-parser:v1";
@@ -34,6 +34,9 @@ final class ProcessingPolicyFingerprint {
         add(digest, PROCESSED_IMPORT_ROUTE_SEMANTICS);
         add(digest, EXACT_PARSE_SEMANTICS);
         add(digest, HOST_DERIVATION_SEMANTICS);
+        add(digest, "document-source:streamed-html-sax-docx:v1");
+        addValue(digest, properties.processing().workspace().maximumRowBytes());
+        addValue(digest, properties.processing().workspace().maximumFieldBytes());
         addValue(digest, properties.source());
         addValue(digest, properties.refang());
         addValue(digest, properties.engine());

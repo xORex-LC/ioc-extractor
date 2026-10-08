@@ -58,7 +58,7 @@ class IocExtractionServiceFactoryTest {
     @Test
     void factoryRejectsAZeroDiagnosticBudgetBeforeOpeningAnyWorkspace() {
         assertThatThrownBy(() -> new IocExtractionServiceFactory(
-                source -> "", text -> new RefangOutcome(text, List.of()),
+                source -> "", new com.iocextractor.domain.refang.ReplacementRefanger(List.of()),
                 text -> new ExtractionOutcome(List.of(), List.of()),
                 (text, indicators) -> new AttributionOutcome(List.of(), List.of()),
                 false, "oneshot", new NoopPipelineObserver(), NoopDiagnosticSink.INSTANCE,
@@ -70,22 +70,29 @@ class IocExtractionServiceFactoryTest {
     }
 
     @ParameterizedTest
-    @org.junit.jupiter.params.provider.CsvSource({"false,false,false", "true,false,false",
-            "false,true,false", "false,true,true"})
+    @org.junit.jupiter.params.provider.CsvSource({"false,false,false,false,false", "true,false,false,false,false",
+            "false,true,false,false,false", "false,true,true,false,false", "false,false,false,true,false",
+            "false,true,true,true,false", "false,false,true,true,false", "false,false,true,true,true", "false,true,true,true,true"})
     void sourceFailureClosesOwnershipAndPreservesOnlyAPreviousPromotionPin(
-            boolean promoting, boolean prepare, boolean cleanupFailure) {
+            boolean promoting, boolean prepare, boolean cleanupFailure, boolean fatal, boolean sharedCleanup) {
         Path snapshot = Path.of("pinned-source.html");
         var discarded = new AtomicInteger();
         var closed = new AtomicInteger();
+        var sourceFailure = new AssertionError("source failure");
         var workspace = new com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspace() {
             public Path source() { return snapshot; }
+            public com.iocextractor.application.port.out.artifact.DocumentSourceWorkspace sourceWorkspace() {
+                return new com.iocextractor.application.TestDocumentSourceWorkspace();
+            }
             public boolean promotionStarted() { return promoting; }
             public void discard() {
                 discarded.incrementAndGet();
+                if (sharedCleanup) { throw sourceFailure; }
                 if (cleanupFailure) { throw new IllegalStateException("discard failure"); }
             }
             public void close() {
                 closed.incrementAndGet();
+                if (sharedCleanup) { throw sourceFailure; }
                 if (cleanupFailure) { throw new IllegalStateException("close failure"); }
             }
             public void beginPromotion() { throw new AssertionError("source failure must not promote"); }
@@ -100,11 +107,12 @@ class IocExtractionServiceFactoryTest {
             }
         };
         var factory = new IocExtractionServiceFactory(
-                source -> {
+                com.iocextractor.application.TestDocumentSourceWorkspace.reader(source -> {
                     assertThat(source).isEqualTo(snapshot);
+                    if (fatal) { throw sourceFailure; }
                     throw new IllegalStateException("source failure");
-                },
-                text -> new RefangOutcome(text, List.of()),
+                }),
+                new com.iocextractor.domain.refang.ReplacementRefanger(List.of()),
                 text -> new ExtractionOutcome(List.of(), List.of()),
                 (text, indicators) -> new AttributionOutcome(List.of(), List.of()),
                 false, "oneshot", new NoopPipelineObserver(), NoopDiagnosticSink.INSTANCE,
@@ -118,14 +126,22 @@ class IocExtractionServiceFactoryTest {
         var command = new ExtractionCommand("failure", Path.of("original.html"), false);
         assertThatThrownBy(() -> {
             if (prepare) { service.prepare(command); } else { service.extract(command); }
-        }).isInstanceOfSatisfying(com.iocextractor.diagnostics.DiagnosticException.class, failure -> {
-            assertThat(failure).hasRootCauseMessage("source failure");
-            if (cleanupFailure) {
-                assertThat(failure.getSuppressed()).singleElement().satisfies(discard -> {
-                    assertThat(discard).hasMessage("discard failure");
-                    assertThat(discard.getSuppressed()).singleElement()
-                            .satisfies(close -> assertThat(close).hasMessage("close failure"));
-                });
+        }).satisfies(failure -> {
+            if (fatal) { assertThat(failure).isInstanceOf(AssertionError.class).hasMessage("source failure"); }
+            else { assertThat(failure).isInstanceOf(com.iocextractor.diagnostics.DiagnosticException.class)
+                    .hasRootCauseMessage("source failure"); }
+            if (sharedCleanup) {
+                assertThat(failure).isSameAs(sourceFailure);
+                assertThat(failure.getSuppressed()).isEmpty();
+            } else if (cleanupFailure) {
+                if (prepare) {
+                    assertThat(failure.getSuppressed()).singleElement().satisfies(discard -> {
+                        assertThat(discard).hasMessage("discard failure");
+                        assertThat(discard.getSuppressed()).singleElement()
+                                .satisfies(close -> assertThat(close).hasMessage("close failure"));
+                    });
+                } else { assertThat(failure.getSuppressed()).extracting(Throwable::getMessage)
+                        .containsExactly("discard failure", "close failure"); }
             } else { assertThat(failure.getSuppressed()).isEmpty(); }
         });
         assertThat(discarded).hasValue(promoting ? 0 : 1);
@@ -136,12 +152,11 @@ class IocExtractionServiceFactoryTest {
     void selectedDocumentPlanReceivesEachOccurrenceDuringExtraction() {
         var routed = new AtomicInteger();
         var factory = new IocExtractionServiceFactory(
-                source -> "example.com",
-                text -> new RefangOutcome(text, List.of()),
-                text -> new ExtractionOutcome(
-                        List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of()),
-                (text, indicators) -> new AttributionOutcome(List.of(),
-                        List.of(new AttributionDecision(indicators.getFirst(), Optional.empty()))),
+                com.iocextractor.application.TestDocumentSourceWorkspace.reader(source -> "example.com"),
+                new com.iocextractor.domain.refang.ReplacementRefanger(List.of()),
+                com.iocextractor.application.TestDocumentSourceWorkspace.extractor(text -> new ExtractionOutcome(
+                        List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of())),
+                com.iocextractor.application.TestDocumentSourceWorkspace.noMarkers(),
                 false, "oneshot", new NoopPipelineObserver(), NoopDiagnosticSink.INSTANCE,
                 FailurePolicy.failFast(), 100, new NoWriteRepository(), null,
                 new CanonicalArtifactIdentityResolver(List.of()), NoopPipelineDecisionTracer.INSTANCE,

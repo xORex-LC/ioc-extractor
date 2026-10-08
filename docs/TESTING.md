@@ -18,6 +18,15 @@ Every Failsafe suite must also carry integration semantics through
 discovery; tags describe test semantics. They are complementary and neither is
 a substitute for the complete release gate.
 
+The streamed-source change adds two deterministic Failsafe suites:
+`StreamingSourceContractIT` compares real HTML/DOCX parsing with the independent
+finite parser oracle and tests admission failures; `JdbcDocumentSourceWorkspaceIT`
+checks real disk-backed text, positions, overlap priority, attribution and cleanup.
+The reviewed source universe is 223 fast classes and 77 integration classes,
+including five external shells (295 deterministic classes). The exact inventory
+in `build-support/test-quality/test-lifecycle.properties` reflects these additions;
+discovery, report integrity and coverage/analyzer floors remain unchanged.
+
 The shared composed annotations live in `ioc-application-tck` under
 `com.iocextractor.application.tck.junit`. Adapter and bootstrap test scopes may
 depend on that module. Framework-free core modules use direct JUnit tags when a
@@ -175,9 +184,9 @@ later step fails.
 
 The aggregate report and its groups are the authoritative release measurement.
 `build-support/coverage-report/coverage-scope.tsv` gives every reactor project
-an explicit disposition. The production denominator is exactly 20 JAR modules;
+an explicit disposition. The production denominator is exactly 21 JAR modules;
 the reusable TCK, root and build-only POMs are excluded, with no class or package
-exclusions. Eighteen production modules must generate local XML/HTML reports.
+exclusions. Twenty production modules must generate local XML/HTML reports.
 `ioc-platform-errors` has no local test JVM and is declared aggregate-only, but
 its downstream execution must still appear as an aggregate group.
 

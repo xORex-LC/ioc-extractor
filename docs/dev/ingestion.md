@@ -31,10 +31,13 @@ document uses admission, including artifacts with only KEEP_FIRST policies.
 
 Preparation uses the repeatable bounded workspace described in
 [processing.md](processing.md). Up to two workers may prepare independently. The
-workspace quotas bound reducer buffers and native caches; source-reader and
-occurrence materialization are still input-sized. Overlapping preparation can
-multiply that upstream memory, so a bounded execution window alone does not
-establish whole-process memory acceptance. Only
+workspace owns decoded/refanged text, indexed extraction claims and ordered
+occurrence cursors, as well as the reducer. HTML prunes completed subtrees and
+DOCX uses SAX; parser-region and field limits reject preparation before promotion.
+The admitted dispatch window is the smaller of the configured window and the
+factory's global workspace capacity, preventing later ready jobs from consuming
+every lease ahead of the oldest job. These bounds still require a separate
+whole-process memory measurement. Only
 the oldest unresolved admission may promote; a newer ready document cannot
 change whole-row KEEP_FIRST by finishing preparation first. Registered mutable
 field precedence still uses the durable dataframe rank. The source-key guard is
@@ -51,8 +54,9 @@ count, which cannot exceed 256. Per-source bytes cannot exceed the workspace
 source-pin allowance (one quarter of the workspace disk quota).
 
 These are separate budgets: admission bounds owned input; the preparation window
-bounds handles; workspace admission bounds shared cache, memory and disk. It does
-not make Tika/source text or the extractor's upstream materialization streaming.
+bounds handles; workspace admission bounds shared cache, parser working
+reservation, memory and disk. The streamed source protocol is defined in
+[ADR 0039](../ADR/0039-streamed-document-source-processing.md).
 Oversized or saturated unclaimed input remains in the listed inbox. Full polling
 rediscovers it without an AcceptOnce filter. Claimed input never disappears because
 an executor rejects a hint: the journal remains the recoverable queue. A coalesced
@@ -126,6 +130,16 @@ preparation closes its run/workspace and preserves the claimed delivery. A worke
 that fails to terminate causes an explicit shutdown failure; its live handle is
 not discarded underneath it. Periodic journal discovery resumes pending work on
 restart. This is at-least-once orchestration with idempotent durable steps.
+
+A fatal worker `Error` stops intake and promotion scheduling, releases ready
+handles and interrupts other workers. An already active promotion retains its
+own handle until its cleanup. Every independently owned release is attempted,
+including when another release throws `Error`; primary and suppressed failures
+remain visible. Durable admissions are retained for startup recovery. The failed
+dispatcher object cannot restart itself, and `dataProcessingCapacity` is DOWN
+while dispatch is stopped, even when no admission is marked blocked. This is a
+fail-stop ownership contract, not a guarantee that a depleted JVM can recover
+without process restart.
 
 One daemon process per inbox/database namespace is supported. Multiple processes
 would need a separate lease/fencing contract. Managed CSV import uses its own

@@ -683,6 +683,108 @@ class JdbcDocumentPreparationWorkspaceIT {
         Files.writeString(source, "<p>fixture</p>");
         return new ExtractionCommand(id, source, false);
     }
+
+    @Test
+    void sourceScratchClosesBeforeSealAndCannotBeOpenedTwice() throws Exception {
+        var command = command("source-owner");
+        try (var workspace = factory(limits(1)).open(command, POLICIES)) {
+            var source = workspace.sourceWorkspace();
+            assertThatThrownBy(workspace::sourceWorkspace).hasMessageContaining("already open");
+            try (var writer = source.writer()) { writer.write("body.test"); }
+            assertThat(source.text().toString()).isEqualTo("body.test");
+            workspace.seal(descriptors(), summary(0));
+            assertThatThrownBy(source::text).hasMessageContaining("closed");
+            assertThat(pin(command).resolve("source-text.utf16")).doesNotExist();
+            assertThat(pin(command).resolve("source-decisions.db")).doesNotExist();
+            workspace.discard();
+        }
+        assertThat(pin(command)).doesNotExist();
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"false,false,false", "false,true,false", "true,false,false", "true,true,false", "true,true,true"})
+    void failedSourceAndLeaseCleanupStillClosesAndReleasesTheParentOwner(boolean sourceFatal, boolean releaseFatal, boolean shared) throws Exception {
+        Path directory = temporary.resolve("owned-parent"); Files.createDirectory(directory);
+        Path snapshot = directory.resolve("source.html"); Files.writeString(snapshot, "source");
+        var failCleanup = new java.util.concurrent.atomic.AtomicBoolean();
+        var releases = new java.util.concurrent.atomic.AtomicInteger();
+        Throwable sourceFailure = sourceFatal ? new AssertionError("source close") : new IllegalStateException("source close");
+        Throwable releaseFailure = shared ? sourceFailure : releaseFatal ? new AssertionError("lease close") : new IllegalStateException("lease close");
+        var workspace = new JdbcDocumentPreparationWorkspace(directory, snapshot, limits(1), identities(), POLICIES,
+                () -> {
+                    if (failCleanup.get()) {
+                        if (sourceFailure instanceof Error fatal) { throw fatal; }
+                        throw (RuntimeException) sourceFailure;
+                    }
+                }, () -> {
+                    releases.incrementAndGet();
+                    if (releaseFailure instanceof Error fatal) { throw fatal; }
+                    throw (RuntimeException) releaseFailure;
+                });
+        var source = workspace.sourceWorkspace();
+        source.writer().write("body.test");
+        failCleanup.set(true);
+        assertThatThrownBy(workspace::close).satisfies(failure -> {
+            Throwable primary = sourceFatal || releaseFatal ? failure : failure.getCause();
+            assertThat(primary).hasMessage(sourceFatal ? "source close"
+                    : releaseFatal ? "lease close" : "Document source workspace close failed");
+            if (shared) { assertThat(primary).isSameAs(sourceFailure); assertThat(primary.getSuppressed()).isEmpty(); }
+            else { assertThat(primary.getSuppressed()).singleElement().satisfies(suppressed ->
+                    assertThat(suppressed).hasMessageContaining(sourceFatal || !releaseFatal
+                            ? "lease close" : "Document source workspace close failed")); }
+        });
+        workspace.close();
+        assertThat(releases).hasValue(1);
+        assertThat(directory).doesNotExist();
+    }
+
+    @Test
+    void failedInitializationAfterOpeningSqliteClosesTheDatabaseOwner() throws Exception {
+        Path directory = temporary.resolve("missing-source"); Files.createDirectory(directory);
+        Path source = directory.resolve("source.html");
+        assertThatThrownBy(() -> new JdbcDocumentPreparationWorkspace(directory, source, limits(1), identities(),
+                POLICIES, () -> { }, () -> { })).hasMessageContaining("Cannot initialize");
+        // A fresh owner can use the same database after the partial open failed.
+        Files.writeString(source, "source");
+        try (var workspace = new JdbcDocumentPreparationWorkspace(directory, source, limits(1), identities(),
+                POLICIES, () -> { }, () -> { })) { workspace.discard(); }
+        assertThat(directory).doesNotExist();
+    }
+
+    @Test
+    void fatalPolicySnapshotFailureReleasesFactoryAdmissionAndPrivatePin() throws Exception {
+        var factory = factory(limits(1));
+        var command = command("failed-policy-snapshot");
+        var fatal = new AssertionError("policy snapshot failed");
+        Map<String, ArtifactWritePolicy> broken = new java.util.AbstractMap<>() {
+            public java.util.Set<Entry<String, ArtifactWritePolicy>> entrySet() { throw fatal; }
+        };
+        assertThatThrownBy(() -> factory.open(command, broken)).isSameAs(fatal);
+        assertThat(factory.pressure().leasedWorkspaces()).isZero();
+        assertThat(pin(command)).doesNotExist();
+        try (var workspace = factory.open(command, POLICIES)) { workspace.discard(); }
+        assertThat(factory.pressure().leasedWorkspaces()).isZero();
+    }
+
+    @Test
+    void expiredPinDiscoverySkipsSymlinksAndNonDirectoriesWithoutTouchingTheirTargets() throws Exception {
+        var factory = factory(limits(1));
+        try (var workspace = factory.open(command("initialize-root"), POLICIES)) { workspace.discard(); }
+        Path root = temporary.resolve("workspace");
+        Path outside = temporary.resolve("outside"); Files.createDirectory(outside);
+        Path sentinel = outside.resolve("operator-data"); Files.writeString(sentinel, "preserve");
+        Path link = root.resolve(ArtifactIdentityDefinition.sha256("linked-pin"));
+        Path file = root.resolve(ArtifactIdentityDefinition.sha256("non-directory-pin"));
+        Files.createSymbolicLink(link, outside); Files.writeString(file, "preserve");
+        assertThatThrownBy(() -> factory.open(command("skip-unowned"), POLICIES))
+                .hasRootCauseMessage("Symlink in private document workspace");
+        assertThat(Files.isSymbolicLink(link)).isTrue();
+        assertThat(Files.readString(sentinel)).isEqualTo("preserve");
+        assertThat(Files.readString(file)).isEqualTo("preserve");
+        assertThat(factory.pressure().leasedWorkspaces()).isZero();
+        Files.delete(link);
+        try (var workspace = factory.open(command("safe-retry"), POLICIES)) { workspace.discard(); }
+    }
     private Path pin(ExtractionCommand command) { return temporary.resolve("workspace").resolve(ArtifactIdentityDefinition.sha256(command.runId())); }
     private JdbcDocumentPreparationWorkspaceFactory factory(DocumentPreparationLimits limits) {
         return new JdbcDocumentPreparationWorkspaceFactory(temporary.resolve("workspace"), limits, identities(), "policy");

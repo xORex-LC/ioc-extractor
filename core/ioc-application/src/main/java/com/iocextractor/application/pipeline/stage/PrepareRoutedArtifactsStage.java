@@ -73,8 +73,9 @@ public final class PrepareRoutedArtifactsStage implements Stage<AttributedIndica
                 == DocumentObservationSelection.RETAINED_OBSERVATIONS;
         int retained = 0;
         int ordinal = 0;
-        try (var session = processing.openSession()) {
-            for (var decision : input.payload().outcome().decisions()) {
+        try (var session = processing.openSession(); var cursor = input.payload().decisions().open()) {
+            while (cursor.next()) {
+                var decision = cursor.value();
                 if (Thread.currentThread().isInterrupted()) {
                     throw new IllegalStateException("Document preparation interrupted");
                 }

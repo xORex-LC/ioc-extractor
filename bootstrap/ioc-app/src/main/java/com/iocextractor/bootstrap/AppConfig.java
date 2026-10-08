@@ -302,7 +302,7 @@ public class AppConfig {
 
     @Bean
     public SourceReader sourceReader(IocProperties props, Clock clock) {
-        return new TikaSourceReader(sourceCharset(props), new DiagnosticFactory(clock));
+        return new TikaSourceReader(sourceCharset(props), new DiagnosticFactory(clock), props.processing().workspace().maximumRowBytes());
     }
 
     @Bean

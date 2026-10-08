@@ -20,6 +20,7 @@ public final class TestDocumentWorkspace implements DocumentPreparationWorkspace
         this.identities = identities; this.policies = policies;
     }
     public java.nio.file.Path source() { return java.nio.file.Path.of("unused.docx"); }
+    public DocumentSourceWorkspace sourceWorkspace() { return new TestDocumentSourceWorkspace(); }
     public void discard() { }
     public void beginPromotion() { }
     public boolean promotionStarted() { return false; }

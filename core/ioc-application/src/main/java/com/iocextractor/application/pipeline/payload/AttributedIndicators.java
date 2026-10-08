@@ -9,16 +9,21 @@ import java.util.Objects;
 /**
  * Indicators after source attribution.
  *
- * @param outcome markers and per-indicator attribution decisions
+ * @param decisions repeatable attributed occurrence cursor owned by the document workspace
  */
-public record AttributedIndicators(AttributionOutcome outcome) {
+public record AttributedIndicators(com.iocextractor.application.port.out.artifact.RowSource<com.iocextractor.domain.attribute.AttributionDecision> decisions) {
 
     public AttributedIndicators {
-        Objects.requireNonNull(outcome, "outcome");
+        Objects.requireNonNull(decisions, "decisions");
+    }
+
+    /** Adapts an explicitly supplied small batch, without a production fallback. */
+    public AttributedIndicators(AttributionOutcome outcome) {
+        this(com.iocextractor.application.port.out.artifact.RowSource.of(outcome.decisions()));
     }
 
     /** Returns materialized attributed indicators. */
     public List<Indicator> indicators() {
-        return outcome.indicators();
+        return decisions.map(com.iocextractor.domain.attribute.AttributionDecision::indicator).snapshot();
     }
 }

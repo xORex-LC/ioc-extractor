@@ -72,6 +72,11 @@ runtime JDBC drivers.
   IDs, revisions and export-slot ownership.
 - `JdbcDocumentPreparationWorkspaceFactory` owns private source pins, process-wide
   memory admission, root-wide disk reservations, leases and inactive-pin retention.
+  `DocumentTextSpool` owns decoded/refanged UTF-16 files; `PagedDocumentText`
+  exposes absolute offsets through two fixed pages. `JdbcDocumentSourceWorkspace`
+  owns indexed overlap claims and ordered extraction/attribution cursors. Source
+  scratch and reducer split the native cache and share one admission lease;
+  source scratch is disposable and is removed before seal and on failure.
   One workspace/cache serves all artifacts; its global reducer compares complete
   identity material and preserves whole-row selection and first-key order.
   Sealed repeatable cursors feed canonical writers and typed receipts. Receipt

@@ -55,6 +55,8 @@
 
 | [0034-required-router-processing-plans.md](0034-required-router-processing-plans.md) | Required document/processed-import Router plans, original-value production defaults and explicit observation selection; supersedes optional dispatch in ADR 0031. |
 
+| [0039-streamed-document-source-processing.md](0039-streamed-document-source-processing.md) | Workspace-owned source streaming, lazy extraction/attribution, bounded parser admission and fatal-worker recovery. |
+
 ## Формат
 
 `Статус` · `Контекст` · `Решения` (выбор + обоснование + отклонённые варианты) ·

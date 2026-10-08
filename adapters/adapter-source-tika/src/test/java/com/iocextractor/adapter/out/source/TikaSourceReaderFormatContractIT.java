@@ -92,7 +92,7 @@ class TikaSourceReaderFormatContractIT {
         return pdf.toByteArray();
     }
 
-    private static Map<String, String> docxEntries(String text) {
+    static Map<String, String> docxEntries(String text) {
         Map<String, String> entries = new LinkedHashMap<>();
         entries.put("[Content_Types].xml", """
                 <?xml version="1.0" encoding="UTF-8"?>
@@ -156,7 +156,7 @@ class TikaSourceReaderFormatContractIT {
         return entries;
     }
 
-    private static void writeZip(Path destination, Map<String, String> entries) throws IOException {
+    static void writeZip(Path destination, Map<String, String> entries) throws IOException {
         try (ZipOutputStream output = new ZipOutputStream(Files.newOutputStream(destination))) {
             for (Map.Entry<String, String> entry : entries.entrySet()) {
                 output.putNextEntry(new ZipEntry(entry.getKey()));

@@ -37,6 +37,7 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
     private final PrepareIngestionUseCase preparation;
     private final RejectIngestionUseCase rejection;
     private final IngestAdapterProperties.Execution limits;
+    private final int preparationWindow;
     private final int maxAttempts;
     private final Duration backoff;
     private final Clock clock;
@@ -49,6 +50,7 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
     private final ScheduledExecutorService coordinator;
     private boolean running;
     private boolean closed;
+    private boolean failed;
     private long saturationCount;
     private long completedDocuments;
     private long completedBytes;
@@ -58,10 +60,18 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
     public DurableDocumentDispatcher(OrderedDocumentAdmissionHandler admissions,
             PrepareIngestionUseCase preparation, RejectIngestionUseCase rejection,
             IngestAdapterProperties properties, Clock clock, DiagnosticSink diagnostics) {
+        this(admissions, preparation, rejection, properties, clock, diagnostics, Integer.MAX_VALUE);
+    }
+
+    public DurableDocumentDispatcher(OrderedDocumentAdmissionHandler admissions,
+            PrepareIngestionUseCase preparation, RejectIngestionUseCase rejection,
+            IngestAdapterProperties properties, Clock clock, DiagnosticSink diagnostics, int workspaceCapacity) {
+        if (workspaceCapacity < 1) { throw new IllegalArgumentException("Workspace capacity must be positive"); }
         this.admissions = Objects.requireNonNull(admissions, "admissions");
         this.preparation = Objects.requireNonNull(preparation, "preparation");
         this.rejection = Objects.requireNonNull(rejection, "rejection");
         this.limits = properties.execution();
+        preparationWindow = Math.min(limits.window(), workspaceCapacity);
         this.maxAttempts = properties.retry().maxAttempts();
         this.backoff = properties.retry().backoff();
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -83,6 +93,7 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
     public void start() {
         synchronized (monitor) {
             if (closed) { throw new IllegalStateException("Document dispatcher is closed"); }
+            if (failed) { throw new IllegalStateException("Document dispatcher requires restart after fatal failure"); }
             if (running) { return; }
             running = true;
             coordinator.scheduleWithFixedDelay(this::reconcileSafely, 0, 1, TimeUnit.SECONDS);
@@ -120,14 +131,15 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
     private void reconcileSafely() {
         try { reconcile(); }
         catch (RuntimeException failure) { report("document-dispatch", failure); }
+        catch (Error fatal) { failStop(fatal); throw fatal; }
     }
 
     private void reconcile() {
         synchronized (monitor) {
             if (!running) { return; }
             var pending = admissions.pending(limits.maxPendingDocuments() + 1);
-            for (var admission : pending.subList(0, Math.min(pending.size(), limits.window()))) {
-                if (jobs.size() >= limits.window()) { break; }
+            for (var admission : pending.subList(0, Math.min(pending.size(), preparationWindow))) {
+                if (jobs.size() >= preparationWindow) { break; }
                 if (jobs.containsKey(admission.observationId())
                         || admission.execution().retryAfter().isAfter(clock.instant())) { continue; }
                 Job job = new Job(admission);
@@ -154,16 +166,33 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
             job.command = new IngestSourceCommand(document.source(), document.registration());
             prepared = preparation.prepare(job.command);
         } catch (RuntimeException caught) { failure = caught; }
+        catch (Error fatal) { failStop(fatal); throw fatal; }
+        boolean abandoned;
         synchronized (monitor) {
-            job.prepared = prepared;
-            job.failure = failure;
-            job.ready = true;
+            abandoned = failed;
+            if (!abandoned) {
+                job.prepared = prepared;
+                job.failure = failure;
+                job.ready = true;
+            }
         }
+        if (abandoned) { if (prepared != null) { prepared.close(); } return; }
         nudge();
     }
 
     private void promote(Job job) {
+        Error primary = null;
+        try { promoteReady(job); }
+        catch (Error fatal) { primary = fatal; failStop(fatal); throw fatal; }
+        finally { finishPromotion(job, primary); }
+    }
+
+    private void promoteReady(Job job) {
         try {
+            synchronized (monitor) {
+                if (failed) { return; }
+                job.promotionStarted = true;
+            }
             if (job.failure != null) {
                 retryOrBlock(job, job.failure);
                 return;
@@ -179,13 +208,25 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
                         .values().stream().mapToLong(Integer::longValue).sum()).orElse(0L);
             }
         } catch (RuntimeException failure) {
-            retryOrBlock(job, failure);
-        } finally {
-            try { if (job.prepared != null) { job.prepared.close(); } }
-            catch (RuntimeException cleanup) { report(job.admission.observationId().value(), cleanup); }
-            synchronized (monitor) { jobs.remove(job.admission.observationId()); }
-            nudge();
+            boolean recoverable;
+            synchronized (monitor) { recoverable = !failed; }
+            if (recoverable) { retryOrBlock(job, failure); }
         }
+    }
+
+    private void finishPromotion(Job job, Throwable primary) {
+        PreparedIngestion owned;
+        synchronized (monitor) { owned = job.prepared; job.prepared = null; }
+        try { if (owned != null) { owned.close(); } }
+        catch (RuntimeException cleanup) {
+            if (primary != null) { primary.addSuppressed(cleanup); }
+            else { report(job.admission.observationId().value(), cleanup); }
+        } catch (Error fatal) {
+            if (primary == null) { failStop(fatal); throw fatal; }
+            if (fatal != primary) { primary.addSuppressed(fatal); }
+        }
+        synchronized (monitor) { jobs.remove(job.admission.observationId()); }
+        nudge();
     }
 
     private void retryOrBlock(Job job, RuntimeException failure) {
@@ -208,11 +249,36 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
     }
 
     private void report(String source, RuntimeException failure, IngestDiagnosticCodes code) {
-        lastFailure = failure.getClass().getSimpleName();
+        synchronized (monitor) { if (!failed) { lastFailure = failure.getClass().getSimpleName(); } }
         try { diagnostics.emit(factory.create(code)
                 .with("source", source).with("reason", Objects.toString(failure.getMessage(), "execution failed"))
                 .cause(failure).build()); }
         catch (RuntimeException observationFailure) { failure.addSuppressed(observationFailure); }
+    }
+
+    /** Fatal VM/worker errors stop intake and promotions; durable occurrences belong to restart recovery. */
+    private void failStop(Error fatal) {
+        var abandoned = new java.util.ArrayList<PreparedIngestion>();
+        synchronized (monitor) {
+            if (failed) { return; }
+            failed = true;
+            running = false;
+            lastFailure = fatal.getClass().getSimpleName();
+            for (var job : jobs.values()) {
+                if (job.prepared != null && !job.promotionStarted) {
+                    abandoned.add(job.prepared);
+                    job.prepared = null;
+                }
+            }
+            jobs.clear();
+        }
+        coordinator.shutdownNow();
+        preparers.shutdownNow();
+        promoter.shutdownNow();
+        for (var prepared : abandoned) {
+            try { prepared.close(); }
+            catch (RuntimeException | Error cleanup) { if (cleanup != fatal) { fatal.addSuppressed(cleanup); } }
+        }
     }
 
     /** Bounded metadata-only operational snapshot. */
@@ -260,19 +326,25 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
     }
 
     private void closePreparedJobs() {
-        RuntimeException failure = null;
+        var owned = new java.util.ArrayList<PreparedIngestion>();
         synchronized (monitor) {
             for (var job : jobs.values()) {
-                if (job.prepared != null) {
-                    try { job.prepared.close(); }
-                    catch (RuntimeException cleanup) {
-                        if (failure == null) { failure = cleanup; } else { failure.addSuppressed(cleanup); }
-                    }
-                }
+                if (job.prepared != null) { owned.add(job.prepared); job.prepared = null; }
             }
             jobs.clear();
         }
-        if (failure != null) { throw failure; }
+        Throwable failure = null;
+        for (var prepared : owned) {
+            try { prepared.close(); }
+            catch (RuntimeException | Error cleanup) {
+                if (failure == null) { failure = cleanup; }
+                else if (cleanup instanceof Error && !(failure instanceof Error)) {
+                    cleanup.addSuppressed(failure); failure = cleanup;
+                } else if (failure != cleanup) { failure.addSuppressed(cleanup); }
+            }
+        }
+        if (failure instanceof Error fatal) { lastFailure = fatal.getClass().getSimpleName(); throw fatal; }
+        if (failure instanceof RuntimeException runtime) { throw runtime; }
     }
 
     private static void stop(java.util.concurrent.ExecutorService worker) {
@@ -297,6 +369,7 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
         private RuntimeException failure;
         private boolean ready;
         private boolean promoting;
+        private boolean promotionStarted;
         private Job(DocumentAdmission admission) { this.admission = admission; }
     }
 }
