@@ -13,6 +13,9 @@ sys.dont_write_bytecode = True
 SPEC = importlib.util.spec_from_file_location('service_capacity', Path(__file__).resolve().parents[1] / 'dev/service-capacity.py')
 CAP = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(CAP)
+UPGRADE_SPEC = importlib.util.spec_from_file_location('capacity_upgrade', Path(__file__).resolve().parents[1] / 'dev/service-capacity-upgrade.py')
+UPGRADE = importlib.util.module_from_spec(UPGRADE_SPEC)
+UPGRADE_SPEC.loader.exec_module(UPGRADE)
 
 
 def policy():
@@ -30,6 +33,90 @@ def policy():
 
 
 class ServiceCapacityTest(unittest.TestCase):
+    def test_upgrade_startup_failure_stops_unit_before_state_removal(self):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            (repo / '.dev').mkdir()
+            config = policy()
+            config['ioc']['processing'] = {}
+            source = repo / 'config.yml'
+            source.write_text(CAP.yaml.safe_dump(config))
+            jar = repo / 'runtime.jar'
+            jar.write_text('frozen executable')
+            args = SimpleNamespace(previous=jar, candidate=jar, config=source, output=repo / '.dev/evidence')
+            unit = MagicMock()
+            unit.start.return_value = {}
+            def stop():
+                root = next((repo / '.dev').glob('ioc-cap6-upgrade-*'))
+                self.assertTrue((root / 'candidate.jar').exists())
+                self.assertTrue((root / 'oracle.db').exists())
+                return {'process_terminated': True}
+            unit.close.side_effect = stop
+            def private(source, root, port):
+                (root / 'application.yml').write_text(source.read_text())
+                return config
+            def git(arguments):
+                return 'head' if 'rev-parse' in arguments else ''
+            with patch.object(UPGRADE.CAP, 'REPO', repo), patch.object(UPGRADE.CAP, 'command', side_effect=git), \
+                    patch.object(UPGRADE.CAP, 'private_config', side_effect=private), \
+                    patch.object(UPGRADE.CAP, 'PrivateUnit', return_value=unit), \
+                    patch.object(UPGRADE.CAP, 'ready', side_effect=RuntimeError('readiness failure')):
+                report = UPGRADE.rehearse(args)
+            self.assertEqual(report['status'], 'ERROR')
+            self.assertTrue(report['temporary_state_removed'])
+            unit.close.assert_called_once()
+            self.assertEqual(list((repo / '.dev').glob('ioc-cap6-upgrade-*')), [])
+            self.assertTrue((args.output / 'report.json').is_file())
+
+    def test_stopped_backup_hashes_detect_journal_or_output_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / 'db-journal'
+            path.write_bytes(b'original')
+            before = UPGRADE.snapshot_files(root)
+            path.write_bytes(b'changed')
+            self.assertNotEqual(before, UPGRADE.snapshot_files(root))
+
+    def test_post_gc_heap_includes_both_serial_generations(self):
+        serial = ' def new generation total 62464K, used 44K\n tenured generation total 138564K, used 49494K\n Metaspace used 86737K'
+        self.assertEqual(CAP.live_heap_bytes(serial), 49538 * 1024)
+        self.assertEqual(CAP.live_heap_bytes(' garbage-first heap total 131072K, used 42K'), 42 * 1024)
+        with self.assertRaisesRegex(RuntimeError, 'Missing post-GC'):
+            CAP.live_heap_bytes('unavailable')
+
+    def test_window_maximum_does_not_reuse_population_maximum(self):
+        before = {'PROMOTION': {'completed': 10, 'totalHoldNanos': 25000000000, 'maximumHoldNanos': 13000000000,
+                               'totalWaitNanos': 100, 'maximumWaitNanos': 50}}
+        after = {'PROMOTION': dict(before['PROMOTION'], completed=15, totalHoldNanos=26500000000)}
+        value = CAP.writer_window(before, after)['PROMOTION']
+        self.assertEqual(value['maximumHoldNanosUpperBound'], 1500000000)
+        self.assertFalse(value['maximumHoldNanosIsExact'])
+        after['PROMOTION'].update(totalHoldNanos=40000000000, maximumHoldNanos=15000000000)
+        self.assertTrue(CAP.writer_window(before, after)['PROMOTION']['maximumHoldNanosIsExact'])
+        after['PROMOTION']['completed'] = 9
+        with self.assertRaisesRegex(RuntimeError, 'regressed'):
+            CAP.writer_window(before, after)
+
+    def test_absolute_operator_paths_are_privatized_without_changing_limits(self):
+        config = next(CAP.yaml.safe_load_all((CAP.REPO / 'bootstrap/ioc-app/src/main/resources/application.yml').read_text()))
+        ioc = config['ioc']
+        ioc['ingestion']['ledger']['path'] = '/srv/shared/ledger'
+        ioc['processing']['workspace']['directory'] = '/srv/shared/workspace'
+        ioc['sink']['artifacts'][0]['path'] = '/srv/shared/operator.csv'
+        limits = dict(ioc['processing']['workspace'])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / 'input.yml'
+            source.write_text(CAP.yaml.safe_dump(config))
+            private = CAP.private_config(source, root, 18206)['ioc']
+            self.assertEqual(private['ingestion']['ledger']['path'], './var/ledger')
+            self.assertEqual(private['sink']['artifacts'][0]['path'], './dataframe/operator.csv')
+            self.assertEqual({key: value for key, value in private['processing']['workspace'].items() if key != 'directory'},
+                             {key: value for key, value in limits.items() if key != 'directory'})
+            self.assertTrue(all(value.startswith('./var/import/') for value in private['dataframe-import']['runtime']['dirs'].values()))
+
     def test_missing_diagnostic_launcher_uses_the_current_jdk_modules(self):
         with patch.object(CAP.shutil, 'which', side_effect=lambda name: '/usr/bin/java' if name == 'java' else None):
             self.assertEqual(CAP.jdk_tool('jstat'), ['/usr/bin/java', '-m', 'jdk.jcmd/sun.tools.jstat.Jstat'])
@@ -145,7 +232,9 @@ class ServiceCapacityTest(unittest.TestCase):
     def test_fast_completion_cannot_hide_long_writer_hold_or_oom(self):
         sample = {'local_window_upper_seconds': 1, 'resources': {'peaks': {'rss_bytes': 100, 'non_file_bytes': 100},
                    'psi_full_fraction': 0, 'memory_events_delta': {'oom': 0, 'oom_kill': 0}},
-                  'health': {'writerOperations': {'PROMOTION': {'maximumHoldNanos': 6000000000}}}}
+                  'health_before': {'writerOperations': {}},
+                  'health': {'writerOperations': {'PROMOTION': {'completed': 1, 'maximumHoldNanos': 6000000000,
+                    'totalHoldNanos': 6000000000, 'maximumWaitNanos': 0, 'totalWaitNanos': 0}}}}
         self.assertEqual(CAP.gate_sample(sample, 100000)['violations'], ['writer_hold'])
         sample['resources']['memory_events_delta']['oom_kill'] = 1
         self.assertIn('oom', CAP.gate_sample(sample, 100000)['violations'])
@@ -234,6 +323,13 @@ class ServiceCapacityTest(unittest.TestCase):
                     contents.write('MemoryError: Java heap space\n')
                 with self.assertRaisesRegex(CAP.WorkloadFailure, 'OutOfMemoryError'):
                     unit.assert_running()
+
+    def test_workspace_full_stops_the_failed_capacity_screen_before_retry(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'daemon.log').write_text('org.sqlite.SQLiteException: [SQLITE_FULL] database is full')
+            with self.assertRaisesRegex(CAP.WorkloadFailure, 'capacity exhausted'):
+                CAP.PrivateUnit(root).assert_running()
 
     def test_evidence_copy_failure_still_removes_terminated_private_state(self):
         from types import SimpleNamespace

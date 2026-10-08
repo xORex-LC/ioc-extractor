@@ -278,6 +278,10 @@ document-workspace-capacity: ## CAP-4 incremental disk-reducer/writer/receipt di
 service-capacity: ## CAP-6 private cgroup-limited whole-service screens; SERVICE_CAPACITY_ARGS selects jar, policy and covering cell
 	@python3 tools/dev/service-capacity.py $(SERVICE_CAPACITY_ARGS)
 
+.PHONY: service-capacity-upgrade
+service-capacity-upgrade: ## CAP-6 drained private upgrade/backup-restore rehearsal; UPGRADE_ARGS selects frozen executables and policy
+	@python3 tools/dev/service-capacity-upgrade.py $(UPGRADE_ARGS)
+
 db: ## Inspect SQLite read-only; DB=service|dataframe DB_COMMAND=shell|schema|tables
 	@tools/dev/database.sh --workspace "$(WORKSPACE)" --db "$(DB)" "$(DB_COMMAND)"
 

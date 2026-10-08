@@ -27,6 +27,7 @@
 | `processing-stage-capacity.py …` | Измерить CAP-3 attribution/diagnostics в попарных JVM со снимками классов; автоматически удалить временные файлы |
 | `document-workspace-capacity.py …` | Диагностика CAP-4: инкрементальный дисковый reducer, canonical writer и receipts; удалить все временные базы даже при отказе |
 | `service-capacity.py …` | CAP-6: отдельный user-systemd, фактические cgroup limits, прогретый полный локальный цикл, дисковый oracle и очистка |
+| `service-capacity-upgrade.py …` | CAP-6: приватный upgrade после drain, backup остановленных БД/файлов и проверка restore до запуска прежнего бинарника |
 | `logs.sh …` | Читать и фильтровать ECS JSON по level/event/run/diagnostic |
 | `release-notes-context.sh …` | Собрать read-only Git/PR inventory для ручной подготовки release notes |
 

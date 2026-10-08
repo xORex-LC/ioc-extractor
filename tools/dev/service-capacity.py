@@ -356,6 +356,23 @@ class ResourceSampler:
             raise RuntimeError('Resource sampler failed or did not terminate') from self.failure
 
 
+def writer_window(before, after):
+    """Bound window maxima without attributing startup/population maxima to new work."""
+    result = {}
+    for name, current in after.items():
+        previous = before.get(name, {key: 0 for key in current})
+        delta = difference(previous, current)
+        value = {'completed': delta['completed']}
+        for kind in ('Hold', 'Wait'):
+            maximum, total = 'maximum' + kind + 'Nanos', 'total' + kind + 'Nanos'
+            exact = current[maximum] > previous[maximum] or delta['completed'] == 0
+            value[total] = delta[total]
+            value[maximum + 'UpperBound'] = (current[maximum] if exact else min(current[maximum], delta[total])) if delta['completed'] else 0
+            value[maximum + 'IsExact'] = exact
+        result[name] = value
+    return result
+
+
 def gate_sample(sample, size):
     limits = {'local_max_seconds': 270 if size >= 1000000 else 45,
               'rss_bytes': 512 * 1024**2, 'non_file_bytes': 576 * 1024**2, 'writer_hold_nanos': 5 * 10**9}
@@ -371,11 +388,16 @@ def gate_sample(sample, size):
         violations.append('memory_psi_full')
     if resource['memory_events_delta']['oom'] or resource['memory_events_delta']['oom_kill']:
         violations.append('oom')
-    if max((value['maximumHoldNanos'] for value in sample['health']['writerOperations'].values()), default=0) > limits['writer_hold_nanos']:
-        violations.append('writer_hold')
-    if sample['health']['writerOperations'].get('CONTROL', {}).get('maximumWaitNanos', 0) > 10 * 10**9:
-        violations.append('control_wait')
+    operations = writer_window(sample['health_before']['writerOperations'], sample['health']['writerOperations'])
+    for name, value in operations.items():
+        if value['maximumHoldNanosUpperBound'] > limits['writer_hold_nanos']:
+            violations.append('writer_hold' if value['maximumHoldNanosIsExact'] else 'writer_hold_unresolved')
+            break
+    control = operations.get('CONTROL', {})
+    if control.get('maximumWaitNanosUpperBound', 0) > 10 * 10**9:
+        violations.append('control_wait' if control['maximumWaitNanosIsExact'] else 'control_wait_unresolved')
     return {'limits': limits, 'violations': violations, 'status': 'FAIL' if violations else 'SCREEN_PASS',
+            'writer_window': operations,
             'scope': 'Conservative complete-window and resource screens; exact Tlocal/remaining G6 criteria remain separate'}
 
 
@@ -432,6 +454,8 @@ class PrivateUnit:
                     text = self.log_tail + chunk
                     if 'java.lang.OutOfMemoryError' in text:
                         raise WorkloadFailure('Java OutOfMemoryError; measured worker failed (see daemon.log)')
+                    if '[SQLITE_FULL]' in text:
+                        raise WorkloadFailure('SQLite workspace capacity exhausted (see daemon.log); no failed-screen retries')
                     self.log_tail = text[-128:]
                 self.log_offset = log.tell()
         properties = self.properties()
@@ -604,6 +628,20 @@ def private_config(source, root, port):
         config['ioc']['storage'][store]['url'] = f'jdbc:sqlite:./var/db/ioc-{store}.db'
     config['ioc']['export']['root'] = './var/export'
     config['ioc']['ingestion']['dirs'] = {name: './var/' + name for name in ('inbox', 'processing', 'done', 'failed')}
+    config['ioc']['ingestion']['ledger']['path'] = './var/ledger'
+    config['ioc'].setdefault('processing', {}).setdefault('workspace', {})['directory'] = './var/document-preparation'
+    config['ioc']['dataframe-import'].setdefault('runtime', {})['dirs'] = {
+        name: './var/import/' + name for name in ('processing', 'snapshots', 'staging', 'terminal', 'quarantine')}
+    filenames = set()
+    for artifact in config['ioc']['sink']['artifacts']:
+        filename = Path(artifact['path']).name
+        if not filename or filename in filenames:
+            raise ValueError('Distinct private artifact filenames required')
+        filenames.add(filename)
+        artifact['path'] = './dataframe/' + filename
+    # Retention paths can otherwise escape the private cwd even with intake disabled.
+    for index, target in enumerate(config['ioc'].get('maintenance', {}).get('retention', {}).get('targets', [])):
+        target['dir'] = './var/retention/' + str(index)
     config['ioc']['sync']['enabled'] = False
     config['ioc']['sync']['fetch'] = {'enabled': False, 'interval': '10s', 'sources': []}
     config['ioc']['sync']['publish'] = {'enabled': False, 'interval': '10s', 'targets': []}
@@ -618,15 +656,20 @@ def private_config(source, root, port):
     return config
 
 
+def live_heap_bytes(heap_info):
+    # Serial GC reports new and tenured generations separately; G1 reports one heap.
+    generations = re.findall(r'^\s*[^\n]*\btotal\s+\d+K, used\s+(\d+)K', heap_info, re.MULTILINE)
+    if not generations:
+        raise RuntimeError('Missing post-GC heap measurement')
+    return sum(int(used) for used in generations) * 1024
+
+
 def diagnostics(unit):
     result = {}
     for name, action in (('heap_before', 'GC.heap_info'), ('native', 'VM.native_memory summary'),
                          ('forced_gc', 'GC.run'), ('heap_after', 'GC.heap_info'), ('retained_histogram', 'GC.class_histogram')):
         result[name] = command(jdk_tool('jcmd') + [str(unit.pid), *action.split()], timeout=60)
-    match = re.search(r'total\s+(\d+)K, used\s+(\d+)K', result['heap_after'])
-    if not match:
-        raise RuntimeError('Missing post-GC heap measurement')
-    result['post_gc_live_heap_bytes'] = int(match[2]) * 1024
+    result['post_gc_live_heap_bytes'] = live_heap_bytes(result['heap_after'])
     result['post_gc_live_heap_gate'] = 'PASS' if result['post_gc_live_heap_bytes'] <= 256 * 1024**2 else 'FAIL'
     result['allocation_scope'] = 'Separate JFR sampled whole-JVM allocations; no exact all-thread or caller byte counter'
     return result
