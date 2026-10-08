@@ -3,10 +3,12 @@ package com.iocextractor.bootstrap;
 import com.iocextractor.IocExtractorApplication;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
-import com.iocextractor.application.pipeline.stage.AttributeSourceStage;
-import com.iocextractor.application.pipeline.stage.ExtractIndicatorsStage;
-import com.iocextractor.application.pipeline.stage.ReadSourceStage;
-import com.iocextractor.application.pipeline.stage.RefangStage;
+import com.iocextractor.application.pipeline.stage.AttributeSourceStreamStage;
+import com.iocextractor.application.pipeline.stage.ExtractSourceStreamStage;
+import com.iocextractor.application.pipeline.stage.ReadSourceStreamStage;
+import com.iocextractor.application.pipeline.stage.RefangSourceStreamStage;
+import com.iocextractor.application.pipeline.PipelineMetaAttributes;
+import com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspaceFactory;
 import com.iocextractor.application.port.in.ExtractionCommand;
 import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.diagnostics.DiagnosticFactory;
@@ -28,7 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.boot.SpringApplication;
 
-/** Separates actual Spring/Tika/extraction input graphs from the G4 preparation budget. */
+/** Actual admitted source path with a bounded occurrence oracle; excludes Router/canonical writes. */
 public final class DocumentUpstreamCapacity {
     private DocumentUpstreamCapacity() { }
 
@@ -36,14 +38,9 @@ public final class DocumentUpstreamCapacity {
         int count = Integer.parseInt(arguments[0]);
         Path root = Path.of(arguments[1]).toAbsolutePath();
         Files.createDirectories(root);
-        Path source = root.resolve("source.html");
-        try (var output = Files.newBufferedWriter(source)) {
-            output.write("<!doctype html><html><head><meta charset=\"utf-8\"></head><body><h2>БИБ-0001</h2>");
-            for (int index = 0; index < count; index++) {
-                output.write("<p>host-" + index + "[.]example[.]test</p>\n");
-            }
-            output.write("</body></html>");
-        }
+        String format = arguments.length > 2 ? arguments[2] : "html";
+        Path source = root.resolve("source." + format);
+        writeSource(source, count, format);
         Path config = root.resolve("application.yml");
         try (var input = DocumentUpstreamCapacity.class.getResourceAsStream("/application.yml")) {
             String yaml = new String(java.util.Objects.requireNonNull(input).readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
@@ -62,6 +59,7 @@ public final class DocumentUpstreamCapacity {
             var metrics = new LinkedHashMap<String, Object>();
             metrics.put("input_occurrences", count);
             metrics.put("input_bytes", Files.size(source));
+            metrics.put("format", format);
             metrics.put("baseline", sample());
             var observer = new PipelineObserver() {
                 public AutoCloseable openStage(EnvelopeMeta meta) { return () -> { }; }
@@ -73,20 +71,41 @@ public final class DocumentUpstreamCapacity {
             var diagnostics = new DiagnosticFactory(clock);
             var tracer = NoopPipelineDecisionTracer.INSTANCE;
             var pipeline = Pipeline.<ExtractionCommand>start()
-                    .then(new ReadSourceStage(context.getBean(SourceReader.class), diagnostics))
-                    .then(new RefangStage(context.getBean(Refanger.class), tracer))
-                    .then(new ExtractIndicatorsStage(context.getBean(IndicatorExtractor.class), diagnostics, tracer, 128))
-                    .then(new AttributeSourceStage(context.getBean(SourceAttributor.class), clock, tracer));
+                    .then(new ReadSourceStreamStage(context.getBean(SourceReader.class), diagnostics))
+                    .then(new RefangSourceStreamStage(context.getBean(Refanger.class), tracer))
+                    .then(new ExtractSourceStreamStage(context.getBean(IndicatorExtractor.class), diagnostics, tracer, 128))
+                    .then(new AttributeSourceStreamStage(context.getBean(SourceAttributor.class), clock, tracer));
             var sampler = new ProcessingRouteComparison.PeakSampler();
-            try (sampler) {
+            var command = new ExtractionCommand("upstream", source, true);
+            try (sampler; var workspace = context.getBean(DocumentPreparationWorkspaceFactory.class).open(command, Map.of())) {
                 sampler.awaitFirstSample();
+                long started = System.nanoTime();
                 var result = new PipelineRunner(FailurePolicy.failFast(), observer).runWithOutcome(
-                        Envelope.of(new ExtractionCommand("upstream", source, true),
-                                EnvelopeMeta.initial("upstream", source.toString(), clock)), pipeline);
-                if (result.envelope().payload().indicators().size() != count) {
-                    throw new IllegalStateException("Upstream extraction count differs");
+                        Envelope.of(new ExtractionCommand("upstream", workspace.source(), true),
+                                EnvelopeMeta.initial("upstream", source.toString(), clock)
+                                        .withAttribute(PipelineMetaAttributes.DOCUMENT_PREPARATION_WORKSPACE, workspace)), pipeline);
+                metrics.put("upstream_nanos", System.nanoTime() - started);
+                int found = 0;
+                int previous = -1;
+                try (var rows = result.envelope().payload().decisions().open()) {
+                    while (rows.next()) {
+                        var decision = rows.value();
+                        var raw = decision.rawIndicator();
+                        if (!raw.value().equals("host-" + found + ".example.test")
+                                || raw.type() != com.iocextractor.domain.model.IndicatorType.DOMAIN
+                                || !decision.marker().orElseThrow().label().equals("БИБ-0001")
+                                || raw.position() <= previous) {
+                            throw new IllegalStateException("Independent ordered value/type/source oracle failed at " + found);
+                        }
+                        previous = raw.position(); found++;
+                    }
                 }
+                if (found != count) { throw new IllegalStateException("Upstream extraction count differs"); }
+                metrics.put("ordered_occurrence_oracle", "PASS");
                 metrics.put("attributed", sample());
+                System.gc();
+                metrics.put("diagnostic_post_gc", sample());
+                workspace.discard();
                 Reference.reachabilityFence(result);
             }
             metrics.put("peak_heap_bytes", sampler.peakHeapBytes());
@@ -96,7 +115,6 @@ public final class DocumentUpstreamCapacity {
     }
 
     private static Map<String, Long> sample() {
-        System.gc();
         long heap = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed();
         try {
             for (String line : Files.readAllLines(Path.of("/proc/self/status"))) {
@@ -108,5 +126,40 @@ public final class DocumentUpstreamCapacity {
             throw new IllegalStateException("Cannot sample upstream RSS", failure);
         }
         throw new IllegalStateException("Upstream RSS is unavailable");
+    }
+
+    private static void writeSource(Path source, int count, String format) throws java.io.IOException {
+        if (format.equals("html")) {
+            try (var output = Files.newBufferedWriter(source)) {
+                output.write("<!doctype html><html><head><meta charset=\"utf-8\"></head><body><h2>БИБ-0001</h2>");
+                for (int index = 0; index < count; index++) { output.write("<p>host-" + index + "[.]example[.]test</p>\n"); }
+                output.write("</body></html>");
+            }
+        } else if (format.equals("docx")) {
+            try (var zip = new java.util.zip.ZipOutputStream(Files.newOutputStream(source))) {
+                zipEntry(zip, "[Content_Types].xml", """
+                        <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+                        <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+                        <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+                        </Types>
+                        """);
+                zipEntry(zip, "_rels/.rels", """
+                        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                        <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+                        </Relationships>
+                        """);
+                zip.putNextEntry(new java.util.zip.ZipEntry("word/document.xml"));
+                var output = new java.io.OutputStreamWriter(zip, java.nio.charset.StandardCharsets.UTF_8);
+                output.write("<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:r><w:t>БИБ-0001</w:t></w:r></w:p>");
+                for (int index = 0; index < count; index++) {
+                    output.write("<w:p><w:r><w:t>host-" + index + "[.]example[.]test</w:t></w:r></w:p>");
+                }
+                output.write("</w:body></w:document>"); output.flush(); zip.closeEntry();
+            }
+        } else { throw new IllegalArgumentException("Unknown source format"); }
+    }
+    private static void zipEntry(java.util.zip.ZipOutputStream zip, String name, String text) throws java.io.IOException {
+        zip.putNextEntry(new java.util.zip.ZipEntry(name));
+        zip.write(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)); zip.closeEntry();
     }
 }

@@ -269,4 +269,12 @@ LAST_NONEMPTY строки, positions, canonical commits и повторяемы
 нужны committed tree и скомпилированные main/test classes.
 Отдельные `upstream_samples` измеряют настоящие Spring/Tika/read/refang/extract/
 attribute стадии на 10k/100k/1m occurrences с heap 512 MiB. Их память учитывается
-отдельно от workspace; `--upstream-sizes` без значений отключает эту серию.
+в том же admitted workspace, включая decoded/refanged текст и extraction scratch.
+Внутри измеряемых стадий нет GC; отдельный post-GC sample является диагностикой.
+`--source-formats html docx` включает оба физических формата; `--sizes` без
+значений отключает reducer-серию, `--upstream-sizes` без значений — source-серию.
+При отказе JSON получает статус `FAILED`, параметры ячейки и ограниченный текст
+ошибки после удаления временного runtime и состояния; такой отчёт не считается
+успешным замером.
+Это source boundary evidence, а не полный service capacity gate. Все временные
+исходники, runtime и базы удаляются также при отказе или timeout.

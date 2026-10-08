@@ -1,6 +1,8 @@
 # Data processing capacity implementation plan
 
-Status: CAP-0–CAP-4 implemented and qualified within their stage scope; acceptance budgets adopted by
+Status: CAP-0–CAP-5 implemented and qualified within their stage scope; CAP-6
+qualification records G6 NOT_ACCEPTED; CAP-7A implementation is in progress in
+its [execution report](cap-7a-execution.md). Acceptance budgets adopted by
 the owner on 2026-10-04. Prepared from the
 [capacity review](data-processing-capacity-review.md). CAP-1A selective SQL and
 its JDBC regressions and CAP-1B resource sessions are implemented. Stage G0/G1A/G1B
@@ -626,14 +628,14 @@ explicit atomicity/visibility decision track; it is not implemented by CAP-5.
 Largest imports and complete mixed-service control/export latency remain CAP-6
 qualification cells, rather than inferred passes from this diagnostic.
 
-CAP-6 and CAP-7 implementation/qualification remain outside this slice. The
-separate million-occurrence reader/extractor graph still reaches about 730 MiB
-RSS in its CAP-4 diagnostic; overlapping preparation can multiply that graph.
-The queue/window and workspace budgets do not close upstream/whole-process
-memory acceptance. G6 latency and resource budgets remain open; CAP-7A remains
-the source/extraction investigation track if the supported complete workload
-fails after qualification. Scoped stage qualification is not whole-service
-acceptance.
+CAP-6 qualification is recorded in its [execution report](cap-6-execution.md).
+It confirms the million-occurrence HTML reader OOM and DOCX reducer capacity
+failure; G6 remains NOT_ACCEPTED. CAP-7A now addresses the demonstrated source
+retention with workspace-owned text, lazy matching and streamed attribution.
+Its [execution report](cap-7a-execution.md) owns exact source contracts,
+source-only diagnostics and the required separate total-process memory retest.
+Canonical transaction occupancy and reducer capacity remain CAP-7C/D decisions.
+Scoped stage qualification is not whole-service acceptance.
 
 Historical planning validation: `make docs`, an explicit offline link check of this plan,
 the review and their index/evidence README files, and `git diff --check` passed.

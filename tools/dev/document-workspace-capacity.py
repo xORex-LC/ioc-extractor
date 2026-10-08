@@ -15,7 +15,7 @@ import zipfile
 
 REPO = Path(__file__).resolve().parents[2]
 FLAGS = ["-Xms32m", "-Xmx64m"]
-UPSTREAM_FLAGS = ["-Xms32m", "-Xmx512m"]
+UPSTREAM_FLAGS = ["-Xms128m", "-Xmx512m", "-XX:ActiveProcessorCount=2"]
 
 
 def command(arguments, timeout=120):
@@ -65,12 +65,12 @@ def freeze(root):
     return os.pathsep.join(map(str, paths)), digest.hexdigest()
 
 
-def measure(classpath, size, state, timeout, upstream=False):
+def measure(classpath, size, state, timeout, upstream=False, source_format='html'):
     flags = UPSTREAM_FLAGS if upstream else FLAGS
     probe = "DocumentUpstreamCapacity" if upstream else "DocumentWorkspaceCapacity"
     output = command(["java", *flags, "-Dlogging.config=classpath:logback-capacity.xml",
                       "-cp", classpath, "com.iocextractor.bootstrap." + probe,
-                      str(size), str(state)], timeout=timeout)
+                      str(size), str(state), *([source_format] if upstream else [])], timeout=timeout)
     records = [line.removeprefix("CAPACITY_JSON=") for line in output.splitlines()
                if line.startswith("CAPACITY_JSON=")]
     if len(records) != 1:
@@ -81,8 +81,9 @@ def measure(classpath, size, state, timeout, upstream=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--sizes", type=int, nargs="+", default=[10000, 100000, 1000000])
+    parser.add_argument("--sizes", type=int, nargs="*", default=[10000, 100000, 1000000])
     parser.add_argument("--upstream-sizes", type=int, nargs="*", default=[10000, 100000, 1000000])
+    parser.add_argument("--source-formats", choices=('html', 'docx'), nargs='+', default=['html'])
     parser.add_argument("--timeout", type=int, default=900)
     args = parser.parse_args()
     if any(size < 1 for size in [*args.sizes, *args.upstream_sizes]):
@@ -93,28 +94,43 @@ def main():
     report = {"source_commit": head, "scope": "G4 diagnostic: incremental routed candidates through canonical confirmation and receipt replay; explicit GC live samples; no source reader/Router/SMB timing",
               "flags": FLAGS, "platform": platform.platform(), "java": command(["java", "-version"]).strip(),
               "samples": [], "upstream_samples": [], "upstream_flags": UPSTREAM_FLAGS,
-              "upstream_scope": "Separate actual Spring/Tika/read/refang/extract/attribute graph; explicit GC stage boundaries; no routing or writes",
-              "started_epoch_seconds": time.time()}
+              "upstream_scope": "CAP-7A actual admitted Spring/Tika/source spool/refang/extract/attribute; no GC in timed stages; separate diagnostic post-GC sample; no routing or writes",
+              "started_epoch_seconds": time.time(), "status": "RUNNING"}
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="ioc-cap4-") as temporary:
-        root = Path(temporary)
-        classpath, report["runtime_sha256"] = freeze(root / "runtime")
-        for size in args.sizes:
-            # Each fork owns a fresh state tree; remove it even on oracle failure or timeout.
-            with tempfile.TemporaryDirectory(prefix="state-", dir=root) as state:
-                report["samples"].append(measure(classpath, size, Path(state), args.timeout))
-            print(f"G4 {size}: semantic oracle passed; private databases removed", flush=True)
-            args.output.write_text(json.dumps(report, indent=2) + "\n")
-        for size in args.upstream_sizes:
-            with tempfile.TemporaryDirectory(prefix="upstream-", dir=root) as state:
-                report["upstream_samples"].append(measure(classpath, size, Path(state), args.timeout, upstream=True))
-            print(f"Upstream {size}: extraction count passed; private files removed", flush=True)
-            args.output.write_text(json.dumps(report, indent=2) + "\n")
-    report["temporary_runtime_and_state_removed"] = not root.exists()
-    report["completed_epoch_seconds"] = time.time()
-    if command(["git", "rev-parse", "HEAD"]).strip() != head:
-        raise RuntimeError("HEAD changed during qualification")
-    args.output.write_text(json.dumps(report, indent=2) + "\n")
+    root = None
+    current_cell = {"scope": "runtime-freeze"}
+    try:
+        with tempfile.TemporaryDirectory(prefix="ioc-cap4-") as temporary:
+            root = Path(temporary)
+            classpath, report["runtime_sha256"] = freeze(root / "runtime")
+            for size in args.sizes:
+                current_cell = {"scope": "reducer", "size": size}
+                # Each fork owns a fresh state tree; remove it even on oracle failure or timeout.
+                with tempfile.TemporaryDirectory(prefix="state-", dir=root) as state:
+                    report["samples"].append(measure(classpath, size, Path(state), args.timeout))
+                print(f"G4 {size}: semantic oracle passed; private databases removed", flush=True)
+                args.output.write_text(json.dumps(report, indent=2) + "\n")
+            for size in args.upstream_sizes:
+                for source_format in args.source_formats:
+                    current_cell = {"scope": "upstream", "size": size, "format": source_format}
+                    with tempfile.TemporaryDirectory(prefix="upstream-", dir=root) as state:
+                        report["upstream_samples"].append(measure(classpath, size, Path(state), args.timeout,
+                                                                 upstream=True, source_format=source_format))
+                    print(f"Upstream {size} {source_format}: ordered occurrence oracle passed; private files removed", flush=True)
+                    args.output.write_text(json.dumps(report, indent=2) + "\n")
+        if command(["git", "rev-parse", "HEAD"]).strip() != head:
+            raise RuntimeError("HEAD changed during qualification")
+        report["status"] = "PASSED"
+    except BaseException as failure:
+        report["status"] = "FAILED"
+        report["failed_cell"] = current_cell
+        report["failure"] = {"type": type(failure).__name__, "message": str(failure)[-16000:]}
+        raise
+    finally:
+        report["temporary_runtime_and_state_removed"] = root is not None and not root.exists()
+        report["completed_epoch_seconds"] = time.time()
+        args.output.write_text(json.dumps(report, indent=2) + "\n")
+
 
 
 if __name__ == "__main__":
