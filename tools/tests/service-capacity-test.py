@@ -52,6 +52,7 @@ class ServiceCapacityTest(unittest.TestCase):
                 root = next((repo / '.dev').glob('ioc-cap6-upgrade-*'))
                 self.assertTrue((root / 'candidate.jar').exists())
                 self.assertTrue((root / 'oracle.db').exists())
+                (root / 'daemon.log').write_text('startup failure evidence')
                 return {'process_terminated': True}
             unit.close.side_effect = stop
             def private(source, root, port):
@@ -69,6 +70,7 @@ class ServiceCapacityTest(unittest.TestCase):
             unit.close.assert_called_once()
             self.assertEqual(list((repo / '.dev').glob('ioc-cap6-upgrade-*')), [])
             self.assertTrue((args.output / 'report.json').is_file())
+            self.assertEqual((args.output / 'previous-failure.log').read_text(), 'startup failure evidence')
 
     def test_stopped_backup_hashes_detect_journal_or_output_mutation(self):
         with tempfile.TemporaryDirectory() as temporary:

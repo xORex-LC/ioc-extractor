@@ -79,7 +79,7 @@ def rehearse(args):
               'previous_sha256': CAP.BASE.digest(args.previous), 'candidate_sha256': CAP.BASE.digest(args.candidate),
               'driver_sha256': CAP.BASE.digest(__file__), 'policy_sha256': CAP.BASE.digest(args.config),
               'scope': 'Drained, publicly seeded private state; no in-flight or production rollback claim', 'units': []}
-    unit, oracle, root = None, None, None
+    unit, oracle, root, label = None, None, None, 'setup'
     root = Path(tempfile.mkdtemp(prefix='ioc-cap6-upgrade-', dir=CAP.REPO / '.dev'))
     try:
         frozen = {}
@@ -143,7 +143,7 @@ def rehearse(args):
         oracle = None
         report['status'] = 'PASS'
     except Exception as failure:
-        report.update(status='ERROR', failure=str(failure))
+        report.update(status='ERROR', failure=str(failure), failure_stage=label)
     finally:
         errors, terminated = [], unit is None
         if unit:
@@ -157,6 +157,11 @@ def rehearse(args):
                 oracle.close()
             except Exception as failure:
                 errors.append('Oracle close: ' + str(failure))
+        if (root / 'daemon.log').is_file():
+            try:
+                shutil.copy2(root / 'daemon.log', output / (label + '-failure.log'))
+            except Exception as failure:
+                errors.append('Evidence copy: ' + str(failure))
         if terminated:
             try:
                 shutil.rmtree(root)
