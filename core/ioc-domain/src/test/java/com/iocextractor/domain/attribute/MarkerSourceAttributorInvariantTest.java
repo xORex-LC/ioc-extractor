@@ -17,6 +17,23 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 class MarkerSourceAttributorInvariantTest {
 
     @Test
+    void lazyMarkerMergeMatchesBatchPrecedenceAcrossNbspAndAdjacentOverlaps() {
+        var attributor = new MarkerSourceAttributor(new LiteralPatternEngine(),
+                List.of("A", "ABC", "BC", "D", "FIRST LABEL"));
+        String text = "😀 ABCD FIRST\u00a0LABEL tail ABC";
+        var expected = attributor.attribute(text, List.of()).markers();
+        var cursor = attributor.markers(text, 32);
+        var actual = new ArrayList<SourceMarker>();
+        while (cursor.next()) { actual.add(cursor.value()); }
+        assertThat(actual).containsExactlyElementsOf(expected);
+        org.assertj.core.api.Assertions.assertThatThrownBy(cursor::value).isInstanceOf(IllegalStateException.class);
+        var limited = attributor.markers(text, 4);
+        assertThat(limited.next()).isTrue();
+        assertThat(limited.next()).isTrue();
+        assertThatIllegalArgumentException().isThrownBy(limited::next).withMessage("Source marker exceeds admitted field limit");
+    }
+
+    @Test
     void markers_are_sorted_normalized_and_applied_at_the_inclusive_boundary() {
         String first = "FIRST\u00A0  LABEL";
         String second = "SECOND   LABEL";

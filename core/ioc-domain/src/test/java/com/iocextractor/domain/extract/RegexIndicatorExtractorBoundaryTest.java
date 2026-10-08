@@ -14,6 +14,31 @@ import static org.assertj.core.api.Assertions.tuple;
 
 class RegexIndicatorExtractorBoundaryTest {
 
+    @Test
+    void lazyGlobalTypePriorityPreservesExactBatchDecisionsAndRejectsOversizeMatches() {
+        var patterns = new LinkedHashMap<IndicatorType, String>();
+        patterns.put(IndicatorType.URL, "https://bad.test/path");
+        patterns.put(IndicatorType.DOMAIN, "bad.test");
+        var extractor = new RegexIndicatorExtractor(new LiteralPatternEngine(), patterns);
+        String text = "bad.test 😀 https://bad.test/path bad.test";
+        var actual = new java.util.ArrayList<ExtractionDecision>();
+        var claims = new ExtractionClaims() {
+            public boolean overlaps(int start, int end) {
+                return actual.stream().anyMatch(value -> value.status() == ExtractionDecisionStatus.ACCEPTED
+                        && value.span().start() < end && start < value.span().end());
+            }
+            public void record(ExtractionDecision decision) { actual.add(decision); }
+        };
+        extractor.extract(text, 64, claims);
+        assertThat(actual).containsExactlyElementsOf(extractor.extract(text).decisions());
+        actual.clear();
+        extractor.extract("", 64, claims);
+        assertThat(actual).isEmpty();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> extractor.extract(text, 8, claims))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("Extraction match exceeds admitted field limit");
+        assertThat(actual).isEmpty();
+    }
+
     @ParameterizedTest
     @NullAndEmptySource
     void absent_text_produces_an_empty_outcome_without_matching_patterns(String text) {

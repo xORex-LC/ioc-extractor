@@ -1,10 +1,7 @@
 package com.iocextractor.adapter.out.regex;
 
 import com.iocextractor.domain.extract.PatternEngine;
-import com.iocextractor.domain.extract.Span;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,13 +20,9 @@ public final class JdkRegexPatternEngine implements PatternEngine {
     @Override
     public Compiled compile(String regex) {
         Pattern pattern = Pattern.compile(regex);
-        return text -> {
+        return new CursorCompiledPattern(text -> {
             Matcher matcher = pattern.matcher(text);
-            List<Span> spans = new ArrayList<>();
-            while (matcher.find()) {
-                spans.add(new Span(matcher.start(), matcher.end(), matcher.group()));
-            }
-            return spans;
-        };
+            return new MatcherCursor(matcher::find, matcher::start, matcher::end, matcher::group);
+        });
     }
 }

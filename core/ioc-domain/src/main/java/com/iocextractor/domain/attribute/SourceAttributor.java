@@ -15,4 +15,9 @@ public interface SourceAttributor {
      * marker/indicator positions are inclusive.
      */
     AttributionOutcome attribute(String text, List<RawIndicator> indicators);
+
+    /** Discovers markers lazily without retaining a document-wide list. */
+    default MarkerCursor markers(CharSequence text, int maximumMatchCharacters) {
+        throw new UnsupportedOperationException("Lazy markers are required for document processing");
+    }
 }

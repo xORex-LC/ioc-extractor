@@ -8,6 +8,11 @@
 **Правило слоя:** domain framework-free, не знает про ETL `Envelope`, IO,
 application ports, adapters, bootstrap or logging.
 
+Потоковые контракты `MatchCursor`, `MarkerCursor`, `TextRewrite` и
+`ExtractionClaims` сохраняют порядок refang, приоритет regex типов, абсолютные
+UTF-16 offsets и NBSP marker precedence без зависимости от дискового backend.
+Domain не открывает файлы/SQLite; их ownership остаётся в adapters.
+
 ## Структура
 
 | Подпапка / файл | Назначение |

@@ -118,6 +118,11 @@ public final class MarkerSourceAttributor implements SourceAttributor {
         return raw.replace('\u00A0', ' ').replaceAll("\\s+", " ").trim();
     }
 
+    @Override
+    public MarkerCursor markers(CharSequence text, int maximumMatchCharacters) {
+        return new MergedMarkerCursor(markerPatterns, text, maximumMatchCharacters);
+    }
+
     private record MarkerCandidate(int start, int end, int patternOrder, String label) {
 
         private int length() {

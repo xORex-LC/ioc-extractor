@@ -19,6 +19,10 @@ public interface PatternEngine {
     Compiled compile(String regex);
 
     interface Compiled {
+        /** Lazy matches; implementations must not materialize the input sequence. */
+        default MatchCursor matches(CharSequence text) {
+            throw new UnsupportedOperationException("Lazy matching is required for document processing");
+        }
         /** All non-overlapping matches, in left-to-right order. */
         List<Span> findAll(CharSequence text);
     }
