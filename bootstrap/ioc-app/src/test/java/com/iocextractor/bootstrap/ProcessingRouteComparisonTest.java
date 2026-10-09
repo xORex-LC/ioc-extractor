@@ -28,6 +28,42 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ProcessingRouteComparisonTest {
 
     @Test
+    void validationCommitDoesNotCompleteAnUnstartedCanonicalOwnershipTimer() throws Exception {
+        String fixture = ValidationCommitFixture.class.getName().replace('.', '/');
+        byte[] bytes;
+        try (var input = getClass().getClassLoader().getResourceAsStream(fixture + ".class")) {
+            bytes = ComparisonDiagnostics.instrument(
+                    "com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalLifecycleWriter",
+                    java.util.Objects.requireNonNull(input).readAllBytes());
+        }
+        Class<?> woven = new ClassLoader(getClass().getClassLoader()) {
+            Class<?> loadProbe() { return defineClass(null, bytes, 0, bytes.length); }
+        }.loadProbe();
+        var constructor = woven.getDeclaredConstructor();
+        constructor.setAccessible(true);
+        Object writer = constructor.newInstance();
+        var validation = woven.getDeclaredMethod("validateRows", java.sql.Connection.class);
+        validation.setAccessible(true);
+        var connection = mock(java.sql.Connection.class);
+        ComparisonDiagnostics.premain("", mock(Instrumentation.class));
+        ComparisonDiagnostics.begin();
+        String counters;
+        try {
+            validation.invoke(writer, connection);
+        } finally {
+            counters = ComparisonDiagnostics.end();
+        }
+        org.mockito.Mockito.verify(connection).commit();
+        assertThat(counters).doesNotContain("canonical_writer_hold_nanos", "canonical_transactions");
+    }
+
+    public static final class ValidationCommitFixture {
+        public void validateRows(java.sql.Connection connection) throws java.sql.SQLException {
+            connection.commit();
+        }
+    }
+
+    @Test
     void ordered_lookup_is_linear_and_unordered_lookup_is_logarithmic() throws Exception {
         var attributor = instrumentedAttributor();
         int sections = 400;

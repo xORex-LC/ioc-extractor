@@ -209,14 +209,23 @@ public final class ComparisonDiagnostics {
         var reader = new ClassReader(bytes);
         // Both historical row-local and attempt-scoped preparers use this observer.
         var methods = new java.util.HashSet<String>();
+        var owningTransactions = new java.util.HashSet<String>();
         reader.accept(new ClassVisitor(Opcodes.ASM9) {
             @Override
             public MethodVisitor visitMethod(int access, String name, String descriptor,
                                              String signature, String[] exceptions) {
                 methods.add(name);
-                return null;
+                return new MethodVisitor(Opcodes.ASM9) {
+                    @Override public void visitMethodInsn(int opcode, String owner, String invoked,
+                                                          String desc, boolean isInterface) {
+                        if (owner.endsWith("/JdbcLifecycleTransactions")
+                                && invoked.equals("acquireActiveWriteOwnership")) {
+                            owningTransactions.add(name + descriptor);
+                        }
+                    }
+                };
             }
-        }, ClassReader.SKIP_CODE);
+        }, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
         var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
         reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {
             @Override
@@ -264,8 +273,9 @@ public final class ComparisonDiagnostics {
                         }
                         boolean admission = type.endsWith("/JdbcWriterAdmission")
                                 && owner.endsWith("/JdbcWriterAdmission");
-                        boolean canonicalWrite = type.endsWith("/JdbcCanonicalLifecycleWriter")
-                                || type.endsWith("/JdbcCanonicalImportWriter");
+                        boolean canonicalWrite = (type.endsWith("/JdbcCanonicalLifecycleWriter")
+                                || type.endsWith("/JdbcCanonicalImportWriter"))
+                                && owningTransactions.contains(method + descriptor);
                         boolean ownership = canonicalWrite && owner.endsWith("/JdbcLifecycleTransactions")
                                 && name.equals("acquireActiveWriteOwnership");
                         if (admission && name.equals("enter")) {
