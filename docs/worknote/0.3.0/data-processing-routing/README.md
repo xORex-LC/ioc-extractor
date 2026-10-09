@@ -171,3 +171,7 @@ physical parser/offset/ownership/restart contracts and source-only HTML/DOCX
 100k/1m oracles. Complete-service 100k output semantics pass with lower RSS;
 local latency, writer occupancy and million-row reducer capacity still fail.
 Its compact evidence preserves failure windows and confirms owned-state cleanup.
+
+[CAP-7B execution](cap-7b-execution.md) tracks isolated direct/native controls,
+native lifecycle conformance, paired cursor workloads and the conditional
+complete-service promotion decision. It does not imply G6 acceptance.

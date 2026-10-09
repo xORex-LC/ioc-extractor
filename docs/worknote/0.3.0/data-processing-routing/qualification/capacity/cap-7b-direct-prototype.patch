@@ -5,7 +5,7 @@
  import org.apache.camel.builder.RouteBuilder;
  import org.apache.camel.Exchange;
 +import org.apache.camel.Processor;
- 
+
  /** Compiles bounded local operation and destination routes from admitted plans. */
  public final class CamelPlanCompiler {
 @@ -32,6 +33,7 @@
@@ -59,7 +59,7 @@
 -        return new CompiledRoutes(routes, uris, compiledPlans);
 +        return new CompiledRoutes(routes, uris, compiledPlans, local);
      }
- 
+
      private static void addBranchRoute(String planId, PlanDescriptor.Branch branch,
                                         OperationCatalog catalog, RoutingExecutionScopes scopes,
                                         List<String> uris,
@@ -110,7 +110,7 @@
  import java.util.Map;
  import org.apache.camel.builder.RouteBuilder;
 +import org.apache.camel.Processor;
- 
+
  /** Immutable route inventory and plan metadata for one isolated Camel context. */
  public record CompiledRoutes(List<RouteBuilder> routes, List<String> endpointUris,
 -                             Map<String, CompiledPlan> plans) {
@@ -125,7 +125,7 @@
 +    public CompiledRoutes(List<RouteBuilder> routes, List<String> endpointUris, Map<String, CompiledPlan> plans) {
 +        this(routes, endpointUris, plans, Map.of());
      }
- 
+
      /** Admitted local endpoints and one condition graph for a named plan. */
 --- a/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/CamelRouteRuntime.java
 +++ b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/CamelRouteRuntime.java
@@ -203,7 +203,7 @@
 +        }
 +        return exchange.getMessage().getBody(type);
      }
- 
+
      private void traceReply(String planId, PlanExecutionResult.BranchReply reply) {
 --- a/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/InvocationViews.java
 +++ b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/InvocationViews.java
@@ -218,7 +218,7 @@
 +        private final CompiledRoutes.CompiledPlan plan;
      private final String planId;
      private final RoutingTraceSink trace;
- 
+
 -    InvocationViews(ProducerTemplate producer, Map<String, Endpoint> endpoints,
 +    InvocationViews(java.util.function.BiFunction<String, Object, ViewOutcome> invoke,
                      Object original, CompiledRoutes.CompiledPlan plan,
