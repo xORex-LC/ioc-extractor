@@ -9,6 +9,9 @@ import os
 from pathlib import Path
 import statistics
 import sys
+import shutil
+import tempfile
+import zipfile
 
 sys.dont_write_bytecode = True
 SPEC = importlib.util.spec_from_file_location(
@@ -26,6 +29,62 @@ PROFILES = {
 METRICS = ("elapsed_ms", "allocated_main_bytes", "sampled_peak_heap_bytes",
            "sampled_peak_current_rss_kib", "sampled_peak_rss_kib", "startup_ms",
            "gc_count", "gc_time_ms")
+PROTOTYPE_SOURCES = (
+    "compile/CamelPlanCompiler.java", "compile/CompiledRoutes.java",
+    "runtime/CamelRouteRuntime.java", "runtime/InvocationViews.java")
+CAMEL_SOURCE = "adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/"
+
+
+def compile_prototype(reference, target, patch):
+    """Compile an isolated CAP-7B control, never a selectable production fallback."""
+    classpath, identity = frozen_runtime(reference)
+    target.mkdir()
+    for directory in ("probe-classes", "test-resources", "app-classes", "lib"):
+        shutil.copytree(reference / directory, target / directory)
+    report = json.loads((reference / "report.json").read_text())
+    patch_bytes = patch.read_bytes()
+    # The experiment may replace only the four documented runtime/compiler sources.
+    changed = [line.removeprefix("+++ b/") for line in patch_bytes.decode().splitlines()
+               if line.startswith("+++ ")]
+    expected = {CAMEL_SOURCE + name for name in PROTOTYPE_SOURCES}
+    if not changed or len(changed) != len(set(changed)) or not set(changed) <= expected:
+        raise ValueError("Prototype may change only the admitted CAP-7B sources")
+    with tempfile.TemporaryDirectory(prefix="prototype-build-", dir=target) as temporary:
+        source_root = Path(temporary)
+        sources = []
+        for relative in sorted(changed):
+            source = source_root / relative
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text(COMPARISON.command(["git", "show", f"{identity['source_commit']}:{relative}"]))
+            sources.append(source)
+        COMPARISON.command(["git", "init", "-q", str(source_root)])
+        patch_file = source_root / "candidate.patch"
+        patch_file.write_bytes(patch_bytes)
+        COMPARISON.command(["git", "apply", "--check", str(patch_file)], cwd=source_root)
+        COMPARISON.command(["git", "apply", str(patch_file)], cwd=source_root)
+        classes = source_root / "classes"
+        classes.mkdir()
+        COMPARISON.command(["java", "com.sun.tools.javac.Main", "-source", "21", "-target", "21", "-cp", classpath,
+                            "-d", str(classes), *map(str, sources)])
+        jars = list((target / "lib").glob("*adapter-processing-camel-*.jar"))
+        if len(jars) != 1:
+            raise ValueError("Expected one frozen Camel adapter")
+        replacement = source_root / "replacement.jar"
+        families = ["com/iocextractor/adapter/processing/camel/" + name.removesuffix(".java")
+                    for name in PROTOTYPE_SOURCES if CAMEL_SOURCE + name in changed]
+        with zipfile.ZipFile(jars[0]) as original, zipfile.ZipFile(replacement, "w") as output:
+            for entry in original.infolist():
+                if not any(entry.filename == family + ".class" or entry.filename.startswith(family + "$")
+                           for family in families):
+                    output.writestr(entry, original.read(entry))
+            for file in sorted(classes.rglob("*.class")):
+                output.write(file, str(file.relative_to(classes)))
+        shutil.copy2(replacement, jars[0])
+    report["prototype"] = {"patch_sha256": hashlib.sha256(patch_bytes).hexdigest(),
+                           "reference_identity": identity, "sources": changed,
+                           "disposition": "isolated experiment; not production-enabled"}
+    (target / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+    return report["prototype"]
 
 
 def frozen_runtime(root):
@@ -74,7 +133,10 @@ def summarize(samples):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reference", type=Path, required=True)
-    parser.add_argument("--candidate", type=Path, required=True)
+    choice = parser.add_mutually_exclusive_group(required=True)
+    choice.add_argument("--candidate", type=Path)
+    choice.add_argument("--prototype-patch", type=Path,
+                        help="CAP-7B control compiled only into a disposable frozen runtime")
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--profile", choices=["all", *PROFILES], default="all")
     parser.add_argument("--workload", choices=["both", "document", "import"], default="both")
@@ -93,7 +155,24 @@ def main():
     root.mkdir(parents=True, exist_ok=True)
     if list(root.iterdir()):
         parser.error("Use an empty workspace")
-    runtimes = {"before": args.reference.resolve(), "after": args.candidate.resolve()}
+    # A context manager closes the temporary runtime on success, failure and interruption.
+    try:
+        with tempfile.TemporaryDirectory(prefix="prototype-", dir=root) as temporary:
+            candidate = args.candidate.resolve() if args.candidate else Path(temporary) / "runtime"
+            prototype = compile_prototype(args.reference.resolve(), candidate, args.prototype_patch.resolve()) \
+                if args.prototype_patch else None
+            run_comparison(args, root, candidate, prototype)
+    except Exception as failure:
+        if not (root / "failure.json").exists():
+            (root / "failure.json").write_text(json.dumps({
+                "failure": str(failure), "phase": "prototype setup", "valid_measurement": False,
+                "temporary_runtime_removed": True}, indent=2) + "\n")
+        raise
+
+
+def run_comparison(args, root, candidate, prototype=None):
+    """Run the already frozen controls with equal inputs, probes and policies."""
+    runtimes = {"before": args.reference.resolve(), "after": candidate}
     frozen = {side: frozen_runtime(path) for side, path in runtimes.items()}
     # Compare both directions: an extra probe/resource also changes the experiment.
     for directory in ("test-resources", "probe-classes"):
@@ -114,7 +193,8 @@ def main():
                          for name in ("cpu.max", "memory.max") if Path(f"/sys/fs/cgroup/{name}").exists()},
               "driver_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               "comparison_sha256": hashlib.sha256(Path(COMPARISON.__file__).read_bytes()).hexdigest(),
-              "acceptance": "local optimization evidence; customer resource budget remains open"}
+              "acceptance": "local optimization evidence; complete G6 acceptance is evaluated separately",
+              "prototype": prototype}
     if args.agent:
         report["agent_sha256"] = hashlib.sha256(args.agent.read_bytes()).hexdigest()
     selected = PROFILES if args.profile == "all" else {args.profile: PROFILES[args.profile]}

@@ -27,6 +27,95 @@ CAPACITY_SPEC.loader.exec_module(CAPACITY)
 
 
 class ComparisonTest(unittest.TestCase):
+    def test_prototype_replaces_only_admitted_bytecode_in_the_copied_runtime(self):
+        import json
+        import zipfile
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            reference = root / 'reference'
+            reference.mkdir()
+            for directory in ('probe-classes', 'test-resources', 'app-classes', 'lib'):
+                (reference / directory).mkdir()
+            jar = reference / 'lib/ioc-adapter-processing-camel-control.jar'
+            family = 'com/iocextractor/adapter/processing/camel/runtime/CamelRouteRuntime'
+            with zipfile.ZipFile(jar, 'w') as archive:
+                archive.writestr(family + '.class', b'original')
+                archive.writestr(family + '$Old.class', b'stale nested class')
+                archive.writestr('unrelated.class', b'preserved')
+            original = jar.read_bytes()
+            (reference / 'report.json').write_text(json.dumps({
+                'commit': 'frozen', 'dirty': False, 'worktree_diff_sha256': 'unchanged'}))
+            patch_file = root / 'candidate.patch'
+            patch_file.write_text('+++ b/' + OPTIMIZATION.CAMEL_SOURCE + 'runtime/CamelRouteRuntime.java\n')
+
+            def command(arguments, **kwargs):
+                if arguments[0] == 'java':
+                    file = Path(arguments[arguments.index('-d') + 1]) / (family + '.class')
+                    file.parent.mkdir(parents=True)
+                    file.write_bytes(b'compiled')
+                return 'source'
+
+            candidate = root / 'candidate'
+            with patch.object(OPTIMIZATION.COMPARISON, 'command', side_effect=command):
+                manifest = OPTIMIZATION.compile_prototype(reference, candidate, patch_file)
+            self.assertEqual(jar.read_bytes(), original)
+            with zipfile.ZipFile(candidate / 'lib' / jar.name) as compiled:
+                self.assertEqual(compiled.read(family + '.class'), b'compiled')
+                self.assertEqual(compiled.read('unrelated.class'), b'preserved')
+                self.assertNotIn(family + '$Old.class', compiled.namelist())
+            self.assertEqual(manifest['reference_identity']['source_commit'], 'frozen')
+            self.assertEqual(list(candidate.glob('prototype-build-*')), [])
+
+    def test_prototype_patch_cannot_modify_unadmitted_sources(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            reference = root / 'reference'
+            reference.mkdir()
+            for directory in ('probe-classes', 'test-resources', 'app-classes', 'lib'):
+                (reference / directory).mkdir()
+            (reference / 'lib/adapter-processing-camel-control.jar').write_bytes(b'control')
+            (reference / 'report.json').write_text(__import__('json').dumps({
+                'commit': 'frozen', 'dirty': False, 'worktree_diff_sha256': 'unchanged'}))
+            candidate = root / 'candidate'
+            patch_file = root / 'wrong.patch'
+            patch_file.write_text('--- a/pom.xml\n+++ b/pom.xml\n')
+            with patch.object(COMPARISON, 'command') as commands:
+                with self.assertRaisesRegex(ValueError, 'admitted CAP-7B'):
+                    OPTIMIZATION.compile_prototype(reference, candidate, patch_file)
+                commands.assert_not_called()
+            self.assertEqual((reference / 'lib/adapter-processing-camel-control.jar').read_bytes(), b'control')
+
+    def test_failed_prototype_compilation_removes_owned_scratch(self):
+        import json
+        import zipfile
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            reference = root / 'reference'
+            reference.mkdir()
+            for directory in ('probe-classes', 'test-resources', 'app-classes', 'lib'):
+                (reference / directory).mkdir()
+            jar = reference / 'lib/adapter-processing-camel-control.jar'
+            with zipfile.ZipFile(jar, 'w') as archive:
+                archive.writestr('original', b'untouched')
+            original = jar.read_bytes()
+            (reference / 'report.json').write_text(json.dumps({
+                'commit': 'frozen', 'dirty': False, 'worktree_diff_sha256': 'unchanged'}))
+            patch_file = root / 'candidate.patch'
+            patch_file.write_text(''.join('+++ b/' + OPTIMIZATION.CAMEL_SOURCE + name + '\n'
+                                          for name in OPTIMIZATION.PROTOTYPE_SOURCES))
+
+            def command(arguments, **kwargs):
+                if arguments[0] == 'java':
+                    raise RuntimeError('compilation rejected')
+                return 'source'
+
+            candidate = root / 'candidate'
+            with patch.object(OPTIMIZATION.COMPARISON, 'command', side_effect=command):
+                with self.assertRaisesRegex(RuntimeError, 'compilation rejected'):
+                    OPTIMIZATION.compile_prototype(reference, candidate, patch_file)
+            self.assertEqual(list(candidate.glob('prototype-build-*')), [])
+            self.assertEqual(jar.read_bytes(), original)
+
     def test_equal_oracle_signatures_share_disk_storage_and_changed_outcomes_remain_distinct(self):
         import gzip
         with tempfile.TemporaryDirectory() as folder:

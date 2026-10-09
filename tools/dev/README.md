@@ -264,6 +264,15 @@ JSON. `samples.json` сохраняет завершённые forks по мер
 сохраняют незавершённые серии. `--profile` и `--workload` ограничивают отдельный
 эксперимент; эти замеры не устанавливают клиентский ресурсный бюджет.
 
+Для CAP-7B вместо `--candidate` доступен `--prototype-patch PATH`: driver
+компилирует только указанные compiler/runtime-файлы Camel в отдельной временной
+копии reference. Изменённый adapter JAR, patch digest и полный frozen manifest
+попадают в evidence; остальные runtime-файлы сохраняются. Прототип удаляется
+после запуска или отказа. Patch не применяется к рабочей ветке, production
+конфигурации или установленному сервису. Перед resource-сравнением прототип
+должен отдельно пройти native UnitOfWork, остановку маршрутов, recovery,
+short-circuit, trace и isolation-контракты; совпадение CSV не заменяет их.
+
 `make document-workspace-capacity WORKSPACE_CAPACITY_ARGS='--output PATH.json'`
 проверяет 10k → 100k → 1m строк на артефакт при двух артефактах,
 2 MiB общем workspace-бюджете, 64 KiB SQLite cache и JVM heap 64 MiB.

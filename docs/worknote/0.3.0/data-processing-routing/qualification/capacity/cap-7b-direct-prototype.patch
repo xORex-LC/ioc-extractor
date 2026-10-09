@@ -1,0 +1,243 @@
+--- a/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/compile/CamelPlanCompiler.java
++++ b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/compile/CamelPlanCompiler.java
+@@ -14,6 +14,7 @@
+ import java.util.Set;
+ import org.apache.camel.builder.RouteBuilder;
+ import org.apache.camel.Exchange;
++import org.apache.camel.Processor;
+ 
+ /** Compiles bounded local operation and destination routes from admitted plans. */
+ public final class CamelPlanCompiler {
+@@ -32,6 +33,7 @@
+             throw new PlanAdmissionException("plans", "plan limit exceeded");
+         }
+         List<RouteBuilder> routes = new ArrayList<>();
++        Map<String, Processor> local = new LinkedHashMap<>();
+         List<String> uris = new ArrayList<>();
+         Map<String, CompiledRoutes.CompiledPlan> compiledPlans = new LinkedHashMap<>();
+         Set<String> planIds = new HashSet<>();
+@@ -52,26 +54,28 @@
+                     uris.add(uri);
+                     viewRoutes.put(view.id(), new CompiledRoutes.ViewRoute(view.input(), uri, null));
+                     var operation = catalog.operations().get(view.operation());
++                    Processor scoped = exchange -> {
++                        try (var ignored = scopes.openView(plan.id(), view.id())) {
++                            operation.process(exchange);
++                        }
++                    };
++                    local.put(uri, scoped);
+                     routes.add(new RouteBuilder() {
+                         @Override public void configure() {
+                             errorHandler(noErrorHandler());
+                             from(uri).routeId(routeId(plan.id(), "view", view.id()))
+-                                    .process(exchange -> {
+-                                        try (var ignored = scopes.openView(plan.id(), view.id())) {
+-                                            operation.process(exchange);
+-                                        }
+-                                    });
++                                    .process(scoped);
+                         }
+                     });
+                 }
+             }
+             Map<String, CompiledRoutes.BranchRoute> branchRoutes = new LinkedHashMap<>();
+             for (PlanDescriptor.Branch branch : plan.routing().branches()) {
+-                addBranchRoute(plan.id(), branch, catalog, scopes, uris, routes, branchRoutes);
++                addBranchRoute(plan.id(), branch, catalog, scopes, uris, routes, branchRoutes, local);
+             }
+             if (plan.routing().defaultBranch() != null) {
+                 addBranchRoute(plan.id(), plan.routing().defaultBranch(), catalog, scopes,
+-                        uris, routes, branchRoutes);
++                        uris, routes, branchRoutes, local);
+             }
+             String dispatchUri = address(plan.id(), "dispatch", "selected");
+             uris.add(dispatchUri);
+@@ -80,34 +84,35 @@
+                     viewRoutes, branchRoutes, dispatchUri,
+                     CompiledSelector.compile(plan.routing(), catalog)));
+         }
+-        return new CompiledRoutes(routes, uris, compiledPlans);
++        return new CompiledRoutes(routes, uris, compiledPlans, local);
+     }
+ 
+     private static void addBranchRoute(String planId, PlanDescriptor.Branch branch,
+                                        OperationCatalog catalog, RoutingExecutionScopes scopes,
+                                        List<String> uris,
+                                        List<RouteBuilder> routes,
+-                                       Map<String, CompiledRoutes.BranchRoute> branchRoutes) {
++                                       Map<String, CompiledRoutes.BranchRoute> branchRoutes, Map<String, Processor> local) {
+         String uri = address(planId, "branch", branch.id());
+         uris.add(uri);
+         branchRoutes.put(branch.id(), new CompiledRoutes.BranchRoute(uri, branch.requiredViews()));
+         var destination = catalog.destinations().get(branch.destination());
++        Processor scoped = exchange -> {
++            exchange.getMessage().setHeader(RouteProtocol.PLAN_ID, planId);
++            exchange.getMessage().setHeader(RouteProtocol.BRANCH_ID, branch.id());
++            try (var ignored = scopes.openBranch(planId, branch.id())) {
++                destination.process(exchange);
++            }
++            String id = Objects.requireNonNull(exchange.getMessage().getHeader(
++                    RouteProtocol.BRANCH_ID, String.class), "recipient branch ID");
++            BranchOutcome outcome = Objects.requireNonNull(
++                    exchange.getMessage().getBody(BranchOutcome.class), "recipient outcome");
++            exchange.getMessage().setBody(new BranchReply(id, outcome));
++        };
++        local.put(uri, scoped);
+         routes.add(new RouteBuilder() {
+             @Override public void configure() {
+                 errorHandler(noErrorHandler());
+-                from(uri).routeId(routeId(planId, "branch", branch.id()))
+-                        .setHeader(RouteProtocol.PLAN_ID, constant(planId))
+-                        .setHeader(RouteProtocol.BRANCH_ID, constant(branch.id()))
+-                        .process(exchange -> {
+-                            try (var ignored = scopes.openBranch(planId, branch.id())) {
+-                                destination.process(exchange);
+-                            }
+-                            String id = Objects.requireNonNull(exchange.getMessage().getHeader(
+-                                    RouteProtocol.BRANCH_ID, String.class), "recipient branch ID");
+-                            BranchOutcome outcome = Objects.requireNonNull(
+-                                    exchange.getMessage().getBody(BranchOutcome.class), "recipient outcome");
+-                            exchange.getMessage().setBody(new BranchReply(id, outcome));
+-                        });
++                from(uri).routeId(routeId(planId, "branch", branch.id())).process(scoped);
+             }
+         });
+     }
+--- a/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/compile/CompiledRoutes.java
++++ b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/compile/CompiledRoutes.java
+@@ -4,14 +4,20 @@
+ import java.util.List;
+ import java.util.Map;
+ import org.apache.camel.builder.RouteBuilder;
++import org.apache.camel.Processor;
+ 
+ /** Immutable route inventory and plan metadata for one isolated Camel context. */
+ public record CompiledRoutes(List<RouteBuilder> routes, List<String> endpointUris,
+-                             Map<String, CompiledPlan> plans) {
++                             Map<String, CompiledPlan> plans, Map<String, Processor> localProcessors) {
+     public CompiledRoutes {
+         routes = List.copyOf(routes);
+         endpointUris = List.copyOf(endpointUris);
+         plans = Map.copyOf(plans);
++        localProcessors = Map.copyOf(localProcessors);
++    }
++
++    public CompiledRoutes(List<RouteBuilder> routes, List<String> endpointUris, Map<String, CompiledPlan> plans) {
++        this(routes, endpointUris, plans, Map.of());
+     }
+ 
+     /** Admitted local endpoints and one condition graph for a named plan. */
+--- a/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/CamelRouteRuntime.java
++++ b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/CamelRouteRuntime.java
+@@ -27,6 +27,7 @@
+ public final class CamelRouteRuntime implements AutoCloseable {
+     private final DefaultCamelContext context;
+     private final ProducerTemplate producer;
++    private final Map<String, org.apache.camel.Processor> local;
+     private final Map<String, Endpoint> endpoints;
+     private final Map<String, CompiledRoutes.CompiledPlan> plans;
+     private final RoutingTraceSink trace;
+@@ -50,6 +51,7 @@
+         }
+         shutdownTimeoutNanos = shutdownTimeout.toNanos();
+         plans = Map.copyOf(compiled.plans());
++        local = compiled.localProcessors();
+         context = new DefaultCamelContext();
+         context.getShutdownStrategy().setTimeUnit(TimeUnit.MILLISECONDS);
+         context.getShutdownStrategy().setTimeout(shutdownTimeout.toMillis());
+@@ -91,16 +93,16 @@
+         if (plan == null) {
+             throw new IllegalArgumentException("Unknown compiled plan: " + planId);
+         }
+-        InvocationViews views = new InvocationViews(producer, endpoints, original, plan, planId, trace);
++        InvocationViews views = new InvocationViews((uri, body) -> invoke(uri, body, ViewOutcome.class), original, plan, planId, trace);
+         PlanSelection selection = plan.selector().select(views::demand, planId, trace);
+-        List<Endpoint> recipients = new ArrayList<>();
++        List<String> recipients = new ArrayList<>();
+         List<PlanSelection.BlockedBranch> preparationBlocked = new ArrayList<>();
+         for (String branchId : selection.selectedBranches()) {
+             CompiledRoutes.BranchRoute branch = plan.branches().get(branchId);
+             FailureReference failure = resolveRequiredViews(views, branchId,
+                     branch.requiredViews());
+             if (failure == null) {
+-                recipients.add(endpoints.get(branch.uri()));
++                recipients.add(branch.uri());
+             } else {
+                 preparationBlocked.add(new PlanSelection.BlockedBranch(branchId, failure));
+                 trace.emit(RoutingTraceEvent.Kind.BRANCH, planId, null, branchId,
+@@ -111,19 +113,31 @@
+             return result(selection, List.of(), preparationBlocked, views);
+         }
+         var input = new PlanExecutionResult.BranchInput(original, views.snapshot());
+-        List<PlanExecutionResult.BranchReply> replies;
+-        if (recipients.size() == 1) {
+-            replies = List.of(Objects.requireNonNull(producer.requestBody(recipients.getFirst(),
+-                    input, PlanExecutionResult.BranchReply.class), "recipient reply"));
+-        } else {
+-            var request = new DispatchRequest(input, recipients);
+-            replies = Objects.requireNonNull(producer.requestBody(endpoints.get(plan.dispatchUri()),
+-                    request, DispatchRequest.Replies.class), "dispatch replies").values();
++        List<PlanExecutionResult.BranchReply> replies = new ArrayList<>();
++        for (String uri : recipients) {
++            replies.add(Objects.requireNonNull(invoke(uri, input,
++                    PlanExecutionResult.BranchReply.class), "recipient reply"));
+         }
+         for (PlanExecutionResult.BranchReply reply : replies) {
+             traceReply(planId, reply);
+         }
+         return result(selection, replies, preparationBlocked, views);
++    }
++
++    private <T> T invoke(String uri, Object body, Class<T> type) {
++        var exchange = new org.apache.camel.support.DefaultExchange(context,
++                org.apache.camel.ExchangePattern.InOut);
++        exchange.getMessage().setBody(body);
++        try {
++            Objects.requireNonNull(local.get(uri), "compiled local processor").process(exchange);
++        } catch (Exception failure) {
++            exchange.setException(failure);
++        }
++        if (exchange.getException() != null) {
++            throw org.apache.camel.CamelExecutionException.wrapCamelExecutionException(exchange,
++                    exchange.getException());
++        }
++        return exchange.getMessage().getBody(type);
+     }
+ 
+     private void traceReply(String planId, PlanExecutionResult.BranchReply reply) {
+--- a/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/InvocationViews.java
++++ b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/InvocationViews.java
+@@ -21,19 +21,17 @@
+     private final Map<String, ViewState> resolved = new HashMap<>();
+     private final Map<FailureOccurrence, Consumers> consumers = new LinkedHashMap<>();
+     private final List<PlanExecutionResult.RecoveryAttempt> attempts = new ArrayList<>();
+-    private final ProducerTemplate producer;
+-    private final Map<String, Endpoint> endpoints;
+-    private final CompiledRoutes.CompiledPlan plan;
++    private final java.util.function.BiFunction<String, Object, ViewOutcome> invoke;
++        private final CompiledRoutes.CompiledPlan plan;
+     private final String planId;
+     private final RoutingTraceSink trace;
+ 
+-    InvocationViews(ProducerTemplate producer, Map<String, Endpoint> endpoints,
++    InvocationViews(java.util.function.BiFunction<String, Object, ViewOutcome> invoke,
+                     Object original, CompiledRoutes.CompiledPlan plan,
+                     String planId, RoutingTraceSink trace) {
+         resolved.put("original", new ViewState(new ViewOutcome.Available(original),
+                 List.of(), List.of()));
+-        this.producer = producer;
+-        this.endpoints = endpoints;
++        this.invoke = invoke;
+         this.plan = plan;
+         this.planId = planId;
+         this.trace = trace;
+@@ -80,8 +78,7 @@
+                 || primary.outcome() instanceof ViewOutcome.Absent) {
+             return primary;
+         }
+-        ViewOutcome outcome = producer.requestBody(endpoints.get(route.uri()),
+-                ((ViewOutcome.Available) primary.outcome()).value(), ViewOutcome.class);
++        ViewOutcome outcome = invoke.apply(route.uri(), ((ViewOutcome.Available) primary.outcome()).value());
+         if (outcome == null) {
+             throw new IllegalStateException("Operation returned no view outcome: " + viewId);
+         }
