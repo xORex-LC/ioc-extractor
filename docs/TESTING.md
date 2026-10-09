@@ -31,6 +31,14 @@ including five external shells (294 deterministic classes). The exact inventory
 in `build-support/test-quality/test-lifecycle.properties` reflects this scope;
 discovery, report integrity and coverage/analyzer floors remain unchanged.
 
+`JdbcCanonicalImportWriterContractIT` also pauses a real fan-out import just
+before commit. Independent readers and the real matcher must exclude pending
+rows, aliases, preferred slots and receipt evidence. A pinned reader retains
+its previous snapshot after commit; a fresh reader sees both artifacts together.
+Deleting the sealed workspace then exercises receipt-only replay, including
+warning/rejection evidence and unchanged provenance. This is an atomicity
+regression, not a writer-occupancy or replacement-backend qualification.
+
 The shared composed annotations live in `ioc-application-tck` under
 `com.iocextractor.application.tck.junit`. Adapter and bootstrap test scopes may
 depend on that module. Framework-free core modules use direct JUnit tags when a

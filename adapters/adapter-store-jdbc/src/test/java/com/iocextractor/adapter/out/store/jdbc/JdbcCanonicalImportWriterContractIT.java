@@ -8,6 +8,8 @@ import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifactKeyResolver;
 import com.iocextractor.application.artifact.CanonicalKeyDefinition;
 import com.iocextractor.application.artifact.CanonicalKeyMaterial;
+import com.iocextractor.application.artifact.CanonicalMatchCardinality;
+import com.iocextractor.application.artifact.CanonicalMatchRequest;
 import com.iocextractor.application.artifact.CanonicalKeyMode;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
@@ -53,6 +55,7 @@ import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -200,6 +203,110 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
 
         assertThat(environment.count("masks")).isOne();
         assertThat(environment.count("import_row_warning")).isZero();
+    }
+
+    @Test
+    @Timeout(20)
+    void pendingFanOutIsInvisibleAndReceiptPublicationPreservesAnExistingReadSnapshot() throws Exception {
+        Environment environment = environment("pending-visibility");
+        var mask = branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                values("mask", "evil.example"), OptionalLong.of(7));
+        var matches = new JdbcCanonicalMatchPlanner(environment.dataSource, environment.schemas);
+        var requests = List.of(new CanonicalMatchRequest("mask", mask.matchKeys()));
+        ImportPromotionPolicy slotPolicy = new ImportPromotionPolicy(
+                ImportRowFailurePolicy.ACCEPT_VALID, false,
+                Optional.of(new ImportRequestedSlotPolicy(
+                        "reputation", ImportExistingSlotPolicy.PRESERVE_EXISTING)));
+        ImportRowWarning warning = new ImportRowWarning(2, "masks", "IMPORT.VIEW_FALLBACK");
+        CanonicalImportCommand command = environment.stage(
+                "delivery-pending-visibility", slotPolicy,
+                List.of(row(2, mask,
+                        branch(environment, "hashes", ImportArtifactRole.RELATED,
+                                values("hash", "ABCDEF"), OptionalLong.empty()))),
+                List.of(new ImportRejectedLogicalRow(3, List.of(
+                        new ImportRowIssue(3, "masks", "IMPORT.INVALID_VALUE")))), List.of(warning));
+        var publicationReady = new java.util.concurrent.CountDownLatch(1);
+        var releaseCommit = new java.util.concurrent.CountDownLatch(1);
+        JdbcCanonicalImportWriter writer = environment.writer(phase -> {
+            if (phase == JdbcCanonicalImportObserver.Phase.BEFORE_COMMIT) {
+                publicationReady.countDown();
+                try {
+                    if (!releaseCommit.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Canonical publication was not released");
+                    }
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Canonical publication interrupted", interrupted);
+                }
+            }
+        });
+        var workers = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try (Connection reader = environment.dataSource.getConnection()) {
+            reader.setAutoCommit(false);
+            var promotion = workers.submit(() -> writer.promote(command));
+            assertThat(publicationReady.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            List<String> publishedTables = List.of("masks", "hashes", "masks_sources", "hashes_sources",
+                    "canonical_match_alias", "import_commit", "import_commit_artifact",
+                    "export_slot_assignment", "import_slot_resolution",
+                    "import_row_warning", "import_row_rejection",
+                    "artifact_revision", "artifact_projection_state");
+            for (String table : publishedTables) {
+                assertThat(visibleCount(reader, table)).as("pending %s", table).isZero();
+            }
+            assertThat(new JdbcImportCommitEvidenceStore(environment.dataSource).find(command.deliveryId()))
+                    .isEmpty();
+            assertThat(matches.plan("masks", EffectiveTime.at(NOW), requests).getFirst().cardinality())
+                    .isEqualTo(CanonicalMatchCardinality.ZERO);
+
+            releaseCommit.countDown();
+            assertThat(promotion.get(5, java.util.concurrent.TimeUnit.SECONDS).outcome().name())
+                    .isEqualTo("COMMITTED");
+            for (String table : publishedTables) {
+                assertThat(visibleCount(reader, table)).as("pinned snapshot %s", table).isZero();
+            }
+            assertThat(matches.plan("masks", EffectiveTime.at(NOW), requests).getFirst().cardinality())
+                    .isEqualTo(CanonicalMatchCardinality.ONE);
+            reader.rollback();
+            reader.setAutoCommit(true);
+            assertThat(visibleCount(reader, "masks")).isOne();
+            assertThat(visibleCount(reader, "hashes")).isOne();
+            assertThat(visibleCount(reader, "canonical_match_alias")).isEqualTo(2);
+            assertThat(visibleCount(reader, "import_commit")).isOne();
+            assertThat(visibleCount(reader, "import_commit_artifact")).isEqualTo(2);
+            assertThat(visibleCount(reader, "export_slot_assignment")).isOne();
+            assertThat(visibleCount(reader, "import_slot_resolution")).isOne();
+            assertThat(environment.queryLong("SELECT revision FROM artifact_revision WHERE artifact='masks'"))
+                    .isOne();
+            assertThat(environment.queryLong("SELECT revision FROM artifact_revision WHERE artifact='hashes'"))
+                    .isOne();
+            environment.deleteStage(command);
+            assertThat(environment.writer(JdbcCanonicalImportObserver.NOOP).promote(command)
+                    .outcome().name()).isEqualTo("ALREADY_COMMITTED");
+            assertThat(visibleCount(reader, "masks_sources")).isOne();
+            assertThat(visibleCount(reader, "hashes_sources")).isOne();
+            assertThat(environment.queryLong("SELECT SUM(occurrences) FROM masks_sources")).isOne();
+            assertThat(environment.queryLong("SELECT SUM(occurrences) FROM hashes_sources")).isOne();
+            assertThat(new JdbcImportCommitEvidenceStore(environment.dataSource).find(command.deliveryId()))
+                    .hasValueSatisfying(receipt -> {
+                        assertThat(receipt.acceptedRows()).isOne();
+                        assertThat(receipt.rejectedRows()).isOne();
+                        assertThat(receipt.warnings()).containsExactly(warning);
+                        assertThat(receipt.issues()).containsExactly(
+                                new ImportRowIssue(3, "masks", "IMPORT.INVALID_VALUE"));
+                    });
+        } finally {
+            releaseCommit.countDown();
+            workers.shutdownNow();
+            assertThat(workers.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    private static long visibleCount(Connection connection, String table) throws SQLException {
+        try (var statement = connection.prepareStatement("SELECT COUNT(*) FROM " + JdbcSql.quote(table));
+             var result = statement.executeQuery()) {
+            result.next();
+            return result.getLong(1);
+        }
     }
 
     @Test
