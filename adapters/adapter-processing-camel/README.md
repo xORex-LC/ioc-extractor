@@ -2,16 +2,18 @@
 
 Internal Camel integration family for bounded preparation plans. The `contract`
 package contains neutral immutable descriptors, `compile` validates references
-and binds ordered predicates to a selector while generating local view, branch
-and dispatch routes. `runtime` owns the embedded Camel context and selects an
+and binds ordered predicates to a selector while generating local view and
+branch routes. `runtime` owns the embedded Camel context and selects an
 admitted plan by ID. It computes prerequisite and selected-branch mapping views
-on demand once per call, then dispatches eligible branches through a sequential
-Camel Recipient List. A single eligible recipient is sent directly only after
-complete selection and required-view resolution. Branch routes require a typed
-reply on both paths. Multiple replies accumulate in an exchange-owned Camel
-list and become immutable at completion, preserving order and call isolation.
+on demand once per call, then sends eligible branches sequentially through the
+existing bound ProducerTemplate. Complete selection and required-view resolution
+precede every destination call. Each branch retains its native consumer and
+UnitOfWork, must return a typed reply, and sees a fresh exchange with the same
+immutable declared input. Ordered replies accumulate only within this invocation
+and become immutable on return. There is no extra dispatch route, Recipient List
+exchange, aggregation wrapper or batch-wide UnitOfWork.
 Fixed endpoints are bound after context startup and owned
-by that runtime; templates and recipient lists receive endpoint references.
+by that runtime; the template receives endpoint references.
 Parameterized predicates bind validated arguments once per condition leaf at
 compilation. Operation and destination processors are also captured during
 compilation; condition trace status labels are immutable constants, so disabled
@@ -67,6 +69,8 @@ workspace load is measured separately from this synthetic Router profile.
 See [routing capability](../../docs/dev/processing.md),
 [module map](../../docs/MODULARIZATION.md) and
 [ADR 0031](../../docs/ADR/0031-bounded-camel-preparation-runtime.md).
+The execution simplification is decided by
+[ADR 0040](../../docs/ADR/0040-native-sequential-preparation-dispatch.md).
 
 The execution conformance suite checks native view UnitOfWork success/failure
 completion, stopped-route refusal and isolation of mutable exchange headers and

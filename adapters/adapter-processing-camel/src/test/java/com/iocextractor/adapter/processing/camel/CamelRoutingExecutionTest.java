@@ -507,6 +507,56 @@ class CamelRoutingExecutionTest {
         }
     }
 
+    @Test void concurrentMaximumFanoutKeepsOrderedRepliesAndNativeBranchCompletionIsolated() throws Exception {
+        var entered = new java.util.concurrent.CountDownLatch(2);
+        var completed = new AtomicInteger();
+        var failed = new AtomicInteger();
+        Processor recipient = exchange -> {
+            assertThat(exchange.getMessage().getHeader("leaked")).isNull();
+            assertThat(exchange.getProperty("leaked")).isNull();
+            String branchId = exchange.getMessage().getHeader(
+                    com.iocextractor.adapter.processing.camel.compile.RouteProtocol.BRANCH_ID, String.class);
+            if ("branch-0".equals(branchId)) {
+                entered.countDown();
+                assertThat(entered.await(3, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            }
+            assertThat(exchange.getUnitOfWork()).isNotNull();
+            exchange.getUnitOfWork().addSynchronization(new org.apache.camel.spi.Synchronization() {
+                @Override public void onComplete(org.apache.camel.Exchange value) { completed.incrementAndGet(); }
+                @Override public void onFailure(org.apache.camel.Exchange value) { failed.incrementAndGet(); }
+            });
+            var input = exchange.getMessage().getBody(PlanExecutionResult.BranchInput.class);
+            exchange.getMessage().setHeader("leaked", "recipient");
+            exchange.setProperty("leaked", "recipient");
+            exchange.getMessage().setBody(new BranchOutcome.Prepared(input.original() + ":" + branchId));
+        };
+        var branches = java.util.stream.IntStream.range(0, 64)
+                .mapToObj(index -> new PlanDescriptor.Branch("branch-" + index, "one", null)).toList();
+        var bindings = new OperationCatalog(Map.of(), Map.of("one", recipient), Map.of());
+        var workers = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try (var runtime = runtime(plan(PlanDescriptor.Mode.ALL, branches,
+                PlanDescriptor.Action.SKIP, null), bindings)) {
+            var first = workers.submit(() -> runtime.execute("p", "first"));
+            var second = workers.submit(() -> runtime.execute("p", "second"));
+            var firstReplies = first.get(5, java.util.concurrent.TimeUnit.SECONDS).replies();
+            var secondReplies = second.get(5, java.util.concurrent.TimeUnit.SECONDS).replies();
+            assertThat(firstReplies).extracting(PlanExecutionResult.BranchReply::branchId)
+                    .containsExactlyElementsOf(branches.stream().map(PlanDescriptor.Branch::id).toList());
+            assertThat(firstReplies).extracting(PlanExecutionResult.BranchReply::outcome)
+                    .containsExactlyElementsOf(branches.stream()
+                            .map(branch -> new BranchOutcome.Prepared("first:" + branch.id())).toList());
+            assertThat(secondReplies).extracting(PlanExecutionResult.BranchReply::outcome)
+                    .containsExactlyElementsOf(branches.stream()
+                            .map(branch -> new BranchOutcome.Prepared("second:" + branch.id())).toList());
+            assertThatThrownBy(firstReplies::clear).isInstanceOf(UnsupportedOperationException.class);
+            assertThat(completed).hasValue(128);
+            assertThat(failed).hasValue(0);
+        } finally {
+            workers.shutdownNow();
+            assertThat(workers.awaitTermination(3, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
     private CamelRouteRuntime runtime(PlanDescriptor plan) throws Exception {
         return runtime(plan, catalog);
     }

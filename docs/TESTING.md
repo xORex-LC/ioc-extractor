@@ -22,9 +22,13 @@ The streamed-source change adds two deterministic Failsafe suites:
 `StreamingSourceContractIT` compares real HTML/DOCX parsing with the independent
 finite parser oracle and tests admission failures; `JdbcDocumentSourceWorkspaceIT`
 checks real disk-backed text, positions, overlap priority, attribution and cleanup.
-The reviewed source universe is 223 fast classes and 77 integration classes,
-including five external shells (295 deterministic classes). The exact inventory
-in `build-support/test-quality/test-lifecycle.properties` reflects these additions;
+CAP-7B removes the obsolete reply-aggregation suite with the removed dispatch
+implementation. Its ordering/isolation contract now runs through concurrent
+64-branch native destinations in `CamelRoutingExecutionTest`; missing replies,
+failure and native view completion keep their existing runtime regressions.
+The reviewed source universe is 222 fast classes and 77 integration classes,
+including five external shells (294 deterministic classes). The exact inventory
+in `build-support/test-quality/test-lifecycle.properties` reflects this scope;
 discovery, report integrity and coverage/analyzer floors remain unchanged.
 
 The shared composed annotations live in `ioc-application-tck` under

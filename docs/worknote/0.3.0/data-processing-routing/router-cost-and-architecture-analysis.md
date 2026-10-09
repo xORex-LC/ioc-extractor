@@ -502,7 +502,7 @@ runs are not full test or static-analysis evidence. At initial inspection,
 - [Router compiler](../../../../adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/compile/CamelPlanCompiler.java)
 - [Router runtime](../../../../adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/CamelRouteRuntime.java)
 - [View evaluator](../../../../adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/InvocationViews.java)
-- [Reply aggregation](../../../../adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/compile/BranchReplyAggregationStrategy.java)
+- [CAP-7B dispatch decision](../../../ADR/0040-native-sequential-preparation-dispatch.md) (the former reply aggregation class was removed after this historical analysis)
 - [Artifact row ownership](../../../../core/ioc-application/src/main/java/com/iocextractor/application/artifact/ArtifactRow.java)
 - [Paired comparison harness](../../../../tools/dev/processing-route-comparison.py)
 - [Probe and sampler](../../../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/ProcessingRouteComparison.java)

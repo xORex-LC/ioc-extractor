@@ -16,7 +16,7 @@ public record CompiledRoutes(List<RouteBuilder> routes, List<String> endpointUri
 
     /** Admitted local endpoints and one condition graph for a named plan. */
     public record CompiledPlan(Map<String, ViewRoute> views, Map<String, BranchRoute> branches,
-                               String dispatchUri, CompiledSelector selector) {
+                               CompiledSelector selector) {
         public CompiledPlan {
             views = Map.copyOf(views);
             branches = Map.copyOf(branches);

@@ -13,7 +13,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.Exchange;
 
 /** Compiles bounded local operation and destination routes from admitted plans. */
 public final class CamelPlanCompiler {
@@ -73,11 +72,8 @@ public final class CamelPlanCompiler {
                 addBranchRoute(plan.id(), plan.routing().defaultBranch(), catalog, scopes,
                         uris, routes, branchRoutes);
             }
-            String dispatchUri = address(plan.id(), "dispatch", "selected");
-            uris.add(dispatchUri);
-            routes.add(dispatchRoute(plan.id(), dispatchUri));
             compiledPlans.put(plan.id(), new CompiledRoutes.CompiledPlan(
-                    viewRoutes, branchRoutes, dispatchUri,
+                    viewRoutes, branchRoutes,
                     CompiledSelector.compile(plan.routing(), catalog)));
         }
         return new CompiledRoutes(routes, uris, compiledPlans);
@@ -110,36 +106,6 @@ public final class CamelPlanCompiler {
                         });
             }
         });
-    }
-
-    private static RouteBuilder dispatchRoute(String planId, String uri) {
-        return new RouteBuilder() {
-            @Override public void configure() {
-                errorHandler(noErrorHandler());
-                from(uri).routeId(routeId(planId, "dispatch", "selected"))
-                        .process(exchange -> {
-                            DispatchRequest request = Objects.requireNonNull(
-                                    exchange.getMessage().getBody(DispatchRequest.class),
-                                    "dispatch request");
-                            exchange.setProperty(RouteProtocol.RECIPIENTS, request.recipients());
-                            exchange.getMessage().setBody(request.input());
-                        })
-                        .recipientList(exchangeProperty(RouteProtocol.RECIPIENTS))
-                        .aggregationStrategy(new BranchReplyAggregationStrategy())
-                        .stopOnException()
-                        .allowedSchemes("direct")
-                        .end()
-                        .process(CamelPlanCompiler::freezeReplies);
-            }
-        };
-    }
-
-    private static void freezeReplies(Exchange exchange) {
-        // Only BranchReplyAggregationStrategy.getValue populates this Camel-owned list.
-        @SuppressWarnings("unchecked")
-        List<BranchReply> values = Objects.requireNonNull(
-                exchange.getMessage().getBody(List.class), "recipient replies");
-        exchange.getMessage().setBody(new DispatchRequest.Replies(values));
     }
 
     private static String address(String plan, String kind, String item) {

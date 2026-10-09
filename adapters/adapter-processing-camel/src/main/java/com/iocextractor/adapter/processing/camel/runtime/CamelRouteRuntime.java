@@ -1,7 +1,6 @@
 package com.iocextractor.adapter.processing.camel.runtime;
 
 import com.iocextractor.adapter.processing.camel.compile.CompiledRoutes;
-import com.iocextractor.adapter.processing.camel.compile.DispatchRequest;
 import com.iocextractor.adapter.processing.camel.contract.BranchOutcome;
 import com.iocextractor.adapter.processing.camel.contract.FailureReference;
 import com.iocextractor.adapter.processing.camel.contract.NoopRoutingTraceSink;
@@ -111,14 +110,10 @@ public final class CamelRouteRuntime implements AutoCloseable {
             return result(selection, List.of(), preparationBlocked, views);
         }
         var input = new PlanExecutionResult.BranchInput(original, views.snapshot());
-        List<PlanExecutionResult.BranchReply> replies;
-        if (recipients.size() == 1) {
-            replies = List.of(Objects.requireNonNull(producer.requestBody(recipients.getFirst(),
-                    input, PlanExecutionResult.BranchReply.class), "recipient reply"));
-        } else {
-            var request = new DispatchRequest(input, recipients);
-            replies = Objects.requireNonNull(producer.requestBody(endpoints.get(plan.dispatchUri()),
-                    request, DispatchRequest.Replies.class), "dispatch replies").values();
+        List<PlanExecutionResult.BranchReply> replies = new ArrayList<>(recipients.size());
+        for (Endpoint endpoint : recipients) {
+            replies.add(Objects.requireNonNull(producer.requestBody(endpoint, input,
+                    PlanExecutionResult.BranchReply.class), "recipient reply"));
         }
         for (PlanExecutionResult.BranchReply reply : replies) {
             traceReply(planId, reply);

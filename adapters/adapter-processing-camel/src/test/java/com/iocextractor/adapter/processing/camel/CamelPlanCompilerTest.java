@@ -46,7 +46,7 @@ class CamelPlanCompilerTest {
                 List.of(new PlanDescriptor.Branch("mask", "masks",
                         new Condition.Leaf("host", "type-in", Map.of("types", "DOMAIN")))));
         var compiled = compiler.compile(List.of(plan), catalog);
-        assertThat(compiled.endpointUris()).hasSize(3).allMatch(uri -> uri.startsWith("direct:processing-"));
+        assertThat(compiled.endpointUris()).hasSize(2).allMatch(uri -> uri.startsWith("direct:processing-"));
         try (var runtime = new CamelRouteRuntime(compiled)) {
             var result = runtime.execute("network", "example");
             assertThat(result.replies()).extracting(PlanExecutionResult.BranchReply::outcome)
@@ -181,7 +181,7 @@ class CamelPlanCompilerTest {
                 new PlanDescriptor.Branch("a", "masks", new Condition.Any(List.of(
                         new Condition.Leaf("child", "type-in", Map.of()),
                         new Condition.Not(new Condition.Leaf("original", "type-in", Map.of())))))));
-        assertThat(compiler.compile(List.of(plan), catalog).endpointUris()).hasSize(4);
+        assertThat(compiler.compile(List.of(plan), catalog).endpointUris()).hasSize(3);
     }
 
     private PlanDescriptor plan(String id, List<PlanDescriptor.View> views,

@@ -56,6 +56,7 @@
 | [0034-required-router-processing-plans.md](0034-required-router-processing-plans.md) | Required document/processed-import Router plans, original-value production defaults and explicit observation selection; supersedes optional dispatch in ADR 0031. |
 
 | [0039-streamed-document-source-processing.md](0039-streamed-document-source-processing.md) | Workspace-owned source streaming, lazy extraction/attribution, bounded parser admission and fatal-worker recovery. |
+| [0040-native-sequential-preparation-dispatch.md](0040-native-sequential-preparation-dispatch.md) | Native sequential branch consumers with isolated UnitOfWork; remove redundant dispatch/aggregation without a second runtime. |
 
 ## Формат
 
