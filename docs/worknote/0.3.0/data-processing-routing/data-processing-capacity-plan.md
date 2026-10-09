@@ -3,6 +3,8 @@
 Status: CAP-0–CAP-5 implemented and qualified within their stage scope; CAP-6
 qualification records G6 NOT_ACCEPTED; CAP-7A implementation and scoped source
 qualification are complete in its [execution report](cap-7a-execution.md).
+CAP-7B native sequential dispatch is implemented; its scoped comparison and
+remaining acceptance limits are in the [execution report](cap-7b-execution.md).
 Acceptance budgets adopted by the owner on 2026-10-04. Prepared from the
 [capacity review](data-processing-capacity-review.md). CAP-1A selective SQL and
 its JDBC regressions and CAP-1B resource sessions are implemented. Stage G0/G1A/G1B
@@ -526,7 +528,7 @@ Choose the cell that addresses the measured remaining mechanism.
 | Track | Trigger | Design and promotion gate |
 |---|---|---|
 | CAP-7A: source/extraction streaming | Full-text/occurrence retention prevents G6 after workspace migration | Specify refang/match/marker carry-over, ordered absolute offsets, overlap resolution and Tika-format support; adversarial boundary oracle plus actual DOCX; retest total-process memory |
-| CAP-7B: Camel batch or compiled direct evaluator | Corrected profiles show material dispatch/collection cost | Compare equal demanded views, selections, short-circuit/failure/trace and branch isolation; use real cursors/batches, require net complete-service benefit and simpler ownership; no new fallback runtime |
+| CAP-7B: native execution granularity or compiled evaluator | Corrected profiles show material dispatch/collection cost | Compare equal demanded views, selections, short-circuit/failure/trace and branch isolation; use real cursors/batches, require net complete-service benefit and simpler ownership; no new fallback runtime |
 | CAP-7C: transaction visibility or canonical adapter | Largest atomic unit exceeds required control/export latency after SQL correction | ADR and complete crash/visibility/conflict/TTL/receipt/slot/revision protocol; compare staged/versioned SQLite and a qualified concurrent adapter under equal guarantees/resources |
 | CAP-7D: alternate private reducer backend | Private spool dominates measured disk/CPU/native budget | Compare private SQLite, external sort/reduce or another admitted backend with serialization, cleanup/recovery and total resources included |
 

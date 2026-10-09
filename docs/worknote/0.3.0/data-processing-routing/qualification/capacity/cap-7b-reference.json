@@ -1,0 +1,3016 @@
+{
+  "stage": "CAP-7B",
+  "decision": "ADMIT_NATIVE_SEQUENTIAL_DISPATCH_ONLY",
+  "g6": "NOT_ACCEPTED",
+  "entry_production_commit": "58359ddd6db12a8d416e16fbd61cec435500aafc",
+  "conformance": {
+    "direct_processor_control": {
+      "tests": 55,
+      "failures": 2,
+      "failed_contracts": [
+        "nativeViewConsumersCompleteTheirUnitOfWorkAndKeepExchangesIsolated",
+        "readinessDetectsStoppedRouteAndContext"
+      ],
+      "disposition": "REJECTED_BEFORE_PERFORMANCE"
+    },
+    "native_sequential_control": {
+      "tests": 55,
+      "failures": 0,
+      "disposition": "PASS"
+    }
+  },
+  "repeat_comparison": {
+    "raw_report_sha256": "7b91d3546b2f30181d77475f54cd70bd5b303a58170c0374740f7d80a5295e98",
+    "pairs": 3,
+    "profiles": {
+      "repeat": {
+        "samples": [
+          {
+            "kind": "document",
+            "observations": "8000",
+            "elapsed_ms": "1849.145",
+            "throughput_per_s": "4326.32",
+            "allocated_main_bytes": "352583520",
+            "sampled_peak_heap_bytes": "120401808",
+            "sampled_peak_rss_kib": "383324",
+            "startup_ms": "3813.086",
+            "gc_count": "9",
+            "gc_time_ms": "31",
+            "sampled_peak_current_rss_kib": "383324",
+            "path": "selected",
+            "iteration": 0,
+            "config_sha256": "a0d400396af6658a63c37017dfcea68d8582b9b32f16e0249587d47f5e3e0d54",
+            "fork_wall_ms": "8684.170329001063",
+            "outcome": "extracted=8000 retained=20 status=COMPLETED diagnostics=0 suppressed=0 severities={} retained_codes={}",
+            "signature_sha256": "eb51756ba9180be5e801b770016331c8cd035299a33facdc549ff81e38ee02bb",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 724298,
+              "removed_files": 8
+            },
+            "revision": "before"
+          },
+          {
+            "kind": "document",
+            "observations": "8000",
+            "elapsed_ms": "1656.646",
+            "throughput_per_s": "4829.03",
+            "allocated_main_bytes": "320261576",
+            "sampled_peak_heap_bytes": "119898704",
+            "sampled_peak_rss_kib": "395188",
+            "startup_ms": "4079.193",
+            "gc_count": "6",
+            "gc_time_ms": "22",
+            "sampled_peak_current_rss_kib": "395188",
+            "path": "selected",
+            "iteration": 0,
+            "config_sha256": "a0d400396af6658a63c37017dfcea68d8582b9b32f16e0249587d47f5e3e0d54",
+            "fork_wall_ms": "8555.30748000092",
+            "outcome": "extracted=8000 retained=20 status=COMPLETED diagnostics=0 suppressed=0 severities={} retained_codes={}",
+            "signature_sha256": "eb51756ba9180be5e801b770016331c8cd035299a33facdc549ff81e38ee02bb",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 724298,
+              "removed_files": 8
+            },
+            "revision": "after"
+          },
+          {
+            "kind": "document",
+            "observations": "8000",
+            "elapsed_ms": "1669.393",
+            "throughput_per_s": "4792.16",
+            "allocated_main_bytes": "319145792",
+            "sampled_peak_heap_bytes": "122683392",
+            "sampled_peak_rss_kib": "386904",
+            "startup_ms": "3972.262",
+            "gc_count": "6",
+            "gc_time_ms": "20",
+            "sampled_peak_current_rss_kib": "386904",
+            "path": "selected",
+            "iteration": 1,
+            "config_sha256": "a0d400396af6658a63c37017dfcea68d8582b9b32f16e0249587d47f5e3e0d54",
+            "fork_wall_ms": "8461.465012998815",
+            "outcome": "extracted=8000 retained=20 status=COMPLETED diagnostics=0 suppressed=0 severities={} retained_codes={}",
+            "signature_sha256": "eb51756ba9180be5e801b770016331c8cd035299a33facdc549ff81e38ee02bb",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 724298,
+              "removed_files": 8
+            },
+            "revision": "after"
+          },
+          {
+            "kind": "document",
+            "observations": "8000",
+            "elapsed_ms": "1826.001",
+            "throughput_per_s": "4381.16",
+            "allocated_main_bytes": "352658760",
+            "sampled_peak_heap_bytes": "121057224",
+            "sampled_peak_rss_kib": "394844",
+            "startup_ms": "3810.736",
+            "gc_count": "9",
+            "gc_time_ms": "28",
+            "sampled_peak_current_rss_kib": "394844",
+            "path": "selected",
+            "iteration": 1,
+            "config_sha256": "a0d400396af6658a63c37017dfcea68d8582b9b32f16e0249587d47f5e3e0d54",
+            "fork_wall_ms": "8591.138429001148",
+            "outcome": "extracted=8000 retained=20 status=COMPLETED diagnostics=0 suppressed=0 severities={} retained_codes={}",
+            "signature_sha256": "eb51756ba9180be5e801b770016331c8cd035299a33facdc549ff81e38ee02bb",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 724298,
+              "removed_files": 8
+            },
+            "revision": "before"
+          },
+          {
+            "kind": "document",
+            "observations": "8000",
+            "elapsed_ms": "1770.292",
+            "throughput_per_s": "4519.03",
+            "allocated_main_bytes": "353192648",
+            "sampled_peak_heap_bytes": "121033024",
+            "sampled_peak_rss_kib": "401452",
+            "startup_ms": "3942.223",
+            "gc_count": "9",
+            "gc_time_ms": "29",
+            "sampled_peak_current_rss_kib": "401452",
+            "path": "selected",
+            "iteration": 2,
+            "config_sha256": "a0d400396af6658a63c37017dfcea68d8582b9b32f16e0249587d47f5e3e0d54",
+            "fork_wall_ms": "8760.527937000006",
+            "outcome": "extracted=8000 retained=20 status=COMPLETED diagnostics=0 suppressed=0 severities={} retained_codes={}",
+            "signature_sha256": "eb51756ba9180be5e801b770016331c8cd035299a33facdc549ff81e38ee02bb",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 724298,
+              "removed_files": 8
+            },
+            "revision": "before"
+          },
+          {
+            "kind": "document",
+            "observations": "8000",
+            "elapsed_ms": "1587.239",
+            "throughput_per_s": "5040.20",
+            "allocated_main_bytes": "320630824",
+            "sampled_peak_heap_bytes": "121946952",
+            "sampled_peak_rss_kib": "387440",
+            "startup_ms": "3981.638",
+            "gc_count": "6",
+            "gc_time_ms": "21",
+            "sampled_peak_current_rss_kib": "387440",
+            "path": "selected",
+            "iteration": 2,
+            "config_sha256": "a0d400396af6658a63c37017dfcea68d8582b9b32f16e0249587d47f5e3e0d54",
+            "fork_wall_ms": "8207.466650997958",
+            "outcome": "extracted=8000 retained=20 status=COMPLETED diagnostics=0 suppressed=0 severities={} retained_codes={}",
+            "signature_sha256": "eb51756ba9180be5e801b770016331c8cd035299a33facdc549ff81e38ee02bb",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 724298,
+              "removed_files": 8
+            },
+            "revision": "after"
+          },
+          {
+            "kind": "import",
+            "observations": "2000",
+            "elapsed_ms": "375.489",
+            "throughput_per_s": "5326.38",
+            "allocated_main_bytes": "66629200",
+            "sampled_peak_heap_bytes": "115227152",
+            "sampled_peak_rss_kib": "394924",
+            "startup_ms": "3912.441",
+            "gc_count": "1",
+            "gc_time_ms": "5",
+            "sampled_peak_current_rss_kib": "394924",
+            "path": "selected",
+            "iteration": 0,
+            "config_sha256": "22c64d7db0c37a99883a98ba995016fa679fbe1a001fbe2055ab18355afac54b",
+            "fork_wall_ms": "5310.570749003091",
+            "outcome": "accepted=20 rejected=0",
+            "signature_sha256": "480065e3f630d86fcd2563907d4cfddf782216733ee273e026269b9dc2fdcc3e",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 5561175,
+              "removed_files": 13
+            },
+            "revision": "before"
+          },
+          {
+            "kind": "import",
+            "observations": "2000",
+            "elapsed_ms": "378.880",
+            "throughput_per_s": "5278.72",
+            "allocated_main_bytes": "66833768",
+            "sampled_peak_heap_bytes": "117054272",
+            "sampled_peak_rss_kib": "385988",
+            "startup_ms": "3942.258",
+            "gc_count": "1",
+            "gc_time_ms": "5",
+            "sampled_peak_current_rss_kib": "385988",
+            "path": "selected",
+            "iteration": 0,
+            "config_sha256": "22c64d7db0c37a99883a98ba995016fa679fbe1a001fbe2055ab18355afac54b",
+            "fork_wall_ms": "5339.826385003107",
+            "outcome": "accepted=20 rejected=0",
+            "signature_sha256": "480065e3f630d86fcd2563907d4cfddf782216733ee273e026269b9dc2fdcc3e",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 5626711,
+              "removed_files": 17
+            },
+            "revision": "after"
+          },
+          {
+            "kind": "import",
+            "observations": "2000",
+            "elapsed_ms": "368.937",
+            "throughput_per_s": "5420.98",
+            "allocated_main_bytes": "65677336",
+            "sampled_peak_heap_bytes": "117823168",
+            "sampled_peak_rss_kib": "395040",
+            "startup_ms": "4078.251",
+            "gc_count": "0",
+            "gc_time_ms": "0",
+            "sampled_peak_current_rss_kib": "395040",
+            "path": "selected",
+            "iteration": 1,
+            "config_sha256": "22c64d7db0c37a99883a98ba995016fa679fbe1a001fbe2055ab18355afac54b",
+            "fork_wall_ms": "5508.862444999977",
+            "outcome": "accepted=20 rejected=0",
+            "signature_sha256": "480065e3f630d86fcd2563907d4cfddf782216733ee273e026269b9dc2fdcc3e",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 5626711,
+              "removed_files": 17
+            },
+            "revision": "after"
+          },
+          {
+            "kind": "import",
+            "observations": "2000",
+            "elapsed_ms": "396.853",
+            "throughput_per_s": "5039.64",
+            "allocated_main_bytes": "66589784",
+            "sampled_peak_heap_bytes": "114823064",
+            "sampled_peak_rss_kib": "397656",
+            "startup_ms": "4014.830",
+            "gc_count": "1",
+            "gc_time_ms": "4",
+            "sampled_peak_current_rss_kib": "397656",
+            "path": "selected",
+            "iteration": 1,
+            "config_sha256": "22c64d7db0c37a99883a98ba995016fa679fbe1a001fbe2055ab18355afac54b",
+            "fork_wall_ms": "5467.323277000105",
+            "outcome": "accepted=20 rejected=0",
+            "signature_sha256": "480065e3f630d86fcd2563907d4cfddf782216733ee273e026269b9dc2fdcc3e",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 5626711,
+              "removed_files": 17
+            },
+            "revision": "before"
+          },
+          {
+            "kind": "import",
+            "observations": "2000",
+            "elapsed_ms": "366.674",
+            "throughput_per_s": "5454.44",
+            "allocated_main_bytes": "64570224",
+            "sampled_peak_heap_bytes": "114433360",
+            "sampled_peak_rss_kib": "377824",
+            "startup_ms": "3955.150",
+            "gc_count": "1",
+            "gc_time_ms": "4",
+            "sampled_peak_current_rss_kib": "377824",
+            "path": "selected",
+            "iteration": 2,
+            "config_sha256": "22c64d7db0c37a99883a98ba995016fa679fbe1a001fbe2055ab18355afac54b",
+            "fork_wall_ms": "5336.905364001723",
+            "outcome": "accepted=20 rejected=0",
+            "signature_sha256": "480065e3f630d86fcd2563907d4cfddf782216733ee273e026269b9dc2fdcc3e",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 5626711,
+              "removed_files": 17
+            },
+            "revision": "before"
+          },
+          {
+            "kind": "import",
+            "observations": "2000",
+            "elapsed_ms": "351.160",
+            "throughput_per_s": "5695.40",
+            "allocated_main_bytes": "65857752",
+            "sampled_peak_heap_bytes": "117474136",
+            "sampled_peak_rss_kib": "383880",
+            "startup_ms": "3960.630",
+            "gc_count": "0",
+            "gc_time_ms": "0",
+            "sampled_peak_current_rss_kib": "383752",
+            "path": "selected",
+            "iteration": 2,
+            "config_sha256": "22c64d7db0c37a99883a98ba995016fa679fbe1a001fbe2055ab18355afac54b",
+            "fork_wall_ms": "5332.620309000049",
+            "outcome": "accepted=20 rejected=0",
+            "signature_sha256": "480065e3f630d86fcd2563907d4cfddf782216733ee273e026269b9dc2fdcc3e",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 5626711,
+              "removed_files": 17
+            },
+            "revision": "after"
+          }
+        ],
+        "shape": "domains",
+        "warmups": 1,
+        "input_sha256": {
+          "document": "b6c8f323f497c070fa5a7f47f03c3ae61393025ebb7dc97e18444c9153bd370c",
+          "import": "bf313845cab8fffc00c891e6b659f5cfe7b6b715c40ab291a9b39567d16c902d"
+        },
+        "summary": {
+          "document": {
+            "elapsed_ms": {
+              "before_median": 1826.001,
+              "after_median": 1656.646,
+              "after_over_before": 0.9072536104854269,
+              "paired_ratios": [
+                0.895898374654232,
+                0.9142344390830016,
+                0.8965972845157748
+              ],
+              "before_range": [
+                1770.292,
+                1849.145
+              ],
+              "after_range": [
+                1587.239,
+                1669.393
+              ]
+            },
+            "allocated_main_bytes": {
+              "before_median": 352658760.0,
+              "after_median": 320261576.0,
+              "after_over_before": 0.9081344697066365,
+              "paired_ratios": [
+                0.9083282621944441,
+                0.9049705500013667,
+                0.907807186292281
+              ],
+              "before_range": [
+                352583520.0,
+                353192648.0
+              ],
+              "after_range": [
+                319145792.0,
+                320630824.0
+              ]
+            },
+            "sampled_peak_heap_bytes": {
+              "before_median": 121033024.0,
+              "after_median": 121946952.0,
+              "after_over_before": 1.0075510630883684,
+              "paired_ratios": [
+                0.9958214580963768,
+                1.0134330521241757,
+                1.0075510630883684
+              ],
+              "before_range": [
+                120401808.0,
+                121057224.0
+              ],
+              "after_range": [
+                119898704.0,
+                122683392.0
+              ]
+            },
+            "sampled_peak_current_rss_kib": {
+              "before_median": 394844.0,
+              "after_median": 387440.0,
+              "after_over_before": 0.981248290464082,
+              "paired_ratios": [
+                1.0309503187903706,
+                0.9798907923129134,
+                0.9650966989826928
+              ],
+              "before_range": [
+                383324.0,
+                401452.0
+              ],
+              "after_range": [
+                386904.0,
+                395188.0
+              ]
+            },
+            "sampled_peak_rss_kib": {
+              "before_median": 394844.0,
+              "after_median": 387440.0,
+              "after_over_before": 0.981248290464082,
+              "paired_ratios": [
+                1.0309503187903706,
+                0.9798907923129134,
+                0.9650966989826928
+              ],
+              "before_range": [
+                383324.0,
+                401452.0
+              ],
+              "after_range": [
+                386904.0,
+                395188.0
+              ]
+            },
+            "startup_ms": {
+              "before_median": 3813.086,
+              "after_median": 3981.638,
+              "after_over_before": 1.0442035663501952,
+              "paired_ratios": [
+                1.0697878306442605,
+                1.0423870874287802,
+                1.009998166009381
+              ],
+              "before_range": [
+                3810.736,
+                3942.223
+              ],
+              "after_range": [
+                3972.262,
+                4079.193
+              ]
+            },
+            "gc_count": {
+              "before_median": 9.0,
+              "after_median": 6.0,
+              "after_over_before": 0.6666666666666666,
+              "paired_ratios": [
+                0.6666666666666666,
+                0.6666666666666666,
+                0.6666666666666666
+              ],
+              "before_range": [
+                9.0,
+                9.0
+              ],
+              "after_range": [
+                6.0,
+                6.0
+              ]
+            },
+            "gc_time_ms": {
+              "before_median": 29.0,
+              "after_median": 21.0,
+              "after_over_before": 0.7241379310344828,
+              "paired_ratios": [
+                0.7096774193548387,
+                0.7142857142857143,
+                0.7241379310344828
+              ],
+              "before_range": [
+                28.0,
+                31.0
+              ],
+              "after_range": [
+                20.0,
+                22.0
+              ]
+            }
+          },
+          "import": {
+            "elapsed_ms": {
+              "before_median": 375.489,
+              "after_median": 368.937,
+              "after_over_before": 0.9825507538170227,
+              "paired_ratios": [
+                1.0090308903856038,
+                0.9296565730887759,
+                0.9576899371103488
+              ],
+              "before_range": [
+                366.674,
+                396.853
+              ],
+              "after_range": [
+                351.16,
+                378.88
+              ]
+            },
+            "allocated_main_bytes": {
+              "before_median": 66589784.0,
+              "after_median": 65857752.0,
+              "after_over_before": 0.9890068422507573,
+              "paired_ratios": [
+                1.0030702454779585,
+                0.9862974777031864,
+                1.0199399648977523
+              ],
+              "before_range": [
+                64570224.0,
+                66629200.0
+              ],
+              "after_range": [
+                65677336.0,
+                66833768.0
+              ]
+            },
+            "sampled_peak_heap_bytes": {
+              "before_median": 114823064.0,
+              "after_median": 117474136.0,
+              "after_over_before": 1.0230883230916046,
+              "paired_ratios": [
+                1.01585667933544,
+                1.0261280608223449,
+                1.0265724610375855
+              ],
+              "before_range": [
+                114433360.0,
+                115227152.0
+              ],
+              "after_range": [
+                117054272.0,
+                117823168.0
+              ]
+            },
+            "sampled_peak_current_rss_kib": {
+              "before_median": 394924.0,
+              "after_median": 385988.0,
+              "after_over_before": 0.9773728616138802,
+              "paired_ratios": [
+                0.9773728616138802,
+                0.993421449695214,
+                1.0156898450071992
+              ],
+              "before_range": [
+                377824.0,
+                397656.0
+              ],
+              "after_range": [
+                383752.0,
+                395040.0
+              ]
+            },
+            "sampled_peak_rss_kib": {
+              "before_median": 394924.0,
+              "after_median": 385988.0,
+              "after_over_before": 0.9773728616138802,
+              "paired_ratios": [
+                0.9773728616138802,
+                0.993421449695214,
+                1.0160286270856271
+              ],
+              "before_range": [
+                377824.0,
+                397656.0
+              ],
+              "after_range": [
+                383880.0,
+                395040.0
+              ]
+            },
+            "startup_ms": {
+              "before_median": 3955.15,
+              "after_median": 3960.63,
+              "after_over_before": 1.0013855353147163,
+              "paired_ratios": [
+                1.0076210733912665,
+                1.0157966837948307,
+                1.0013855353147163
+              ],
+              "before_range": [
+                3912.441,
+                4014.83
+              ],
+              "after_range": [
+                3942.258,
+                4078.251
+              ]
+            },
+            "gc_count": {
+              "before_median": 1.0,
+              "after_median": 0.0,
+              "after_over_before": 0.0,
+              "paired_ratios": [
+                1.0,
+                0.0,
+                0.0
+              ],
+              "before_range": [
+                1.0,
+                1.0
+              ],
+              "after_range": [
+                0.0,
+                1.0
+              ]
+            },
+            "gc_time_ms": {
+              "before_median": 4.0,
+              "after_median": 0.0,
+              "after_over_before": 0.0,
+              "paired_ratios": [
+                1.0,
+                0.0,
+                0.0
+              ],
+              "before_range": [
+                4.0,
+                5.0
+              ],
+              "after_range": [
+                0.0,
+                5.0
+              ]
+            }
+          }
+        },
+        "equivalent_results": true
+      }
+    },
+    "execution_order": [
+      [
+        "repeat",
+        "document",
+        0,
+        "before"
+      ],
+      [
+        "repeat",
+        "document",
+        0,
+        "after"
+      ],
+      [
+        "repeat",
+        "document",
+        1,
+        "after"
+      ],
+      [
+        "repeat",
+        "document",
+        1,
+        "before"
+      ],
+      [
+        "repeat",
+        "document",
+        2,
+        "before"
+      ],
+      [
+        "repeat",
+        "document",
+        2,
+        "after"
+      ],
+      [
+        "repeat",
+        "import",
+        0,
+        "before"
+      ],
+      [
+        "repeat",
+        "import",
+        0,
+        "after"
+      ],
+      [
+        "repeat",
+        "import",
+        1,
+        "after"
+      ],
+      [
+        "repeat",
+        "import",
+        1,
+        "before"
+      ],
+      [
+        "repeat",
+        "import",
+        2,
+        "before"
+      ],
+      [
+        "repeat",
+        "import",
+        2,
+        "after"
+      ]
+    ],
+    "mode": "primary",
+    "logging": {
+      "DEBUG": "false",
+      "TRACE": "false",
+      "LOGGING_LEVEL_ROOT": "WARN"
+    },
+    "jvm_flags": [
+      "-Xms128m",
+      "-Xmx512m"
+    ],
+    "java": "openjdk version \"21.0.12.1\" 2026-08-18",
+    "host": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "cgroup": {},
+    "driver_sha256": "641a89401615e6576ed1a8694252c6151d45f22dc9d63088a7745c3fa8bfd227",
+    "comparison_sha256": "ac5ea1d9e0fcd313f9833876380b8c40e2306414a355657bbb106f40b34f2f9d",
+    "acceptance": "local optimization evidence; complete G6 acceptance is evaluated separately",
+    "runtimes": {
+      "before": {
+        "snapshot": "/opt/ioc-extractor/.dev/cap7b-reference-fixed",
+        "source_commit": "58359ddd6db12a8d416e16fbd61cec435500aafc",
+        "source_dirty": true,
+        "source_diff_sha256": "5d01a903c051b52d1320dba0463bd590334874ee6a4a20cff18be0022e248c2b",
+        "runtime_files": {
+          "entries": 513,
+          "sha256": "df0e1d1416a03c0a56bdc55005d4113fc9b739e93c304507e92c435fba045480"
+        }
+      },
+      "after": {
+        "snapshot": "/opt/ioc-extractor/.dev/cap7b-native-repeat-v2/prototype-esbhi3sb/runtime",
+        "source_commit": "58359ddd6db12a8d416e16fbd61cec435500aafc",
+        "source_dirty": true,
+        "source_diff_sha256": "5d01a903c051b52d1320dba0463bd590334874ee6a4a20cff18be0022e248c2b",
+        "runtime_files": {
+          "entries": 513,
+          "sha256": "9ce3fa2b000131dc037ff181145c193b27fd04d04b6bcd956707bacefdc3d19a"
+        }
+      }
+    },
+    "prototype": {
+      "patch_sha256": "00f14bff86a95929568e1960d9a798b9cbc315c9aaf5bd996eea22fdc0acc4ce",
+      "reference_identity": {
+        "snapshot": "/opt/ioc-extractor/.dev/cap7b-reference-fixed",
+        "source_commit": "58359ddd6db12a8d416e16fbd61cec435500aafc",
+        "source_dirty": true,
+        "source_diff_sha256": "5d01a903c051b52d1320dba0463bd590334874ee6a4a20cff18be0022e248c2b",
+        "runtime_files": {
+          "entries": 513,
+          "sha256": "df0e1d1416a03c0a56bdc55005d4113fc9b739e93c304507e92c435fba045480"
+        }
+      },
+      "sources": [
+        "adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/CamelRouteRuntime.java"
+      ],
+      "disposition": "isolated experiment; not production-enabled"
+    }
+  },
+  "incomplete_unique_comparison": {
+    "raw_report_sha256": "9f60403fc01d0f7f20a0fa5f45ce34791c0e8e461e2485454e544f41f6341ff7",
+    "pairs": 3,
+    "profiles": {
+      "unique": {
+        "samples": [
+          {
+            "kind": "document",
+            "observations": "8000",
+            "elapsed_ms": "3458.775",
+            "throughput_per_s": "2312.96",
+            "allocated_main_bytes": "2212145856",
+            "sampled_peak_heap_bytes": "141627848",
+            "sampled_peak_rss_kib": "428584",
+            "startup_ms": "3809.624",
+            "gc_count": "23",
+            "gc_time_ms": "27",
+            "sampled_peak_current_rss_kib": "428584",
+            "path": "selected",
+            "iteration": 0,
+            "config_sha256": "a0d400396af6658a63c37017dfcea68d8582b9b32f16e0249587d47f5e3e0d54",
+            "fork_wall_ms": "12504.555567000352",
+            "outcome": "extracted=8000 retained=8000 status=COMPLETED diagnostics=0 suppressed=0 severities={} retained_codes={}",
+            "signature_sha256": "689e7bd8e8c1b467483039c6300e1656024ecfd848eda626aad6a8bbc12189a6",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 25499405,
+              "removed_files": 8
+            },
+            "revision": "before"
+          },
+          {
+            "kind": "document",
+            "observations": "8000",
+            "elapsed_ms": "3427.855",
+            "throughput_per_s": "2333.82",
+            "allocated_main_bytes": "2180424752",
+            "sampled_peak_heap_bytes": "133802744",
+            "sampled_peak_rss_kib": "410704",
+            "startup_ms": "3692.479",
+            "gc_count": "29",
+            "gc_time_ms": "39",
+            "sampled_peak_current_rss_kib": "410704",
+            "path": "selected",
+            "iteration": 0,
+            "config_sha256": "a0d400396af6658a63c37017dfcea68d8582b9b32f16e0249587d47f5e3e0d54",
+            "fork_wall_ms": "11988.377426001534",
+            "outcome": "extracted=8000 retained=8000 status=COMPLETED diagnostics=0 suppressed=0 severities={} retained_codes={}",
+            "signature_sha256": "689e7bd8e8c1b467483039c6300e1656024ecfd848eda626aad6a8bbc12189a6",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 25499405,
+              "removed_files": 8
+            },
+            "revision": "after"
+          },
+          {
+            "kind": "document",
+            "observations": "8000",
+            "elapsed_ms": "3382.825",
+            "throughput_per_s": "2364.89",
+            "allocated_main_bytes": "2180287248",
+            "sampled_peak_heap_bytes": "134223296",
+            "sampled_peak_rss_kib": "408020",
+            "startup_ms": "3651.036",
+            "gc_count": "25",
+            "gc_time_ms": "28",
+            "sampled_peak_current_rss_kib": "408020",
+            "path": "selected",
+            "iteration": 1,
+            "config_sha256": "a0d400396af6658a63c37017dfcea68d8582b9b32f16e0249587d47f5e3e0d54",
+            "fork_wall_ms": "12038.901949999854",
+            "outcome": "extracted=8000 retained=8000 status=COMPLETED diagnostics=0 suppressed=0 severities={} retained_codes={}",
+            "signature_sha256": "689e7bd8e8c1b467483039c6300e1656024ecfd848eda626aad6a8bbc12189a6",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 25499405,
+              "removed_files": 8
+            },
+            "revision": "after"
+          },
+          {
+            "kind": "document",
+            "observations": "8000",
+            "elapsed_ms": "3376.487",
+            "throughput_per_s": "2369.33",
+            "allocated_main_bytes": "2212474920",
+            "sampled_peak_heap_bytes": "139145208",
+            "sampled_peak_rss_kib": "427296",
+            "startup_ms": "3671.487",
+            "gc_count": "24",
+            "gc_time_ms": "27",
+            "sampled_peak_current_rss_kib": "427296",
+            "path": "selected",
+            "iteration": 1,
+            "config_sha256": "a0d400396af6658a63c37017dfcea68d8582b9b32f16e0249587d47f5e3e0d54",
+            "fork_wall_ms": "12274.599673997727",
+            "outcome": "extracted=8000 retained=8000 status=COMPLETED diagnostics=0 suppressed=0 severities={} retained_codes={}",
+            "signature_sha256": "689e7bd8e8c1b467483039c6300e1656024ecfd848eda626aad6a8bbc12189a6",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 25499405,
+              "removed_files": 8
+            },
+            "revision": "before"
+          },
+          {
+            "kind": "document",
+            "observations": "8000",
+            "elapsed_ms": "3442.855",
+            "throughput_per_s": "2323.65",
+            "allocated_main_bytes": "2217421536",
+            "sampled_peak_heap_bytes": "143703800",
+            "sampled_peak_rss_kib": "430332",
+            "startup_ms": "3813.521",
+            "gc_count": "23",
+            "gc_time_ms": "26",
+            "sampled_peak_current_rss_kib": "430332",
+            "path": "selected",
+            "iteration": 2,
+            "config_sha256": "a0d400396af6658a63c37017dfcea68d8582b9b32f16e0249587d47f5e3e0d54",
+            "fork_wall_ms": "12478.49990299801",
+            "outcome": "extracted=8000 retained=8000 status=COMPLETED diagnostics=0 suppressed=0 severities={} retained_codes={}",
+            "signature_sha256": "689e7bd8e8c1b467483039c6300e1656024ecfd848eda626aad6a8bbc12189a6",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 25499405,
+              "removed_files": 8
+            },
+            "revision": "before"
+          },
+          {
+            "kind": "document",
+            "observations": "8000",
+            "elapsed_ms": "3400.040",
+            "throughput_per_s": "2352.91",
+            "allocated_main_bytes": "2180629792",
+            "sampled_peak_heap_bytes": "134371864",
+            "sampled_peak_rss_kib": "433424",
+            "startup_ms": "3810.331",
+            "gc_count": "25",
+            "gc_time_ms": "29",
+            "sampled_peak_current_rss_kib": "433424",
+            "path": "selected",
+            "iteration": 2,
+            "config_sha256": "a0d400396af6658a63c37017dfcea68d8582b9b32f16e0249587d47f5e3e0d54",
+            "fork_wall_ms": "12215.885084002366",
+            "outcome": "extracted=8000 retained=8000 status=COMPLETED diagnostics=0 suppressed=0 severities={} retained_codes={}",
+            "signature_sha256": "689e7bd8e8c1b467483039c6300e1656024ecfd848eda626aad6a8bbc12189a6",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 25499405,
+              "removed_files": 8
+            },
+            "revision": "after"
+          },
+          {
+            "kind": "import",
+            "observations": "2000",
+            "elapsed_ms": "594.266",
+            "throughput_per_s": "3365.50",
+            "allocated_main_bytes": "122918952",
+            "sampled_peak_heap_bytes": "120977024",
+            "sampled_peak_rss_kib": "395208",
+            "startup_ms": "4003.370",
+            "gc_count": "4",
+            "gc_time_ms": "11",
+            "sampled_peak_current_rss_kib": "395208",
+            "path": "selected",
+            "iteration": 0,
+            "config_sha256": "22c64d7db0c37a99883a98ba995016fa679fbe1a001fbe2055ab18355afac54b",
+            "fork_wall_ms": "6037.782716000947",
+            "outcome": "accepted=2000 rejected=0",
+            "signature_sha256": "563493625925eea2bfc3dd084055d19936cae1a96c9b043c1363478ab7e7eced",
+            "retention": {
+              "state_retained": false,
+              "removed_bytes": 9588909,
+              "removed_files": 15
+            },
+            "revision": "before"
+          }
+        ],
+        "shape": "domains",
+        "warmups": 1,
+        "input_sha256": {
+          "document": "0e5fee1281ab42c2cddec3dc330b63acb930875a31ca159c973639a92bda6949",
+          "import": "15555fddab56ce83d8f87c61c2d2b27049884f11889af3ca6980aea518809722"
+        }
+      }
+    },
+    "execution_order": [
+      [
+        "unique",
+        "document",
+        0,
+        "before"
+      ],
+      [
+        "unique",
+        "document",
+        0,
+        "after"
+      ],
+      [
+        "unique",
+        "document",
+        1,
+        "after"
+      ],
+      [
+        "unique",
+        "document",
+        1,
+        "before"
+      ],
+      [
+        "unique",
+        "document",
+        2,
+        "before"
+      ],
+      [
+        "unique",
+        "document",
+        2,
+        "after"
+      ],
+      [
+        "unique",
+        "import",
+        0,
+        "before"
+      ],
+      [
+        "unique",
+        "import",
+        0,
+        "after"
+      ]
+    ],
+    "mode": "primary",
+    "logging": {
+      "DEBUG": "false",
+      "TRACE": "false",
+      "LOGGING_LEVEL_ROOT": "WARN"
+    },
+    "jvm_flags": [
+      "-Xms128m",
+      "-Xmx512m"
+    ],
+    "java": "openjdk version \"21.0.12.1\" 2026-08-18",
+    "host": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "cgroup": {},
+    "driver_sha256": "641a89401615e6576ed1a8694252c6151d45f22dc9d63088a7745c3fa8bfd227",
+    "comparison_sha256": "ac5ea1d9e0fcd313f9833876380b8c40e2306414a355657bbb106f40b34f2f9d",
+    "acceptance": "local optimization evidence; complete G6 acceptance is evaluated separately",
+    "failure": "Command failed (1); see /opt/ioc-extractor/.dev/cap7b-native-unique/unique/after/import-selected-0/run.log\nngframework.jdbc.core.JdbcTemplate.execute(JdbcTemplate.java:689)\n\tat org.springframework.jdbc.core.JdbcTemplate.update(JdbcTemplate.java:966)\n\tat org.springframework.jdbc.core.JdbcTemplate.update(JdbcTemplate.java:987)\n\tat org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate.update(NamedParameterJdbcTemplate.java:339)\n\tat org.springframework.jdbc.core.simple.DefaultJdbcClient$DefaultStatementSpec.update(DefaultJdbcClient.java:281)\n\tat com.iocextractor.adapter.out.store.jdbc.JdbcImportDeliveryLedger.lambda$scheduleRetry$6(JdbcImportDeliveryLedger.java:260)\n\tat org.springframework.transaction.support.TransactionTemplate.execute(TransactionTemplate.java:137)\n\tat com.iocextractor.adapter.out.store.jdbc.JdbcImportDeliveryLedger.scheduleRetry(JdbcImportDeliveryLedger.java:240)\n\tat com.iocextractor.application.dataframeimport.DataframeImportProcessingService.defer(DataframeImportProcessingService.java:374)\n\tat com.iocextractor.application.dataframeimport.DataframeImportProcessingService.stage(DataframeImportProcessingService.java:166)\n\tat com.iocextractor.application.dataframeimport.DataframeImportProcessingService.processNext(DataframeImportProcessingService.java:125)\n\tat com.iocextractor.bootstrap.ProcessingRouteComparison.importCsv(ProcessingRouteComparison.java:164)\n\tat com.iocextractor.bootstrap.ProcessingRouteComparison.main(ProcessingRouteComparison.java:60)\nCaused by: org.sqlite.SQLiteException: [SQLITE_CONSTRAINT_CHECK] A CHECK constraint failed (CHECK constraint failed: updated_at_ms >= created_at_ms)\n\tat org.sqlite.core.DB.newSQLException(DB.java:1182)\n\tat org.sqlite.core.DB.newSQLException(DB.java:1193)\n\tat org.sqlite.core.DB.execute(DB.java:988)\n\tat org.sqlite.core.DB.executeUpdate(DB.java:1057)\n\tat org.sqlite.jdbc3.JDBC3PreparedStatement.lambda$executeLargeUpdate$2(JDBC3PreparedStatement.java:130)\n\tat org.sqlite.jdbc3.JDBC3Statement.withConnectionTimeout(JDBC3Statement.java:464)\n\tat org.sqlite.jdbc3.JDBC3PreparedStatement.executeLargeUpdate(JDBC3PreparedStatement.java:125)\n\tat org.sqlite.jdbc3.JDBC3PreparedStatement.executeUpdate(JDBC3PreparedStatement.java:106)\n\tat com.zaxxer.hikari.pool.ProxyPreparedStatement.executeUpdate(ProxyPreparedStatement.java:61)\n\tat com.zaxxer.hikari.pool.HikariProxyPreparedStatement.executeUpdate(HikariProxyPreparedStatement.java)\n\tat org.springframework.jdbc.core.JdbcTemplate.lambda$update$0(JdbcTemplate.java:971)\n\tat org.springframework.jdbc.core.JdbcTemplate.execute(JdbcTemplate.java:670)\n\t... 12 more\n",
+    "runtimes": {
+      "before": {
+        "snapshot": "/opt/ioc-extractor/.dev/cap7b-reference-fixed",
+        "source_commit": "58359ddd6db12a8d416e16fbd61cec435500aafc",
+        "source_dirty": true,
+        "source_diff_sha256": "5d01a903c051b52d1320dba0463bd590334874ee6a4a20cff18be0022e248c2b",
+        "runtime_files": {
+          "entries": 513,
+          "sha256": "df0e1d1416a03c0a56bdc55005d4113fc9b739e93c304507e92c435fba045480"
+        }
+      },
+      "after": {
+        "snapshot": "/opt/ioc-extractor/.dev/cap7b-native-unique/prototype-85uzgse0/runtime",
+        "source_commit": "58359ddd6db12a8d416e16fbd61cec435500aafc",
+        "source_dirty": true,
+        "source_diff_sha256": "5d01a903c051b52d1320dba0463bd590334874ee6a4a20cff18be0022e248c2b",
+        "runtime_files": {
+          "entries": 513,
+          "sha256": "cf503a45f2cc5eed75e39cdb4456b234fa76f399bf7911311ed69c19a621901c"
+        }
+      }
+    },
+    "prototype": {
+      "patch_sha256": "00f14bff86a95929568e1960d9a798b9cbc315c9aaf5bd996eea22fdc0acc4ce",
+      "reference_identity": {
+        "snapshot": "/opt/ioc-extractor/.dev/cap7b-reference-fixed",
+        "source_commit": "58359ddd6db12a8d416e16fbd61cec435500aafc",
+        "source_dirty": true,
+        "source_diff_sha256": "5d01a903c051b52d1320dba0463bd590334874ee6a4a20cff18be0022e248c2b",
+        "runtime_files": {
+          "entries": 513,
+          "sha256": "df0e1d1416a03c0a56bdc55005d4113fc9b739e93c304507e92c435fba045480"
+        }
+      },
+      "sources": [
+        "adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/CamelRouteRuntime.java"
+      ],
+      "disposition": "isolated experiment; not production-enabled"
+    }
+  },
+  "complete_service": {
+    "scope": "Three paired 100k HTML mostly-unique fresh user-systemd executions; native prototype, not final compiler cleanup",
+    "semantics": "PASS: independent canonical/provenance, mutable projection and three export-profile oracles",
+    "acceptance": "NOT_ACCEPTED: local time and writer hold budgets unchanged",
+    "samples": [
+      {
+        "revision": "before",
+        "pair": 1,
+        "raw_report_sha256": "7051f28284ed49f0b3748f0c2c85ef9d9f8ba999ccb6b5d36ac89cadde08a380",
+        "source_commit": "39918f49f9596e4a23f15b4f2427c060628d8282",
+        "jar_sha256": "0314687cfa6f6278af7696ec3c08c086005ac4754fba72e59c9567dea899383c",
+        "driver_sha256": "a8e9bba232cb8d6bf31770673e34583227379a71183f4600dc75f9642c3d1abd",
+        "base_oracle_sha256": "412c9c07a4f1b306a4ae22b9efadaec5478626472b90bbe308601a8ab314fc88",
+        "policy_sha256": "f1bbdcaf716a0f591ec98bd427ea24f5868a65fd17d4fdbe4730a3e3e2049621",
+        "java": "openjdk 21.0.12.1 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-24.04.4-Ubuntu)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-24.04.4-Ubuntu, mixed mode, sharing)",
+        "rows": 100000,
+        "format": "html",
+        "shape": "mostly-unique",
+        "input_driver_sha256": "0ea748292d76dd4e3cefd5f3a8624aa3cde073293cfbdba8d7e71995f6e6c9cb",
+        "import_artifact": null,
+        "smb": false,
+        "initial_rows": 0,
+        "requested_samples": 1,
+        "mode": "primary",
+        "acceptance": "NOT_ACCEPTED; exact Tlocal and complete G6 matrix are separate",
+        "stopped_after_failed_screen": true,
+        "temporary_runtime_removed": true,
+        "status": "ERROR",
+        "identity_failure": "HEAD/worktree changed during qualification",
+        "sample": {
+          "index": 0,
+          "status": "FAIL",
+          "started_epoch_seconds": 1791561118.3109305,
+          "policy_sha256": "0b178b30489c0bb855fbf0a64cc3c6de7080e86834ed3e8c6cdb569c8692ecbe",
+          "policy_changes": [
+            "Private state/inbox/import paths and loopback port",
+            "Sync disabled for local reference",
+            "Log phase observer enabled"
+          ],
+          "runtime": {
+            "unit": "ioc-cap6-d98b50d2de2d4d9bb2b20a8e4f9ce035",
+            "pid": 211409,
+            "cgroup": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/ioc-cap6-d98b50d2de2d4d9bb2b20a8e4f9ce035.service",
+            "effective_limits": {
+              "cpu.max": "200000 100000",
+              "memory.high": "805306368",
+              "memory.max": "1073741824",
+              "memory.swap.max": "max"
+            },
+            "flags": [
+              "-Xms128m",
+              "-Xmx512m"
+            ],
+            "environment_owner": "systemd EnvironmentFile; never sourced in a shell"
+          },
+          "input": {
+            "rows": 100000,
+            "sections": 400,
+            "shape": "mostly-unique",
+            "seed": 43,
+            "format": "html",
+            "bytes": 6282440,
+            "sha256": "63b2264035d96f21b6b0fbf1a73e65bb79af4ce2083abfe15ad560148e0ed607"
+          },
+          "expected_final_rows": {
+            "masks": 16677,
+            "ip_list": 16677,
+            "hashes": 43358,
+            "address_blacklist": 33354,
+            "ioc_aggregate": 90054
+          },
+          "local_window_upper_seconds": 67.74682423800186,
+          "configured_stability_seconds": 2.0,
+          "raw_local_handoff_to_slices_seconds": 69.74682423800186,
+          "resources": {
+            "samples": 748,
+            "sample_interval_seconds": 0.1,
+            "wall_seconds": 69.81342536800003,
+            "process_cpu_seconds": 56.77,
+            "peaks": {
+              "rss_bytes": 393560064,
+              "hwm_bytes": 393560064,
+              "anon_bytes": 367128576,
+              "file_bytes": 424587264,
+              "kernel_bytes": 15314944,
+              "non_file_bytes": 381554688,
+              "cgroup_current_bytes": 805306368,
+              "swap_bytes": 0,
+              "wal_bytes": 180357184,
+              "workspace_bytes": 151555613,
+              "output_bytes": 31305704,
+              "heap_used_bytes": 91269120,
+              "heap_committed_bytes": 134348800,
+              "metaspace_used_bytes": 87312384,
+              "metaspace_committed_bytes": 88997888
+            },
+            "process_hwm_bytes": 393560064,
+            "cpu_delta": {
+              "usage_usec": 56762401,
+              "user_usec": 46461907,
+              "system_usec": 10300494,
+              "nr_periods": 650,
+              "nr_throttled": 12,
+              "throttled_usec": 455279,
+              "nr_bursts": 0,
+              "burst_usec": 0
+            },
+            "gc_delta": {
+              "YGC": 532.0,
+              "FGC": 0.0,
+              "GCT": 0.508
+            },
+            "jvm_sampling": "jstat -gc; at most one snapshot/s; metaspace excludes code cache/native allocations",
+            "memory_events_delta": {
+              "low": 0,
+              "high": 951,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            },
+            "psi_microseconds_delta": {
+              "some": 45279,
+              "full": 45279
+            },
+            "psi_full_fraction": 0.0006485715284893365
+          },
+          "canonical_oracle": {
+            "masks": {
+              "rows": 16677,
+              "origins": 16677,
+              "public_fields_sha256": "36be156c62eff7ce976a679d91814262b98cdd479b85f9ab7417ca77b3073099"
+            },
+            "ip_list": {
+              "rows": 16677,
+              "origins": 16677,
+              "public_fields_sha256": "6f96e7953568d3b3beca71b05ced31f32433e8cd12079ba721377607fe52e67e"
+            },
+            "hashes": {
+              "rows": 43358,
+              "origins": 43358,
+              "public_fields_sha256": "663ce5d26c9766990cde45a5a6b65bd4cb9d0a2df1d90dafde5b8baf9af91a79"
+            },
+            "address_blacklist": {
+              "rows": 33354,
+              "origins": 33354,
+              "public_fields_sha256": "1c514e8008d3ce5429c0d952082370cafcd695810c275d77cbb46fccb3b33b2a"
+            },
+            "ioc_aggregate": {
+              "rows": 90054,
+              "origins": 90054,
+              "public_fields_sha256": "bcdf5311e3a68ff86c2a914027957a5e682374289553f4f091f9d86f3ab5ce96"
+            }
+          },
+          "local_slices": {
+            "address-blacklist": {
+              "manifest_sha256": "96c60c6b92cdfb11749485cdd1cbe8f2a64e8f784dd6b7b3f354b89e79e7c2b5",
+              "artifacts": [
+                {
+                  "artifact": "address_blacklist",
+                  "file": "address_blacklist_generated.csv",
+                  "rows": 33354,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T15:53:09.994107667Z",
+                    "upper_id": 33354
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "e19a0890895dbc68f9753fa6a67f1dd0270ed28633c83bc75ca0829036c36c72",
+                  "schema_hash": "72d43ebc2a88d3c81cfc41782c8e4272037f54a75d8bee6fcdd037d6c9ed8b09",
+                  "sha256": "a6d2fbcd08956649c36fcda4d10f4add4d0286890217093c8f0d484e5cafbe36"
+                }
+              ],
+              "slice_id": "6cd1df6d-ee46-4f2a-844d-ac9ef7ea27f4"
+            },
+            "reputation-lists": {
+              "manifest_sha256": "b1c5c692e423b81d948acc49dbcb5a3a9b0940d0d8941c895d932560292b849c",
+              "artifacts": [
+                {
+                  "artifact": "masks",
+                  "file": "repListMasksManual.csv",
+                  "rows": 16677,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T15:52:56.085016511Z",
+                    "upper_id": 16677
+                  },
+                  "identity_epoch": 1,
+                  "identity_hash": "9603bed8bd56b1ac3cb28247b8428ec3a5aff064fafa16cd4c84d2deb13b20ab",
+                  "schema_hash": "aa83628320c0c435d7c91124aff4f159bd0d045a7b6fa7353ace9e1ff93e6fee",
+                  "sha256": "689a86816fb36d6c28b93e5cce62b5f2b9362345de1e76d32e608f889974ffb6"
+                },
+                {
+                  "artifact": "ip_list",
+                  "file": "repListIPsManual.csv",
+                  "rows": 16677,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T15:52:57.768024132Z",
+                    "upper_id": 16677
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "ebdd9892cd76b9b35637ec4f6f54326225ec55729ac92e53685ef1c3526450c7",
+                  "schema_hash": "a26c1ae8f225a0503c580bde272be18c7426895af5fedb3ccf71f7f25b9b8173",
+                  "sha256": "f505dfb4154cd0764ac91b3e8aab2079e515594d7524d87f8e3172fe3567cdc5"
+                },
+                {
+                  "artifact": "hashes",
+                  "file": "repListHashesManual.csv",
+                  "rows": 43358,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T15:53:13.188971678Z",
+                    "upper_id": 43358
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "0a28546ee6146dc8afd105f8cba167a797203bd81ed3c80263b91a6baf4646d2",
+                  "schema_hash": "ce26d9f30205795347786b7924e31e5d2a8d669e13f620cffeb627974791b027",
+                  "sha256": "c5dc140bf37294d90a6c1c191e205d574b002dafad82373efea0a09b246c17be"
+                }
+              ],
+              "slice_id": "4042f180-3d97-40d9-b01c-fe8d43531516"
+            },
+            "ioc-aggregate": {
+              "manifest_sha256": "7f93bd4bb7ef2ede46c1bbe506e99d06e2d99b9f9408530916cc0eda266faca1",
+              "artifacts": [
+                {
+                  "artifact": "ioc_aggregate",
+                  "file": "GDI_IOC.csv",
+                  "rows": 90054,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T15:53:18.506687374Z",
+                    "upper_id": 90054
+                  },
+                  "identity_epoch": 1,
+                  "identity_hash": "c8f906e86ebffb8058507bfe3b66fc97d261f6fa8e9ad80e0f67540d27c7da90",
+                  "schema_hash": "a5eddf8860e834ba7664c947505e4642dbbd2db91fcff53fec57f6a350f822ab",
+                  "sha256": "a3222670869789cde6fed8635db6904203ddae332671e5d1bfcd6818fe6606d7"
+                }
+              ],
+              "slice_id": "f5d7b26b-ae4a-4b23-91c1-97fe35c3c36e"
+            }
+          },
+          "mutable_projection_oracle": "PASS; fields, complete keys, canonical ids and durable generations",
+          "gates": {
+            "limits": {
+              "local_max_seconds": 45,
+              "rss_bytes": 536870912,
+              "non_file_bytes": 603979776,
+              "writer_hold_nanos": 5000000000
+            },
+            "violations": [
+              "conservative_local_window",
+              "writer_hold"
+            ],
+            "status": "FAIL",
+            "writer_window": {
+              "MAINTENANCE": {
+                "completed": 0,
+                "totalHoldNanos": 0,
+                "maximumHoldNanosUpperBound": 0,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 0,
+                "maximumWaitNanosUpperBound": 0,
+                "maximumWaitNanosIsExact": true
+              },
+              "EXPIRY": {
+                "completed": 0,
+                "totalHoldNanos": 0,
+                "maximumHoldNanosUpperBound": 0,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 0,
+                "maximumWaitNanosUpperBound": 0,
+                "maximumWaitNanosIsExact": true
+              },
+              "CONTROL": {
+                "completed": 31,
+                "totalHoldNanos": 60275740,
+                "maximumHoldNanosUpperBound": 15822554,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 323195337,
+                "maximumWaitNanosUpperBound": 259349781,
+                "maximumWaitNanosIsExact": true
+              },
+              "EXPORT_SLOTS": {
+                "completed": 4,
+                "totalHoldNanos": 458961882,
+                "maximumHoldNanosUpperBound": 394073078,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 419003,
+                "maximumWaitNanosUpperBound": 388961,
+                "maximumWaitNanosIsExact": true
+              },
+              "PROMOTION": {
+                "completed": 6,
+                "totalHoldNanos": 15954101165,
+                "maximumHoldNanosUpperBound": 7991828421,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 95750,
+                "maximumWaitNanosUpperBound": 25618,
+                "maximumWaitNanosIsExact": true
+              }
+            },
+            "scope": "Conservative complete-window and resource screens; exact Tlocal/remaining G6 criteria remain separate"
+          },
+          "cleanup_errors": [],
+          "temporary_state_removed": true,
+          "finished_epoch_seconds": 1791561224.8415291
+        },
+        "startup_seconds": 6.540832719998434,
+        "process_terminated": true
+      },
+      {
+        "revision": "after",
+        "pair": 1,
+        "raw_report_sha256": "b5027559e7b37ab39ac7221aab9819ab27b0e9c5d4fa413d9737333387c78ecd",
+        "source_commit": "123f3b47f08e565d5b86dc546046f331b36bfb2f",
+        "jar_sha256": "e2242a33651d0d96cc4e996439364b4001a96f04fb80729cf712038ab3b505c6",
+        "driver_sha256": "a8e9bba232cb8d6bf31770673e34583227379a71183f4600dc75f9642c3d1abd",
+        "base_oracle_sha256": "412c9c07a4f1b306a4ae22b9efadaec5478626472b90bbe308601a8ab314fc88",
+        "policy_sha256": "f1bbdcaf716a0f591ec98bd427ea24f5868a65fd17d4fdbe4730a3e3e2049621",
+        "java": "openjdk 21.0.12.1 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-24.04.4-Ubuntu)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-24.04.4-Ubuntu, mixed mode, sharing)",
+        "rows": 100000,
+        "format": "html",
+        "shape": "mostly-unique",
+        "input_driver_sha256": "0ea748292d76dd4e3cefd5f3a8624aa3cde073293cfbdba8d7e71995f6e6c9cb",
+        "import_artifact": null,
+        "smb": false,
+        "initial_rows": 0,
+        "requested_samples": 1,
+        "mode": "primary",
+        "acceptance": "NOT_ACCEPTED; exact Tlocal and complete G6 matrix are separate",
+        "stopped_after_failed_screen": true,
+        "temporary_runtime_removed": true,
+        "status": "FAIL",
+        "sample": {
+          "index": 0,
+          "status": "FAIL",
+          "started_epoch_seconds": 1791561480.1038892,
+          "policy_sha256": "0b178b30489c0bb855fbf0a64cc3c6de7080e86834ed3e8c6cdb569c8692ecbe",
+          "policy_changes": [
+            "Private state/inbox/import paths and loopback port",
+            "Sync disabled for local reference",
+            "Log phase observer enabled"
+          ],
+          "runtime": {
+            "unit": "ioc-cap6-681949ff205543a4b8fdf7e67925d82e",
+            "pid": 217485,
+            "cgroup": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/ioc-cap6-681949ff205543a4b8fdf7e67925d82e.service",
+            "effective_limits": {
+              "cpu.max": "200000 100000",
+              "memory.high": "805306368",
+              "memory.max": "1073741824",
+              "memory.swap.max": "max"
+            },
+            "flags": [
+              "-Xms128m",
+              "-Xmx512m"
+            ],
+            "environment_owner": "systemd EnvironmentFile; never sourced in a shell"
+          },
+          "input": {
+            "rows": 100000,
+            "sections": 400,
+            "shape": "mostly-unique",
+            "seed": 43,
+            "format": "html",
+            "bytes": 6282440,
+            "sha256": "63b2264035d96f21b6b0fbf1a73e65bb79af4ce2083abfe15ad560148e0ed607"
+          },
+          "expected_final_rows": {
+            "masks": 16677,
+            "ip_list": 16677,
+            "hashes": 43358,
+            "address_blacklist": 33354,
+            "ioc_aggregate": 90054
+          },
+          "local_window_upper_seconds": 59.40636113800065,
+          "configured_stability_seconds": 2.0,
+          "raw_local_handoff_to_slices_seconds": 61.40636113800065,
+          "resources": {
+            "samples": 677,
+            "sample_interval_seconds": 0.1,
+            "wall_seconds": 61.38996162099647,
+            "process_cpu_seconds": 52.2,
+            "peaks": {
+              "rss_bytes": 382726144,
+              "hwm_bytes": 382726144,
+              "anon_bytes": 356380672,
+              "file_bytes": 440721408,
+              "kernel_bytes": 15802368,
+              "non_file_bytes": 369352704,
+              "cgroup_current_bytes": 805343232,
+              "swap_bytes": 0,
+              "wal_bytes": 180328344,
+              "workspace_bytes": 151149573,
+              "output_bytes": 23996124,
+              "heap_used_bytes": 84217856,
+              "heap_committed_bytes": 134348800,
+              "metaspace_used_bytes": 86943641,
+              "metaspace_committed_bytes": 88670208
+            },
+            "process_hwm_bytes": 382726144,
+            "cpu_delta": {
+              "usage_usec": 52201212,
+              "user_usec": 39534987,
+              "system_usec": 12666226,
+              "nr_periods": 585,
+              "nr_throttled": 12,
+              "throttled_usec": 705703,
+              "nr_bursts": 0,
+              "burst_usec": 0
+            },
+            "gc_delta": {
+              "YGC": 408.0,
+              "FGC": 0.0,
+              "GCT": 0.356
+            },
+            "jvm_sampling": "jstat -gc; at most one snapshot/s; metaspace excludes code cache/native allocations",
+            "memory_events_delta": {
+              "low": 0,
+              "high": 936,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            },
+            "psi_microseconds_delta": {
+              "some": 34925,
+              "full": 34925
+            },
+            "psi_full_fraction": 0.0005689040859092998
+          },
+          "canonical_oracle": {
+            "masks": {
+              "rows": 16677,
+              "origins": 16677,
+              "public_fields_sha256": "36be156c62eff7ce976a679d91814262b98cdd479b85f9ab7417ca77b3073099"
+            },
+            "ip_list": {
+              "rows": 16677,
+              "origins": 16677,
+              "public_fields_sha256": "6f96e7953568d3b3beca71b05ced31f32433e8cd12079ba721377607fe52e67e"
+            },
+            "hashes": {
+              "rows": 43358,
+              "origins": 43358,
+              "public_fields_sha256": "663ce5d26c9766990cde45a5a6b65bd4cb9d0a2df1d90dafde5b8baf9af91a79"
+            },
+            "address_blacklist": {
+              "rows": 33354,
+              "origins": 33354,
+              "public_fields_sha256": "1c514e8008d3ce5429c0d952082370cafcd695810c275d77cbb46fccb3b33b2a"
+            },
+            "ioc_aggregate": {
+              "rows": 90054,
+              "origins": 90054,
+              "public_fields_sha256": "bcdf5311e3a68ff86c2a914027957a5e682374289553f4f091f9d86f3ab5ce96"
+            }
+          },
+          "local_slices": {
+            "address-blacklist": {
+              "manifest_sha256": "ec4656abe862206b7f2ae197b25252756646d45fa5ce347e7e196283b619e56b",
+              "artifacts": [
+                {
+                  "artifact": "address_blacklist",
+                  "file": "address_blacklist_generated.csv",
+                  "rows": 33354,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T15:59:00.865179780Z",
+                    "upper_id": 33354
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "e19a0890895dbc68f9753fa6a67f1dd0270ed28633c83bc75ca0829036c36c72",
+                  "schema_hash": "72d43ebc2a88d3c81cfc41782c8e4272037f54a75d8bee6fcdd037d6c9ed8b09",
+                  "sha256": "a6d2fbcd08956649c36fcda4d10f4add4d0286890217093c8f0d484e5cafbe36"
+                }
+              ],
+              "slice_id": "dea22964-5a99-4210-b38c-22666c33133f"
+            },
+            "reputation-lists": {
+              "manifest_sha256": "243fd47c60469bbc9d2fdbaddc57876fe6dfeee46c319a5640c45996af0196c6",
+              "artifacts": [
+                {
+                  "artifact": "masks",
+                  "file": "repListMasksManual.csv",
+                  "rows": 16677,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T15:58:56.523815315Z",
+                    "upper_id": 16677
+                  },
+                  "identity_epoch": 1,
+                  "identity_hash": "9603bed8bd56b1ac3cb28247b8428ec3a5aff064fafa16cd4c84d2deb13b20ab",
+                  "schema_hash": "aa83628320c0c435d7c91124aff4f159bd0d045a7b6fa7353ace9e1ff93e6fee",
+                  "sha256": "689a86816fb36d6c28b93e5cce62b5f2b9362345de1e76d32e608f889974ffb6"
+                },
+                {
+                  "artifact": "ip_list",
+                  "file": "repListIPsManual.csv",
+                  "rows": 16677,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T15:58:58.507936257Z",
+                    "upper_id": 16677
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "ebdd9892cd76b9b35637ec4f6f54326225ec55729ac92e53685ef1c3526450c7",
+                  "schema_hash": "a26c1ae8f225a0503c580bde272be18c7426895af5fedb3ccf71f7f25b9b8173",
+                  "sha256": "f505dfb4154cd0764ac91b3e8aab2079e515594d7524d87f8e3172fe3567cdc5"
+                },
+                {
+                  "artifact": "hashes",
+                  "file": "repListHashesManual.csv",
+                  "rows": 43358,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T15:59:04.747043560Z",
+                    "upper_id": 43358
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "0a28546ee6146dc8afd105f8cba167a797203bd81ed3c80263b91a6baf4646d2",
+                  "schema_hash": "ce26d9f30205795347786b7924e31e5d2a8d669e13f620cffeb627974791b027",
+                  "sha256": "c5dc140bf37294d90a6c1c191e205d574b002dafad82373efea0a09b246c17be"
+                }
+              ],
+              "slice_id": "691df567-b548-429f-9b3e-081439cfa97c"
+            },
+            "ioc-aggregate": {
+              "manifest_sha256": "681549a22f81d11d96f2122f98163d736ab42b10110e768c74c3e34090e47cbe",
+              "artifacts": [
+                {
+                  "artifact": "ioc_aggregate",
+                  "file": "GDI_IOC.csv",
+                  "rows": 90054,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T15:59:11.209585732Z",
+                    "upper_id": 90054
+                  },
+                  "identity_epoch": 1,
+                  "identity_hash": "c8f906e86ebffb8058507bfe3b66fc97d261f6fa8e9ad80e0f67540d27c7da90",
+                  "schema_hash": "a5eddf8860e834ba7664c947505e4642dbbd2db91fcff53fec57f6a350f822ab",
+                  "sha256": "a3222670869789cde6fed8635db6904203ddae332671e5d1bfcd6818fe6606d7"
+                }
+              ],
+              "slice_id": "9a992b9d-96fe-4bbe-8db6-ee2bf89dda45"
+            }
+          },
+          "mutable_projection_oracle": "PASS; fields, complete keys, canonical ids and durable generations",
+          "gates": {
+            "limits": {
+              "local_max_seconds": 45,
+              "rss_bytes": 536870912,
+              "non_file_bytes": 603979776,
+              "writer_hold_nanos": 5000000000
+            },
+            "violations": [
+              "conservative_local_window",
+              "writer_hold"
+            ],
+            "status": "FAIL",
+            "writer_window": {
+              "EXPORT_SLOTS": {
+                "completed": 4,
+                "totalHoldNanos": 653524999,
+                "maximumHoldNanosUpperBound": 352994523,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 811886,
+                "maximumWaitNanosUpperBound": 501522,
+                "maximumWaitNanosIsExact": true
+              },
+              "PROMOTION": {
+                "completed": 5,
+                "totalHoldNanos": 22089174000,
+                "maximumHoldNanosUpperBound": 11496172275,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 95405,
+                "maximumWaitNanosUpperBound": 41690,
+                "maximumWaitNanosIsExact": true
+              },
+              "MAINTENANCE": {
+                "completed": 0,
+                "totalHoldNanos": 0,
+                "maximumHoldNanosUpperBound": 0,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 0,
+                "maximumWaitNanosUpperBound": 0,
+                "maximumWaitNanosIsExact": true
+              },
+              "EXPIRY": {
+                "completed": 0,
+                "totalHoldNanos": 0,
+                "maximumHoldNanosUpperBound": 0,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 0,
+                "maximumWaitNanosUpperBound": 0,
+                "maximumWaitNanosIsExact": true
+              },
+              "CONTROL": {
+                "completed": 28,
+                "totalHoldNanos": 69822775,
+                "maximumHoldNanosUpperBound": 17698975,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 1804566080,
+                "maximumWaitNanosUpperBound": 1484662851,
+                "maximumWaitNanosIsExact": true
+              }
+            },
+            "scope": "Conservative complete-window and resource screens; exact Tlocal/remaining G6 criteria remain separate"
+          },
+          "cleanup_errors": [],
+          "temporary_state_removed": true,
+          "finished_epoch_seconds": 1791561581.3026564
+        },
+        "startup_seconds": 6.478239310999925,
+        "process_terminated": true
+      },
+      {
+        "revision": "after",
+        "pair": 2,
+        "raw_report_sha256": "15b48df5fb4a95ae66e14d5769892eef8ee57caf8b9d047f44c1b0c8a2dc1b6f",
+        "source_commit": "123f3b47f08e565d5b86dc546046f331b36bfb2f",
+        "jar_sha256": "e2242a33651d0d96cc4e996439364b4001a96f04fb80729cf712038ab3b505c6",
+        "driver_sha256": "a8e9bba232cb8d6bf31770673e34583227379a71183f4600dc75f9642c3d1abd",
+        "base_oracle_sha256": "412c9c07a4f1b306a4ae22b9efadaec5478626472b90bbe308601a8ab314fc88",
+        "policy_sha256": "f1bbdcaf716a0f591ec98bd427ea24f5868a65fd17d4fdbe4730a3e3e2049621",
+        "java": "openjdk 21.0.12.1 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-24.04.4-Ubuntu)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-24.04.4-Ubuntu, mixed mode, sharing)",
+        "rows": 100000,
+        "format": "html",
+        "shape": "mostly-unique",
+        "input_driver_sha256": "0ea748292d76dd4e3cefd5f3a8624aa3cde073293cfbdba8d7e71995f6e6c9cb",
+        "import_artifact": null,
+        "smb": false,
+        "initial_rows": 0,
+        "requested_samples": 1,
+        "mode": "primary",
+        "acceptance": "NOT_ACCEPTED; exact Tlocal and complete G6 matrix are separate",
+        "stopped_after_failed_screen": true,
+        "temporary_runtime_removed": true,
+        "status": "FAIL",
+        "sample": {
+          "index": 0,
+          "status": "FAIL",
+          "started_epoch_seconds": 1791561674.0526197,
+          "policy_sha256": "0b178b30489c0bb855fbf0a64cc3c6de7080e86834ed3e8c6cdb569c8692ecbe",
+          "policy_changes": [
+            "Private state/inbox/import paths and loopback port",
+            "Sync disabled for local reference",
+            "Log phase observer enabled"
+          ],
+          "runtime": {
+            "unit": "ioc-cap6-4570458817e04886a6b0096e6ef33915",
+            "pid": 221549,
+            "cgroup": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/ioc-cap6-4570458817e04886a6b0096e6ef33915.service",
+            "effective_limits": {
+              "cpu.max": "200000 100000",
+              "memory.high": "805306368",
+              "memory.max": "1073741824",
+              "memory.swap.max": "max"
+            },
+            "flags": [
+              "-Xms128m",
+              "-Xmx512m"
+            ],
+            "environment_owner": "systemd EnvironmentFile; never sourced in a shell"
+          },
+          "input": {
+            "rows": 100000,
+            "sections": 400,
+            "shape": "mostly-unique",
+            "seed": 43,
+            "format": "html",
+            "bytes": 6282440,
+            "sha256": "63b2264035d96f21b6b0fbf1a73e65bb79af4ce2083abfe15ad560148e0ed607"
+          },
+          "expected_final_rows": {
+            "masks": 16677,
+            "ip_list": 16677,
+            "hashes": 43358,
+            "address_blacklist": 33354,
+            "ioc_aggregate": 90054
+          },
+          "local_window_upper_seconds": 60.04339549400174,
+          "configured_stability_seconds": 2.0,
+          "raw_local_handoff_to_slices_seconds": 62.04339549400174,
+          "resources": {
+            "samples": 685,
+            "sample_interval_seconds": 0.1,
+            "wall_seconds": 62.086376385999756,
+            "process_cpu_seconds": 52.15,
+            "peaks": {
+              "rss_bytes": 388079616,
+              "hwm_bytes": 388079616,
+              "anon_bytes": 361443328,
+              "file_bytes": 433356800,
+              "kernel_bytes": 15581184,
+              "non_file_bytes": 374382592,
+              "cgroup_current_bytes": 805531648,
+              "swap_bytes": 0,
+              "wal_bytes": 178161224,
+              "workspace_bytes": 150809869,
+              "output_bytes": 31305704,
+              "heap_used_bytes": 88567193,
+              "heap_committed_bytes": 134348800,
+              "metaspace_used_bytes": 86979584,
+              "metaspace_committed_bytes": 88735744
+            },
+            "process_hwm_bytes": 388079616,
+            "cpu_delta": {
+              "usage_usec": 52150260,
+              "user_usec": 39641876,
+              "system_usec": 12508383,
+              "nr_periods": 592,
+              "nr_throttled": 12,
+              "throttled_usec": 415667,
+              "nr_bursts": 0,
+              "burst_usec": 0
+            },
+            "gc_delta": {
+              "YGC": 408.0,
+              "FGC": 0.0,
+              "GCT": 0.392
+            },
+            "jvm_sampling": "jstat -gc; at most one snapshot/s; metaspace excludes code cache/native allocations",
+            "memory_events_delta": {
+              "low": 0,
+              "high": 927,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            },
+            "psi_microseconds_delta": {
+              "some": 37613,
+              "full": 37613
+            },
+            "psi_full_fraction": 0.0006058172853599101
+          },
+          "canonical_oracle": {
+            "masks": {
+              "rows": 16677,
+              "origins": 16677,
+              "public_fields_sha256": "36be156c62eff7ce976a679d91814262b98cdd479b85f9ab7417ca77b3073099"
+            },
+            "ip_list": {
+              "rows": 16677,
+              "origins": 16677,
+              "public_fields_sha256": "6f96e7953568d3b3beca71b05ced31f32433e8cd12079ba721377607fe52e67e"
+            },
+            "hashes": {
+              "rows": 43358,
+              "origins": 43358,
+              "public_fields_sha256": "663ce5d26c9766990cde45a5a6b65bd4cb9d0a2df1d90dafde5b8baf9af91a79"
+            },
+            "address_blacklist": {
+              "rows": 33354,
+              "origins": 33354,
+              "public_fields_sha256": "1c514e8008d3ce5429c0d952082370cafcd695810c275d77cbb46fccb3b33b2a"
+            },
+            "ioc_aggregate": {
+              "rows": 90054,
+              "origins": 90054,
+              "public_fields_sha256": "bcdf5311e3a68ff86c2a914027957a5e682374289553f4f091f9d86f3ab5ce96"
+            }
+          },
+          "local_slices": {
+            "address-blacklist": {
+              "manifest_sha256": "e51ad4dbc5c211e77e7d6b38030fbf473fd39b92f02d5a3faf6d8c9922f58b89",
+              "artifacts": [
+                {
+                  "artifact": "address_blacklist",
+                  "file": "address_blacklist_generated.csv",
+                  "rows": 33354,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:02:14.629366634Z",
+                    "upper_id": 33354
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "e19a0890895dbc68f9753fa6a67f1dd0270ed28633c83bc75ca0829036c36c72",
+                  "schema_hash": "72d43ebc2a88d3c81cfc41782c8e4272037f54a75d8bee6fcdd037d6c9ed8b09",
+                  "sha256": "a6d2fbcd08956649c36fcda4d10f4add4d0286890217093c8f0d484e5cafbe36"
+                }
+              ],
+              "slice_id": "804ddbb1-642a-45f6-babd-717082bb04d9"
+            },
+            "reputation-lists": {
+              "manifest_sha256": "acf19b874f75125aa6c5d6a23a80e18c1c7fc30f8a430bd09399ea063ce8efe2",
+              "artifacts": [
+                {
+                  "artifact": "masks",
+                  "file": "repListMasksManual.csv",
+                  "rows": 16677,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:02:10.479490111Z",
+                    "upper_id": 16677
+                  },
+                  "identity_epoch": 1,
+                  "identity_hash": "9603bed8bd56b1ac3cb28247b8428ec3a5aff064fafa16cd4c84d2deb13b20ab",
+                  "schema_hash": "aa83628320c0c435d7c91124aff4f159bd0d045a7b6fa7353ace9e1ff93e6fee",
+                  "sha256": "689a86816fb36d6c28b93e5cce62b5f2b9362345de1e76d32e608f889974ffb6"
+                },
+                {
+                  "artifact": "ip_list",
+                  "file": "repListIPsManual.csv",
+                  "rows": 16677,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:02:12.570557474Z",
+                    "upper_id": 16677
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "ebdd9892cd76b9b35637ec4f6f54326225ec55729ac92e53685ef1c3526450c7",
+                  "schema_hash": "a26c1ae8f225a0503c580bde272be18c7426895af5fedb3ccf71f7f25b9b8173",
+                  "sha256": "f505dfb4154cd0764ac91b3e8aab2079e515594d7524d87f8e3172fe3567cdc5"
+                },
+                {
+                  "artifact": "hashes",
+                  "file": "repListHashesManual.csv",
+                  "rows": 43358,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:02:18.645059128Z",
+                    "upper_id": 43358
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "0a28546ee6146dc8afd105f8cba167a797203bd81ed3c80263b91a6baf4646d2",
+                  "schema_hash": "ce26d9f30205795347786b7924e31e5d2a8d669e13f620cffeb627974791b027",
+                  "sha256": "c5dc140bf37294d90a6c1c191e205d574b002dafad82373efea0a09b246c17be"
+                }
+              ],
+              "slice_id": "715b55f1-1899-4809-b3dd-dc17dc3e64f2"
+            },
+            "ioc-aggregate": {
+              "manifest_sha256": "f1419f3f7a9195a200a279bb53a1fa361a799a1b1d3356e1597de88b3b53d552",
+              "artifacts": [
+                {
+                  "artifact": "ioc_aggregate",
+                  "file": "GDI_IOC.csv",
+                  "rows": 90054,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:02:23.513Z",
+                    "upper_id": 90054
+                  },
+                  "identity_epoch": 1,
+                  "identity_hash": "c8f906e86ebffb8058507bfe3b66fc97d261f6fa8e9ad80e0f67540d27c7da90",
+                  "schema_hash": "a5eddf8860e834ba7664c947505e4642dbbd2db91fcff53fec57f6a350f822ab",
+                  "sha256": "a3222670869789cde6fed8635db6904203ddae332671e5d1bfcd6818fe6606d7"
+                }
+              ],
+              "slice_id": "2342c84b-14ef-4903-8beb-2e6e0593ae6a"
+            }
+          },
+          "mutable_projection_oracle": "PASS; fields, complete keys, canonical ids and durable generations",
+          "gates": {
+            "limits": {
+              "local_max_seconds": 45,
+              "rss_bytes": 536870912,
+              "non_file_bytes": 603979776,
+              "writer_hold_nanos": 5000000000
+            },
+            "violations": [
+              "conservative_local_window",
+              "writer_hold"
+            ],
+            "status": "FAIL",
+            "writer_window": {
+              "MAINTENANCE": {
+                "completed": 0,
+                "totalHoldNanos": 0,
+                "maximumHoldNanosUpperBound": 0,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 0,
+                "maximumWaitNanosUpperBound": 0,
+                "maximumWaitNanosIsExact": true
+              },
+              "PROMOTION": {
+                "completed": 5,
+                "totalHoldNanos": 22406929650,
+                "maximumHoldNanosUpperBound": 11483605686,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 83293,
+                "maximumWaitNanosUpperBound": 83293,
+                "maximumWaitNanosIsExact": false
+              },
+              "CONTROL": {
+                "completed": 28,
+                "totalHoldNanos": 50843724,
+                "maximumHoldNanosUpperBound": 17124799,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 374852944,
+                "maximumWaitNanosUpperBound": 319041489,
+                "maximumWaitNanosIsExact": true
+              },
+              "EXPIRY": {
+                "completed": 0,
+                "totalHoldNanos": 0,
+                "maximumHoldNanosUpperBound": 0,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 0,
+                "maximumWaitNanosUpperBound": 0,
+                "maximumWaitNanosIsExact": true
+              },
+              "EXPORT_SLOTS": {
+                "completed": 4,
+                "totalHoldNanos": 560966330,
+                "maximumHoldNanosUpperBound": 501153947,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 261479,
+                "maximumWaitNanosUpperBound": 261479,
+                "maximumWaitNanosIsExact": false
+              }
+            },
+            "scope": "Conservative complete-window and resource screens; exact Tlocal/remaining G6 criteria remain separate"
+          },
+          "cleanup_errors": [],
+          "temporary_state_removed": true,
+          "finished_epoch_seconds": 1791561773.6818256
+        },
+        "startup_seconds": 6.5277496189992235,
+        "process_terminated": true
+      },
+      {
+        "revision": "before",
+        "pair": 2,
+        "raw_report_sha256": "c69f0aa83b8c054c1bb83ad4f5be65729fe32b4aee582aacf2ec8259b7f72ce2",
+        "source_commit": "123f3b47f08e565d5b86dc546046f331b36bfb2f",
+        "jar_sha256": "0314687cfa6f6278af7696ec3c08c086005ac4754fba72e59c9567dea899383c",
+        "driver_sha256": "a8e9bba232cb8d6bf31770673e34583227379a71183f4600dc75f9642c3d1abd",
+        "base_oracle_sha256": "412c9c07a4f1b306a4ae22b9efadaec5478626472b90bbe308601a8ab314fc88",
+        "policy_sha256": "f1bbdcaf716a0f591ec98bd427ea24f5868a65fd17d4fdbe4730a3e3e2049621",
+        "java": "openjdk 21.0.12.1 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-24.04.4-Ubuntu)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-24.04.4-Ubuntu, mixed mode, sharing)",
+        "rows": 100000,
+        "format": "html",
+        "shape": "mostly-unique",
+        "input_driver_sha256": "0ea748292d76dd4e3cefd5f3a8624aa3cde073293cfbdba8d7e71995f6e6c9cb",
+        "import_artifact": null,
+        "smb": false,
+        "initial_rows": 0,
+        "requested_samples": 1,
+        "mode": "primary",
+        "acceptance": "NOT_ACCEPTED; exact Tlocal and complete G6 matrix are separate",
+        "stopped_after_failed_screen": true,
+        "temporary_runtime_removed": true,
+        "status": "FAIL",
+        "sample": {
+          "index": 0,
+          "status": "FAIL",
+          "started_epoch_seconds": 1791561774.0557086,
+          "policy_sha256": "0b178b30489c0bb855fbf0a64cc3c6de7080e86834ed3e8c6cdb569c8692ecbe",
+          "policy_changes": [
+            "Private state/inbox/import paths and loopback port",
+            "Sync disabled for local reference",
+            "Log phase observer enabled"
+          ],
+          "runtime": {
+            "unit": "ioc-cap6-80e5816dd84947b9ae76ead01cb464f4",
+            "pid": 224910,
+            "cgroup": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/ioc-cap6-80e5816dd84947b9ae76ead01cb464f4.service",
+            "effective_limits": {
+              "cpu.max": "200000 100000",
+              "memory.high": "805306368",
+              "memory.max": "1073741824",
+              "memory.swap.max": "max"
+            },
+            "flags": [
+              "-Xms128m",
+              "-Xmx512m"
+            ],
+            "environment_owner": "systemd EnvironmentFile; never sourced in a shell"
+          },
+          "input": {
+            "rows": 100000,
+            "sections": 400,
+            "shape": "mostly-unique",
+            "seed": 43,
+            "format": "html",
+            "bytes": 6282440,
+            "sha256": "63b2264035d96f21b6b0fbf1a73e65bb79af4ce2083abfe15ad560148e0ed607"
+          },
+          "expected_final_rows": {
+            "masks": 16677,
+            "ip_list": 16677,
+            "hashes": 43358,
+            "address_blacklist": 33354,
+            "ioc_aggregate": 90054
+          },
+          "local_window_upper_seconds": 61.33339890299976,
+          "configured_stability_seconds": 2.0,
+          "raw_local_handoff_to_slices_seconds": 63.33339890299976,
+          "resources": {
+            "samples": 694,
+            "sample_interval_seconds": 0.1,
+            "wall_seconds": 63.32953554400228,
+            "process_cpu_seconds": 54.459999999999994,
+            "peaks": {
+              "rss_bytes": 385327104,
+              "hwm_bytes": 385327104,
+              "anon_bytes": 359165952,
+              "file_bytes": 435744768,
+              "kernel_bytes": 15667200,
+              "non_file_bytes": 371187712,
+              "cgroup_current_bytes": 805502976,
+              "swap_bytes": 0,
+              "wal_bytes": 180373664,
+              "workspace_bytes": 151362365,
+              "output_bytes": 33886465,
+              "heap_used_bytes": 89501081,
+              "heap_committed_bytes": 134348800,
+              "metaspace_used_bytes": 87142400,
+              "metaspace_committed_bytes": 88801280
+            },
+            "process_hwm_bytes": 385327104,
+            "cpu_delta": {
+              "usage_usec": 54458647,
+              "user_usec": 41138597,
+              "system_usec": 13320051,
+              "nr_periods": 608,
+              "nr_throttled": 15,
+              "throttled_usec": 673027,
+              "nr_bursts": 0,
+              "burst_usec": 0
+            },
+            "gc_delta": {
+              "YGC": 421.0,
+              "FGC": 0.0,
+              "GCT": 0.385
+            },
+            "jvm_sampling": "jstat -gc; at most one snapshot/s; metaspace excludes code cache/native allocations",
+            "memory_events_delta": {
+              "low": 0,
+              "high": 942,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            },
+            "psi_microseconds_delta": {
+              "some": 45934,
+              "full": 45934
+            },
+            "psi_full_fraction": 0.0007253171779237887
+          },
+          "canonical_oracle": {
+            "masks": {
+              "rows": 16677,
+              "origins": 16677,
+              "public_fields_sha256": "36be156c62eff7ce976a679d91814262b98cdd479b85f9ab7417ca77b3073099"
+            },
+            "ip_list": {
+              "rows": 16677,
+              "origins": 16677,
+              "public_fields_sha256": "6f96e7953568d3b3beca71b05ced31f32433e8cd12079ba721377607fe52e67e"
+            },
+            "hashes": {
+              "rows": 43358,
+              "origins": 43358,
+              "public_fields_sha256": "663ce5d26c9766990cde45a5a6b65bd4cb9d0a2df1d90dafde5b8baf9af91a79"
+            },
+            "address_blacklist": {
+              "rows": 33354,
+              "origins": 33354,
+              "public_fields_sha256": "1c514e8008d3ce5429c0d952082370cafcd695810c275d77cbb46fccb3b33b2a"
+            },
+            "ioc_aggregate": {
+              "rows": 90054,
+              "origins": 90054,
+              "public_fields_sha256": "bcdf5311e3a68ff86c2a914027957a5e682374289553f4f091f9d86f3ab5ce96"
+            }
+          },
+          "local_slices": {
+            "address-blacklist": {
+              "manifest_sha256": "0dc2220ab8ea1523c051bfaff6022b9b1b77540ad822088d82f8e5d0d5b2b1f9",
+              "artifacts": [
+                {
+                  "artifact": "address_blacklist",
+                  "file": "address_blacklist_generated.csv",
+                  "rows": 33354,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:03:56.111072874Z",
+                    "upper_id": 33354
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "e19a0890895dbc68f9753fa6a67f1dd0270ed28633c83bc75ca0829036c36c72",
+                  "schema_hash": "72d43ebc2a88d3c81cfc41782c8e4272037f54a75d8bee6fcdd037d6c9ed8b09",
+                  "sha256": "a6d2fbcd08956649c36fcda4d10f4add4d0286890217093c8f0d484e5cafbe36"
+                }
+              ],
+              "slice_id": "d894876f-7044-47ac-b8c0-cf46f27879a4"
+            },
+            "reputation-lists": {
+              "manifest_sha256": "b3dd48c281779ab90cefb81693cee1aa3d4f2e24fd6c7b374d63a1f701b1b01a",
+              "artifacts": [
+                {
+                  "artifact": "masks",
+                  "file": "repListMasksManual.csv",
+                  "rows": 16677,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:03:51.797627214Z",
+                    "upper_id": 16677
+                  },
+                  "identity_epoch": 1,
+                  "identity_hash": "9603bed8bd56b1ac3cb28247b8428ec3a5aff064fafa16cd4c84d2deb13b20ab",
+                  "schema_hash": "aa83628320c0c435d7c91124aff4f159bd0d045a7b6fa7353ace9e1ff93e6fee",
+                  "sha256": "689a86816fb36d6c28b93e5cce62b5f2b9362345de1e76d32e608f889974ffb6"
+                },
+                {
+                  "artifact": "ip_list",
+                  "file": "repListIPsManual.csv",
+                  "rows": 16677,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:03:53.999321947Z",
+                    "upper_id": 16677
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "ebdd9892cd76b9b35637ec4f6f54326225ec55729ac92e53685ef1c3526450c7",
+                  "schema_hash": "a26c1ae8f225a0503c580bde272be18c7426895af5fedb3ccf71f7f25b9b8173",
+                  "sha256": "f505dfb4154cd0764ac91b3e8aab2079e515594d7524d87f8e3172fe3567cdc5"
+                },
+                {
+                  "artifact": "hashes",
+                  "file": "repListHashesManual.csv",
+                  "rows": 43358,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:03:59.976791446Z",
+                    "upper_id": 43358
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "0a28546ee6146dc8afd105f8cba167a797203bd81ed3c80263b91a6baf4646d2",
+                  "schema_hash": "ce26d9f30205795347786b7924e31e5d2a8d669e13f620cffeb627974791b027",
+                  "sha256": "c5dc140bf37294d90a6c1c191e205d574b002dafad82373efea0a09b246c17be"
+                }
+              ],
+              "slice_id": "25fee37f-699c-40ad-b2f9-7d3ab47dcac5"
+            },
+            "ioc-aggregate": {
+              "manifest_sha256": "cd24cbd0262e8b67cb0ce3708f71257c28a3fee25e347f1cd756f62c454369dd",
+              "artifacts": [
+                {
+                  "artifact": "ioc_aggregate",
+                  "file": "GDI_IOC.csv",
+                  "rows": 90054,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:04:06.671698796Z",
+                    "upper_id": 90054
+                  },
+                  "identity_epoch": 1,
+                  "identity_hash": "c8f906e86ebffb8058507bfe3b66fc97d261f6fa8e9ad80e0f67540d27c7da90",
+                  "schema_hash": "a5eddf8860e834ba7664c947505e4642dbbd2db91fcff53fec57f6a350f822ab",
+                  "sha256": "a3222670869789cde6fed8635db6904203ddae332671e5d1bfcd6818fe6606d7"
+                }
+              ],
+              "slice_id": "257a633e-4492-4f32-9630-32be6d95fbce"
+            }
+          },
+          "mutable_projection_oracle": "PASS; fields, complete keys, canonical ids and durable generations",
+          "gates": {
+            "limits": {
+              "local_max_seconds": 45,
+              "rss_bytes": 536870912,
+              "non_file_bytes": 603979776,
+              "writer_hold_nanos": 5000000000
+            },
+            "violations": [
+              "conservative_local_window",
+              "writer_hold"
+            ],
+            "status": "FAIL",
+            "writer_window": {
+              "EXPORT_SLOTS": {
+                "completed": 5,
+                "totalHoldNanos": 631138985,
+                "maximumHoldNanosUpperBound": 397963555,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 399177,
+                "maximumWaitNanosUpperBound": 334311,
+                "maximumWaitNanosIsExact": true
+              },
+              "PROMOTION": {
+                "completed": 5,
+                "totalHoldNanos": 22690693501,
+                "maximumHoldNanosUpperBound": 11942387100,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 106724,
+                "maximumWaitNanosUpperBound": 33550,
+                "maximumWaitNanosIsExact": true
+              },
+              "CONTROL": {
+                "completed": 29,
+                "totalHoldNanos": 60153643,
+                "maximumHoldNanosUpperBound": 20439766,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 314987676,
+                "maximumWaitNanosUpperBound": 145466373,
+                "maximumWaitNanosIsExact": true
+              },
+              "EXPIRY": {
+                "completed": 0,
+                "totalHoldNanos": 0,
+                "maximumHoldNanosUpperBound": 0,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 0,
+                "maximumWaitNanosUpperBound": 0,
+                "maximumWaitNanosIsExact": true
+              },
+              "MAINTENANCE": {
+                "completed": 0,
+                "totalHoldNanos": 0,
+                "maximumHoldNanosUpperBound": 0,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 0,
+                "maximumWaitNanosUpperBound": 0,
+                "maximumWaitNanosIsExact": true
+              }
+            },
+            "scope": "Conservative complete-window and resource screens; exact Tlocal/remaining G6 criteria remain separate"
+          },
+          "cleanup_errors": [],
+          "temporary_state_removed": true,
+          "finished_epoch_seconds": 1791561877.249925
+        },
+        "startup_seconds": 6.676688108997041,
+        "process_terminated": true
+      },
+      {
+        "revision": "before",
+        "pair": 3,
+        "raw_report_sha256": "30631f78010a46d8846710dc42ac1ddb44e5274213dd06e6c1be916436a68a49",
+        "source_commit": "123f3b47f08e565d5b86dc546046f331b36bfb2f",
+        "jar_sha256": "0314687cfa6f6278af7696ec3c08c086005ac4754fba72e59c9567dea899383c",
+        "driver_sha256": "a8e9bba232cb8d6bf31770673e34583227379a71183f4600dc75f9642c3d1abd",
+        "base_oracle_sha256": "412c9c07a4f1b306a4ae22b9efadaec5478626472b90bbe308601a8ab314fc88",
+        "policy_sha256": "f1bbdcaf716a0f591ec98bd427ea24f5868a65fd17d4fdbe4730a3e3e2049621",
+        "java": "openjdk 21.0.12.1 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-24.04.4-Ubuntu)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-24.04.4-Ubuntu, mixed mode, sharing)",
+        "rows": 100000,
+        "format": "html",
+        "shape": "mostly-unique",
+        "input_driver_sha256": "0ea748292d76dd4e3cefd5f3a8624aa3cde073293cfbdba8d7e71995f6e6c9cb",
+        "import_artifact": null,
+        "smb": false,
+        "initial_rows": 0,
+        "requested_samples": 1,
+        "mode": "primary",
+        "acceptance": "NOT_ACCEPTED; exact Tlocal and complete G6 matrix are separate",
+        "stopped_after_failed_screen": true,
+        "temporary_runtime_removed": true,
+        "status": "FAIL",
+        "sample": {
+          "index": 0,
+          "status": "FAIL",
+          "started_epoch_seconds": 1791561877.622123,
+          "policy_sha256": "0b178b30489c0bb855fbf0a64cc3c6de7080e86834ed3e8c6cdb569c8692ecbe",
+          "policy_changes": [
+            "Private state/inbox/import paths and loopback port",
+            "Sync disabled for local reference",
+            "Log phase observer enabled"
+          ],
+          "runtime": {
+            "unit": "ioc-cap6-6dbab949745947a785b57ceff36d71b4",
+            "pid": 228300,
+            "cgroup": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/ioc-cap6-6dbab949745947a785b57ceff36d71b4.service",
+            "effective_limits": {
+              "cpu.max": "200000 100000",
+              "memory.high": "805306368",
+              "memory.max": "1073741824",
+              "memory.swap.max": "max"
+            },
+            "flags": [
+              "-Xms128m",
+              "-Xmx512m"
+            ],
+            "environment_owner": "systemd EnvironmentFile; never sourced in a shell"
+          },
+          "input": {
+            "rows": 100000,
+            "sections": 400,
+            "shape": "mostly-unique",
+            "seed": 43,
+            "format": "html",
+            "bytes": 6282440,
+            "sha256": "63b2264035d96f21b6b0fbf1a73e65bb79af4ce2083abfe15ad560148e0ed607"
+          },
+          "expected_final_rows": {
+            "masks": 16677,
+            "ip_list": 16677,
+            "hashes": 43358,
+            "address_blacklist": 33354,
+            "ioc_aggregate": 90054
+          },
+          "local_window_upper_seconds": 62.76366946499911,
+          "configured_stability_seconds": 2.0,
+          "raw_local_handoff_to_slices_seconds": 64.76366946499911,
+          "resources": {
+            "samples": 707,
+            "sample_interval_seconds": 0.1,
+            "wall_seconds": 64.78748162099873,
+            "process_cpu_seconds": 53.61000000000001,
+            "peaks": {
+              "rss_bytes": 388268032,
+              "hwm_bytes": 388268032,
+              "anon_bytes": 361668608,
+              "file_bytes": 437833728,
+              "kernel_bytes": 15716352,
+              "non_file_bytes": 374890496,
+              "cgroup_current_bytes": 805412864,
+              "swap_bytes": 0,
+              "wal_bytes": 180443704,
+              "workspace_bytes": 151456633,
+              "output_bytes": 33886465,
+              "heap_used_bytes": 89723187,
+              "heap_committed_bytes": 134348800,
+              "metaspace_used_bytes": 87124480,
+              "metaspace_committed_bytes": 88801280
+            },
+            "process_hwm_bytes": 388268032,
+            "cpu_delta": {
+              "usage_usec": 53612469,
+              "user_usec": 40378749,
+              "system_usec": 13233719,
+              "nr_periods": 618,
+              "nr_throttled": 17,
+              "throttled_usec": 786449,
+              "nr_bursts": 0,
+              "burst_usec": 0
+            },
+            "gc_delta": {
+              "YGC": 420.0,
+              "FGC": 0.0,
+              "GCT": 0.3950000000000001
+            },
+            "jvm_sampling": "jstat -gc; at most one snapshot/s; metaspace excludes code cache/native allocations",
+            "memory_events_delta": {
+              "low": 0,
+              "high": 933,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            },
+            "psi_microseconds_delta": {
+              "some": 42118,
+              "full": 42118
+            },
+            "psi_full_fraction": 0.0006500947242614974
+          },
+          "canonical_oracle": {
+            "masks": {
+              "rows": 16677,
+              "origins": 16677,
+              "public_fields_sha256": "36be156c62eff7ce976a679d91814262b98cdd479b85f9ab7417ca77b3073099"
+            },
+            "ip_list": {
+              "rows": 16677,
+              "origins": 16677,
+              "public_fields_sha256": "6f96e7953568d3b3beca71b05ced31f32433e8cd12079ba721377607fe52e67e"
+            },
+            "hashes": {
+              "rows": 43358,
+              "origins": 43358,
+              "public_fields_sha256": "663ce5d26c9766990cde45a5a6b65bd4cb9d0a2df1d90dafde5b8baf9af91a79"
+            },
+            "address_blacklist": {
+              "rows": 33354,
+              "origins": 33354,
+              "public_fields_sha256": "1c514e8008d3ce5429c0d952082370cafcd695810c275d77cbb46fccb3b33b2a"
+            },
+            "ioc_aggregate": {
+              "rows": 90054,
+              "origins": 90054,
+              "public_fields_sha256": "bcdf5311e3a68ff86c2a914027957a5e682374289553f4f091f9d86f3ab5ce96"
+            }
+          },
+          "local_slices": {
+            "address-blacklist": {
+              "manifest_sha256": "7a026b4b2327bf06345c4994823b3c39872200a95c295d82623d95f2b10cc090",
+              "artifacts": [
+                {
+                  "artifact": "address_blacklist",
+                  "file": "address_blacklist_generated.csv",
+                  "rows": 33354,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:05:41.635557468Z",
+                    "upper_id": 33354
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "e19a0890895dbc68f9753fa6a67f1dd0270ed28633c83bc75ca0829036c36c72",
+                  "schema_hash": "72d43ebc2a88d3c81cfc41782c8e4272037f54a75d8bee6fcdd037d6c9ed8b09",
+                  "sha256": "a6d2fbcd08956649c36fcda4d10f4add4d0286890217093c8f0d484e5cafbe36"
+                }
+              ],
+              "slice_id": "c9732998-c583-42bd-9178-47ee193c0013"
+            },
+            "reputation-lists": {
+              "manifest_sha256": "afffbd1548239a7ebc2355535d29dd14511d792b8ae2437c2b92c6e1035be881",
+              "artifacts": [
+                {
+                  "artifact": "masks",
+                  "file": "repListMasksManual.csv",
+                  "rows": 16677,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:05:37.400724197Z",
+                    "upper_id": 16677
+                  },
+                  "identity_epoch": 1,
+                  "identity_hash": "9603bed8bd56b1ac3cb28247b8428ec3a5aff064fafa16cd4c84d2deb13b20ab",
+                  "schema_hash": "aa83628320c0c435d7c91124aff4f159bd0d045a7b6fa7353ace9e1ff93e6fee",
+                  "sha256": "689a86816fb36d6c28b93e5cce62b5f2b9362345de1e76d32e608f889974ffb6"
+                },
+                {
+                  "artifact": "ip_list",
+                  "file": "repListIPsManual.csv",
+                  "rows": 16677,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:05:39.577944844Z",
+                    "upper_id": 16677
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "ebdd9892cd76b9b35637ec4f6f54326225ec55729ac92e53685ef1c3526450c7",
+                  "schema_hash": "a26c1ae8f225a0503c580bde272be18c7426895af5fedb3ccf71f7f25b9b8173",
+                  "sha256": "f505dfb4154cd0764ac91b3e8aab2079e515594d7524d87f8e3172fe3567cdc5"
+                },
+                {
+                  "artifact": "hashes",
+                  "file": "repListHashesManual.csv",
+                  "rows": 43358,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:05:45.533228022Z",
+                    "upper_id": 43358
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "0a28546ee6146dc8afd105f8cba167a797203bd81ed3c80263b91a6baf4646d2",
+                  "schema_hash": "ce26d9f30205795347786b7924e31e5d2a8d669e13f620cffeb627974791b027",
+                  "sha256": "c5dc140bf37294d90a6c1c191e205d574b002dafad82373efea0a09b246c17be"
+                }
+              ],
+              "slice_id": "4f854bd2-e7b5-4c23-b4fe-f1353e933f31"
+            },
+            "ioc-aggregate": {
+              "manifest_sha256": "671358b728c30cfd8213fe6b499beaa8ffdd041f19975ed917eafc02816d1e59",
+              "artifacts": [
+                {
+                  "artifact": "ioc_aggregate",
+                  "file": "GDI_IOC.csv",
+                  "rows": 90054,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:05:52.185292480Z",
+                    "upper_id": 90054
+                  },
+                  "identity_epoch": 1,
+                  "identity_hash": "c8f906e86ebffb8058507bfe3b66fc97d261f6fa8e9ad80e0f67540d27c7da90",
+                  "schema_hash": "a5eddf8860e834ba7664c947505e4642dbbd2db91fcff53fec57f6a350f822ab",
+                  "sha256": "a3222670869789cde6fed8635db6904203ddae332671e5d1bfcd6818fe6606d7"
+                }
+              ],
+              "slice_id": "8d970a35-2d72-4f55-a607-a6218ef83387"
+            }
+          },
+          "mutable_projection_oracle": "PASS; fields, complete keys, canonical ids and durable generations",
+          "gates": {
+            "limits": {
+              "local_max_seconds": 45,
+              "rss_bytes": 536870912,
+              "non_file_bytes": 603979776,
+              "writer_hold_nanos": 5000000000
+            },
+            "violations": [
+              "conservative_local_window",
+              "writer_hold"
+            ],
+            "status": "FAIL",
+            "writer_window": {
+              "EXPIRY": {
+                "completed": 0,
+                "totalHoldNanos": 0,
+                "maximumHoldNanosUpperBound": 0,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 0,
+                "maximumWaitNanosUpperBound": 0,
+                "maximumWaitNanosIsExact": true
+              },
+              "CONTROL": {
+                "completed": 29,
+                "totalHoldNanos": 57788564,
+                "maximumHoldNanosUpperBound": 20772842,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 606369419,
+                "maximumWaitNanosUpperBound": 359427924,
+                "maximumWaitNanosIsExact": true
+              },
+              "MAINTENANCE": {
+                "completed": 0,
+                "totalHoldNanos": 0,
+                "maximumHoldNanosUpperBound": 0,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 0,
+                "maximumWaitNanosUpperBound": 0,
+                "maximumWaitNanosIsExact": true
+              },
+              "PROMOTION": {
+                "completed": 5,
+                "totalHoldNanos": 22059704319,
+                "maximumHoldNanosUpperBound": 11422330249,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 124494,
+                "maximumWaitNanosUpperBound": 124494,
+                "maximumWaitNanosIsExact": false
+              },
+              "EXPORT_SLOTS": {
+                "completed": 5,
+                "totalHoldNanos": 624914681,
+                "maximumHoldNanosUpperBound": 412635158,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 439194,
+                "maximumWaitNanosUpperBound": 247097,
+                "maximumWaitNanosIsExact": false
+              }
+            },
+            "scope": "Conservative complete-window and resource screens; exact Tlocal/remaining G6 criteria remain separate"
+          },
+          "cleanup_errors": [],
+          "temporary_state_removed": true,
+          "finished_epoch_seconds": 1791561981.8855493
+        },
+        "startup_seconds": 6.672620646000723,
+        "process_terminated": true
+      },
+      {
+        "revision": "after",
+        "pair": 3,
+        "raw_report_sha256": "59e455c3a4bf646fe07a77da0169290056216ce3488cc5aefe33180433cb1469",
+        "source_commit": "123f3b47f08e565d5b86dc546046f331b36bfb2f",
+        "jar_sha256": "e2242a33651d0d96cc4e996439364b4001a96f04fb80729cf712038ab3b505c6",
+        "driver_sha256": "a8e9bba232cb8d6bf31770673e34583227379a71183f4600dc75f9642c3d1abd",
+        "base_oracle_sha256": "412c9c07a4f1b306a4ae22b9efadaec5478626472b90bbe308601a8ab314fc88",
+        "policy_sha256": "f1bbdcaf716a0f591ec98bd427ea24f5868a65fd17d4fdbe4730a3e3e2049621",
+        "java": "openjdk 21.0.12.1 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-24.04.4-Ubuntu)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-24.04.4-Ubuntu, mixed mode, sharing)",
+        "rows": 100000,
+        "format": "html",
+        "shape": "mostly-unique",
+        "input_driver_sha256": "0ea748292d76dd4e3cefd5f3a8624aa3cde073293cfbdba8d7e71995f6e6c9cb",
+        "import_artifact": null,
+        "smb": false,
+        "initial_rows": 0,
+        "requested_samples": 1,
+        "mode": "primary",
+        "acceptance": "NOT_ACCEPTED; exact Tlocal and complete G6 matrix are separate",
+        "stopped_after_failed_screen": true,
+        "temporary_runtime_removed": true,
+        "status": "FAIL",
+        "sample": {
+          "index": 0,
+          "status": "FAIL",
+          "started_epoch_seconds": 1791561979.7338307,
+          "policy_sha256": "0b178b30489c0bb855fbf0a64cc3c6de7080e86834ed3e8c6cdb569c8692ecbe",
+          "policy_changes": [
+            "Private state/inbox/import paths and loopback port",
+            "Sync disabled for local reference",
+            "Log phase observer enabled"
+          ],
+          "runtime": {
+            "unit": "ioc-cap6-14e413d6e74e4665900ec3f2b383668e",
+            "pid": 231728,
+            "cgroup": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/ioc-cap6-14e413d6e74e4665900ec3f2b383668e.service",
+            "effective_limits": {
+              "cpu.max": "200000 100000",
+              "memory.high": "805306368",
+              "memory.max": "1073741824",
+              "memory.swap.max": "max"
+            },
+            "flags": [
+              "-Xms128m",
+              "-Xmx512m"
+            ],
+            "environment_owner": "systemd EnvironmentFile; never sourced in a shell"
+          },
+          "input": {
+            "rows": 100000,
+            "sections": 400,
+            "shape": "mostly-unique",
+            "seed": 43,
+            "format": "html",
+            "bytes": 6282440,
+            "sha256": "63b2264035d96f21b6b0fbf1a73e65bb79af4ce2083abfe15ad560148e0ed607"
+          },
+          "expected_final_rows": {
+            "masks": 16677,
+            "ip_list": 16677,
+            "hashes": 43358,
+            "address_blacklist": 33354,
+            "ioc_aggregate": 90054
+          },
+          "local_window_upper_seconds": 62.22141553399706,
+          "configured_stability_seconds": 2.0,
+          "raw_local_handoff_to_slices_seconds": 64.22141553399706,
+          "resources": {
+            "samples": 704,
+            "sample_interval_seconds": 0.1,
+            "wall_seconds": 64.18892484900061,
+            "process_cpu_seconds": 52.54,
+            "peaks": {
+              "rss_bytes": 376659968,
+              "hwm_bytes": 381247488,
+              "anon_bytes": 350121984,
+              "file_bytes": 452853760,
+              "kernel_bytes": 16187392,
+              "non_file_bytes": 361566208,
+              "cgroup_current_bytes": 805408768,
+              "swap_bytes": 0,
+              "wal_bytes": 180315984,
+              "workspace_bytes": 150873733,
+              "output_bytes": 32354175,
+              "heap_used_bytes": 88582553,
+              "heap_committed_bytes": 134348800,
+              "metaspace_used_bytes": 86980915,
+              "metaspace_committed_bytes": 88735744
+            },
+            "process_hwm_bytes": 381247488,
+            "cpu_delta": {
+              "usage_usec": 52538615,
+              "user_usec": 39614811,
+              "system_usec": 12923804,
+              "nr_periods": 613,
+              "nr_throttled": 14,
+              "throttled_usec": 522426,
+              "nr_bursts": 0,
+              "burst_usec": 0
+            },
+            "gc_delta": {
+              "YGC": 410.0,
+              "FGC": 0.0,
+              "GCT": 0.406
+            },
+            "jvm_sampling": "jstat -gc; at most one snapshot/s; metaspace excludes code cache/native allocations",
+            "memory_events_delta": {
+              "low": 0,
+              "high": 883,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            },
+            "psi_microseconds_delta": {
+              "some": 30610,
+              "full": 30610
+            },
+            "psi_full_fraction": 0.0004768735427802789
+          },
+          "canonical_oracle": {
+            "masks": {
+              "rows": 16677,
+              "origins": 16677,
+              "public_fields_sha256": "36be156c62eff7ce976a679d91814262b98cdd479b85f9ab7417ca77b3073099"
+            },
+            "ip_list": {
+              "rows": 16677,
+              "origins": 16677,
+              "public_fields_sha256": "6f96e7953568d3b3beca71b05ced31f32433e8cd12079ba721377607fe52e67e"
+            },
+            "hashes": {
+              "rows": 43358,
+              "origins": 43358,
+              "public_fields_sha256": "663ce5d26c9766990cde45a5a6b65bd4cb9d0a2df1d90dafde5b8baf9af91a79"
+            },
+            "address_blacklist": {
+              "rows": 33354,
+              "origins": 33354,
+              "public_fields_sha256": "1c514e8008d3ce5429c0d952082370cafcd695810c275d77cbb46fccb3b33b2a"
+            },
+            "ioc_aggregate": {
+              "rows": 90054,
+              "origins": 90054,
+              "public_fields_sha256": "bcdf5311e3a68ff86c2a914027957a5e682374289553f4f091f9d86f3ab5ce96"
+            }
+          },
+          "local_slices": {
+            "address-blacklist": {
+              "manifest_sha256": "8ec79e82d0e2d9622c4571530b5b2fef82d8f17f4499211b2179ff02d16f46a3",
+              "artifacts": [
+                {
+                  "artifact": "address_blacklist",
+                  "file": "address_blacklist_generated.csv",
+                  "rows": 33354,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:07:22.422599448Z",
+                    "upper_id": 33354
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "e19a0890895dbc68f9753fa6a67f1dd0270ed28633c83bc75ca0829036c36c72",
+                  "schema_hash": "72d43ebc2a88d3c81cfc41782c8e4272037f54a75d8bee6fcdd037d6c9ed8b09",
+                  "sha256": "a6d2fbcd08956649c36fcda4d10f4add4d0286890217093c8f0d484e5cafbe36"
+                }
+              ],
+              "slice_id": "fbe8d6a6-3fa3-4c95-98df-617ce969e7b1"
+            },
+            "reputation-lists": {
+              "manifest_sha256": "541d7621351afed30246cffb96a752863014774e20a191aec044707078d0ec57",
+              "artifacts": [
+                {
+                  "artifact": "masks",
+                  "file": "repListMasksManual.csv",
+                  "rows": 16677,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:07:20.786319405Z",
+                    "upper_id": 16677
+                  },
+                  "identity_epoch": 1,
+                  "identity_hash": "9603bed8bd56b1ac3cb28247b8428ec3a5aff064fafa16cd4c84d2deb13b20ab",
+                  "schema_hash": "aa83628320c0c435d7c91124aff4f159bd0d045a7b6fa7353ace9e1ff93e6fee",
+                  "sha256": "689a86816fb36d6c28b93e5cce62b5f2b9362345de1e76d32e608f889974ffb6"
+                },
+                {
+                  "artifact": "ip_list",
+                  "file": "repListIPsManual.csv",
+                  "rows": 16677,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:07:20.786Z",
+                    "upper_id": 16677
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "ebdd9892cd76b9b35637ec4f6f54326225ec55729ac92e53685ef1c3526450c7",
+                  "schema_hash": "a26c1ae8f225a0503c580bde272be18c7426895af5fedb3ccf71f7f25b9b8173",
+                  "sha256": "f505dfb4154cd0764ac91b3e8aab2079e515594d7524d87f8e3172fe3567cdc5"
+                },
+                {
+                  "artifact": "hashes",
+                  "file": "repListHashesManual.csv",
+                  "rows": 43358,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:07:26.489281635Z",
+                    "upper_id": 43358
+                  },
+                  "identity_epoch": 2,
+                  "identity_hash": "0a28546ee6146dc8afd105f8cba167a797203bd81ed3c80263b91a6baf4646d2",
+                  "schema_hash": "ce26d9f30205795347786b7924e31e5d2a8d669e13f620cffeb627974791b027",
+                  "sha256": "c5dc140bf37294d90a6c1c191e205d574b002dafad82373efea0a09b246c17be"
+                }
+              ],
+              "slice_id": "40c11f87-c63d-408e-809a-9990856e1ae9"
+            },
+            "ioc-aggregate": {
+              "manifest_sha256": "4631ddc3c5188f765688c9e1884366fa5b62b83cd18bb8ad305e51482d000d3a",
+              "artifacts": [
+                {
+                  "artifact": "ioc_aggregate",
+                  "file": "GDI_IOC.csv",
+                  "rows": 90054,
+                  "coverage": {
+                    "revision": 2,
+                    "changed_at": "2026-10-09T16:07:33.273778202Z",
+                    "upper_id": 90054
+                  },
+                  "identity_epoch": 1,
+                  "identity_hash": "c8f906e86ebffb8058507bfe3b66fc97d261f6fa8e9ad80e0f67540d27c7da90",
+                  "schema_hash": "a5eddf8860e834ba7664c947505e4642dbbd2db91fcff53fec57f6a350f822ab",
+                  "sha256": "a3222670869789cde6fed8635db6904203ddae332671e5d1bfcd6818fe6606d7"
+                }
+              ],
+              "slice_id": "713ff0ba-eaca-4f78-9092-a0b4684a9b89"
+            }
+          },
+          "mutable_projection_oracle": "PASS; fields, complete keys, canonical ids and durable generations",
+          "gates": {
+            "limits": {
+              "local_max_seconds": 45,
+              "rss_bytes": 536870912,
+              "non_file_bytes": 603979776,
+              "writer_hold_nanos": 5000000000
+            },
+            "violations": [
+              "conservative_local_window",
+              "writer_hold"
+            ],
+            "status": "FAIL",
+            "writer_window": {
+              "MAINTENANCE": {
+                "completed": 0,
+                "totalHoldNanos": 0,
+                "maximumHoldNanosUpperBound": 0,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 0,
+                "maximumWaitNanosUpperBound": 0,
+                "maximumWaitNanosIsExact": true
+              },
+              "EXPORT_SLOTS": {
+                "completed": 4,
+                "totalHoldNanos": 583757886,
+                "maximumHoldNanosUpperBound": 412482185,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 253478,
+                "maximumWaitNanosUpperBound": 253478,
+                "maximumWaitNanosIsExact": false
+              },
+              "PROMOTION": {
+                "completed": 5,
+                "totalHoldNanos": 22572297890,
+                "maximumHoldNanosUpperBound": 11706061291,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 74492,
+                "maximumWaitNanosUpperBound": 74492,
+                "maximumWaitNanosIsExact": false
+              },
+              "EXPIRY": {
+                "completed": 0,
+                "totalHoldNanos": 0,
+                "maximumHoldNanosUpperBound": 0,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 0,
+                "maximumWaitNanosUpperBound": 0,
+                "maximumWaitNanosIsExact": true
+              },
+              "CONTROL": {
+                "completed": 28,
+                "totalHoldNanos": 63460247,
+                "maximumHoldNanosUpperBound": 18904089,
+                "maximumHoldNanosIsExact": true,
+                "totalWaitNanos": 219683084,
+                "maximumWaitNanosUpperBound": 120183955,
+                "maximumWaitNanosIsExact": true
+              }
+            },
+            "scope": "Conservative complete-window and resource screens; exact Tlocal/remaining G6 criteria remain separate"
+          },
+          "cleanup_errors": [],
+          "temporary_state_removed": true,
+          "finished_epoch_seconds": 1791562083.9524019
+        },
+        "startup_seconds": 6.648046472000715,
+        "process_terminated": true
+      }
+    ],
+    "summary": {
+      "local_window_upper_seconds": {
+        "before": [
+          67.74682423800186,
+          61.33339890299976,
+          62.76366946499911
+        ],
+        "after": [
+          59.40636113800065,
+          60.04339549400174,
+          62.22141553399706
+        ],
+        "before_median": 62.76366946499911,
+        "after_median": 60.04339549400174,
+        "ratio_of_medians": 0.9566584619066232,
+        "paired_ratios": [
+          0.8768877627281794,
+          0.9789673582082384,
+          0.9913603851459889
+        ]
+      },
+      "process_cpu_seconds": {
+        "before": [
+          56.77,
+          54.459999999999994,
+          53.61000000000001
+        ],
+        "after": [
+          52.2,
+          52.15,
+          52.54
+        ],
+        "before_median": 54.459999999999994,
+        "after_median": 52.2,
+        "ratio_of_medians": 0.9585016525890564,
+        "paired_ratios": [
+          0.919499735775938,
+          0.9575835475578407,
+          0.9800410371199402
+        ]
+      },
+      "rss_bytes": {
+        "before": [
+          393560064,
+          385327104,
+          388268032
+        ],
+        "after": [
+          382726144,
+          388079616,
+          376659968
+        ],
+        "before_median": 388268032,
+        "after_median": 382726144,
+        "ratio_of_medians": 0.985726643598616,
+        "paired_ratios": [
+          0.9724720036634611,
+          1.00714331271127,
+          0.9701029622752975
+        ]
+      },
+      "sampled_heap_used_bytes": {
+        "before": [
+          91269120,
+          89501081,
+          89723187
+        ],
+        "after": [
+          84217856,
+          88567193,
+          88582553
+        ],
+        "before_median": 89723187,
+        "after_median": 88567193,
+        "ratio_of_medians": 0.9871159948876983,
+        "paired_ratios": [
+          0.9227420621564008,
+          0.9895656232353216,
+          0.9872871880933075
+        ]
+      }
+    }
+  },
+  "limits": [
+    "Caller allocations exclude asynchronous/background threads; complete-service CPU includes threads",
+    "Sampled heap-used includes garbage and is not a retained-live measurement",
+    "Three pairs establish a scoped modest benefit, not a general throughput promise",
+    "Unique import series remains incomplete after UTC regression and ledger CHECK failure; ING-16",
+    "Million-occurrence completion, mixed load, live SMB and G6 remain open"
+  ],
+  "setup_failures": [
+    {
+      "path": ".dev/cap7b-cost-controls",
+      "reason": "javac not on PATH"
+    },
+    {
+      "path": ".dev/cap7b-unique",
+      "reason": "--release compiler symbols unavailable; use existing source/target 21 pattern"
+    },
+    {
+      "path": ".dev/cap7b-unique-v2",
+      "reason": "adapter JAR glob lacked ioc prefix"
+    },
+    {
+      "path": ".dev/cap7b-native-repeat",
+      "reason": "adapter JAR glob lacked ioc prefix"
+    }
+  ]
+}

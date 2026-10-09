@@ -150,3 +150,15 @@ The original reports retain their original Git identities: the measured
 one boot-JAR digest. No primary success median, SMB result or deployment is
 claimed. All owned source/oracle/workspace databases and runtime copies were
 removed; compact reports and diagnostic journals retain the failed disposition.
+
+## CAP-7B execution qualification
+
+[CAP-7B execution](../../cap-7b-execution.md) records rejection of the direct
+processor control on existing native lifecycle contracts, and admission of
+sequential bound-template calls with fewer dispatch structures.
+[Compact raw evidence](cap-7b-reference.json) retains paired repeat-profile
+allocations/timings, the incomplete unique import disposition, and six complete
+100k service samples. All service output oracles pass, but original G6 `FAIL`
+statuses and unchanged writer/local-time limits are retained. Prototype ratios
+are separate from final packaged compiler-cleanup qualification. No private
+DB, WAL, runtime snapshot or replayable transport state is versioned.
