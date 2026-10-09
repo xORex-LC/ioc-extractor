@@ -162,3 +162,12 @@ latency limits remain open.
 durable bounded document execution, ordered promotion and shared writer
 admission. Controlled concurrency/recovery tests and the writer/WAL diagnostics
 are separate from the remaining absolute resource and whole-service gates.
+
+[CAP-6 execution](cap-6-execution.md) retains failed complete-service resource
+screens and the passing drained private upgrade/restore; G6 remains NOT_ACCEPTED.
+
+[CAP-7A execution](cap-7a-execution.md) records the completed bounded source path,
+physical parser/offset/ownership/restart contracts and source-only HTML/DOCX
+100k/1m oracles. Complete-service 100k output semantics pass with lower RSS;
+local latency, writer occupancy and million-row reducer capacity still fail.
+Its compact evidence preserves failure windows and confirms owned-state cleanup.

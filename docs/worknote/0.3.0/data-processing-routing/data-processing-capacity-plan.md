@@ -1,9 +1,9 @@
 # Data processing capacity implementation plan
 
 Status: CAP-0–CAP-5 implemented and qualified within their stage scope; CAP-6
-qualification records G6 NOT_ACCEPTED; CAP-7A implementation is in progress in
-its [execution report](cap-7a-execution.md). Acceptance budgets adopted by
-the owner on 2026-10-04. Prepared from the
+qualification records G6 NOT_ACCEPTED; CAP-7A implementation and scoped source
+qualification are complete in its [execution report](cap-7a-execution.md).
+Acceptance budgets adopted by the owner on 2026-10-04. Prepared from the
 [capacity review](data-processing-capacity-review.md). CAP-1A selective SQL and
 its JDBC regressions and CAP-1B resource sessions are implemented. Stage G0/G1A/G1B
 qualification is recorded in the [execution report](cap-0-1-execution.md);
@@ -606,7 +606,7 @@ Document completion promotes durable decisions into an ADR, capability docs,
 operator guide/root map or known-issue disposition; this worknote remains an
 execution plan, not runtime truth.
 
-Current status (2026-10-07): CAP-0, CAP-1A and CAP-1B implementation and scoped
+Current status (2026-10-09): CAP-0, CAP-1A and CAP-1B implementation and scoped
 qualification are recorded in the [execution report](cap-0-1-execution.md).
 CAP-2 implementation and G2 qualification are complete in the
 [projection ownership report](cap-2-execution.md). CAP-3 implementation and G3
@@ -629,12 +629,17 @@ Largest imports and complete mixed-service control/export latency remain CAP-6
 qualification cells, rather than inferred passes from this diagnostic.
 
 CAP-6 qualification is recorded in its [execution report](cap-6-execution.md).
-It confirms the million-occurrence HTML reader OOM and DOCX reducer capacity
-failure; G6 remains NOT_ACCEPTED. CAP-7A now addresses the demonstrated source
-retention with workspace-owned text, lazy matching and streamed attribution.
-Its [execution report](cap-7a-execution.md) owns exact source contracts,
-source-only diagnostics and the required separate total-process memory retest.
-Canonical transaction occupancy and reducer capacity remain CAP-7C/D decisions.
+It retains the historical million-occurrence HTML reader OOM and DOCX reducer
+capacity failure; G6 remains NOT_ACCEPTED. CAP-7A implementation and scoped source
+qualification are complete: workspace-owned text, lazy matching and streamed
+attribution pass ordered source oracles at 100k/1m for HTML and DOCX. Full-service
+100k cells complete all five output oracles at 368/374 MiB peak RSS, but local-time
+and writer limits still fail. Both full-service million-row cells complete the
+source stages and then exhaust the private reducer quota before measured writes.
+Its [execution report](cap-7a-execution.md) preserves executable identities,
+failure windows and cleanup, and keeps complete million-row resource acceptance,
+repetitions, mixed load and SMB open. Canonical transaction occupancy and reducer
+capacity remain CAP-7C/D decisions; their implementations are outside CAP-7A.
 Scoped stage qualification is not whole-service acceptance.
 
 Historical planning validation: `make docs`, an explicit offline link check of this plan,

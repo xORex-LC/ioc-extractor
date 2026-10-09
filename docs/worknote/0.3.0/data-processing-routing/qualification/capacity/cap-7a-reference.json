@@ -1,0 +1,1767 @@
+{
+  "schema": 1,
+  "recorded_dates": [
+    "2026-10-08",
+    "2026-10-09"
+  ],
+  "status": "CAP_7A_SOURCE_QUALIFIED_G6_NOT_ACCEPTED",
+  "implementation_commit": "e525965c420c05ae799a8a8844f5ea9ea2810e06",
+  "implementation_tree": "e71a9bf4e6a2b0b1c21b8ca2182c30ee0b18c243",
+  "reference_commit": "381c4ea0bf788d0e61276f7503dbc8ddcc274be5",
+  "identity_note": "Original report commits remain unchanged. b228651 and e525965 have identical Git trees; whole-service cells use the same frozen boot JAR SHA-256. The source-only probe has its own runtime-classpath digest and workload.",
+  "scope": "Streamed source contracts, four source-only diagnostic JVMs and four whole-service first-failure screens. No accepted primary medians, speedup ratios, mixed-load, SMB or deployment qualification.",
+  "frozen_envelope": {
+    "cpu_equivalents": 2,
+    "xms_bytes": 134217728,
+    "xmx_bytes": 536870912,
+    "memory_high_bytes": 805306368,
+    "memory_max_bytes": 1073741824,
+    "note": "Whole-service cgroup limits; source-only JVMs use ActiveProcessorCount=2 without a cgroup resource acceptance claim."
+  },
+  "target_manifest_sha256": "4633ebc64639bc890243564375edac3635dd148d93492394d033c5ff447fd748",
+  "units": "Bytes, seconds and nanoseconds as named. RSS KiB in source-only raw samples. PSI fraction is a window delta, not a percentage.",
+  "source_diagnostic": {
+    "raw_report_sha256": "8ea492615dcbb6edf2b1878db51b8a1b746c079e30ddf81c8f7cc0c141a74fe8",
+    "source_commit": "b228651bb23de119afa7ebfcc88827aa3def95ce",
+    "runtime_sha256": "4c40ccefc5458ff8a9a432e2f6b39e81885b396c79a75403790333194a1b5ecf",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "java": "openjdk version \"21.0.12.1\" 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-24.04.4-Ubuntu)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-24.04.4-Ubuntu, mixed mode, sharing)",
+    "upstream_flags": [
+      "-Xms128m",
+      "-Xmx512m",
+      "-XX:ActiveProcessorCount=2"
+    ],
+    "upstream_scope": "CAP-7A actual admitted Spring/Tika/source spool/refang/extract/attribute; no GC in timed stages; separate diagnostic post-GC sample; no routing or writes",
+    "upstream_samples": [
+      {
+        "input_occurrences": 100000,
+        "input_bytes": 3488986,
+        "format": "html",
+        "baseline": {
+          "live_heap_bytes": 93532744,
+          "rss_kib": 270744
+        },
+        "before_READ_SOURCE": {
+          "live_heap_bytes": 75939240,
+          "rss_kib": 289432
+        },
+        "READ_SOURCE_nanos": 601501138,
+        "before_REFANG": {
+          "live_heap_bytes": 50855936,
+          "rss_kib": 306456
+        },
+        "REFANG_nanos": 594209953,
+        "before_EXTRACT": {
+          "live_heap_bytes": 64487424,
+          "rss_kib": 307224
+        },
+        "EXTRACT_nanos": 1974019401,
+        "before_ATTRIBUTE": {
+          "live_heap_bytes": 94896128,
+          "rss_kib": 310808
+        },
+        "ATTRIBUTE_nanos": 499162463,
+        "upstream_nanos": 3676677702,
+        "ordered_occurrence_oracle": "PASS",
+        "attributed": {
+          "live_heap_bytes": 54001664,
+          "rss_kib": 313368
+        },
+        "diagnostic_post_gc": {
+          "live_heap_bytes": 42060936,
+          "rss_kib": 316312
+        },
+        "peak_heap_bytes": 121110528,
+        "peak_rss_kib": 316312
+      },
+      {
+        "input_occurrences": 100000,
+        "input_bytes": 261239,
+        "format": "docx",
+        "baseline": {
+          "rss_kib": 276992,
+          "live_heap_bytes": 92014480
+        },
+        "before_READ_SOURCE": {
+          "rss_kib": 297728,
+          "live_heap_bytes": 75714448
+        },
+        "READ_SOURCE_nanos": 825680138,
+        "before_REFANG": {
+          "rss_kib": 312320,
+          "live_heap_bytes": 104333312
+        },
+        "REFANG_nanos": 629253168,
+        "before_EXTRACT": {
+          "rss_kib": 312960,
+          "live_heap_bytes": 117964800
+        },
+        "EXTRACT_nanos": 1883290905,
+        "before_ATTRIBUTE": {
+          "rss_kib": 315520,
+          "live_heap_bytes": 72351744
+        },
+        "ATTRIBUTE_nanos": 422428029,
+        "upstream_nanos": 3768237056,
+        "ordered_occurrence_oracle": "PASS",
+        "attributed": {
+          "rss_kib": 316672,
+          "live_heap_bytes": 101711872
+        },
+        "diagnostic_post_gc": {
+          "rss_kib": 319360,
+          "live_heap_bytes": 43182448
+        },
+        "peak_heap_bytes": 120586240,
+        "peak_rss_kib": 319360
+      },
+      {
+        "input_occurrences": 1000000,
+        "input_bytes": 35888986,
+        "format": "html",
+        "baseline": {
+          "rss_kib": 267900,
+          "live_heap_bytes": 94111744
+        },
+        "before_READ_SOURCE": {
+          "rss_kib": 289276,
+          "live_heap_bytes": 77144688
+        },
+        "READ_SOURCE_nanos": 2132864752,
+        "before_REFANG": {
+          "rss_kib": 306684,
+          "live_heap_bytes": 62061392
+        },
+        "REFANG_nanos": 5049059272,
+        "before_EXTRACT": {
+          "rss_kib": 307324,
+          "live_heap_bytes": 109468832
+        },
+        "EXTRACT_nanos": 17142843841,
+        "before_ATTRIBUTE": {
+          "rss_kib": 311548,
+          "live_heap_bytes": 102590608
+        },
+        "ATTRIBUTE_nanos": 3931429379,
+        "upstream_nanos": 28262411341,
+        "ordered_occurrence_oracle": "PASS",
+        "attributed": {
+          "rss_kib": 315068,
+          "live_heap_bytes": 103672208
+        },
+        "diagnostic_post_gc": {
+          "rss_kib": 317444,
+          "live_heap_bytes": 41966416
+        },
+        "peak_heap_bytes": 123582768,
+        "peak_rss_kib": 317444
+      },
+      {
+        "input_occurrences": 1000000,
+        "input_bytes": 2574514,
+        "format": "docx",
+        "baseline": {
+          "live_heap_bytes": 91941952,
+          "rss_kib": 266220
+        },
+        "before_READ_SOURCE": {
+          "live_heap_bytes": 74422024,
+          "rss_kib": 288236
+        },
+        "READ_SOURCE_nanos": 2791897012,
+        "before_REFANG": {
+          "live_heap_bytes": 74448896,
+          "rss_kib": 309456
+        },
+        "REFANG_nanos": 4888163488,
+        "before_EXTRACT": {
+          "live_heap_bytes": 117440512,
+          "rss_kib": 309968
+        },
+        "EXTRACT_nanos": 16974939735,
+        "before_ATTRIBUTE": {
+          "live_heap_bytes": 54731032,
+          "rss_kib": 315472
+        },
+        "ATTRIBUTE_nanos": 3765360802,
+        "upstream_nanos": 28426169024,
+        "ordered_occurrence_oracle": "PASS",
+        "attributed": {
+          "live_heap_bytes": 122915304,
+          "rss_kib": 315892
+        },
+        "diagnostic_post_gc": {
+          "live_heap_bytes": 43050656,
+          "rss_kib": 317556
+        },
+        "peak_heap_bytes": 123955624,
+        "peak_rss_kib": 323068
+      }
+    ],
+    "started_epoch_seconds": 1791470727.3576305,
+    "completed_epoch_seconds": 1791470804.8792658,
+    "status": "PASSED",
+    "temporary_runtime_and_state_removed": true,
+    "command": "make document-workspace-capacity WORKSPACE_CAPACITY_ARGS=\"--output .dev/cap7a-source.json --sizes --upstream-sizes 100000 1000000 --source-formats html docx\"",
+    "fixture": "Distinct defanged domains with one section marker; deterministic DocumentUpstreamCapacity source. No full-service mixed-IOC fixture equivalence or throughput ratio is claimed.",
+    "fixture_generator_sha256": "390749b6d962d3c699cab8b0266bfb0c3ac31e4c283be6ac120097076fc1f3b6",
+    "memory_scope": "Peak sampler starts after Spring initialization and includes occurrence-oracle consumption plus a separate post-GC sample. Timed stages contain no explicit GC. The raw live_heap_bytes label means sampled heap used except diagnostic_post_gc."
+  },
+  "runs": [
+    {
+      "source_commit": "b228651bb23de119afa7ebfcc88827aa3def95ce",
+      "jar_sha256": "af94759c63889569278c18e61b5c60487af8256218f91c607267d5f026f3764d",
+      "driver_sha256": "a8e9bba232cb8d6bf31770673e34583227379a71183f4600dc75f9642c3d1abd",
+      "base_oracle_sha256": "412c9c07a4f1b306a4ae22b9efadaec5478626472b90bbe308601a8ab314fc88",
+      "input_driver_sha256": "0ea748292d76dd4e3cefd5f3a8624aa3cde073293cfbdba8d7e71995f6e6c9cb",
+      "policy_sha256": "9f3b4ae316c97966aab21d543c3a92e866f25ea5a115967c025fe0f770e03ec8",
+      "java": "openjdk 21.0.12.1 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-24.04.4-Ubuntu)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-24.04.4-Ubuntu, mixed mode, sharing)",
+      "rows": 100000,
+      "format": "html",
+      "shape": "mostly-unique",
+      "initial_rows": 0,
+      "mode": "primary",
+      "requested_samples": 3,
+      "stopped_after_failed_screen": true,
+      "status": "FAIL",
+      "temporary_runtime_removed": true,
+      "cell": "cap7a-html-100k",
+      "raw_report_sha256": "3c2f4ba2d2a6d3682c8efa8347eeb4fbbf5e089c457fa077c35e8fc60317497b",
+      "phase_log_sha256": "4fd4fffccc12f5bbc61bc0709686047b674da644a896c9bc1edf44970a10d274",
+      "command": "make service-capacity SERVICE_CAPACITY_ARGS=\"--jar bootstrap/ioc-app/target/ioc-app-0.3.0-SNAPSHOT.jar --config .dev/cap6-smoke-html-v2/0/application.yml --output .dev/cap7a-html-100k --rows 100000 --format html --shape mostly-unique --samples 3 --timeout 900 --port 18206\"",
+      "sample": {
+        "index": 0,
+        "status": "FAIL",
+        "started_epoch_seconds": 1791470826.7256548,
+        "finished_epoch_seconds": 1791470944.0499175,
+        "policy_sha256": "f1bbdcaf716a0f591ec98bd427ea24f5868a65fd17d4fdbe4730a3e3e2049621",
+        "policy_changes": [
+          "Private state/inbox/import paths and loopback port",
+          "Sync disabled for local reference",
+          "Log phase observer enabled"
+        ],
+        "runtime": {
+          "unit": "ioc-cap6-ebf79b78974a4311b313770928edabc5",
+          "pid": 345984,
+          "cgroup": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/ioc-cap6-ebf79b78974a4311b313770928edabc5.service",
+          "effective_limits": {
+            "cpu.max": "200000 100000",
+            "memory.high": "805306368",
+            "memory.max": "1073741824",
+            "memory.swap.max": "max"
+          },
+          "flags": [
+            "-Xms128m",
+            "-Xmx512m"
+          ],
+          "environment_owner": "systemd EnvironmentFile; never sourced in a shell"
+        },
+        "input": {
+          "rows": 100000,
+          "sections": 400,
+          "shape": "mostly-unique",
+          "seed": 43,
+          "format": "html",
+          "bytes": 6282440,
+          "sha256": "63b2264035d96f21b6b0fbf1a73e65bb79af4ce2083abfe15ad560148e0ed607"
+        },
+        "expected_final_rows": {
+          "masks": 16677,
+          "ip_list": 16677,
+          "hashes": 43358,
+          "address_blacklist": 33354,
+          "ioc_aggregate": 90054
+        },
+        "handoff": {
+          "monotonic": 13556.676115936,
+          "epoch_seconds": 1791470857.3810544,
+          "kind": "producer atomic local rename completed"
+        },
+        "local_window_upper_seconds": 69.56798484200044,
+        "configured_stability_seconds": 2.0,
+        "raw_local_handoff_to_slices_seconds": 71.56798484200044,
+        "timeline": {
+          "complete_monotonic": 13628.244100778,
+          "admission_transitions": [
+            {
+              "observed_monotonic": 13560.681070897,
+              "occurrence_id": "75e821a2-562b-49aa-a13d-7e0b5d3f5ecc",
+              "phase": "LINKED",
+              "created_at_ms": 1791470861234.458,
+              "updated_at_ms": 1791470861281.959,
+              "terminal_outcome": "",
+              "registration_finalized": 0
+            },
+            {
+              "observed_monotonic": 13628.238984753,
+              "occurrence_id": "75e821a2-562b-49aa-a13d-7e0b5d3f5ecc",
+              "phase": "TERMINAL",
+              "created_at_ms": 1791470861234.458,
+              "updated_at_ms": 1791470923298.418,
+              "terminal_outcome": "SUCCEEDED",
+              "registration_finalized": 1
+            }
+          ],
+          "run": {
+            "run_id": "c5dbcebb-9d2b-4e0e-9aa8-55270f058113",
+            "status": "COMPLETED",
+            "artifacts": "masks\nip_list\naddress_blacklist\nhashes\nioc_aggregate",
+            "started_at": "2026-10-08T14:47:41.286251348Z",
+            "updated_at": "2026-10-08T14:48:43.308712743Z",
+            "reason": null,
+            "source_key": "63b2264035d96f21b6b0fbf1a73e65bb79af4ce2083abfe15ad560148e0ed607"
+          },
+          "revisions": {
+            "masks": 2,
+            "ip_list": 2,
+            "address_blacklist": 2,
+            "hashes": 2,
+            "ioc_aggregate": 2
+          },
+          "projections": [
+            {
+              "artifact": "masks",
+              "required_generation": 2,
+              "projected_generation": 2,
+              "requested_at_ms": 1791470895587,
+              "projected_at_ms": 1791470894771,
+              "last_error_code": null
+            },
+            {
+              "artifact": "ip_list",
+              "required_generation": 2,
+              "projected_generation": 2,
+              "requested_at_ms": 1791470895587,
+              "projected_at_ms": 1791470897001,
+              "last_error_code": null
+            },
+            {
+              "artifact": "address_blacklist",
+              "required_generation": 2,
+              "projected_generation": 2,
+              "requested_at_ms": 1791470897491,
+              "projected_at_ms": 1791470900838,
+              "last_error_code": null
+            },
+            {
+              "artifact": "hashes",
+              "required_generation": 2,
+              "projected_generation": 2,
+              "requested_at_ms": 1791470901941,
+              "projected_at_ms": 1791470907582,
+              "last_error_code": null
+            },
+            {
+              "artifact": "ioc_aggregate",
+              "required_generation": 2,
+              "projected_generation": 2,
+              "requested_at_ms": 1791470909513,
+              "projected_at_ms": 1791470923290,
+              "last_error_code": null
+            }
+          ]
+        },
+        "resources": {
+          "samples": 815,
+          "sample_interval_seconds": 0.1,
+          "wall_seconds": 71.60983747499995,
+          "process_cpu_seconds": 59.5,
+          "peaks": {
+            "rss_bytes": 385380352,
+            "hwm_bytes": 385380352,
+            "anon_bytes": 358895616,
+            "file_bytes": 440573952,
+            "kernel_bytes": 15740928,
+            "non_file_bytes": 371904512,
+            "cgroup_current_bytes": 805363712,
+            "swap_bytes": 0,
+            "wal_bytes": 180328344,
+            "workspace_bytes": 151432613,
+            "output_bytes": 32354175,
+            "heap_used_bytes": 90165145,
+            "heap_committed_bytes": 134348800,
+            "metaspace_used_bytes": 87176704,
+            "metaspace_committed_bytes": 88932352
+          },
+          "process_hwm_bytes": 385380352,
+          "cpu_delta": {
+            "usage_usec": 59503593,
+            "user_usec": 44653342,
+            "system_usec": 14850252,
+            "nr_periods": 691,
+            "nr_throttled": 12,
+            "throttled_usec": 483849,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          },
+          "gc_delta": {
+            "YGC": 424.0,
+            "FGC": 0.0,
+            "GCT": 0.44
+          },
+          "jvm_sampling": "jstat -gc; at most one snapshot/s; metaspace excludes code cache/native allocations",
+          "memory_events_delta": {
+            "low": 0,
+            "high": 936,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "psi_microseconds_delta": {
+            "some": 38277,
+            "full": 38277
+          },
+          "psi_full_fraction": 0.0005345215315334721
+        },
+        "canonical_oracle": {
+          "masks": {
+            "rows": 16677,
+            "origins": 16677,
+            "public_fields_sha256": "36be156c62eff7ce976a679d91814262b98cdd479b85f9ab7417ca77b3073099"
+          },
+          "ip_list": {
+            "rows": 16677,
+            "origins": 16677,
+            "public_fields_sha256": "6f96e7953568d3b3beca71b05ced31f32433e8cd12079ba721377607fe52e67e"
+          },
+          "hashes": {
+            "rows": 43358,
+            "origins": 43358,
+            "public_fields_sha256": "663ce5d26c9766990cde45a5a6b65bd4cb9d0a2df1d90dafde5b8baf9af91a79"
+          },
+          "address_blacklist": {
+            "rows": 33354,
+            "origins": 33354,
+            "public_fields_sha256": "1c514e8008d3ce5429c0d952082370cafcd695810c275d77cbb46fccb3b33b2a"
+          },
+          "ioc_aggregate": {
+            "rows": 90054,
+            "origins": 90054,
+            "public_fields_sha256": "bcdf5311e3a68ff86c2a914027957a5e682374289553f4f091f9d86f3ab5ce96"
+          }
+        },
+        "local_slices": {
+          "address-blacklist": {
+            "manifest_sha256": "b53bdd4c1c6d68650e838d2abc629da1f85a06238f8eff9fdf867308fad77236",
+            "artifacts": [
+              {
+                "artifact": "address_blacklist",
+                "file": "address_blacklist_generated.csv",
+                "rows": 33354,
+                "coverage": {
+                  "revision": 2,
+                  "changed_at": "2026-10-08T14:48:17.491496459Z",
+                  "upper_id": 33354
+                },
+                "identity_epoch": 2,
+                "identity_hash": "e19a0890895dbc68f9753fa6a67f1dd0270ed28633c83bc75ca0829036c36c72",
+                "schema_hash": "72d43ebc2a88d3c81cfc41782c8e4272037f54a75d8bee6fcdd037d6c9ed8b09",
+                "sha256": "a6d2fbcd08956649c36fcda4d10f4add4d0286890217093c8f0d484e5cafbe36"
+              }
+            ],
+            "slice_id": "16f7e517-cf68-4889-8b2d-8b42e4f4f71c"
+          },
+          "reputation-lists": {
+            "manifest_sha256": "29a59b25ea1e5d06e7b989bd07006a1008b6b1831a692a83648b035df98c7c23",
+            "artifacts": [
+              {
+                "artifact": "masks",
+                "file": "repListMasksManual.csv",
+                "rows": 16677,
+                "coverage": {
+                  "revision": 2,
+                  "changed_at": "2026-10-08T14:48:15.587147225Z",
+                  "upper_id": 16677
+                },
+                "identity_epoch": 1,
+                "identity_hash": "9603bed8bd56b1ac3cb28247b8428ec3a5aff064fafa16cd4c84d2deb13b20ab",
+                "schema_hash": "aa83628320c0c435d7c91124aff4f159bd0d045a7b6fa7353ace9e1ff93e6fee",
+                "sha256": "689a86816fb36d6c28b93e5cce62b5f2b9362345de1e76d32e608f889974ffb6"
+              },
+              {
+                "artifact": "ip_list",
+                "file": "repListIPsManual.csv",
+                "rows": 16677,
+                "coverage": {
+                  "revision": 2,
+                  "changed_at": "2026-10-08T14:48:15.587Z",
+                  "upper_id": 16677
+                },
+                "identity_epoch": 2,
+                "identity_hash": "ebdd9892cd76b9b35637ec4f6f54326225ec55729ac92e53685ef1c3526450c7",
+                "schema_hash": "a26c1ae8f225a0503c580bde272be18c7426895af5fedb3ccf71f7f25b9b8173",
+                "sha256": "f505dfb4154cd0764ac91b3e8aab2079e515594d7524d87f8e3172fe3567cdc5"
+              },
+              {
+                "artifact": "hashes",
+                "file": "repListHashesManual.csv",
+                "rows": 43358,
+                "coverage": {
+                  "revision": 2,
+                  "changed_at": "2026-10-08T14:48:21.941748045Z",
+                  "upper_id": 43358
+                },
+                "identity_epoch": 2,
+                "identity_hash": "0a28546ee6146dc8afd105f8cba167a797203bd81ed3c80263b91a6baf4646d2",
+                "schema_hash": "ce26d9f30205795347786b7924e31e5d2a8d669e13f620cffeb627974791b027",
+                "sha256": "c5dc140bf37294d90a6c1c191e205d574b002dafad82373efea0a09b246c17be"
+              }
+            ],
+            "slice_id": "e8c9e6cf-48c8-489a-b3fa-e9cfc3f19763"
+          },
+          "ioc-aggregate": {
+            "manifest_sha256": "24c45c0ccdff526cb7a6b0f028bc7a50e05ace101f27f1fa6c0d10cf515bd0b8",
+            "artifacts": [
+              {
+                "artifact": "ioc_aggregate",
+                "file": "GDI_IOC.csv",
+                "rows": 90054,
+                "coverage": {
+                  "revision": 2,
+                  "changed_at": "2026-10-08T14:48:29.513197810Z",
+                  "upper_id": 90054
+                },
+                "identity_epoch": 1,
+                "identity_hash": "c8f906e86ebffb8058507bfe3b66fc97d261f6fa8e9ad80e0f67540d27c7da90",
+                "schema_hash": "a5eddf8860e834ba7664c947505e4642dbbd2db91fcff53fec57f6a350f822ab",
+                "sha256": "a3222670869789cde6fed8635db6904203ddae332671e5d1bfcd6818fe6606d7"
+              }
+            ],
+            "slice_id": "8b1fd9c2-0bfa-4038-b977-78bfb0a42e0f"
+          }
+        },
+        "mutable_projection_oracle": "PASS; fields, complete keys, canonical ids and durable generations",
+        "gates": {
+          "limits": {
+            "local_max_seconds": 45,
+            "rss_bytes": 536870912,
+            "non_file_bytes": 603979776,
+            "writer_hold_nanos": 5000000000
+          },
+          "violations": [
+            "conservative_local_window",
+            "writer_hold"
+          ],
+          "status": "FAIL",
+          "writer_window": {
+            "EXPORT_SLOTS": {
+              "completed": 4,
+              "totalHoldNanos": 636200339,
+              "maximumHoldNanosUpperBound": 369108695,
+              "maximumHoldNanosIsExact": true,
+              "totalWaitNanos": 369007,
+              "maximumWaitNanosUpperBound": 369007,
+              "maximumWaitNanosIsExact": false
+            },
+            "MAINTENANCE": {
+              "completed": 0,
+              "totalHoldNanos": 0,
+              "maximumHoldNanosUpperBound": 0,
+              "maximumHoldNanosIsExact": true,
+              "totalWaitNanos": 0,
+              "maximumWaitNanosUpperBound": 0,
+              "maximumWaitNanosIsExact": true
+            },
+            "PROMOTION": {
+              "completed": 5,
+              "totalHoldNanos": 25504305719,
+              "maximumHoldNanosUpperBound": 13313439548,
+              "maximumHoldNanosIsExact": true,
+              "totalWaitNanos": 94336,
+              "maximumWaitNanosUpperBound": 94336,
+              "maximumWaitNanosIsExact": false
+            },
+            "CONTROL": {
+              "completed": 28,
+              "totalHoldNanos": 61556419,
+              "maximumHoldNanosUpperBound": 19564941,
+              "maximumHoldNanosIsExact": true,
+              "totalWaitNanos": 509893824,
+              "maximumWaitNanosUpperBound": 193919994,
+              "maximumWaitNanosIsExact": true
+            },
+            "EXPIRY": {
+              "completed": 0,
+              "totalHoldNanos": 0,
+              "maximumHoldNanosUpperBound": 0,
+              "maximumHoldNanosIsExact": true,
+              "totalWaitNanos": 0,
+              "maximumWaitNanosUpperBound": 0,
+              "maximumWaitNanosIsExact": true
+            }
+          },
+          "scope": "Conservative complete-window and resource screens; exact Tlocal/remaining G6 criteria remain separate"
+        },
+        "cleanup": {
+          "before_stop": {
+            "MainPID": "345984",
+            "Result": "success",
+            "ExecMainStatus": "0",
+            "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/ioc-cap6-ebf79b78974a4311b313770928edabc5.service",
+            "ActiveState": "active"
+          },
+          "after_stop": {
+            "MainPID": "0",
+            "Result": "exit-code",
+            "ExecMainStatus": "143",
+            "ControlGroup": "",
+            "ActiveState": "failed"
+          },
+          "process_terminated": true
+        },
+        "cleanup_errors": [],
+        "temporary_state_removed": true
+      },
+      "phase_evidence": {
+        "anchors": [
+          {
+            "timestamp": "2026-10-08T14:47:41.329940463Z",
+            "run_id": "c5dbcebb-9d2b-4e0e-9aa8-55270f058113",
+            "stage": "READ_SOURCE",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:47:41.820610973Z",
+            "run_id": "c5dbcebb-9d2b-4e0e-9aa8-55270f058113",
+            "stage": "READ_SOURCE",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 490230669,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:47:41.820804707Z",
+            "run_id": "c5dbcebb-9d2b-4e0e-9aa8-55270f058113",
+            "stage": "REFANG",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:47:42.913793943Z",
+            "run_id": "c5dbcebb-9d2b-4e0e-9aa8-55270f058113",
+            "stage": "REFANG",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 1092675623,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:47:42.914101699Z",
+            "run_id": "c5dbcebb-9d2b-4e0e-9aa8-55270f058113",
+            "stage": "EXTRACT",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:47:45.823790598Z",
+            "run_id": "c5dbcebb-9d2b-4e0e-9aa8-55270f058113",
+            "stage": "EXTRACT",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 2909359133,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:47:45.824230604Z",
+            "run_id": "c5dbcebb-9d2b-4e0e-9aa8-55270f058113",
+            "stage": "ATTRIBUTE",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:47:46.229049331Z",
+            "run_id": "c5dbcebb-9d2b-4e0e-9aa8-55270f058113",
+            "stage": "ATTRIBUTE",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 404585542,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:47:46.229357049Z",
+            "run_id": "c5dbcebb-9d2b-4e0e-9aa8-55270f058113",
+            "stage": "PREPARE_ARTIFACTS",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:48:15.127665376Z",
+            "run_id": "c5dbcebb-9d2b-4e0e-9aa8-55270f058113",
+            "stage": "PREPARE_ARTIFACTS",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 31689415127,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:48:15.132218086Z",
+            "run_id": "c5dbcebb-9d2b-4e0e-9aa8-55270f058113",
+            "stage": "WRITE_ARTIFACTS",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:48:42.829410810Z",
+            "run_id": "c5dbcebb-9d2b-4e0e-9aa8-55270f058113",
+            "stage": "WRITE_ARTIFACTS",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 30503577107,
+            "dataset": "capacity-qualification"
+          }
+        ],
+        "successful_stage_nanos": {
+          "READ_SOURCE": 490230669,
+          "REFANG": 1092675623,
+          "EXTRACT": 2909359133,
+          "ATTRIBUTE": 404585542,
+          "PREPARE_ARTIFACTS": 31689415127,
+          "WRITE_ARTIFACTS": 30503577107
+        },
+        "failed_stage_nanos": {},
+        "successful_stage_sum_nanos": 67089843201,
+        "note": "Observer monotonic durations; exclude warmup and failed stages from the successful-stage sum. Absolute timestamps are anchors, not duration subtraction."
+      },
+      "measurement_scope": "Completed local window, excluding configured stability only; no SMB"
+    },
+    {
+      "source_commit": "b228651bb23de119afa7ebfcc88827aa3def95ce",
+      "jar_sha256": "af94759c63889569278c18e61b5c60487af8256218f91c607267d5f026f3764d",
+      "driver_sha256": "a8e9bba232cb8d6bf31770673e34583227379a71183f4600dc75f9642c3d1abd",
+      "base_oracle_sha256": "412c9c07a4f1b306a4ae22b9efadaec5478626472b90bbe308601a8ab314fc88",
+      "input_driver_sha256": "0ea748292d76dd4e3cefd5f3a8624aa3cde073293cfbdba8d7e71995f6e6c9cb",
+      "policy_sha256": "9f3b4ae316c97966aab21d543c3a92e866f25ea5a115967c025fe0f770e03ec8",
+      "java": "openjdk 21.0.12.1 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-24.04.4-Ubuntu)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-24.04.4-Ubuntu, mixed mode, sharing)",
+      "rows": 100000,
+      "format": "docx",
+      "shape": "mostly-unique",
+      "initial_rows": 0,
+      "mode": "primary",
+      "requested_samples": 3,
+      "stopped_after_failed_screen": true,
+      "status": "FAIL",
+      "temporary_runtime_removed": true,
+      "cell": "cap7a-docx-100k",
+      "raw_report_sha256": "d77c3909e9c4e149a6c1cb53285b540100ab1c1bfe0f06629b5b0d1f4351c05e",
+      "phase_log_sha256": "169841d69e4f44f17302eadcacc0fb3ae08025ae191c4b7f5e0c4ca8451a4950",
+      "command": "make service-capacity SERVICE_CAPACITY_ARGS=\"--jar bootstrap/ioc-app/target/ioc-app-0.3.0-SNAPSHOT.jar --config .dev/cap6-smoke-html-v2/0/application.yml --output .dev/cap7a-docx-100k --rows 100000 --format docx --shape mostly-unique --samples 3 --timeout 900 --port 18206\"",
+      "sample": {
+        "index": 0,
+        "status": "FAIL",
+        "started_epoch_seconds": 1791470960.5899704,
+        "finished_epoch_seconds": 1791471098.5272915,
+        "policy_sha256": "f1bbdcaf716a0f591ec98bd427ea24f5868a65fd17d4fdbe4730a3e3e2049621",
+        "policy_changes": [
+          "Private state/inbox/import paths and loopback port",
+          "Sync disabled for local reference",
+          "Log phase observer enabled"
+        ],
+        "runtime": {
+          "unit": "ioc-cap6-debb7afb81884811a1a5d971a75e58a6",
+          "pid": 349944,
+          "cgroup": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/ioc-cap6-debb7afb81884811a1a5d971a75e58a6.service",
+          "effective_limits": {
+            "cpu.max": "200000 100000",
+            "memory.high": "805306368",
+            "memory.max": "1073741824",
+            "memory.swap.max": "max"
+          },
+          "flags": [
+            "-Xms128m",
+            "-Xmx512m"
+          ],
+          "environment_owner": "systemd EnvironmentFile; never sourced in a shell"
+        },
+        "input": {
+          "rows": 100000,
+          "sections": 400,
+          "shape": "mostly-unique",
+          "seed": 43,
+          "format": "docx",
+          "bytes": 1886191,
+          "sha256": "609a38f9e220b37bad31d641dcea504dccd8817065b380e8c8e4f73e86eb14da"
+        },
+        "expected_final_rows": {
+          "masks": 16677,
+          "ip_list": 16677,
+          "hashes": 43358,
+          "address_blacklist": 33354,
+          "ioc_aggregate": 90054
+        },
+        "handoff": {
+          "monotonic": 13707.634219768,
+          "epoch_seconds": 1791470994.3391714,
+          "kind": "producer atomic local rename completed"
+        },
+        "local_window_upper_seconds": 81.4313842979991,
+        "configured_stability_seconds": 2.0,
+        "raw_local_handoff_to_slices_seconds": 83.4313842979991,
+        "timeline": {
+          "complete_monotonic": 13791.065604066,
+          "admission_transitions": [
+            {
+              "observed_monotonic": 13709.983515352,
+              "occurrence_id": "a5ba28e3-f6f0-4ab8-ab9f-b18348f18e7f",
+              "phase": "LINKED",
+              "created_at_ms": 1791470996582.256,
+              "updated_at_ms": 1791470996616.983,
+              "terminal_outcome": "",
+              "registration_finalized": 0
+            },
+            {
+              "observed_monotonic": 13791.059867882,
+              "occurrence_id": "a5ba28e3-f6f0-4ab8-ab9f-b18348f18e7f",
+              "phase": "TERMINAL",
+              "created_at_ms": 1791470996582.256,
+              "updated_at_ms": 1791471072178.124,
+              "terminal_outcome": "SUCCEEDED",
+              "registration_finalized": 1
+            }
+          ],
+          "run": {
+            "run_id": "968edae1-2849-4374-89c1-0fa830a1a86c",
+            "status": "COMPLETED",
+            "artifacts": "masks\nip_list\naddress_blacklist\nhashes\nioc_aggregate",
+            "started_at": "2026-10-08T14:49:56.621712263Z",
+            "updated_at": "2026-10-08T14:51:12.182371193Z",
+            "reason": null,
+            "source_key": "609a38f9e220b37bad31d641dcea504dccd8817065b380e8c8e4f73e86eb14da"
+          },
+          "revisions": {
+            "masks": 2,
+            "ip_list": 2,
+            "address_blacklist": 2,
+            "hashes": 2,
+            "ioc_aggregate": 2
+          },
+          "projections": [
+            {
+              "artifact": "masks",
+              "required_generation": 2,
+              "projected_generation": 2,
+              "requested_at_ms": 1791471037124,
+              "projected_at_ms": 1791471039674,
+              "last_error_code": null
+            },
+            {
+              "artifact": "ip_list",
+              "required_generation": 2,
+              "projected_generation": 2,
+              "requested_at_ms": 1791471040007,
+              "projected_at_ms": 1791471042238,
+              "last_error_code": null
+            },
+            {
+              "artifact": "address_blacklist",
+              "required_generation": 2,
+              "projected_generation": 2,
+              "requested_at_ms": 1791471042899,
+              "projected_at_ms": 1791471044302,
+              "last_error_code": null
+            },
+            {
+              "artifact": "hashes",
+              "required_generation": 2,
+              "projected_generation": 2,
+              "requested_at_ms": 1791471045655,
+              "projected_at_ms": 1791471052828,
+              "last_error_code": null
+            },
+            {
+              "artifact": "ioc_aggregate",
+              "required_generation": 2,
+              "projected_generation": 2,
+              "requested_at_ms": 1791471055115,
+              "projected_at_ms": 1791471072167,
+              "last_error_code": null
+            }
+          ]
+        },
+        "resources": {
+          "samples": 889,
+          "sample_interval_seconds": 0.1,
+          "wall_seconds": 83.45586587000071,
+          "process_cpu_seconds": 73.0,
+          "peaks": {
+            "rss_bytes": 391917568,
+            "hwm_bytes": 391917568,
+            "anon_bytes": 365723648,
+            "file_bytes": 430493696,
+            "kernel_bytes": 15544320,
+            "non_file_bytes": 378834944,
+            "cgroup_current_bytes": 805310464,
+            "swap_bytes": 0,
+            "wal_bytes": 180336584,
+            "workspace_bytes": 146917298,
+            "output_bytes": 31305704,
+            "heap_used_bytes": 93192601,
+            "heap_committed_bytes": 134348800,
+            "metaspace_used_bytes": 90154086,
+            "metaspace_committed_bytes": 91815936
+          },
+          "process_hwm_bytes": 391917568,
+          "cpu_delta": {
+            "usage_usec": 72993170,
+            "user_usec": 53713071,
+            "system_usec": 19280099,
+            "nr_periods": 823,
+            "nr_throttled": 12,
+            "throttled_usec": 368789,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          },
+          "gc_delta": {
+            "YGC": 424.0,
+            "FGC": 0.0,
+            "GCT": 0.5880000000000001
+          },
+          "jvm_sampling": "jstat -gc; at most one snapshot/s; metaspace excludes code cache/native allocations",
+          "memory_events_delta": {
+            "low": 0,
+            "high": 926,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "psi_microseconds_delta": {
+            "some": 53563,
+            "full": 53563
+          },
+          "psi_full_fraction": 0.0006418122853513394
+        },
+        "canonical_oracle": {
+          "masks": {
+            "rows": 16677,
+            "origins": 16677,
+            "public_fields_sha256": "36be156c62eff7ce976a679d91814262b98cdd479b85f9ab7417ca77b3073099"
+          },
+          "ip_list": {
+            "rows": 16677,
+            "origins": 16677,
+            "public_fields_sha256": "6f96e7953568d3b3beca71b05ced31f32433e8cd12079ba721377607fe52e67e"
+          },
+          "hashes": {
+            "rows": 43358,
+            "origins": 43358,
+            "public_fields_sha256": "663ce5d26c9766990cde45a5a6b65bd4cb9d0a2df1d90dafde5b8baf9af91a79"
+          },
+          "address_blacklist": {
+            "rows": 33354,
+            "origins": 33354,
+            "public_fields_sha256": "1c514e8008d3ce5429c0d952082370cafcd695810c275d77cbb46fccb3b33b2a"
+          },
+          "ioc_aggregate": {
+            "rows": 90054,
+            "origins": 90054,
+            "public_fields_sha256": "bcdf5311e3a68ff86c2a914027957a5e682374289553f4f091f9d86f3ab5ce96"
+          }
+        },
+        "local_slices": {
+          "address-blacklist": {
+            "manifest_sha256": "c0ec984b93876dd83709f41197da9cc200f8a8f53aa3c5167f4f133de899fe60",
+            "artifacts": [
+              {
+                "artifact": "address_blacklist",
+                "file": "address_blacklist_generated.csv",
+                "rows": 33354,
+                "coverage": {
+                  "revision": 2,
+                  "changed_at": "2026-10-08T14:50:42.899713122Z",
+                  "upper_id": 33354
+                },
+                "identity_epoch": 2,
+                "identity_hash": "e19a0890895dbc68f9753fa6a67f1dd0270ed28633c83bc75ca0829036c36c72",
+                "schema_hash": "72d43ebc2a88d3c81cfc41782c8e4272037f54a75d8bee6fcdd037d6c9ed8b09",
+                "sha256": "a6d2fbcd08956649c36fcda4d10f4add4d0286890217093c8f0d484e5cafbe36"
+              }
+            ],
+            "slice_id": "67a02996-e5a6-42e9-a60f-2a3c8fbc0963"
+          },
+          "reputation-lists": {
+            "manifest_sha256": "9a7d571838e7b603458319cdd04c8198dbc8298272714e1af5aca3f9cb5b8e67",
+            "artifacts": [
+              {
+                "artifact": "masks",
+                "file": "repListMasksManual.csv",
+                "rows": 16677,
+                "coverage": {
+                  "revision": 2,
+                  "changed_at": "2026-10-08T14:50:37.124912056Z",
+                  "upper_id": 16677
+                },
+                "identity_epoch": 1,
+                "identity_hash": "9603bed8bd56b1ac3cb28247b8428ec3a5aff064fafa16cd4c84d2deb13b20ab",
+                "schema_hash": "aa83628320c0c435d7c91124aff4f159bd0d045a7b6fa7353ace9e1ff93e6fee",
+                "sha256": "689a86816fb36d6c28b93e5cce62b5f2b9362345de1e76d32e608f889974ffb6"
+              },
+              {
+                "artifact": "ip_list",
+                "file": "repListIPsManual.csv",
+                "rows": 16677,
+                "coverage": {
+                  "revision": 2,
+                  "changed_at": "2026-10-08T14:50:40.007316938Z",
+                  "upper_id": 16677
+                },
+                "identity_epoch": 2,
+                "identity_hash": "ebdd9892cd76b9b35637ec4f6f54326225ec55729ac92e53685ef1c3526450c7",
+                "schema_hash": "a26c1ae8f225a0503c580bde272be18c7426895af5fedb3ccf71f7f25b9b8173",
+                "sha256": "f505dfb4154cd0764ac91b3e8aab2079e515594d7524d87f8e3172fe3567cdc5"
+              },
+              {
+                "artifact": "hashes",
+                "file": "repListHashesManual.csv",
+                "rows": 43358,
+                "coverage": {
+                  "revision": 2,
+                  "changed_at": "2026-10-08T14:50:45.655882168Z",
+                  "upper_id": 43358
+                },
+                "identity_epoch": 2,
+                "identity_hash": "0a28546ee6146dc8afd105f8cba167a797203bd81ed3c80263b91a6baf4646d2",
+                "schema_hash": "ce26d9f30205795347786b7924e31e5d2a8d669e13f620cffeb627974791b027",
+                "sha256": "c5dc140bf37294d90a6c1c191e205d574b002dafad82373efea0a09b246c17be"
+              }
+            ],
+            "slice_id": "575c69e7-afe5-4e22-868f-862ae58b6bfb"
+          },
+          "ioc-aggregate": {
+            "manifest_sha256": "05c261af0a593b199f371f63906e6918d3d8ce2ab2bff1ec82520b6b67909cfb",
+            "artifacts": [
+              {
+                "artifact": "ioc_aggregate",
+                "file": "GDI_IOC.csv",
+                "rows": 90054,
+                "coverage": {
+                  "revision": 2,
+                  "changed_at": "2026-10-08T14:50:55.115986770Z",
+                  "upper_id": 90054
+                },
+                "identity_epoch": 1,
+                "identity_hash": "c8f906e86ebffb8058507bfe3b66fc97d261f6fa8e9ad80e0f67540d27c7da90",
+                "schema_hash": "a5eddf8860e834ba7664c947505e4642dbbd2db91fcff53fec57f6a350f822ab",
+                "sha256": "a3222670869789cde6fed8635db6904203ddae332671e5d1bfcd6818fe6606d7"
+              }
+            ],
+            "slice_id": "948b43a2-4112-4718-a3c5-973b2f05de04"
+          }
+        },
+        "mutable_projection_oracle": "PASS; fields, complete keys, canonical ids and durable generations",
+        "gates": {
+          "limits": {
+            "local_max_seconds": 45,
+            "rss_bytes": 536870912,
+            "non_file_bytes": 603979776,
+            "writer_hold_nanos": 5000000000
+          },
+          "violations": [
+            "conservative_local_window",
+            "writer_hold"
+          ],
+          "status": "FAIL",
+          "writer_window": {
+            "PROMOTION": {
+              "completed": 5,
+              "totalHoldNanos": 31875675904,
+              "maximumHoldNanosUpperBound": 16419974441,
+              "maximumHoldNanosIsExact": true,
+              "totalWaitNanos": 135917,
+              "maximumWaitNanosUpperBound": 135917,
+              "maximumWaitNanosIsExact": false
+            },
+            "MAINTENANCE": {
+              "completed": 0,
+              "totalHoldNanos": 0,
+              "maximumHoldNanosUpperBound": 0,
+              "maximumHoldNanosIsExact": true,
+              "totalWaitNanos": 0,
+              "maximumWaitNanosUpperBound": 0,
+              "maximumWaitNanosIsExact": true
+            },
+            "EXPIRY": {
+              "completed": 0,
+              "totalHoldNanos": 0,
+              "maximumHoldNanosUpperBound": 0,
+              "maximumHoldNanosIsExact": true,
+              "totalWaitNanos": 0,
+              "maximumWaitNanosUpperBound": 0,
+              "maximumWaitNanosIsExact": true
+            },
+            "CONTROL": {
+              "completed": 28,
+              "totalHoldNanos": 74487796,
+              "maximumHoldNanosUpperBound": 27129239,
+              "maximumHoldNanosIsExact": true,
+              "totalWaitNanos": 899737568,
+              "maximumWaitNanosUpperBound": 500711854,
+              "maximumWaitNanosIsExact": true
+            },
+            "EXPORT_SLOTS": {
+              "completed": 4,
+              "totalHoldNanos": 661039549,
+              "maximumHoldNanosUpperBound": 583378559,
+              "maximumHoldNanosIsExact": true,
+              "totalWaitNanos": 136303,
+              "maximumWaitNanosUpperBound": 136303,
+              "maximumWaitNanosIsExact": false
+            }
+          },
+          "scope": "Conservative complete-window and resource screens; exact Tlocal/remaining G6 criteria remain separate"
+        },
+        "cleanup": {
+          "before_stop": {
+            "MainPID": "349944",
+            "Result": "success",
+            "ExecMainStatus": "0",
+            "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/ioc-cap6-debb7afb81884811a1a5d971a75e58a6.service",
+            "ActiveState": "active"
+          },
+          "after_stop": {
+            "MainPID": "0",
+            "Result": "exit-code",
+            "ExecMainStatus": "143",
+            "ControlGroup": "",
+            "ActiveState": "failed"
+          },
+          "process_terminated": true
+        },
+        "cleanup_errors": [],
+        "temporary_state_removed": true
+      },
+      "phase_evidence": {
+        "anchors": [
+          {
+            "timestamp": "2026-10-08T14:49:56.663220912Z",
+            "run_id": "968edae1-2849-4374-89c1-0fa830a1a86c",
+            "stage": "READ_SOURCE",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:49:57.624795381Z",
+            "run_id": "968edae1-2849-4374-89c1-0fa830a1a86c",
+            "stage": "READ_SOURCE",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 960890645,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:49:57.625039533Z",
+            "run_id": "968edae1-2849-4374-89c1-0fa830a1a86c",
+            "stage": "REFANG",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:49:58.901088690Z",
+            "run_id": "968edae1-2849-4374-89c1-0fa830a1a86c",
+            "stage": "REFANG",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 1275889334,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:49:58.901435784Z",
+            "run_id": "968edae1-2849-4374-89c1-0fa830a1a86c",
+            "stage": "EXTRACT",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:50:02.461138574Z",
+            "run_id": "968edae1-2849-4374-89c1-0fa830a1a86c",
+            "stage": "EXTRACT",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 3559409038,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:50:02.461565119Z",
+            "run_id": "968edae1-2849-4374-89c1-0fa830a1a86c",
+            "stage": "ATTRIBUTE",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:50:02.934882763Z",
+            "run_id": "968edae1-2849-4374-89c1-0fa830a1a86c",
+            "stage": "ATTRIBUTE",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 473018424,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:50:02.935165094Z",
+            "run_id": "968edae1-2849-4374-89c1-0fa830a1a86c",
+            "stage": "PREPARE_ARTIFACTS",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:50:36.598605976Z",
+            "run_id": "968edae1-2849-4374-89c1-0fa830a1a86c",
+            "stage": "PREPARE_ARTIFACTS",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 36421294818,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:50:36.603769734Z",
+            "run_id": "968edae1-2849-4374-89c1-0fa830a1a86c",
+            "stage": "WRITE_ARTIFACTS",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:51:11.538594380Z",
+            "run_id": "968edae1-2849-4374-89c1-0fa830a1a86c",
+            "stage": "WRITE_ARTIFACTS",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 37726098496,
+            "dataset": "capacity-qualification"
+          }
+        ],
+        "successful_stage_nanos": {
+          "READ_SOURCE": 960890645,
+          "REFANG": 1275889334,
+          "EXTRACT": 3559409038,
+          "ATTRIBUTE": 473018424,
+          "PREPARE_ARTIFACTS": 36421294818,
+          "WRITE_ARTIFACTS": 37726098496
+        },
+        "failed_stage_nanos": {},
+        "successful_stage_sum_nanos": 80416600755,
+        "note": "Observer monotonic durations; exclude warmup and failed stages from the successful-stage sum. Absolute timestamps are anchors, not duration subtraction."
+      },
+      "measurement_scope": "Completed local window, excluding configured stability only; no SMB"
+    },
+    {
+      "source_commit": "b228651bb23de119afa7ebfcc88827aa3def95ce",
+      "jar_sha256": "af94759c63889569278c18e61b5c60487af8256218f91c607267d5f026f3764d",
+      "driver_sha256": "a8e9bba232cb8d6bf31770673e34583227379a71183f4600dc75f9642c3d1abd",
+      "base_oracle_sha256": "412c9c07a4f1b306a4ae22b9efadaec5478626472b90bbe308601a8ab314fc88",
+      "input_driver_sha256": "0ea748292d76dd4e3cefd5f3a8624aa3cde073293cfbdba8d7e71995f6e6c9cb",
+      "policy_sha256": "9f3b4ae316c97966aab21d543c3a92e866f25ea5a115967c025fe0f770e03ec8",
+      "java": "openjdk 21.0.12.1 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-24.04.4-Ubuntu)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-24.04.4-Ubuntu, mixed mode, sharing)",
+      "rows": 1000000,
+      "format": "html",
+      "shape": "mostly-unique",
+      "initial_rows": 0,
+      "mode": "primary",
+      "requested_samples": 3,
+      "stopped_after_failed_screen": true,
+      "status": "FAIL",
+      "temporary_runtime_removed": true,
+      "cell": "cap7a-html-1m",
+      "raw_report_sha256": "84c41c18bf753ff5a7f18f6042a3f4340c9699b55cffcf276f101e7e0e01f586",
+      "phase_log_sha256": "c198022a232c31d20dc5e7bf3c9ce130cf002ced2200a5dbb8080c55ab63ac17",
+      "command": "make service-capacity SERVICE_CAPACITY_ARGS=\"--jar bootstrap/ioc-app/target/ioc-app-0.3.0-SNAPSHOT.jar --config .dev/cap6-smoke-html-v2/0/application.yml --output .dev/cap7a-html-1m --rows 1000000 --format html --shape mostly-unique --samples 3 --timeout 900 --port 18206\"",
+      "sample": {
+        "index": 0,
+        "status": "FAIL",
+        "started_epoch_seconds": 1791471119.3039098,
+        "finished_epoch_seconds": 1791471906.5623047,
+        "policy_sha256": "f1bbdcaf716a0f591ec98bd427ea24f5868a65fd17d4fdbe4730a3e3e2049621",
+        "policy_changes": [
+          "Private state/inbox/import paths and loopback port",
+          "Sync disabled for local reference",
+          "Log phase observer enabled"
+        ],
+        "runtime": {
+          "unit": "ioc-cap6-74fa64c459bf4ae092a4aed4cff89468",
+          "pid": 354324,
+          "cgroup": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/ioc-cap6-74fa64c459bf4ae092a4aed4cff89468.service",
+          "effective_limits": {
+            "cpu.max": "200000 100000",
+            "memory.high": "805306368",
+            "memory.max": "1073741824",
+            "memory.swap.max": "max"
+          },
+          "flags": [
+            "-Xms128m",
+            "-Xmx512m"
+          ],
+          "environment_owner": "systemd EnvironmentFile; never sourced in a shell"
+        },
+        "input": {
+          "rows": 1000000,
+          "sections": 4000,
+          "shape": "mostly-unique",
+          "seed": 43,
+          "format": "html",
+          "bytes": 64421153,
+          "sha256": "f9f48372aad99fd145290a89a30947ec4111f643e19a0f983e21b79b199ac7a7"
+        },
+        "expected_final_rows": {
+          "masks": 166677,
+          "ip_list": 166677,
+          "hashes": 433358,
+          "address_blacklist": 333354,
+          "ioc_aggregate": 900054
+        },
+        "handoff": {
+          "monotonic": 14071.245790634,
+          "epoch_seconds": 1791471327.3710115,
+          "kind": "producer atomic local rename completed"
+        },
+        "resources_at_failure": {
+          "samples": 6888,
+          "sample_interval_seconds": 0.1,
+          "wall_seconds": 634.4014131050008,
+          "process_cpu_seconds": 218.58,
+          "peaks": {
+            "rss_bytes": 364724224,
+            "hwm_bytes": 364724224,
+            "anon_bytes": 338485248,
+            "file_bytes": 455786496,
+            "kernel_bytes": 17342464,
+            "non_file_bytes": 354160640,
+            "cgroup_current_bytes": 805412864,
+            "swap_bytes": 0,
+            "wal_bytes": 2937624,
+            "workspace_bytes": 1364850504,
+            "output_bytes": 18239,
+            "heap_used_bytes": 91360972,
+            "heap_committed_bytes": 134348800,
+            "metaspace_used_bytes": 87226572,
+            "metaspace_committed_bytes": 88866816
+          },
+          "process_hwm_bytes": 364724224,
+          "cpu_delta": {
+            "usage_usec": 218576503,
+            "user_usec": 148889733,
+            "system_usec": 69686769,
+            "nr_periods": 6268,
+            "nr_throttled": 1,
+            "throttled_usec": 43319,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          },
+          "gc_delta": {
+            "YGC": 990.0,
+            "FGC": 0.0,
+            "GCT": 1.2469999999999999
+          },
+          "jvm_sampling": "jstat -gc; at most one snapshot/s; metaspace excludes code cache/native allocations",
+          "memory_events_delta": {
+            "low": 0,
+            "high": 2520,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "psi_microseconds_delta": {
+            "some": 404936,
+            "full": 404867
+          },
+          "psi_full_fraction": 0.0006381874183073263
+        },
+        "failure": "SQLite workspace capacity exhausted (see daemon.log); no failed-screen retries",
+        "failure_kind": "workload",
+        "cleanup": {
+          "before_stop": {
+            "MainPID": "354324",
+            "Result": "success",
+            "ExecMainStatus": "0",
+            "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/ioc-cap6-74fa64c459bf4ae092a4aed4cff89468.service",
+            "ActiveState": "active"
+          },
+          "after_stop": {
+            "MainPID": "0",
+            "Result": "exit-code",
+            "ExecMainStatus": "143",
+            "ControlGroup": "",
+            "ActiveState": "failed"
+          },
+          "process_terminated": true
+        },
+        "cleanup_errors": [],
+        "temporary_state_removed": true
+      },
+      "phase_evidence": {
+        "anchors": [
+          {
+            "timestamp": "2026-10-08T14:55:34.735099934Z",
+            "run_id": "6e71808e-7ae5-47fa-b2e6-8143d32286bb",
+            "stage": "READ_SOURCE",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:55:35.223019527Z",
+            "run_id": "6e71808e-7ae5-47fa-b2e6-8143d32286bb",
+            "stage": "READ_SOURCE",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 3335559555,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:55:35.223186114Z",
+            "run_id": "6e71808e-7ae5-47fa-b2e6-8143d32286bb",
+            "stage": "REFANG",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:55:47.549130731Z",
+            "run_id": "6e71808e-7ae5-47fa-b2e6-8143d32286bb",
+            "stage": "REFANG",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 12325714208,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:55:47.549590212Z",
+            "run_id": "6e71808e-7ae5-47fa-b2e6-8143d32286bb",
+            "stage": "EXTRACT",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:56:14.673057712Z",
+            "run_id": "6e71808e-7ae5-47fa-b2e6-8143d32286bb",
+            "stage": "EXTRACT",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 29947059113,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:56:14.673667957Z",
+            "run_id": "6e71808e-7ae5-47fa-b2e6-8143d32286bb",
+            "stage": "ATTRIBUTE",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:56:18.885147033Z",
+            "run_id": "6e71808e-7ae5-47fa-b2e6-8143d32286bb",
+            "stage": "ATTRIBUTE",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 4211217286,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T14:56:18.885691654Z",
+            "run_id": "6e71808e-7ae5-47fa-b2e6-8143d32286bb",
+            "stage": "PREPARE_ARTIFACTS",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-08T15:05:06.106155970Z",
+            "run_id": "6e71808e-7ae5-47fa-b2e6-8143d32286bb",
+            "stage": "PREPARE_ARTIFACTS",
+            "action": "stage_complete",
+            "outcome": "failure",
+            "duration": 577205198634,
+            "dataset": "capacity-qualification"
+          }
+        ],
+        "successful_stage_nanos": {
+          "READ_SOURCE": 3335559555,
+          "REFANG": 12325714208,
+          "EXTRACT": 29947059113,
+          "ATTRIBUTE": 4211217286
+        },
+        "failed_stage_nanos": {
+          "PREPARE_ARTIFACTS": 577205198634
+        },
+        "successful_stage_sum_nanos": 49819550162,
+        "note": "Observer monotonic durations; exclude warmup and failed stages from the successful-stage sum. Absolute timestamps are anchors, not duration subtraction."
+      },
+      "measurement_scope": "Failure window through private reducer exhaustion; no completed throughput or complete-cycle memory claim"
+    },
+    {
+      "source_commit": "e525965c420c05ae799a8a8844f5ea9ea2810e06",
+      "jar_sha256": "af94759c63889569278c18e61b5c60487af8256218f91c607267d5f026f3764d",
+      "driver_sha256": "a8e9bba232cb8d6bf31770673e34583227379a71183f4600dc75f9642c3d1abd",
+      "base_oracle_sha256": "412c9c07a4f1b306a4ae22b9efadaec5478626472b90bbe308601a8ab314fc88",
+      "input_driver_sha256": "0ea748292d76dd4e3cefd5f3a8624aa3cde073293cfbdba8d7e71995f6e6c9cb",
+      "policy_sha256": "9f3b4ae316c97966aab21d543c3a92e866f25ea5a115967c025fe0f770e03ec8",
+      "java": "openjdk 21.0.12.1 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-24.04.4-Ubuntu)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-24.04.4-Ubuntu, mixed mode, sharing)",
+      "rows": 1000000,
+      "format": "docx",
+      "shape": "mostly-unique",
+      "initial_rows": 0,
+      "mode": "primary",
+      "requested_samples": 3,
+      "stopped_after_failed_screen": true,
+      "status": "FAIL",
+      "temporary_runtime_removed": true,
+      "cell": "cap7a-docx-1m",
+      "raw_report_sha256": "59ad2886fdd194a3fff5ca869902f269209275395daeb97ca57ca7221952c4e4",
+      "phase_log_sha256": "5725f11e430c10a20e270117af1c11160dfdc787fb86d72f161afb01c4d88c0e",
+      "command": "make service-capacity SERVICE_CAPACITY_ARGS=\"--jar bootstrap/ioc-app/target/ioc-app-0.3.0-SNAPSHOT.jar --config .dev/cap6-smoke-html-v2/0/application.yml --output .dev/cap7a-docx-1m --rows 1000000 --format docx --shape mostly-unique --samples 3 --timeout 900 --port 18207\"",
+      "sample": {
+        "index": 0,
+        "status": "FAIL",
+        "started_epoch_seconds": 1791543976.0674734,
+        "finished_epoch_seconds": 1791544633.3840048,
+        "policy_sha256": "f1bbdcaf716a0f591ec98bd427ea24f5868a65fd17d4fdbe4730a3e3e2049621",
+        "policy_changes": [
+          "Private state/inbox/import paths and loopback port",
+          "Sync disabled for local reference",
+          "Log phase observer enabled"
+        ],
+        "runtime": {
+          "unit": "ioc-cap6-c7e09e758fba43c2a67f965d1794f8d8",
+          "pid": 19611,
+          "cgroup": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/ioc-cap6-c7e09e758fba43c2a67f965d1794f8d8.service",
+          "effective_limits": {
+            "cpu.max": "200000 100000",
+            "memory.high": "805306368",
+            "memory.max": "1073741824",
+            "memory.swap.max": "max"
+          },
+          "flags": [
+            "-Xms128m",
+            "-Xmx512m"
+          ],
+          "environment_owner": "systemd EnvironmentFile; never sourced in a shell"
+        },
+        "input": {
+          "rows": 1000000,
+          "sections": 4000,
+          "shape": "mostly-unique",
+          "seed": 43,
+          "format": "docx",
+          "bytes": 18839469,
+          "sha256": "57f2e9899e2dc7d1590e4bc3be3ea4940272e946ef2c7e4fce7b5911efce7cc6"
+        },
+        "expected_final_rows": {
+          "masks": 166677,
+          "ip_list": 166677,
+          "hashes": 433358,
+          "address_blacklist": 333354,
+          "ioc_aggregate": 900054
+        },
+        "handoff": {
+          "monotonic": 2487.816624812,
+          "epoch_seconds": 1791544146.1311347,
+          "kind": "producer atomic local rename completed"
+        },
+        "resources_at_failure": {
+          "samples": 5907,
+          "sample_interval_seconds": 0.1,
+          "wall_seconds": 531.8394721759996,
+          "process_cpu_seconds": 184.27,
+          "peaks": {
+            "rss_bytes": 369045504,
+            "hwm_bytes": 369045504,
+            "anon_bytes": 343212032,
+            "file_bytes": 447766528,
+            "kernel_bytes": 17235968,
+            "non_file_bytes": 360345600,
+            "cgroup_current_bytes": 805396480,
+            "swap_bytes": 0,
+            "wal_bytes": 2925264,
+            "workspace_bytes": 1340079202,
+            "output_bytes": 18239,
+            "heap_used_bytes": 93235200,
+            "heap_committed_bytes": 134348800,
+            "metaspace_used_bytes": 90143948,
+            "metaspace_committed_bytes": 91881472
+          },
+          "process_hwm_bytes": 369045504,
+          "cpu_delta": {
+            "usage_usec": 184264731,
+            "user_usec": 126043896,
+            "system_usec": 58220834,
+            "nr_periods": 5285,
+            "nr_throttled": 2,
+            "throttled_usec": 3245,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          },
+          "gc_delta": {
+            "YGC": 987.0,
+            "FGC": 0.0,
+            "GCT": 1.016
+          },
+          "jvm_sampling": "jstat -gc; at most one snapshot/s; metaspace excludes code cache/native allocations",
+          "memory_events_delta": {
+            "low": 0,
+            "high": 2379,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "psi_microseconds_delta": {
+            "some": 362606,
+            "full": 362606
+          },
+          "psi_full_fraction": 0.0006817959534225849
+        },
+        "failure": "SQLite workspace capacity exhausted (see daemon.log); no failed-screen retries",
+        "failure_kind": "workload",
+        "cleanup": {
+          "before_stop": {
+            "MainPID": "19611",
+            "Result": "success",
+            "ExecMainStatus": "0",
+            "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/ioc-cap6-c7e09e758fba43c2a67f965d1794f8d8.service",
+            "ActiveState": "active"
+          },
+          "after_stop": {
+            "MainPID": "0",
+            "Result": "exit-code",
+            "ExecMainStatus": "143",
+            "ControlGroup": "",
+            "ActiveState": "failed"
+          },
+          "process_terminated": true
+        },
+        "cleanup_errors": [],
+        "temporary_state_removed": true
+      },
+      "phase_evidence": {
+        "anchors": [
+          {
+            "timestamp": "2026-10-09T11:09:11.143370617Z",
+            "run_id": "1e1da092-ac04-4293-a583-7566df5a5341",
+            "stage": "READ_SOURCE",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-09T11:09:14.583474445Z",
+            "run_id": "1e1da092-ac04-4293-a583-7566df5a5341",
+            "stage": "READ_SOURCE",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 3439838142,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-09T11:09:14.583613475Z",
+            "run_id": "1e1da092-ac04-4293-a583-7566df5a5341",
+            "stage": "REFANG",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-09T11:09:22.002253798Z",
+            "run_id": "1e1da092-ac04-4293-a583-7566df5a5341",
+            "stage": "REFANG",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 10238445382,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-09T11:09:22.002621218Z",
+            "run_id": "1e1da092-ac04-4293-a583-7566df5a5341",
+            "stage": "EXTRACT",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-09T11:09:47.086795638Z",
+            "run_id": "1e1da092-ac04-4293-a583-7566df5a5341",
+            "stage": "EXTRACT",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 25083982751,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-09T11:09:47.087187505Z",
+            "run_id": "1e1da092-ac04-4293-a583-7566df5a5341",
+            "stage": "ATTRIBUTE",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-09T11:09:50.497660465Z",
+            "run_id": "1e1da092-ac04-4293-a583-7566df5a5341",
+            "stage": "ATTRIBUTE",
+            "action": "stage_complete",
+            "outcome": "success",
+            "duration": 3410279471,
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-09T11:09:50.497900186Z",
+            "run_id": "1e1da092-ac04-4293-a583-7566df5a5341",
+            "stage": "PREPARE_ARTIFACTS",
+            "action": "stage_start",
+            "outcome": "unknown",
+            "dataset": "capacity-qualification"
+          },
+          {
+            "timestamp": "2026-10-09T11:17:12.265083169Z",
+            "run_id": "1e1da092-ac04-4293-a583-7566df5a5341",
+            "stage": "PREPARE_ARTIFACTS",
+            "action": "stage_complete",
+            "outcome": "failure",
+            "duration": 484515527830,
+            "dataset": "capacity-qualification"
+          }
+        ],
+        "successful_stage_nanos": {
+          "READ_SOURCE": 3439838142,
+          "REFANG": 10238445382,
+          "EXTRACT": 25083982751,
+          "ATTRIBUTE": 3410279471
+        },
+        "failed_stage_nanos": {
+          "PREPARE_ARTIFACTS": 484515527830
+        },
+        "successful_stage_sum_nanos": 42172545746,
+        "note": "Observer monotonic durations; exclude warmup and failed stages from the successful-stage sum. Absolute timestamps are anchors, not duration subtraction."
+      },
+      "measurement_scope": "Failure window through private reducer exhaustion; no completed throughput or complete-cycle memory claim"
+    }
+  ],
+  "gates": {
+    "source_contracts": "PASS; finite independent text/offset/overlap/attribution/trace/parser and ownership/restart contracts",
+    "source_only_diagnostic": "PASS; four distinct fresh JVMs with complete ordered value/type/source/count oracle",
+    "whole_service_source_stages": "PASS; READ_SOURCE through ATTRIBUTE complete in all four cells",
+    "completed_100k_output_semantics": "PASS; all five canonical/provenance/public-field/slot/CSV oracles and three complete profiles",
+    "whole_service_capacity": "NOT_ACCEPTED; 100k local-time/writer limits fail; million reducer cells do not complete",
+    "million_complete_output_oracle": "NOT_RUN; preparation fails before measured canonical writes",
+    "primary_repetitions": "NOT_RUN after the first failed screen in each cell; no success medians",
+    "mixed_load_smb_deployment": "NOT_RUN; no CAP-7A stand activation"
+  },
+  "next_boundaries": [
+    "CAP-7D: private reducer capacity and measured preparation cost",
+    "CAP-7C: canonical atomic-writer occupancy and visibility/receipt contract",
+    "Retest the complete million-row resource window and remaining G6 cells after their prerequisites succeed"
+  ]
+}

@@ -2,7 +2,7 @@
 
 Diagnostic evidence for the
 [capacity and scheduling review](../../data-processing-capacity-review.md).
-Recorded 2026-10-04–2026-10-08. The incident files describe the old deployed runtime;
+Recorded 2026-10-04–2026-10-09. The incident files describe the old deployed runtime;
 CAP-0/1 evidence additionally qualifies isolated corrected executables.
 
 ## Evidence files
@@ -18,6 +18,7 @@ CAP-0/1 evidence additionally qualifies isolated corrected executables.
 | [cap-4-workspace.json](cap-4-workspace.json) | CAP-4 G4: three incremental workspace/canonical/receipt JVM forks (10k/100k/1m rows per artifact) and three separate actual Spring/Tika/extraction forks; frozen bytecode, full-row oracle, explicit-GC diagnostics and verified removal of all private runtime/state |
 | [cap-5-writer.json](cap-5-writer.json) | CAP-5 writer-occupancy diagnostic: 100k/1m incremental rows per artifact, real atomic lifecycle writer and receipts, operation wait/hold counters, full-row oracle and mandatory private-state cleanup; no whole-service or mixed-load acceptance |
 | [cap-6-reference.json](cap-6-reference.json) | CAP-6 whole-service first-failure screens, all five AS_IS imports, private diagnostic/SMB attempts and drained upgrade/restore; explicit metric corrections and NOT_RUN cells; G6 remains NOT_ACCEPTED |
+| [cap-7a-reference.json](cap-7a-reference.json) | CAP-7A source-only ordered oracles, HTML/DOCX 100k complete output screens and million-row reducer failures; frozen executable/tree identities, phase anchors and owned-state cleanup; G6 remains NOT_ACCEPTED |
 
 `artifact_revision.changed_at` is transaction effective time sampled before
 the mutation loop. It must not be used as commit completion wall time. The
@@ -132,3 +133,20 @@ Error/timeout resources are failure windows or explicitly incomplete raw maxima;
 they are not completed million-row throughput. Live transport and final
 activation remain unqualified. No credentials, DB, WAL, CSV or runtime copy
 are versioned or retained as replayable state.
+
+## CAP-7A source qualification
+
+[CAP-7A execution](../../cap-7a-execution.md) separates source contracts from
+complete-service capacity. Four fresh source-only JVMs pass ordered occurrence
+oracles with roughly 309–315.5 MiB RSS at 100k/1m; their single-fork timings are
+diagnostic and use a distinct domain fixture. Complete-service 100k HTML/DOCX
+cells pass all five output oracles, but exceed local-time and writer-hold limits.
+Both million-row cells complete the source stages and fail at the private reducer
+quota before measured canonical writes. Failure-window memory does not establish
+completed million-row resource acceptance.
+
+The original reports retain their original Git identities: the measured
+`b228651bb23d` tree equals `e525965c420c`, and the four full-service cells share
+one boot-JAR digest. No primary success median, SMB result or deployment is
+claimed. All owned source/oracle/workspace databases and runtime copies were
+removed; compact reports and diagnostic journals retain the failed disposition.

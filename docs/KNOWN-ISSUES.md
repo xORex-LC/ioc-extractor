@@ -25,23 +25,30 @@
 | ING-11 | **Retry × run-ledger: нет resume-протокола.** CAP-5 сохраняет attempts/backoff в durable admission, но полный resume-протокол run-ledger ещё отсутствует; новая попытка `DurableDocumentDispatcher` создаёт новый run; `processClaimed` безусловно `startIngest` на каждой попытке; `markFailed` — только при `!dbCommitted` → сбой проекции (диск/права) даёт N `DB_COMMITTED`-ранов одного source; `IngestRunRecoveryService` не синхронизирован с file-ledger (`CLAIMED`) → после рестарта лишняя полная экстракция. Данные целы, платим CPU/diagnostics/проекции + id-gaps; самовосстанавливается. Нужен resume-протокол: после `DB_COMMITTED` повторять только projection/archive (не extraction/commit) + синхронизация run-ledger ↔ file-ledger; требует мини-дизайна (меняется сага ING-4a). **План: 0.3.0.** | открыт | M | стенд-тест 2026-07-14 (pre-retarget RC 0.1.1) |
 | ING-13 | **Failed claim превращает файл в вечный poison.** В candidate-линии 0.2.0 реализована полумера: rejection возвращает `REJECTED/ALREADY_REJECTED`, повторный poll durable `FAILED` завершается без повторного generic/typed лога. Полный дефект остаётся: `markFailed` синтезирует `Path.of("unknown")`, файл остаётся в inbox и не получает явной физической судьбы. Нужен pre-claim dead-letter/quarantine (с реальными path/detectedAt и идемпотентным terminal-фильтром). Поддерживаемой clear/requeue-команды пока нет: source/logs сохраняются для разбора, а recovery выполняется только по reviewed procedure без ручного удаления ledger/SQLite state. **Полный фикс — 0.3.0.** | открыт | M | стенд-тест 2026-07-14 (pre-retarget RC 0.1.1), полумера 2026-07-15 |
 
-**ING-15 — ограничение больших документов и отказ рабочего потока (открыт, L).**
-Прогон полного сервиса на 1 млн IOC в HTML при `-Xmx512m` падает с
-`OutOfMemoryError` на чтении Tika до канонической записи. Рабочий поток
-завершается, но JVM остаётся активной: это не успешная обработка и не
-подтверждение перегрузочной безопасности. CAP-7A заменяет полные source buffers
-дисковым workspace и потоковыми cursor; HTML удаляет завершённые поддеревья,
-DOCX использует SAX. Фатальный `Error` теперь останавливает dispatcher видимо
-для health, освобождает готовые preparations и сохраняет durable admissions
-для startup recovery. Синтетические fatal preparation/promotion тесты проверяют
-освобождение и обработку следующего документа после restart; это не симуляция
+**ING-15 — ограничение больших документов и отказ рабочего потока (частично, L).**
+Исторический прогон CAP-6 на 1 млн IOC в HTML при `-Xmx512m` падал с
+`OutOfMemoryError` на чтении Tika до канонической записи; рабочий поток
+завершался при остававшейся активной JVM. CAP-7A заменил полные source buffers
+дисковым workspace и потоковыми cursor: HTML удаляет завершённые поддеревья,
+DOCX использует SAX. В квалификации 2026-10-09 полный сервис успешно проходит
+чтение, refang, извлечение и атрибуцию миллионных HTML и DOCX без прежнего
+source OOM. Оба документа затем отклоняются из-за квоты приватного SQLite
+reducer до канонической записи измеряемого документа; это не исчерпание диска
+хоста и не успешный полный цикл. На 100k все пять выходных артефактов проходят
+проверки содержимого при RSS около 368/374 MiB, однако время локального цикла
+и длительность удержания writer превышают принятые бюджеты.
+
+Фатальный `Error` теперь останавливает dispatcher видимо для health,
+освобождает готовые preparations и сохраняет durable admissions для startup
+recovery. Физические и timed-тесты preparation/promotion/cleanup проверяют
+освобождение и обработку оставшихся документов после restart; это не симуляция
 реального исчерпания heap. Окно ordered dispatch ограничено доступными workspace
-leases. Полная ресурсная приёмка крупных документов пока остаётся открытой;
-увеличение heap не закрывает дефект. Владелец: ingestion/source, архитектурный
-трек CAP-7A; проверка — крупный допустимый документ и превышение его лимитов
-при исходном ресурсном конверте. Наблюдаемая RSS уже превышает 512 MiB;
-артефакты этого документа не опубликованы. Протокол полного сервиса:
-`service-capacity.py`; устройство чтения описано в [processing](dev/processing.md).
+leases. Source-контракт квалифицирован, полная ресурсная приёмка остаётся
+открытой: миллионные failure-window RSS не доказывают память завершённого цикла.
+Владельцы: ingestion/source, private reducer и canonical storage; оставшиеся
+архитектурные треки — CAP-7D/C. Бюджеты не увеличены, стенд не обновлялся.
+Протокол полного сервиса: `service-capacity.py`; устройство чтения описано в
+[processing](dev/processing.md) и [ADR 0039](ADR/0039-streamed-document-source-processing.md).
 
 ## 2. Обогащение вывода (`OUT`)
 
