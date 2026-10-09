@@ -160,5 +160,6 @@ sequential bound-template calls with fewer dispatch structures.
 allocations/timings, the incomplete unique import disposition, and six complete
 100k service samples. All service output oracles pass, but original G6 `FAIL`
 statuses and unchanged writer/local-time limits are retained. Prototype ratios
-are separate from final packaged compiler-cleanup qualification. No private
+are separate from [final packaged compiler-cleanup qualification](cap-7b-production.json),
+whose single sample passes data checks and retains the unchanged G6 budget failure. No private
 DB, WAL, runtime snapshot or replayable transport state is versioned.

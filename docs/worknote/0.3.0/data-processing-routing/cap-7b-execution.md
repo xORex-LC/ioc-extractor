@@ -1,7 +1,7 @@
 # CAP-7B routing execution qualification
 
-Status: native sequential execution selected and implemented; final packaged
-screen and repository gates pending. This is the conditional decision from the
+Status: CAP-7B native sequential execution implemented and qualified within
+the recorded scope. This is the conditional decision from the
 [capacity plan](data-processing-capacity-plan.md), not G6 acceptance.
 Entry production HEAD: `58359ddd6db12a8d416e16fbd61cec435500aafc`.
 
@@ -138,6 +138,40 @@ screen is recorded separately; no prototype ratio is relabelled as an exact
 final-implementation performance result. CAP-7C atomicity/writer occupancy and
 CAP-7D reducer capacity remain required separate work.
 
-## Final verification
+## Final packaged screen and repository gates
 
-Pending final packaged screen and exact-HEAD repository gates.
+[Final packaged evidence](qualification/capacity/cap-7b-production.json) is a
+separate single 100k screen of compiler cleanup at source `5100ee85` (production
+change `94d39dfb`), boot digest
+`e501557b333901bb6dde942f377f7dc05dc2e0ea43d32c24919c3b259a40bd89`.
+All canonical/provenance hashes and export artifact bytes match the reference;
+mutable fields/keys/IDs/generations pass the independent oracle. The process
+terminates and all owned runtime/private state is removed. Local-window time
+is 62.005 s, process CPU 52.580 s, sampled RSS 384,790,528 B, sampled heap-used
+88,929,996 B. Original `FAIL` disposition remains for local-time and writer-hold
+budgets. One screen establishes functional packaged equivalence; it is not a
+new paired speedup result or a million-row acceptance.
+
+Focused runtime tests pass 55 cases, including concurrent maximum fan-out;
+Python prototype/measurement tests pass 31 cases. The full deterministic
+`make verify` passes 294 suites, coverage 26,257/28,658 lines (91.62%) and
+9,650/11,413 branches (84.55%), exact raw SpotBugs identities and 24 CPD groups.
+`make pmd-analysis`, `make pmd-watchlist`, `make lint-shell` and `make docs` are
+also run for final repository qualification, with exact-HEAD freshness checked
+through `make context` after the evidence commit. No floor, suppression,
+exclusion or accepted analyzer count is weakened.
+
+Raw SpotBugs contains 137 reviewed findings, with none in changed runtime/compiler
+members. Adopted PMD has 20 findings with none in changed members. The 73-finding
+watchlist includes a new `CloseResource` on the loop's borrowed Endpoint:
+its lifecycle belongs to the Camel context, which stops all consumers/endpoints
+at runtime shutdown. Closing it after one call would invalidate the reusable
+runtime. This is reviewed framework-ownership noise, not a suppression.
+
+The first full verify failed report integrity because a concurrently launched
+PMD profile removed SpotBugs reports; all subsequent Maven gates are sequential.
+This infrastructure failure is retained locally and is not hidden as a test
+retry or counted as a production failure. The corrected reference diagnostic
+smoke's document/import counters are retained separately from primary timings.
+The unique import clock failure remains ING-16; neither that profile nor the
+complete G6 matrix is declared closed.

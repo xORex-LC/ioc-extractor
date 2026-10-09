@@ -1,0 +1,483 @@
+{
+  "source_commit": "5100ee85c7644b0ad14c0b7e6e6dc2c176955554",
+  "jar_sha256": "e501557b333901bb6dde942f377f7dc05dc2e0ea43d32c24919c3b259a40bd89",
+  "driver_sha256": "a8e9bba232cb8d6bf31770673e34583227379a71183f4600dc75f9642c3d1abd",
+  "base_oracle_sha256": "412c9c07a4f1b306a4ae22b9efadaec5478626472b90bbe308601a8ab314fc88",
+  "policy_sha256": "f1bbdcaf716a0f591ec98bd427ea24f5868a65fd17d4fdbe4730a3e3e2049621",
+  "java": "openjdk 21.0.12.1 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-24.04.4-Ubuntu)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-24.04.4-Ubuntu, mixed mode, sharing)",
+  "rows": 100000,
+  "format": "html",
+  "shape": "mostly-unique",
+  "input_driver_sha256": "0ea748292d76dd4e3cefd5f3a8624aa3cde073293cfbdba8d7e71995f6e6c9cb",
+  "import_artifact": null,
+  "smb": false,
+  "initial_rows": 0,
+  "requested_samples": 1,
+  "mode": "primary",
+  "samples": [
+    {
+      "index": 0,
+      "status": "FAIL",
+      "started_epoch_seconds": 1791563562.298761,
+      "policy_sha256": "3b302d57bc569dad667f5ebb40f3b83ab88c224cdc4f97e6ede1bfd5c1f428c2",
+      "policy_changes": [
+        "Private state/inbox/import paths and loopback port",
+        "Sync disabled for local reference",
+        "Log phase observer enabled"
+      ],
+      "runtime": {
+        "unit": "ioc-cap6-bd64d149d0f94a5c9eef5637ddc13f21",
+        "pid": 289336,
+        "cgroup": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/ioc-cap6-bd64d149d0f94a5c9eef5637ddc13f21.service",
+        "effective_limits": {
+          "cpu.max": "200000 100000",
+          "memory.high": "805306368",
+          "memory.max": "1073741824",
+          "memory.swap.max": "max"
+        },
+        "flags": [
+          "-Xms128m",
+          "-Xmx512m"
+        ],
+        "environment_owner": "systemd EnvironmentFile; never sourced in a shell"
+      },
+      "input": {
+        "rows": 100000,
+        "sections": 400,
+        "shape": "mostly-unique",
+        "seed": 43,
+        "format": "html",
+        "bytes": 6282440,
+        "sha256": "63b2264035d96f21b6b0fbf1a73e65bb79af4ce2083abfe15ad560148e0ed607"
+      },
+      "expected_final_rows": {
+        "masks": 16677,
+        "ip_list": 16677,
+        "hashes": 43358,
+        "address_blacklist": 33354,
+        "ioc_aggregate": 90054
+      },
+      "local_window_upper_seconds": 62.004686771000706,
+      "configured_stability_seconds": 2.0,
+      "raw_local_handoff_to_slices_seconds": 64.0046867710007,
+      "resources": {
+        "samples": 702,
+        "sample_interval_seconds": 0.1,
+        "wall_seconds": 63.97251390599922,
+        "process_cpu_seconds": 52.58,
+        "peaks": {
+          "rss_bytes": 384790528,
+          "hwm_bytes": 384790528,
+          "anon_bytes": 358191104,
+          "file_bytes": 435519488,
+          "kernel_bytes": 15650816,
+          "non_file_bytes": 370671616,
+          "cgroup_current_bytes": 805326848,
+          "swap_bytes": 0,
+          "wal_bytes": 180315984,
+          "workspace_bytes": 151641317,
+          "output_bytes": 32354175,
+          "heap_used_bytes": 88929996,
+          "heap_committed_bytes": 134348800,
+          "metaspace_used_bytes": 86717644,
+          "metaspace_committed_bytes": 88408064
+        },
+        "process_hwm_bytes": 384790528,
+        "cpu_delta": {
+          "usage_usec": 52580150,
+          "user_usec": 39857595,
+          "system_usec": 12722555,
+          "nr_periods": 616,
+          "nr_throttled": 13,
+          "throttled_usec": 449834,
+          "nr_bursts": 0,
+          "burst_usec": 0
+        },
+        "gc_delta": {
+          "YGC": 415.0,
+          "FGC": 0.0,
+          "GCT": 0.4
+        },
+        "jvm_sampling": "jstat -gc; at most one snapshot/s; metaspace excludes code cache/native allocations",
+        "memory_events_delta": {
+          "low": 0,
+          "high": 940,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0,
+          "oom_group_kill": 0
+        },
+        "psi_microseconds_delta": {
+          "some": 47057,
+          "full": 47057
+        },
+        "psi_full_fraction": 0.0007355815353629097
+      },
+      "canonical_oracle": {
+        "masks": {
+          "rows": 16677,
+          "origins": 16677,
+          "public_fields_sha256": "36be156c62eff7ce976a679d91814262b98cdd479b85f9ab7417ca77b3073099"
+        },
+        "ip_list": {
+          "rows": 16677,
+          "origins": 16677,
+          "public_fields_sha256": "6f96e7953568d3b3beca71b05ced31f32433e8cd12079ba721377607fe52e67e"
+        },
+        "hashes": {
+          "rows": 43358,
+          "origins": 43358,
+          "public_fields_sha256": "663ce5d26c9766990cde45a5a6b65bd4cb9d0a2df1d90dafde5b8baf9af91a79"
+        },
+        "address_blacklist": {
+          "rows": 33354,
+          "origins": 33354,
+          "public_fields_sha256": "1c514e8008d3ce5429c0d952082370cafcd695810c275d77cbb46fccb3b33b2a"
+        },
+        "ioc_aggregate": {
+          "rows": 90054,
+          "origins": 90054,
+          "public_fields_sha256": "bcdf5311e3a68ff86c2a914027957a5e682374289553f4f091f9d86f3ab5ce96"
+        }
+      },
+      "local_slices": {
+        "address-blacklist": {
+          "manifest_sha256": "8a0787e79bdbf69f69391f7c06ada2b03932e7ab9f7819dd20b7d5bfaf5086ce",
+          "artifacts": [
+            {
+              "artifact": "address_blacklist",
+              "file": "address_blacklist_generated.csv",
+              "rows": 33354,
+              "coverage": {
+                "revision": 2,
+                "changed_at": "2026-10-09T16:33:45.000152279Z",
+                "upper_id": 33354
+              },
+              "identity_epoch": 2,
+              "identity_hash": "e19a0890895dbc68f9753fa6a67f1dd0270ed28633c83bc75ca0829036c36c72",
+              "schema_hash": "72d43ebc2a88d3c81cfc41782c8e4272037f54a75d8bee6fcdd037d6c9ed8b09",
+              "sha256": "a6d2fbcd08956649c36fcda4d10f4add4d0286890217093c8f0d484e5cafbe36"
+            }
+          ],
+          "slice_id": "66641c4b-2566-4aff-837f-0b64d6b7bafd"
+        },
+        "reputation-lists": {
+          "manifest_sha256": "7d08f312307ea6fe2a113c6dab0c142fecd202591773ddd2732d2191676580ef",
+          "artifacts": [
+            {
+              "artifact": "masks",
+              "file": "repListMasksManual.csv",
+              "rows": 16677,
+              "coverage": {
+                "revision": 2,
+                "changed_at": "2026-10-09T16:33:40.770999033Z",
+                "upper_id": 16677
+              },
+              "identity_epoch": 1,
+              "identity_hash": "9603bed8bd56b1ac3cb28247b8428ec3a5aff064fafa16cd4c84d2deb13b20ab",
+              "schema_hash": "aa83628320c0c435d7c91124aff4f159bd0d045a7b6fa7353ace9e1ff93e6fee",
+              "sha256": "689a86816fb36d6c28b93e5cce62b5f2b9362345de1e76d32e608f889974ffb6"
+            },
+            {
+              "artifact": "ip_list",
+              "file": "repListIPsManual.csv",
+              "rows": 16677,
+              "coverage": {
+                "revision": 2,
+                "changed_at": "2026-10-09T16:33:42.856332268Z",
+                "upper_id": 16677
+              },
+              "identity_epoch": 2,
+              "identity_hash": "ebdd9892cd76b9b35637ec4f6f54326225ec55729ac92e53685ef1c3526450c7",
+              "schema_hash": "a26c1ae8f225a0503c580bde272be18c7426895af5fedb3ccf71f7f25b9b8173",
+              "sha256": "f505dfb4154cd0764ac91b3e8aab2079e515594d7524d87f8e3172fe3567cdc5"
+            },
+            {
+              "artifact": "hashes",
+              "file": "repListHashesManual.csv",
+              "rows": 43358,
+              "coverage": {
+                "revision": 2,
+                "changed_at": "2026-10-09T16:33:49.073680174Z",
+                "upper_id": 43358
+              },
+              "identity_epoch": 2,
+              "identity_hash": "0a28546ee6146dc8afd105f8cba167a797203bd81ed3c80263b91a6baf4646d2",
+              "schema_hash": "ce26d9f30205795347786b7924e31e5d2a8d669e13f620cffeb627974791b027",
+              "sha256": "c5dc140bf37294d90a6c1c191e205d574b002dafad82373efea0a09b246c17be"
+            }
+          ],
+          "slice_id": "f6b4c9c8-6ff0-41e0-862c-4912d495f48b"
+        },
+        "ioc-aggregate": {
+          "manifest_sha256": "3d96afc7e597d54720520435eb8991bd330e0bd2bbd40aa63e54ef0c0674b47e",
+          "artifacts": [
+            {
+              "artifact": "ioc_aggregate",
+              "file": "GDI_IOC.csv",
+              "rows": 90054,
+              "coverage": {
+                "revision": 2,
+                "changed_at": "2026-10-09T16:33:55.958973033Z",
+                "upper_id": 90054
+              },
+              "identity_epoch": 1,
+              "identity_hash": "c8f906e86ebffb8058507bfe3b66fc97d261f6fa8e9ad80e0f67540d27c7da90",
+              "schema_hash": "a5eddf8860e834ba7664c947505e4642dbbd2db91fcff53fec57f6a350f822ab",
+              "sha256": "a3222670869789cde6fed8635db6904203ddae332671e5d1bfcd6818fe6606d7"
+            }
+          ],
+          "slice_id": "a6bd4466-c09f-414f-be12-19c417a6ba4c"
+        }
+      },
+      "mutable_projection_oracle": "PASS; fields, complete keys, canonical ids and durable generations",
+      "gates": {
+        "limits": {
+          "local_max_seconds": 45,
+          "rss_bytes": 536870912,
+          "non_file_bytes": 603979776,
+          "writer_hold_nanos": 5000000000
+        },
+        "violations": [
+          "conservative_local_window",
+          "writer_hold"
+        ],
+        "status": "FAIL",
+        "writer_window": {
+          "MAINTENANCE": {
+            "completed": 0,
+            "totalHoldNanos": 0,
+            "maximumHoldNanosUpperBound": 0,
+            "maximumHoldNanosIsExact": true,
+            "totalWaitNanos": 0,
+            "maximumWaitNanosUpperBound": 0,
+            "maximumWaitNanosIsExact": true
+          },
+          "PROMOTION": {
+            "completed": 5,
+            "totalHoldNanos": 22621394221,
+            "maximumHoldNanosUpperBound": 11579311126,
+            "maximumHoldNanosIsExact": true,
+            "totalWaitNanos": 89742,
+            "maximumWaitNanosUpperBound": 89742,
+            "maximumWaitNanosIsExact": false
+          },
+          "EXPIRY": {
+            "completed": 0,
+            "totalHoldNanos": 0,
+            "maximumHoldNanosUpperBound": 0,
+            "maximumHoldNanosIsExact": true,
+            "totalWaitNanos": 0,
+            "maximumWaitNanosUpperBound": 0,
+            "maximumWaitNanosIsExact": true
+          },
+          "CONTROL": {
+            "completed": 28,
+            "totalHoldNanos": 66877450,
+            "maximumHoldNanosUpperBound": 16912786,
+            "maximumHoldNanosIsExact": true,
+            "totalWaitNanos": 1748808732,
+            "maximumWaitNanosUpperBound": 1343818567,
+            "maximumWaitNanosIsExact": true
+          },
+          "EXPORT_SLOTS": {
+            "completed": 4,
+            "totalHoldNanos": 549316121,
+            "maximumHoldNanosUpperBound": 345197515,
+            "maximumHoldNanosIsExact": true,
+            "totalWaitNanos": 412016,
+            "maximumWaitNanosUpperBound": 311129,
+            "maximumWaitNanosIsExact": true
+          }
+        },
+        "scope": "Conservative complete-window and resource screens; exact Tlocal/remaining G6 criteria remain separate"
+      },
+      "cleanup_errors": [],
+      "temporary_state_removed": true,
+      "finished_epoch_seconds": 1791563665.7276385,
+      "startup_seconds": 6.86146216799898,
+      "process_terminated": true
+    }
+  ],
+  "acceptance": "NOT_ACCEPTED; exact Tlocal and complete G6 matrix are separate",
+  "stopped_after_failed_screen": true,
+  "temporary_runtime_removed": true,
+  "status": "FAIL",
+  "raw_report_sha256": "52452e5c4500a6dbebe78edd0833945ca9116d180a45ecb2fb8839a4927d9805",
+  "disposition": "Single final packaged cleanup screen; semantic equivalence PASS, G6 NOT_ACCEPTED; not a paired performance sample",
+  "corrected_diagnostic_smoke": {
+    "scope": "Reference diagnostic observer validation only; not native timing",
+    "raw_report_sha256": "03c57e60dca85cc36b90bfa5c77b6bce8e2e82d0f0289c3cf16e967df0a48505",
+    "samples": [
+      {
+        "kind": "document",
+        "observations": "100",
+        "elapsed_ms": "562.500",
+        "throughput_per_s": "177.78",
+        "allocated_main_bytes": "41635040",
+        "sampled_peak_heap_bytes": "115867648",
+        "sampled_peak_rss_kib": "394836",
+        "startup_ms": "4030.756",
+        "gc_count": "1",
+        "gc_time_ms": "6",
+        "sampled_peak_current_rss_kib": "394836",
+        "diagnostic_counters": {
+          "artifact_candidates": 300,
+          "branch_evaluations": 500,
+          "canonical_transactions": 5,
+          "canonical_writer_hold_nanos": 37865288,
+          "canonical_writer_wait_nanos": 301158,
+          "classifications": 20,
+          "derived_classification_requests": 100,
+          "host_computations": 20,
+          "jdbc_statement_creates": 32,
+          "jdbc_statement_prepares": 305,
+          "mapped_cells": 1700,
+          "mapped_rows": 300,
+          "max_canonical_writer_hold_nanos": 22077334,
+          "max_canonical_writer_wait_nanos": 121166,
+          "max_preparation_nanos": 209129231,
+          "max_prepared_rows": 60,
+          "max_view_entries": 2,
+          "max_writer_admission_hold_nanos": 22362722,
+          "max_writer_admission_wait_nanos": 908588,
+          "parser_calls": 40,
+          "predicate_calls": 400,
+          "preparation_calls": 1,
+          "preparation_nanos": 209129231,
+          "prepared_rows": 60,
+          "prepared_rows_address_blacklist": 20,
+          "prepared_rows_hashes": 0,
+          "prepared_rows_ioc_aggregate": 20,
+          "prepared_rows_ip_list": 0,
+          "prepared_rows_masks": 20,
+          "psl_domain_parses": 20,
+          "psl_host_calls": 20,
+          "recipient_calls": 400,
+          "template_sends": 200,
+          "view_cache_writes": 200,
+          "view_demands": 800,
+          "view_evaluations": 100,
+          "view_operation_sends": 100,
+          "writer_admission_hold_nanos": 52605766,
+          "writer_admission_wait_nanos": 1895594,
+          "writer_admissions": 36,
+          "original_classifications": 20,
+          "derived_classifications": 0,
+          "argument_splits": 0,
+          "string_template_sends": 0
+        },
+        "preparation_ms": "209.129231",
+        "path": "selected",
+        "iteration": 0,
+        "config_sha256": "c690dbff6fab1d6826dc152d61d12ec4113a0c2db6e24016d04cd9a376322e71",
+        "fork_wall_ms": "5106.715038000402",
+        "dataframe_schema_version": 12,
+        "pipeline_phases_nanos": {
+          "READ_SOURCE": 131725177,
+          "REFANG": 9684656,
+          "EXTRACT": 22217410,
+          "ATTRIBUTE": 5303044,
+          "PREPARE_ARTIFACTS": 209211669,
+          "WRITE_ARTIFACTS": 83899684
+        },
+        "outcome": "extracted=100 retained=20 status=COMPLETED diagnostics=0 suppressed=0 severities={} retained_codes={}",
+        "signature_sha256": "2e87652956db6a9aba9d123bbb72a71cce872ff77fade87f028195833a79d2fc",
+        "retention": {
+          "state_retained": false,
+          "removed_bytes": 757602,
+          "removed_files": 8
+        }
+      },
+      {
+        "kind": "import",
+        "observations": "100",
+        "elapsed_ms": "677.352",
+        "throughput_per_s": "147.63",
+        "allocated_main_bytes": "20159256",
+        "sampled_peak_heap_bytes": "76107072",
+        "sampled_peak_rss_kib": "413840",
+        "startup_ms": "5029.329",
+        "gc_count": "0",
+        "gc_time_ms": "0",
+        "sampled_peak_current_rss_kib": "413840",
+        "diagnostic_counters": {
+          "artifact_candidates": 100,
+          "branch_evaluations": 100,
+          "canonical_transactions": 1,
+          "canonical_writer_hold_nanos": 48670856,
+          "canonical_writer_wait_nanos": 57766,
+          "classifications": 20,
+          "derived_classification_requests": 100,
+          "host_computations": 20,
+          "import_warnings": 0,
+          "jdbc_statement_creates": 37,
+          "jdbc_statement_prepares": 194,
+          "mapped_cells": 1000,
+          "mapped_rows": 100,
+          "max_canonical_writer_hold_nanos": 48670856,
+          "max_canonical_writer_wait_nanos": 57766,
+          "max_preparation_nanos": 121718123,
+          "max_view_entries": 2,
+          "max_writer_admission_hold_nanos": 48932726,
+          "max_writer_admission_wait_nanos": 73266,
+          "parser_calls": 140,
+          "predicate_calls": 100,
+          "preparation_calls": 100,
+          "preparation_nanos": 240458597,
+          "prepared_import_rows": 100,
+          "psl_domain_parses": 20,
+          "psl_host_calls": 20,
+          "recipient_calls": 100,
+          "template_sends": 200,
+          "view_cache_writes": 200,
+          "view_demands": 200,
+          "view_evaluations": 100,
+          "view_operation_sends": 100,
+          "writer_admission_hold_nanos": 57201682,
+          "writer_admission_wait_nanos": 349851,
+          "writer_admissions": 6,
+          "original_classifications": 20,
+          "derived_classifications": 0,
+          "argument_splits": 0,
+          "string_template_sends": 0
+        },
+        "preparation_ms": "240.458597",
+        "path": "selected",
+        "iteration": 0,
+        "config_sha256": "22c64d7db0c37a99883a98ba995016fa679fbe1a001fbe2055ab18355afac54b",
+        "fork_wall_ms": "6311.540603997855",
+        "dataframe_schema_version": 12,
+        "outcome": "accepted=20 rejected=0",
+        "signature_sha256": "5aa1f2760ccc11877ab51fc01597eb8cb3a08191bda18847bbf77c8cdfab7ac1",
+        "retention": {
+          "state_retained": false,
+          "removed_bytes": 1176321,
+          "removed_files": 12
+        }
+      }
+    ]
+  },
+  "repository_checks": {
+    "runtime_cases": 55,
+    "python_cases": 31,
+    "suite_inventory": {
+      "fast": 222,
+      "integration": 77,
+      "external": 5,
+      "deterministic_offline": 294
+    },
+    "coverage": {
+      "covered_lines": 26257,
+      "total_lines": 28658,
+      "covered_branches": 9650,
+      "total_branches": 11413
+    },
+    "raw_spotbugs": 137,
+    "cpd_groups": 24,
+    "pmd_findings": 20,
+    "watchlist_findings": 73,
+    "watchlist_changed_finding": "CamelRouteRuntime.executeAdmitted Endpoint CloseResource; endpoint is borrowed and Camel context owns shutdown; no suppression or floor change",
+    "failed_first_verify": "Concurrent PMD profile removed SpotBugs reports; sequential verify passes; first log retained locally"
+  }
+}
