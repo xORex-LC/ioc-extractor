@@ -538,6 +538,11 @@ their conflict/rank contract and restart/cancellation cannot expose half a
 delivery. A storage replacement needs an adapter/TCK, migration and operational
 qualification, not merely a faster bulk insert demo.
 
+The [CAP-7C transaction design](cap-7c-transaction-design.md) decomposes this
+track into contract, architecture, candidate integration, fault, capacity and
+migration slices. Its current SQLite atomic-visibility regression is implemented;
+backend selection and the production publication protocol remain open.
+
 Redis is outside the current mandatory track: no demonstrated shared reusable
 work justifies a remote cache, and it cannot correct an alias-range query or
 legally collapse distinct aggregate URLs. Reopen it only as its own measured

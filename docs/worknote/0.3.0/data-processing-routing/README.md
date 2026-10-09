@@ -175,3 +175,8 @@ Its compact evidence preserves failure windows and confirms owned-state cleanup.
 [CAP-7B execution](cap-7b-execution.md) records isolated direct/native controls,
 native lifecycle conformance, paired cursor workloads and the conditional
 complete-service promotion decision. It does not imply G6 acceptance.
+
+[CAP-7C transaction design](cap-7c-transaction-design.md) records the current
+atomic-visibility regression, canonical ownership seams, staged/versioned SQLite
+and concurrent-adapter alternatives, and the remaining backend/protocol choice.
+CAP-7C implementation and capacity acceptance remain open.
