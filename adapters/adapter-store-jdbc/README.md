@@ -114,6 +114,12 @@ runtime JDBC drivers.
   256-row/1-MiB chunks; initial values, tombstones and explicit renewal flags
   distinguish no-op, replacement and fresh-UTC confirmation. Initialization
   refuses existing business rows; migration and runtime activation are separate.
+- `JdbcStagedCanonicalBackend` is an explicitly composed isolated candidate.
+  Its native ordinary/import writers and control operations share committed
+  visibility, selective private hydration, bounded workspace admission and
+  receipt recovery. Fresh publication UTC revalidates selected lifecycles;
+  expiry or epoch conflict rebuilds at most three times with unchanged pins
+  and burned reservations. Details: [staged publication](../../docs/dev/staged-canonical-publication.md).
 - `JdbcLifecycleControlStore` uses one-way CAS and refuses `ACTIVE` until one
   set-based invariant scan proves that every configured active row has complete,
   ordered lifecycle metadata. Lifecycle/canonical-row ID ranges are reserved by

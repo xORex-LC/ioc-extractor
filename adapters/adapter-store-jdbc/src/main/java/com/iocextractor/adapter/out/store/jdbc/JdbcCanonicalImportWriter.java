@@ -80,7 +80,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
     private final JdbcLifecycleIdAllocator lifecycleIdAllocator;
     private final JdbcCanonicalMutationEngine mutationEngine;
     private final CanonicalArtifactKeyResolver keyResolver;
-    private final JdbcExportSlotRegistry exportSlots = new JdbcExportSlotRegistry();
+    private final JdbcExportSlotRegistry exportSlots;
     private final ImportMergeResolver mergeResolver = new ImportMergeResolver();
     private final ImportWorkspaceLayout workspaceLayout;
     private final ConnectionTimeSource timeSource;
@@ -210,6 +210,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
         Objects.requireNonNull(preparation, "preparation");
         var reservationAuthority = preparation.reservations();
         this.effectFactory = preparation.effects();
+        this.exportSlots = preparation.exportSlots();
         this.reservationAdmission = reservationAuthority.admission();
         this.observer = Objects.requireNonNull(observer, "observer");
         this.receiptRetention = requirePositive(receiptRetention, "receiptRetention");
@@ -365,6 +366,14 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
             throw new IocExtractorException("Cannot verify pinned sealed import stage", failure);
         }
     }
+
+    /** Shares the complete native integrity/preflight check with selective private preparation. */
+    PreparationInput inspectPreparationInput(CanonicalImportCommand command) {
+        var verified = verifyStage(command);
+        return new PreparationInput(verified.path(), verified.branchCounts(), verified.header().slotProfile());
+    }
+
+    record PreparationInput(Path path, Map<String, Integer> branchCounts, Optional<String> slotProfile) { }
 
     private ReservedIds reserveWorstCase(VerifiedStage stage) {
         int branches = stage.branchCounts().values().stream().mapToInt(Integer::intValue).sum();
@@ -1239,7 +1248,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
         }
     }
 
-    private Optional<CanonicalImportResult> loadCommitted(CanonicalImportCommand command) {
+    Optional<CanonicalImportResult> loadCommitted(CanonicalImportCommand command) {
         try (Connection connection = dataSource.getConnection()) {
             return loadCommitted(connection, command);
         } catch (SQLException failure) {

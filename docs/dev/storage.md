@@ -40,6 +40,11 @@ receipt. Полный receipt остаётся достаточен после �
 не приводит к взаимному ожиданию. Решение:
 [ADR 0036](../ADR/0036-sealed-document-preparation-workspace.md).
 
+Изолированный кандидат SQLite с приватной native-подготовкой и публикацией
+типизированных версий описан в [staged canonical publication](staged-canonical-publication.md).
+Он не включён в штатную сборку приложения; миграция накопленных данных и
+операционное включение требуют отдельной квалификации.
+
 ## Canonical write
 
 ```text

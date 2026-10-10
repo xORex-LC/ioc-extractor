@@ -57,6 +57,86 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
     @Override
     public int maximumConcurrentWorkspaces() { return leaseLimit; }
 
+    /** Shares the existing memory/disk admission with a native canonical preparation attempt. */
+    CanonicalLease openCanonicalState(String identity, String pins) {
+        Objects.requireNonNull(identity, "identity");
+        Objects.requireNonNull(pins, "pins");
+        // A document may already own a lease: nested blocking acquisition can deadlock a full pool.
+        int permits = canonicalLeasePermits();
+        if (!leases.tryAcquire(permits)) { throw new IocExtractorException("Canonical workspace admission exhausted"); }
+        Path directory = root.resolve(ArtifactIdentityDefinition.sha256("canonical:" + identity));
+        Lease lease = null;
+        boolean admitted = false;
+        try {
+            synchronized (this) {
+                initializeRoot();
+                try (var ignored = new Lease(root.resolve(".admission"), true)) {
+                    pruneExpired();
+                    if (active.contains(directory)) { throw new IocExtractorException("Canonical workspace is already leased"); }
+                    reserveDisk(directory);
+                    privateDirectory(directory);
+                    lease = new Lease(directory.resolve("lease"), false);
+                    active.add(directory);
+                    admitted = true;
+                    Path pin = directory.resolve("identity");
+                    String value = "canonical-publication-v1\n" + identity + "\n" + fingerprint + "\n" + pins;
+                    if (value.length() > 32768) { throw new IOException("Canonical identity pin exceeds limit"); }
+                    if (Files.exists(pin) && !Files.readString(pin).equals(value)) {
+                        throw new IOException("Canonical workspace pins changed");
+                    }
+                    DocumentWorkspaceFiles.write(pin, value);
+                    checkDisk(directory);
+                    Lease owner = lease;
+                    return new CanonicalLease(directory, limits, () -> checkDisk(directory), () -> {
+                        try { release(directory, owner); }
+                        finally { leases.release(permits - 1); }
+                    });
+                }
+            }
+        } catch (IOException | RuntimeException | Error failure) {
+            closeFailedLease(directory, lease, failure);
+            if (admitted) { synchronized (this) { active.remove(directory); } }
+            leases.release(permits);
+            if (failure instanceof Error fatal) { throw fatal; }
+            throw new IocExtractorException("Cannot open canonical preparation workspace", failure);
+        }
+    }
+
+    /** Accounts both row images, one bounded chunk and four native read/private caches. */
+    private int canonicalLeasePermits() {
+        long rows = Math.multiplyExact(512L, limits.maximumRowBytes());
+        long bytes = Math.addExact(Math.max(rows, 2 * 1024 * 1024L), limits.cacheKiB() * 4096L + 65536);
+        return Math.toIntExact(Math.ceilDiv(bytes, limits.leaseBytes()));
+    }
+
+    void requireCanonicalCapacity() {
+        if (canonicalLeasePermits() >= leaseLimit) {
+            throw new IllegalArgumentException("Staged canonical capacity requires bounded native state and a separate document lease");
+        }
+    }
+
+    static final class CanonicalLease implements AutoCloseable {
+        private final Path directory;
+        private final DocumentPreparationLimits limits;
+        private final Runnable checkQuota;
+        private final Runnable release;
+        private final Thread owner = Thread.currentThread();
+        private boolean closed;
+
+        CanonicalLease(Path directory, DocumentPreparationLimits limits, Runnable checkQuota, Runnable release) {
+            this.directory = directory; this.limits = limits; this.checkQuota = checkQuota; this.release = release;
+        }
+
+        Path directory() { return directory; }
+        DocumentPreparationLimits limits() { return limits; }
+        void checkQuota() { checkQuota.run(); }
+
+        @Override public void close() {
+            if (Thread.currentThread() != owner) { throw new IllegalStateException("Canonical workspace belongs to another thread"); }
+            if (!closed) { closed = true; release.run(); }
+        }
+    }
+
     @Override
     public DocumentPreparationWorkspace open(ExtractionCommand command, Map<String, ArtifactWritePolicy> policies) {
         try { leases.acquire(); }

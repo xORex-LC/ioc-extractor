@@ -35,6 +35,22 @@ final class JdbcExportSlotRegistry {
     private static final String MERGED_RANGE = "temp_export_slot_merged_range";
     private static final String PENDING_LIFECYCLE = "temp_export_slot_pending";
 
+    private final Map<String, String> lifecycleTables;
+
+    JdbcExportSlotRegistry() { this(Map.of()); }
+
+    JdbcExportSlotRegistry(Map<String, String> lifecycleTables) {
+        lifecycleTables.forEach((artifact, table) -> {
+            DataframeColumn.requireSqlIdentifier(artifact, "slot artifact");
+            DataframeColumn.requireSqlIdentifier(table, "slot lifecycle table");
+        });
+        this.lifecycleTables = Map.copyOf(lifecycleTables);
+    }
+
+    private String activeTable(String artifact) {
+        return quote(lifecycleTables.getOrDefault(artifact, artifact));
+    }
+
     boolean appliesTo(ExportArtifactSpec artifact) {
         return artifact.columns().contains(EXTERNAL_ID);
     }
@@ -129,7 +145,7 @@ final class JdbcExportSlotRegistry {
                  AND a.lifecycle_id = t.${lifecycleId}
                 WHERE t.${validUntil} > ?
                 """
-                .replace("${artifact}", quote(artifact))
+                .replace("${artifact}", activeTable(artifact))
                 .replace("${lifecycleId}", quote("_lifecycle_id"))
                 .replace("${validUntil}", quote("_valid_until_epoch_ms"));
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -213,7 +229,7 @@ final class JdbcExportSlotRegistry {
                 """
                 .replace("${lifecycleId}", quote("_lifecycle_id"))
                 .replace("${externalId}", quote("id"))
-                .replace("${artifact}", quote(artifact))
+                .replace("${artifact}", activeTable(artifact))
                 .replace("${validUntil}", quote("_valid_until_epoch_ms"))
                 .replace("${excluded}", EXCLUDED_LIFECYCLE);
         try (PreparedStatement statement = connection.prepareStatement(insert)) {
@@ -232,10 +248,10 @@ final class JdbcExportSlotRegistry {
     private void requireSeedableRows(Connection connection,
                                      String artifact,
                                      Instant asOf) throws SQLException {
-        String sql = "SELECT 1 FROM " + quote(artifact)
+        String sql = "SELECT 1 FROM " + activeTable(artifact)
                 + " WHERE " + quote("_valid_until_epoch_ms") + " > ?"
                 + " AND NOT EXISTS (SELECT 1 FROM " + EXCLUDED_LIFECYCLE + " e"
-                + " WHERE e.lifecycle_id = " + quote(artifact) + "." + quote("_lifecycle_id") + ")"
+                + " WHERE e.lifecycle_id = " + activeTable(artifact) + "." + quote("_lifecycle_id") + ")"
                 + " AND (" + quote("_lifecycle_id") + " IS NULL"
                 + " OR " + quote("_lifecycle_id") + " <= 0"
                 + " OR " + quote("id") + " <= 0) LIMIT 1";
@@ -303,7 +319,7 @@ final class JdbcExportSlotRegistry {
                                              String profile,
                                              String artifact,
                                              Instant asOf) throws SQLException {
-        String activeLifecycle = "SELECT 1 FROM " + quote(artifact) + " t"
+        String activeLifecycle = "SELECT 1 FROM " + activeTable(artifact) + " t"
                 + " WHERE t." + quote("_lifecycle_id") + " = a.lifecycle_id"
                 + " AND t." + quote("_valid_until_epoch_ms") + " > ?";
         String collect = "INSERT INTO " + RELEASED_SLOT + "(slot, released_at_ms)"
@@ -439,7 +455,7 @@ final class JdbcExportSlotRegistry {
                 """
                 .replace("${pending}", PENDING_LIFECYCLE)
                 .replace("${lifecycleId}", quote("_lifecycle_id"))
-                .replace("${artifact}", quote(artifact))
+                .replace("${artifact}", activeTable(artifact))
                 .replace("${validUntil}", quote("_valid_until_epoch_ms"));
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setLong(1, asOf.toEpochMilli());
@@ -953,7 +969,7 @@ final class JdbcExportSlotRegistry {
                                         String artifact,
                                         long lifecycleId,
                                         Instant asOf) throws SQLException {
-        String sql = "SELECT 1 FROM " + quote(artifact)
+        String sql = "SELECT 1 FROM " + activeTable(artifact)
                 + " WHERE " + quote("_lifecycle_id") + " = ?"
                 + " AND " + quote("_valid_until_epoch_ms") + " > ? LIMIT 1";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -1092,7 +1108,7 @@ final class JdbcExportSlotRegistry {
                  AND a.lifecycle_id = t.${lifecycleId}
                 WHERE t.${validUntil} > ?
                 """
-                .replace("${artifact}", quote(artifact))
+                .replace("${artifact}", activeTable(artifact))
                 .replace("${lifecycleId}", quote("_lifecycle_id"))
                 .replace("${validUntil}", quote("_valid_until_epoch_ms"));
         try (PreparedStatement statement = connection.prepareStatement(sql)) {

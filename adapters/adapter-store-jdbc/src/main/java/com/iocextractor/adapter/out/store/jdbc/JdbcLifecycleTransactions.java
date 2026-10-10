@@ -63,7 +63,7 @@ final class JdbcLifecycleTransactions {
         }
     }
 
-    static void rollback(Connection connection, Exception original) {
+    static void rollback(Connection connection, Throwable original) {
         try {
             connection.rollback();
         } catch (SQLException rollbackFailure) {

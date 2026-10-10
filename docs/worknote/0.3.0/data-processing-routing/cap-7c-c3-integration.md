@@ -34,6 +34,24 @@ experiment to publish the native outcome at fresh publication UTC. The journal
 is not a canonical receipt, publication header, complete version payload or
 replacement for epoch/fence validation.
 
+## Native port composition slice
+
+The isolated `JdbcStagedCanonicalBackend` now composes ordinary confirmation,
+cross-artifact import, matching/active/stream/snapshot readers, expiry, native
+slot reconciliation, projection CAS and receipt/history retention. Preparation
+uses selective hydration and the shared workspace admission/quota owner. The
+canonical-base and private TEMP caches are bounded; pooled read policy is
+restored after closing the owned snapshot. No default bootstrap switch exists.
+
+The import TCK runs on this candidate. The latest focused command executes 33
+tests with no failures/errors/skips. Additional native-table oracles cover
+ordinary multi-artifact receipts, import COALESCE diagnostics, fixed-cycle
+controls, slot export, history and receipt cascades. Fault regression proves
+hidden-chunk cancellation and burned IDs. A deadline-equality regression rebuilds
+a no-op import at fresh publication UTC without resurrecting the old lifecycle.
+Version/journal cleanup, remaining resource-bound tests and the complete reactor
+gates are still in progress; this slice does not close C3.
+
 ## Executable checks
 
 The existing Failsafe suites retain their discovery/tags and add these checks:

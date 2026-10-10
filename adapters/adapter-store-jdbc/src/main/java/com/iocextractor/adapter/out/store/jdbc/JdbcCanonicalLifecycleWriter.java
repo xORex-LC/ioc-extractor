@@ -382,7 +382,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                 () -> lifecycleIdAllocator.reserve(records.size())));
     }
 
-    private Optional<LifecycleWriteResult> loadCommitted(CanonicalArtifactConfirmation confirmation) {
+    Optional<LifecycleWriteResult> loadCommitted(CanonicalArtifactConfirmation confirmation) {
         try (Connection connection = dataSource.getConnection()) {
             return loadCommitted(connection, confirmation);
         } catch (SQLException e) {

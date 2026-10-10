@@ -27,6 +27,9 @@ final class JdbcPublicationCatalog {
                     artifact + "_history_sources", artifact + "_receipt_rows"));
         }
         names.addAll(COMMON);
+        if (new java.util.HashSet<>(names).size() != names.size()) {
+            throw new SQLException("Canonical artifact and publication families overlap");
+        }
         var tables = new ArrayList<JdbcPublicationTable>();
         for (String name : names) { tables.add(JdbcPublicationTable.inspect(connection, name)); }
         return List.copyOf(tables);

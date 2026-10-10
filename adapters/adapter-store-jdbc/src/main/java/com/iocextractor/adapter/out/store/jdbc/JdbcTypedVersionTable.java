@@ -89,4 +89,15 @@ final class JdbcTypedVersionTable {
                 + " AND u.state='COMMITTED') AND " + latest(table, "v")
                 + ") ORDER BY anchor.valid_until LIMIT 1))";
     }
+
+    static String dueSql(JdbcPublicationTable table) {
+        String visible = "v.deleted=0 AND EXISTS(SELECT 1 FROM publication_unit u WHERE u.id=v.unit_id"
+                + " AND u.fence=v.fence AND u.state='COMMITTED') AND " + latest(table, "v");
+        return "SELECT id,_lifecycle_id FROM(SELECT v.id,v._lifecycle_id,v.absolute_deadline AS deadline FROM "
+                + quote(table.versions()) + " v WHERE v.absolute_deadline<=? AND " + visible
+                + " UNION ALL SELECT v.id,v._lifecycle_id,anchor.valid_until AS deadline FROM publication_unit anchor"
+                + " CROSS JOIN " + quote(table.versions()) + " v ON v.deadline_anchor=anchor.id"
+                + " WHERE anchor.state='COMMITTED' AND anchor.valid_until<=? AND " + visible
+                + ") ORDER BY deadline,_lifecycle_id LIMIT ?";
+    }
 }

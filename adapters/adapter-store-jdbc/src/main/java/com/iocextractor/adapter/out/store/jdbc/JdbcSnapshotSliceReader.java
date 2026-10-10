@@ -59,6 +59,10 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
     private final DiagnosticFactory diagnosticFactory;
     private final JdbcExportSlotRegistry exportSlots;
     private final JdbcWriterAdmission writerAdmission;
+    private final SlotReconciliation stagedSlots;
+
+    @FunctionalInterface
+    interface SlotReconciliation { void reconcile(ExportPlan plan, Instant asOf) throws SQLException; }
 
     public JdbcSnapshotSliceReader(DataSource dataSource,
                                    List<DataframeArtifactSchema> schemas,
@@ -104,6 +108,13 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                                   Clock clock, LifecycleTimeSource activeTimeSource,
                                   DiagnosticSink diagnosticSink, DiagnosticFactory diagnosticFactory,
                                   JdbcWriterAdmission writerAdmission, int readerLimit) {
+        this(dataSource, schemas, clock, activeTimeSource, diagnosticSink, diagnosticFactory, writerAdmission, readerLimit, null);
+    }
+
+    JdbcSnapshotSliceReader(DataSource dataSource, List<DataframeArtifactSchema> schemas,
+                            Clock clock, LifecycleTimeSource activeTimeSource,
+                            DiagnosticSink diagnosticSink, DiagnosticFactory diagnosticFactory,
+                            JdbcWriterAdmission writerAdmission, int readerLimit, SlotReconciliation stagedSlots) {
         if (readerLimit < 1) { throw new IllegalArgumentException("readerLimit must be positive"); }
         this.readerLimit = readerLimit;
         this.readers = new java.util.concurrent.Semaphore(readerLimit, true);
@@ -115,6 +126,7 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
         this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
         this.exportSlots = new JdbcExportSlotRegistry();
         this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
+        this.stagedSlots = stagedSlots;
     }
 
     /**
@@ -153,6 +165,9 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
         JdbcExportSlotRegistry.SnapshotChangedException lastRace = null;
         for (int attempt = 1; attempt <= MAX_SLOT_SNAPSHOT_ATTEMPTS; attempt++) {
             try {
+                if (stagedSlots != null) {
+                    stagedSlots.reconcile(plan, asOf);
+                } else {
                 writerAdmission.execute(JdbcWriterAdmission.OperationClass.EXPORT_SLOTS, () -> {
                     try {
                         reconcileExportSlots(plan, expectedState, asOf);
@@ -161,6 +176,7 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                         throw new SlotReconciliationFailure(failure);
                     }
                 });
+                }
             } catch (SlotReconciliationFailure failure) {
                 throw failure.sqlCause();
             }

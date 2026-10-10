@@ -44,7 +44,8 @@ final class JdbcPublicationTransactions {
     @FunctionalInterface interface Work<T> { T apply(Connection connection) throws SQLException; }
     private static final class SqlFailure extends RuntimeException {
         private static final long serialVersionUID = 1L;
-        SqlFailure(SQLException cause) { super(cause); }
-        SQLException sqlCause() { return (SQLException) getCause(); }
+        private final SQLException sqlCause;
+        SqlFailure(SQLException cause) { super(cause); sqlCause = cause; }
+        SQLException sqlCause() { return sqlCause; }
     }
 }
