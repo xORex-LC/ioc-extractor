@@ -103,8 +103,12 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
     }
 
     RegisteredObservation register(String occurrence) {
+        return register(occurrence, ObservationOrigin.DOCUMENT);
+    }
+
+    RegisteredObservation register(String occurrence, ObservationOrigin origin) {
         return new JdbcObservationRegistrationStore(published, wallClock, admission)
-                .registerNew(new ObservationId(occurrence), ObservationOrigin.DOCUMENT);
+                .registerNew(new ObservationId(occurrence), origin);
     }
 
     /** Hydrates only the requested record and its children; never clones a whole artifact. */
@@ -169,16 +173,45 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
         return confirm(mask, name, source, publicRange.idAt(0), lifecycleRange.idAt(0).value(), registration, position);
     }
 
+    /** Applies the existing import kernel's ordered patch; merge planning remains outside this probe. */
+    CanonicalRecordMutationOutcome patch(long rowId, String mask, String name, String source,
+                                         RegisteredObservation registration) throws SQLException {
+        try (var c = working.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                kernel.validateRegistration(c, registration);
+                var time = EffectiveTime.at(wallClock.instant());
+                var row = row(mask, name, source).withValue("id", Long.toString(rowId));
+                var prepared = new PreparedArtifactRow(row, Optional.empty(),
+                        Map.of("name", new OccurrencePosition(0)));
+                CanonicalRecordMutationOutcome result;
+                try (var session = kernel.openSession(c, SCHEMA, time, validity.decide(time))) {
+                    result = session.mutateExistingOrdered(rowId, row, prepared, false, source, registration);
+                }
+                c.commit();
+                return result;
+            } catch (SQLException | RuntimeException | Error failure) {
+                rollback(c, failure);
+                throw failure;
+            }
+        }
+    }
+
     /** One bounded typed snapshot; publication does not replay the kernel or copy N rows. */
     Attempt stage(String unit, String mask, long epoch, long minimumDeadline) {
-        return stage(unit, null, mask, epoch, minimumDeadline);
+        return stage(unit, null, mask, epoch, minimumDeadline, true);
     }
 
     Attempt restage(Attempt previous, String mask, long epoch, long minimumDeadline) {
-        return stage(null, previous, mask, epoch, minimumDeadline);
+        return stage(null, previous, mask, epoch, minimumDeadline, true);
     }
 
-    private Attempt stage(String unit, Attempt previous, String mask, long epoch, long minimumDeadline) {
+    Attempt stagePatch(String unit, String mask, long epoch) {
+        return stage(unit, null, mask, epoch, Long.MAX_VALUE, false);
+    }
+
+    private Attempt stage(String unit, Attempt previous, String mask, long epoch, long minimumDeadline,
+                           boolean renewTtl) {
         return write(c -> {
             var manifest = new Manifest(1, 1, minimumDeadline, Map.of("masks", epoch));
             Attempt attempt = previous == null ? probe.begin(c, unit, PINS, manifest)
@@ -194,7 +227,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
                         }
                     }
                     for (String table : TABLES) {
-                        copy(source, c, table, "1=1", null, attempt, digest);
+                        copy(source, c, table, "1=1", null, attempt, digest, renewTtl);
                     }
                     source.rollback();
                 } catch (SQLException | RuntimeException | Error failure) {
@@ -202,8 +235,9 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
                     throw failure;
                 }
             }
+            Long deadlineAnchor = renewTtl ? attempt.unitId() : renewalAnchor(c, recordKey(mask));
             probe.append(c, attempt, 0, List.of(new Fact("row", "masks", recordKey(mask),
-                    digest.finish(), attempt.unitId())));
+                    digest.finish(), deadlineAnchor)));
             probe.seal(c, attempt);
             return attempt;
         });
@@ -245,6 +279,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
                     + quote(table + "_probe_version") + "(unit_id,fence)");
             if (table.equals("masks")) {
                 execute(c, "ALTER TABLE masks_probe_version ADD COLUMN first_anchor INTEGER");
+                execute(c, "ALTER TABLE masks_probe_version ADD COLUMN renewal_anchor INTEGER");
             } else if (table.equals("masks_sources")) {
                 execute(c, "ALTER TABLE masks_sources_probe_version ADD COLUMN first_anchor INTEGER");
                 execute(c, "ALTER TABLE masks_sources_probe_version ADD COLUMN last_anchor INTEGER");
@@ -263,12 +298,14 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
                          ELSE strftime('%Y-%m-%dT%H:%M:%fZ',first.effective_millis/1000.0,'unixepoch') END AS _created_at,
                        v._first_source_key,v._lifecycle_id,
                        COALESCE(first.effective_millis,v._first_confirmed_at_epoch_ms) AS _first_confirmed_at_epoch_ms,
-                       u.effective_millis AS _last_confirmed_at_epoch_ms,
-                       u.valid_until AS _valid_until_epoch_ms, v.unit_id AS _probe_unit, v.fence AS _probe_fence,
-                       v.first_anchor AS _probe_first_anchor
+                       COALESCE(renewal.effective_millis,v._last_confirmed_at_epoch_ms) AS _last_confirmed_at_epoch_ms,
+                       COALESCE(renewal.valid_until,v._valid_until_epoch_ms) AS _valid_until_epoch_ms,
+                       v.unit_id AS _probe_unit, v.fence AS _probe_fence,
+                       v.first_anchor AS _probe_first_anchor,v.renewal_anchor AS _probe_renewal_anchor
                 FROM masks_probe_version v
                 JOIN experiment_unit u ON u.id=v.unit_id AND u.fence=v.fence AND u.state='COMMITTED'
                 LEFT JOIN experiment_unit first ON first.id=v.first_anchor AND first.state='COMMITTED'
+                LEFT JOIN experiment_unit renewal ON renewal.id=v.renewal_anchor AND renewal.state='COMMITTED'
                 JOIN experiment_fact f ON f.unit_id=v.unit_id AND f.fence=v.fence
                   AND f.family='row' AND f.scope='masks' AND f.fact_key=v.row_key AND f.payload IS NOT NULL
                 WHERE NOT EXISTS (
@@ -316,6 +353,11 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
 
     private void copy(Connection source, Connection destination, String table, String predicate,
                       String parameter, Attempt version, SnapshotDigest digest) throws SQLException {
+        copy(source, destination, table, predicate, parameter, version, digest, true);
+    }
+
+    private void copy(Connection source, Connection destination, String table, String predicate,
+                      String parameter, Attempt version, SnapshotDigest digest, boolean renewTtl) throws SQLException {
         List<String> names = columns.getOrDefault(table, List.of());
         if (names.isEmpty()) { throw new SQLException("Missing experiment column catalog"); }
         String projection = JdbcSql.joinedQuoted(names);
@@ -323,7 +365,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
         boolean rowAnchor = version != null && table.equals("masks");
         boolean sourceAnchors = version != null && table.equals("masks_sources");
         String insertColumns = projection + (version == null ? "" : ",unit_id,fence")
-                + (rowAnchor ? ",first_anchor" : "") + (sourceAnchors ? ",first_anchor,last_anchor" : "");
+                + (rowAnchor ? ",first_anchor,renewal_anchor" : "") + (sourceAnchors ? ",first_anchor,last_anchor" : "");
         if (digest != null) {
             digest.field(table);
             digest.field(insertColumns);
@@ -332,7 +374,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
                 + " WHERE " + predicate + " ORDER BY " + projection + " LIMIT 257");
              var insert = destination.prepareStatement("INSERT INTO " + quote(target) + " (" + insertColumns
                      + ") VALUES (" + JdbcSql.placeholders(names.size() + (version == null ? 0 : 2)
-                     + (rowAnchor ? 1 : 0) + (sourceAnchors ? 2 : 0)) + ")")) {
+                     + (rowAnchor ? 2 : 0) + (sourceAnchors ? 2 : 0)) + ")")) {
             if (parameter != null) { select.setString(1, parameter); }
             try (var rows = select.executeQuery()) {
                 int count = 0;
@@ -353,6 +395,10 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
                             Long anchor = firstAnchor(destination, rows.getLong("id"), version.unitId());
                             insert.setObject(names.size() + 3, anchor);
                             digest.field(anchor);
+                            Long renewal = renewTtl ? version.unitId()
+                                    : renewalAnchor(destination, rows.getString("row_key"));
+                            insert.setObject(names.size() + 4, renewal);
+                            digest.field(renewal);
                         }
                         if (sourceAnchors) {
                             var anchors = sourceAnchors(destination, rows.getLong("row_id"),
@@ -366,6 +412,18 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
                     insert.executeUpdate();
                 }
                 if (digest != null) { digest.field(count); }
+            }
+        }
+    }
+
+    private Long renewalAnchor(Connection c, String rowKey) throws SQLException {
+        try (var statement = c.prepareStatement("SELECT _probe_renewal_anchor FROM masks WHERE row_key=?")) {
+            statement.setString(1, rowKey);
+            try (var rows = statement.executeQuery()) {
+                if (!rows.next()) { throw new SQLException("Non-renewing patch requires a committed row"); }
+                long anchor = rows.getLong(1);
+                if (rows.wasNull()) { throw new SQLException("Typed probe requires an inherited deadline anchor"); }
+                return anchor;
             }
         }
     }

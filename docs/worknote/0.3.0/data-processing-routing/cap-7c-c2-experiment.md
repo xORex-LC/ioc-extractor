@@ -167,12 +167,15 @@ Publication samples the actual `JdbcLifecycleClock` inside the owned final
 transaction and uses the existing fixed-validity policy. New lifecycle first
 confirmation and creation time refer to the publication header; renewal keeps
 the prior first-confirmation anchor and updates last confirmation/validity.
-Source summary anchors follow occurrence-count changes, not timestamp equality:
+A non-renewing import patch retains the previous renewal/deadline anchor and
+last-confirmation timestamp even when its publishing header is newer. Its
+inherited deadline automatically constrains publication, without relying on a
+caller-supplied minimum. Source summary anchors follow occurrence-count changes, not timestamp equality:
 two confirmations at the same wall-clock value still increment provenance.
 Committed replay checks the receipt before sampling fresh UTC, so an unsafe
 wall-clock rollback cannot prevent receipt-only recovery.
 
-Four additional deterministic cases exercise the bridge:
+Six additional deterministic cases exercise the bridge:
 
 - Two confirmations of one IOC use the actual kernel's insert/update outcomes,
   ordered winner and source count; pending versions are invisible to the real
@@ -188,6 +191,11 @@ Four additional deterministic cases exercise the bridge:
   visible but absent from the private working set. A later completion with an
   older registration retains the newer ordered-field origin, increments its
   source count and preserves earlier time anchors.
+- A real `MANAGED_IMPORT` registration feeds the existing ordered import mutation
+  session. The patch changes public fields and provenance while retaining the
+  original lifecycle confirmation timestamps and validity deadline.
+- A non-renewing patch prepared before its inherited deadline is rejected at
+  publication equality; its fields, source contribution and receipt stay hidden.
 - Combined-family row overflow and multibyte UTF-8 overflow roll staging back,
   leaving no publication header, typed row or public version.
 
@@ -203,8 +211,7 @@ that a public-ID allocator's history-column contract also covers an id-less
 artifact. Private history IDs need the same explicit durable ownership review.
 
 The bridge uses one key definition, one ordinary confirmation path and a
-synthetic experiment receipt. Non-renewing import patches, alternate match
-definitions, complete fan-out merge planning, production receipts/slots,
+synthetic experiment receipt. Alternate match definitions, complete fan-out merge planning, production receipts/slots,
 retention and restart of the private working set remain open. Published history
 is a read-only experiment view; production retention writes are not supported
 by that view and require their own versioned persistence integration.

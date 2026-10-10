@@ -6,6 +6,7 @@ import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Manif
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
 import com.iocextractor.application.artifact.CanonicalMatchCardinality;
 import com.iocextractor.application.artifact.CanonicalRecordMutationKind;
+import com.iocextractor.application.observation.ObservationOrigin;
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
@@ -269,6 +270,89 @@ class SqlitePublicationExperimentIT {
                 assertThat(queryNumber(c, "SELECT COUNT(*) FROM experiment_unit" )).isZero();
                 assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks_probe_version" )).isZero();
                 assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks" )).isZero();
+            }
+        }
+    }
+
+    @Test
+    void realImportKernelPatchChangesFieldsAndProvenanceWithoutRenewingValidity() throws Exception {
+        Instant start = Instant.ofEpochMilli(NOW);
+        try (var experiment = new SqliteKernelPublicationExperiment(directory, start)) {
+            var original = experiment.register("patch-original");
+            try (var base = experiment.published.getConnection()) {
+                base.setAutoCommit(false);
+                experiment.hydrate(base, "one.example", original);
+                base.rollback();
+            }
+            experiment.confirmReserved("one.example", "original", "source:A", original, 0);
+            experiment.publish(experiment.stage("patch-base", "one.example", 0, Long.MAX_VALUE));
+            experiment.wallClock.advance(Duration.ofSeconds(10));
+            var imported = experiment.register("patch-import", ObservationOrigin.MANAGED_IMPORT);
+            try (var base = experiment.published.getConnection()) {
+                base.setAutoCommit(false);
+                experiment.hydrate(base, "one.example", imported);
+                base.rollback();
+            }
+            var patch = experiment.patch(11, "one.example", "patched", "source:B", imported);
+            assertThat(patch.kind()).isEqualTo(CanonicalRecordMutationKind.UPDATED);
+            assertThat(patch.updatedFields()).containsExactlyInAnyOrder("name", "source");
+            var attempt = experiment.stagePatch("patch-unit", "one.example", 1);
+            experiment.wallClock.advance(Duration.ofSeconds(10));
+            var receipt = experiment.publish(attempt);
+            assertThat(receipt.effectiveMillis()).isEqualTo(NOW + 20_000);
+            try (var c = experiment.published.getConnection(); var statement = c.createStatement();
+                 var rows = statement.executeQuery("SELECT name,_first_confirmed_at_epoch_ms,"
+                         + "_last_confirmed_at_epoch_ms,_valid_until_epoch_ms FROM masks WHERE id=11")) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getString(1)).isEqualTo("patched");
+                assertThat(rows.getLong(2)).isEqualTo(NOW);
+                assertThat(rows.getLong(3)).isEqualTo(NOW);
+                assertThat(rows.getLong(4)).isEqualTo(NOW + Duration.ofHours(1).toMillis());
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks_sources WHERE row_id=11"))
+                        .isEqualTo(2);
+                assertThat(queryNumber(c, "SELECT occurrences FROM masks_sources WHERE row_id=11 AND source_key='source:A'"))
+                        .isEqualTo(1);
+                assertThat(queryNumber(c, "SELECT admission_order FROM canonical_lifecycle_field_origin "
+                        + "WHERE lifecycle_id=1 AND field_name='name'"))
+                        .isEqualTo(imported.admissionOrder().value());
+            }
+        }
+    }
+
+    @Test
+    void nonRenewingPatchAutomaticallyPinsItsInheritedDeadline() throws Exception {
+        Instant start = Instant.ofEpochMilli(NOW);
+        try (var experiment = new SqliteKernelPublicationExperiment(directory, start)) {
+            var original = experiment.register("expired-patch-original");
+            try (var base = experiment.published.getConnection()) {
+                base.setAutoCommit(false);
+                experiment.hydrate(base, "one.example", original);
+                base.rollback();
+            }
+            experiment.confirmReserved("one.example", "original", "source:A", original, 0);
+            experiment.publish(experiment.stage("expired-patch-base", "one.example", 0, Long.MAX_VALUE));
+            experiment.wallClock.advance(Duration.ofHours(1).minusMillis(1));
+            var imported = experiment.register("expired-patch-import", ObservationOrigin.MANAGED_IMPORT);
+            try (var base = experiment.published.getConnection()) {
+                base.setAutoCommit(false);
+                experiment.hydrate(base, "one.example", imported);
+                base.rollback();
+            }
+            experiment.patch(11, "one.example", "must-stay-hidden", "source:B", imported);
+            var attempt = experiment.stagePatch("expired-patch-unit", "one.example", 1);
+            experiment.wallClock.advance(Duration.ofMillis(1));
+            assertThatThrownBy(() -> experiment.publish(attempt))
+                    .hasRootCauseMessage("Incomplete, expired or stale publication attempt");
+            try (var c = experiment.published.getConnection(); var statement = c.createStatement();
+                 var rows = statement.executeQuery("SELECT name FROM masks WHERE id=11")) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getString(1)).isEqualTo("original");
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks_sources WHERE source_key='source:B'"))
+                        .isZero();
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM experiment_unit WHERE state='COMMITTED'"))
+                        .isEqualTo(1);
+                assertThat(experiment.match(c, "one.example", experiment.wallClock.instant()).cardinality())
+                        .isEqualTo(CanonicalMatchCardinality.ZERO);
             }
         }
     }
