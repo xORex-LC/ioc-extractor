@@ -328,11 +328,11 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                         branch(working, "hashes", ImportArtifactRole.RELATED,
                                 values("hash", "HASH-RESERVED"), OptionalLong.empty()))), List.of());
         var admission = new JdbcWriterAdmission();
-        var failing = working.reservedWriter(phase -> {
+        var failing = working.preparingWriter(phase -> {
             if (phase == JdbcCanonicalImportObserver.Phase.BEFORE_COMMIT) {
                 throw new IocExtractorException("Discard private preparation");
             }
-        }, authority, admission);
+        }, authority, admission, command);
 
         assertThatThrownBy(() -> failing.promote(command))
                 .isInstanceOf(IocExtractorException.class).hasMessage("Discard private preparation");
@@ -342,14 +342,89 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                 .isEqualTo(2);
         assertThat(authority.queryLong("SELECT next_value FROM lifecycle_id_allocator")).isEqualTo(3);
         assertThat(working.count("artifact_id_allocator")).isZero();
+        assertThat(working.queryLong("SELECT COUNT(*) FROM sqlite_master WHERE name='private_mutation_effect'"))
+                .as("journal DDL and effects roll back with private mutations").isZero();
 
-        working.reservedWriter(JdbcCanonicalImportObserver.NOOP, authority, admission).promote(command);
+        working.preparingWriter(JdbcCanonicalImportObserver.NOOP, authority, admission, command).promote(command);
+        assertThat(working.count("private_mutation_effect")).isEqualTo(2);
         assertThat(working.queryLong("SELECT id FROM masks")).isEqualTo(2);
         assertThat(working.queryLong("SELECT id FROM hashes")).isEqualTo(2);
         assertThat(working.queryLong("SELECT MIN(_lifecycle_id) FROM masks")).isEqualTo(3);
         assertThat(working.queryLong("SELECT MIN(_lifecycle_id) FROM hashes")).isEqualTo(4);
         assertThat(authority.queryLong("SELECT next_value FROM lifecycle_id_allocator")).isEqualTo(5);
         assertThat(authority.count("import_commit")).isZero();
+    }
+
+    @Test
+    @Timeout(30)
+    void privateJournalPreservesSameInstantRenewalThroughTypedPublication() throws Exception {
+        Environment working = environment("journal-working");
+        Environment canonical = environment("journal-canonical");
+        Environment oracle = environment("journal-oracle");
+        var initial = working.stage("journal-seed", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(working, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "unchanged.example"), OptionalLong.empty()))), List.of());
+        working.writer(JdbcCanonicalImportObserver.NOOP).promote(initial);
+        var canonicalWriter = new Environment(canonical.dataSource, working.workspaceRoot, canonical.schemas, canonical.identities);
+        var oracleWriter = new Environment(oracle.dataSource, working.workspaceRoot, oracle.schemas, oracle.identities);
+        canonicalWriter.writer(JdbcCanonicalImportObserver.NOOP).promote(initial);
+        oracleWriter.writer(JdbcCanonicalImportObserver.NOOP).promote(initial);
+        var admission = new JdbcWriterAdmission();
+        var bridge = new SqliteImportPublicationExperiment(canonical.dataSource, admission, List.of("masks", "hashes"));
+        var repeated = working.stage("journal-repeat", new ImportPromotionPolicy(ImportRowFailurePolicy.ACCEPT_VALID, true, Optional.empty()),
+                List.of(row(2, branch(working, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "unchanged.example"), OptionalLong.empty()))), List.of());
+        var before = typedRows(working.dataSource, "masks");
+
+        working.preparingWriter(JdbcCanonicalImportObserver.NOOP, canonical, admission, repeated).promote(repeated);
+
+        assertThat(typedRows(working.dataSource, "masks"))
+                .as("equal-time native renewal cannot be detected by comparing public or internal timestamps").isEqualTo(before);
+        var entries = journalEntries(working.dataSource);
+        assertThat(entries).hasSize(1).allSatisfy(entry -> {
+            assertThat(entry.artifact()).isEqualTo("masks");
+            assertThat(entry.rowId()).isOne();
+            assertThat(entry.lifecycleId()).isOne();
+            assertThat(entry.renewsValidity()).isTrue();
+        });
+        Instant publicationUtc = NOW.plusSeconds(3);
+        oracleWriter.writer(JdbcCanonicalImportObserver.NOOP, publicationUtc).promote(repeated);
+        var renewals = new java.util.LinkedHashSet<String>();
+        entries.stream().filter(JdbcPrivateMutationJournal.Entry::renewsValidity)
+                .forEach(entry -> renewals.add(entry.artifact() + ":" + entry.rowId()));
+        var attempt = bridge.stage(working.dataSource, repeated.deliveryId().value(), repeated.stage().digest().value(), renewals,
+                ordinal -> assertThat(canonical.queryLong("SELECT _last_confirmed_at_epoch_ms FROM masks"))
+                        .isEqualTo(NOW.toEpochMilli()));
+        bridge.publish(attempt, new JdbcLifecycleClock(canonical.dataSource, Clock.fixed(publicationUtc, ZoneOffset.UTC),
+                new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30)), admission),
+                new FixedRecordValidityPolicy(TTL), repeated.stage().digest().value());
+        for (String table : bridge.tables()) {
+            assertThat(typedRows(canonical.dataSource, table)).as("same-instant renewal: %s", table)
+                    .isEqualTo(typedRows(oracle.dataSource, table));
+        }
+        assertThat(canonical.queryLong("SELECT _valid_until_epoch_ms FROM masks"))
+                .isEqualTo(publicationUtc.plus(TTL).toEpochMilli());
+        working.deleteStage(repeated);
+        assertThat(canonicalWriter.writer(JdbcCanonicalImportObserver.NOOP).promote(repeated).outcome())
+                .isEqualTo(ImportPromotionOutcome.ALREADY_COMMITTED);
+        assertThat(working.count("private_mutation_effect")).isOne();
+        assertThat(canonical.queryLong("SELECT COUNT(*) FROM sqlite_master WHERE name='private_mutation_effect'"))
+                .as("private journal is never canonical receipt authority").isZero();
+    }
+
+    private static List<JdbcPrivateMutationJournal.Entry> journalEntries(HikariDataSource source) throws SQLException {
+        var entries = new ArrayList<JdbcPrivateMutationJournal.Entry>();
+        try (var connection = source.getConnection()) {
+            connection.setAutoCommit(false);
+            long ordinal = 0;
+            while (true) {
+                var chunk = JdbcPrivateMutationJournal.readChunk(connection, ordinal, 256, entries::add);
+                if (chunk.count() == 0) { break; }
+                ordinal = chunk.lastOrdinal();
+            }
+            connection.rollback();
+        }
+        return List.copyOf(entries);
     }
 
     @Test
@@ -655,7 +730,16 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                             new ArtifactIdAllocatorDefinition("hashes", ArtifactIdStrategy.ASCENDING, 1, 1)),
                     ignored -> EffectiveTime.at(NOW), new FixedRecordValidityPolicy(TTL),
                     JdbcLifecycleTransactionObserver.NOOP, working.identities, new JdbcWriterAdmission(),
-                    new JdbcCanonicalReservationAuthority(canonical.dataSource, CLOCK, admission)).confirm(command);
+                    new JdbcCanonicalPreparationContext(
+                            new JdbcCanonicalReservationAuthority(canonical.dataSource, CLOCK, admission),
+                            index == 0 ? c -> JdbcPrivateMutationJournal.open(c, "ordinary-unit-0", "ordinary-pins")
+                                    : JdbcMutationEffectSink.Factory.NONE)).confirm(command);
+            if (index == 0) {
+                assertThat(journalEntries(working.dataSource)).hasSize(1).allSatisfy(entry -> {
+                    assertThat(entry.artifact()).isEqualTo(schema.artifactName());
+                    assertThat(entry.renewsValidity()).isTrue();
+                });
+            }
             Instant utc = NOW.plusSeconds(2L * (index + 1));
             ordinaryWriter(oracle, utc).confirm(command);
             var attempt = experiment.stage(working.dataSource, "ordinary-unit-" + index, "ordinary-pins", n -> {
@@ -1472,6 +1556,19 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                     identities, workspaceRoot, ignored -> EffectiveTime.at(utc),
                     new FixedRecordValidityPolicy(TTL), new JdbcWriterAdmission(),
                     observer, Duration.ofDays(90), Map.of(), new JdbcCanonicalReservationAuthority(authority.dataSource, CLOCK, admission));
+        }
+
+        private JdbcCanonicalImportWriter preparingWriter(JdbcCanonicalImportObserver observer,
+                                                          Environment authority,
+                                                          JdbcWriterAdmission admission,
+                                                          CanonicalImportCommand command) {
+            return new JdbcCanonicalImportWriter(dataSource, schemas,
+                    List.of(new ArtifactIdAllocatorDefinition("masks", ArtifactIdStrategy.ASCENDING, 1, 1),
+                            new ArtifactIdAllocatorDefinition("hashes", ArtifactIdStrategy.ASCENDING, 1, 1)),
+                    identities, workspaceRoot, ignored -> EffectiveTime.at(NOW),
+                    new FixedRecordValidityPolicy(TTL), new JdbcWriterAdmission(), observer, Duration.ofDays(90), Map.of(),
+                    new JdbcCanonicalPreparationContext(new JdbcCanonicalReservationAuthority(authority.dataSource, CLOCK, admission),
+                            c -> JdbcPrivateMutationJournal.open(c, command.deliveryId().value(), command.stage().digest().value())));
         }
 
         private JdbcCanonicalImportWriter writer(JdbcCanonicalImportObserver observer,

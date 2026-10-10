@@ -183,5 +183,9 @@ outside this release. Protocol implementation and capacity acceptance remain ope
 
 [CAP-7C C2 physical experiment](cap-7c-c2-experiment.md) records the fenced
 chunk/publication primitive, indexed visibility and deterministic checks in test
-scope. Typed kernel/port, safe-clock/deadline and finite-progress qualification
-remain open before production integration.
+scope. Finite real-kernel/port, safe-clock/deadline and durable rebuild checks
+close C2; sustainable-load capacity acceptance remains separate.
+
+[CAP-7C C3 integration](cap-7c-c3-integration.md) records the transactional private
+journal and unchanged runtime constructors. Complete version-aware integration,
+fault/load qualification and migration/activation remain open.

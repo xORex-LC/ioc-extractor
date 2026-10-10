@@ -48,6 +48,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
     private final JdbcLifecycleTransactionObserver transactionObserver;
     private final JdbcWriterAdmission writerAdmission;
     private final JdbcWriterAdmission reservationAdmission;
+    private final JdbcMutationEffectSink.Factory effectFactory;
 
     /** Creates and validates the lifecycle writer's durable ID allocators. */
     public JdbcCanonicalLifecycleWriter(DataSource dataSource,
@@ -155,13 +156,30 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                                  List<ArtifactIdentityDefinition> identityDefinitions,
                                  JdbcWriterAdmission writerAdmission,
                                  JdbcCanonicalReservationAuthority reservationAuthority) {
+        this(dataSource, schemas, publicIdDefinitions, timeSource, validityPolicy,
+                transactionObserver, identityDefinitions, writerAdmission,
+                new JdbcCanonicalPreparationContext(reservationAuthority));
+    }
+
+    /** Captures native typed effects on the private mutation transaction. */
+    JdbcCanonicalLifecycleWriter(DataSource dataSource,
+                                 List<DataframeArtifactSchema> schemas,
+                                 List<ArtifactIdAllocatorDefinition> publicIdDefinitions,
+                                 ConnectionTimeSource timeSource,
+                                 RecordValidityPolicy validityPolicy,
+                                 JdbcLifecycleTransactionObserver transactionObserver,
+                                 List<ArtifactIdentityDefinition> identityDefinitions,
+                                 JdbcWriterAdmission writerAdmission,
+                                 JdbcCanonicalPreparationContext preparation) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
         this.timeSource = Objects.requireNonNull(timeSource, "timeSource");
         this.validityPolicy = Objects.requireNonNull(validityPolicy, "validityPolicy");
         this.transactionObserver = Objects.requireNonNull(transactionObserver, "transactionObserver");
         this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
-        Objects.requireNonNull(reservationAuthority, "reservationAuthority");
+        Objects.requireNonNull(preparation, "preparation");
+        var reservationAuthority = preparation.reservations();
+        this.effectFactory = preparation.effects();
         this.reservationAdmission = reservationAuthority.admission();
         java.time.Clock allocatorClock = reservationAuthority.clock();
         this.lifecycleIdAllocator = new JdbcLifecycleIdAllocator(reservationAuthority.dataSource(), allocatorClock);
@@ -234,7 +252,8 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
             int metadataOnly = 0;
             int publicOffset = 0;
             int lifecycleOffset = 0;
-            try (var session = mutationEngine.openSession(connection, schema, asOf, validity);
+            try (var effects = effectFactory.open(connection);
+                 var session = mutationEngine.openSession(connection, schema, asOf, validity);
                  var cursor = records.open()) {
                 while (cursor.next()) {
                     CanonicalRecordConfirmation record = cursor.value();
@@ -242,6 +261,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                             confirmation.sourceKey(), record,
                             ids.publicId(publicOffset, record), ids.lifecycleIds().idAt(lifecycleOffset),
                             confirmation.registration());
+                    effects.record(schema.artifactName(), outcome, true);
                     if (outcome.kind() == CanonicalRecordMutationKind.INSERTED) {
                         publicOffset += publicIdIncrement(record);
                         lifecycleOffset++;

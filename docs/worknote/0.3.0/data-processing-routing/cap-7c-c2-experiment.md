@@ -1,8 +1,8 @@
 # CAP-7C C2: physical SQLite publication experiment
 
 Status: C2 functional persistence experiment implemented and qualified through
-the real kernel and canonical receipt/matching ports. C3 complete integration has not
-started. This is neither a capacity acceptance nor an activated schema.
+the real kernel and canonical receipt/matching ports. [C3 integration](cap-7c-c3-integration.md)
+has started with a transactional private mutation journal. This is neither a capacity acceptance nor an activated schema.
 
 ## Implementation
 
@@ -11,8 +11,8 @@ existing JDBC adapter's test source set. They use the pinned sqlite-jdbc
 3.53.2.0 driver, the production `SqliteDataSourceFactory`/PRAGMA policy, a
 temporary file-backed SQLite database and `JdbcWriterAdmission`. Experimental
 tables are explicitly created only in that database. Its `user_version` remains
-zero; dataframe v12, service v14, bootstrap wiring and production writers are
-unchanged. No dependency, Maven module or PostgreSQL path was added.
+zero; dataframe v12, service v14, bootstrap wiring and runtime transaction behavior
+are unchanged. Internal production-writer seams support private preparation. No dependency, Maven module or PostgreSQL path was added.
 
 The primitive has no matching, merging, classification or slot-allocation
 business logic. Addresses and payloads are deliberately opaque. The experiment

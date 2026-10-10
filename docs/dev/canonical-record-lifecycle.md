@@ -156,3 +156,11 @@ can consume row and lifecycle ranges committed independently in the authoritativ
 dataframe database. Runtime constructors continue to use the canonical datasource
 and its admission. This does not activate staged publication or change existing
 reader, expiry, receipt, retention or migration behavior.
+
+Both native confirmation/import writers also have a transactional effect-sink
+seam. Private preparation can persist the actual row/lifecycle identities and
+explicit renewal flags with the native mutation. This preserves equal-time
+renewals that cannot be inferred from timestamp differences. The sink borrows
+the mutation connection and never commits or closes it. Runtime constructors
+use a no-op sink; the private journal is not canonical receipt authority or an
+activated versioned-storage protocol.

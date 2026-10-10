@@ -35,6 +35,10 @@ bridges also compare ordinary typed confirmation receipts and populated fan-out
 imports with the existing canonical ports. A 100,001-version deadline fixture
 checks the actual SQLite plans; durable logical-owner fencing and a three-attempt
 budget are tested separately from sustainable-load/resource qualification.
+The native ordinary/import writers also exercise their private transactional
+journal: same-instant renewal survives fresh-UTC publication, rollback removes
+private effects while authoritative reservations remain burned, and bounded
+journal paging, pinned identity and thread/resource ownership are checked.
 The reviewed source universe is 222 fast classes and 78 integration classes,
 including five external shells (295 deterministic classes). The exact inventory
 in `build-support/test-quality/test-lifecycle.properties` reflects this scope;

@@ -6,6 +6,7 @@ import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Manif
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
 import com.iocextractor.application.artifact.CanonicalMatchCardinality;
 import com.iocextractor.application.artifact.CanonicalRecordMutationKind;
+import com.iocextractor.application.artifact.CanonicalRecordMutationOutcome;
 import com.iocextractor.application.observation.ObservationOrigin;
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.common.IocExtractorException;
@@ -39,6 +40,107 @@ class SqlitePublicationExperimentIT {
     private static final long NOW = 1_800_000_000_000L;
     private static final String PINS = "schema:12/catalog:fixture/policy:fixture/digest:fixture";
     @TempDir Path directory;
+
+    @Test
+    void privateMutationJournalFoldsRenewalsAndStreamsBoundedIndexedPagesWithPinnedIdentity() throws Exception {
+        try (var fixture = new Fixture(directory)) {
+            fixture.write(OperationClass.PROMOTION, c -> {
+                try (var journal = JdbcPrivateMutationJournal.open(c, "private-unit", PINS)) {
+                    for (int index = 1; index <= 257; index++) {
+                        journal.record("masks", outcome(index, index), false);
+                    }
+                    journal.record("masks", outcome(1, 1), true);
+                    journal.record("masks", outcome(1, 1), false);
+                    assertThatThrownBy(() -> journal.record("masks", outcome(1, 999), true))
+                            .isInstanceOf(SQLException.class).hasMessage("Private mutation journal lifecycle identity changed");
+                    assertThatThrownBy(() -> journal.record("", outcome(1, 1), true))
+                            .isInstanceOf(IllegalArgumentException.class);
+                    assertThatThrownBy(() -> journal.record("masks", null, true)).isInstanceOf(NullPointerException.class);
+                }
+                assertThatThrownBy(() -> JdbcPrivateMutationJournal.open(c, "other-unit", PINS))
+                        .isInstanceOf(SQLException.class).hasMessage("Private mutation journal unit or pins changed");
+                assertThatThrownBy(() -> JdbcPrivateMutationJournal.open(c, "private-unit", "changed-pins"))
+                        .isInstanceOf(SQLException.class).hasMessage("Private mutation journal unit or pins changed");
+                return null;
+            });
+            try (var snapshot = fixture.dataSource.getConnection()) {
+                assertThatThrownBy(() -> JdbcPrivateMutationJournal.open(snapshot, "private-unit", PINS))
+                        .isInstanceOf(SQLException.class).hasMessage("Private mutation journal requires an owned transaction");
+                snapshot.setAutoCommit(false);
+                var first = new ArrayList<JdbcPrivateMutationJournal.Entry>();
+                var chunk = JdbcPrivateMutationJournal.readChunk(snapshot, 0, 256, first::add);
+                assertThat(chunk.count()).isEqualTo(256);
+                assertThat(first).hasSize(256);
+                assertThat(first.getFirst().renewsValidity()).isTrue();
+                assertThat(first.subList(1, first.size())).noneMatch(JdbcPrivateMutationJournal.Entry::renewsValidity);
+                var last = new ArrayList<JdbcPrivateMutationJournal.Entry>();
+                var tail = JdbcPrivateMutationJournal.readChunk(snapshot, chunk.lastOrdinal(), 256, last::add);
+                assertThat(tail.count()).isOne();
+                assertThat(last.getFirst().rowId()).isEqualTo(257);
+                assertThat(JdbcPrivateMutationJournal.readChunk(snapshot, tail.lastOrdinal(), 256, ignored -> {
+                    throw new AssertionError("Exhausted journal delivered an entry");
+                })).isEqualTo(new JdbcPrivateMutationJournal.Chunk(tail.lastOrdinal(), 0));
+                assertThatThrownBy(() -> JdbcPrivateMutationJournal.readChunk(snapshot, -1, 1, ignored -> { }))
+                        .isInstanceOf(IllegalArgumentException.class);
+                assertThatThrownBy(() -> JdbcPrivateMutationJournal.readChunk(snapshot, 0, 0, ignored -> { }))
+                        .isInstanceOf(IllegalArgumentException.class);
+                assertThatThrownBy(() -> JdbcPrivateMutationJournal.readChunk(snapshot, 0, 257, ignored -> { }))
+                        .isInstanceOf(IllegalArgumentException.class);
+                try (var journal = JdbcPrivateMutationJournal.open(snapshot, "private-unit", PINS)) {
+                    // Opening the same pinned journal is safe; it does not reset prior effects.
+                    assertThat(queryNumber(snapshot, "SELECT COUNT(*) FROM private_mutation_effect")).isEqualTo(257);
+                }
+                assertThat(snapshot.isClosed()).isFalse();
+                assertThat(snapshot.getAutoCommit()).isFalse();
+                snapshot.rollback();
+            }
+        }
+    }
+
+    @Test
+    void privateMutationJournalRollsBackEffectsAndRejectsCrossThreadResourceUse() throws Exception {
+        try (var fixture = new Fixture(directory)) {
+            fixture.write(OperationClass.PROMOTION, c -> {
+                try (var journal = JdbcPrivateMutationJournal.open(c, "private-unit", PINS)) {
+                    journal.record("masks", outcome(1, 1), true);
+                }
+                return null;
+            });
+            assertThatThrownBy(() -> fixture.write(OperationClass.PROMOTION, c -> {
+                try (var journal = JdbcPrivateMutationJournal.open(c, "private-unit", PINS)) {
+                    journal.record("masks", outcome(2, 2), true);
+                    throw new SQLException("Discard private chunk");
+                }
+            })).hasRootCauseMessage("Discard private chunk");
+            try (var connection = fixture.dataSource.getConnection()) {
+                connection.setAutoCommit(false);
+                try (var journal = JdbcPrivateMutationJournal.open(connection, "private-unit", PINS)) {
+                    assertThat(queryNumber(connection, "SELECT COUNT(*) FROM private_mutation_effect")).isOne();
+                    var worker = Executors.newSingleThreadExecutor();
+                    try {
+                        var checked = worker.submit(() -> {
+                            assertThatThrownBy(() -> journal.record("masks", outcome(3, 3), true))
+                                    .isInstanceOf(IllegalStateException.class)
+                                    .hasMessage("Private mutation journal belongs to another thread");
+                            assertThatThrownBy(journal::close).isInstanceOf(IllegalStateException.class);
+                        });
+                        checked.get(5, TimeUnit.SECONDS);
+                    } finally {
+                        worker.shutdownNow();
+                        assertThat(worker.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+                    }
+                    journal.record("masks", outcome(4, 4), false);
+                }
+                assertThat(connection.isClosed()).isFalse();
+                connection.rollback();
+            }
+        }
+    }
+
+    private static CanonicalRecordMutationOutcome outcome(long row, long lifecycle) {
+        return new CanonicalRecordMutationOutcome(CanonicalRecordMutationKind.TTL_CONFIRMED,
+                row, lifecycle, java.util.Set.of(), java.util.Set.of());
+    }
 
     @Test
     void durableOwnershipFencesRestartAndBoundsConflictingPreparationWhileControlProgresses() throws Exception {

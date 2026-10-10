@@ -194,7 +194,10 @@ continues when notifications are disabled, lost, duplicated or reconnecting.
    retain the canonical dataframe datasource and shared admission. Private work
    never makes its local allocator authoritative; discarded reservations remain
    burned in the owning dataframe database. This seam alone does not activate
-   staged publication or change the runtime transaction contract.
+   staged publication or change the runtime transaction contract. An internal
+   transactional effect sink can persist real row/lifecycle identities and the
+   plan's explicit renewal flag in the private mutation transaction. Sink failure
+   rolls back that private transaction; public constructors use a no-op sink.
 7. **Only active rows match.** Missing import rows never delete, modify or renew
    local rows. Historical lifecycles do not participate.
 8. **A sealed stage is immutable evidence.** Snapshot and contract pins, plan

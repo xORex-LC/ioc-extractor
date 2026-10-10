@@ -94,6 +94,13 @@ runtime JDBC drivers.
   statements, clears bindings/batches between leases and closes before commit.
   The caller owns the connection, transaction, ID reservations, revision
   aggregation and receipt publication. No session or JDBC resource is global.
+- `JdbcCanonicalPreparationContext` binds private native preparation to the
+  dataframe reservation authority and a transactional effect sink.
+  `JdbcPrivateMutationJournal` pins one private unit/fingerprint, records actual
+  row/lifecycle identities and explicit renewal flags, and streams indexed pages
+  of at most 256 entries. It owns only its statement, not the native transaction
+  or connection. Runtime constructors use a no-op sink; this internal seam does
+  not activate versioned storage or publish a canonical receipt.
 - `JdbcLifecycleControlStore` uses one-way CAS and refuses `ACTIVE` until one
   set-based invariant scan proves that every configured active row has complete,
   ordered lifecycle metadata. Lifecycle/canonical-row ID ranges are reserved by
