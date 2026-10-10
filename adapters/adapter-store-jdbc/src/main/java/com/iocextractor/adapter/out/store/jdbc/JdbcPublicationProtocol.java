@@ -16,28 +16,28 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Isolated CAP-7C physical visibility probe. Not a canonical writer or production schema.
+ * Fenced physical publication transitions, shared by native preparation and control work.
  * Callers own connections, admission, safe time and transactions; payloads have no business semantics.
  * Pending contributions fold until seal; immutable chunk journals make their exact replay a no-op.
  */
-final class SqlitePublicationExperiment {
+final class JdbcPublicationProtocol {
     static final int CHUNK_FACT_LIMIT = 256;
     private static final int CHUNK_BYTE_LIMIT = 1024 * 1024;
     static final String LOOKUP_SQL = """
-            SELECT f.payload FROM experiment_fact f
-            JOIN experiment_unit u ON u.id=f.unit_id AND u.fence=f.fence
+            SELECT f.payload FROM publication_fact f
+            JOIN publication_unit u ON u.id=f.unit_id AND u.fence=f.fence
             WHERE f.family=? AND f.scope=? AND f.fact_key=? AND u.state='COMMITTED'
             ORDER BY f.stamp DESC LIMIT 1
             """;
     static final String NEAREST_SQL = """
-            SELECT anchor.valid_until FROM experiment_unit anchor
+            SELECT anchor.valid_until FROM publication_unit anchor
             WHERE anchor.state='COMMITTED' AND anchor.valid_until>?
               AND EXISTS (
-                SELECT 1 FROM experiment_fact f JOIN experiment_unit u
+                SELECT 1 FROM publication_fact f JOIN publication_unit u
                   ON u.id=f.unit_id AND u.fence=f.fence AND u.state='COMMITTED'
                 WHERE f.deadline_anchor=anchor.id AND f.family=? AND f.scope=? AND f.payload IS NOT NULL
                   AND NOT EXISTS (
-                    SELECT 1 FROM experiment_fact newer JOIN experiment_unit nu
+                    SELECT 1 FROM publication_fact newer JOIN publication_unit nu
                       ON nu.id=newer.unit_id AND nu.fence=newer.fence AND nu.state='COMMITTED'
                     WHERE newer.family=f.family AND newer.scope=f.scope AND newer.fact_key=f.fact_key
                       AND newer.stamp>f.stamp))
@@ -57,7 +57,7 @@ final class SqlitePublicationExperiment {
         try (var statement = connection.createStatement()) {
             for (String sql : List.of(
                     """
-                    CREATE TABLE experiment_unit (
+                    CREATE TABLE publication_unit (
                         id INTEGER PRIMARY KEY AUTOINCREMENT, identity TEXT NOT NULL UNIQUE,
                         pins TEXT NOT NULL, fence INTEGER NOT NULL DEFAULT 1,
                         state TEXT NOT NULL DEFAULT 'PENDING'
@@ -78,40 +78,40 @@ final class SqlitePublicationExperiment {
                             AND effective_millis IS NULL AND receipt IS NULL)))
                     """,
                     """
-                    CREATE TABLE experiment_attempt (
+                    CREATE TABLE publication_attempt (
                         stamp INTEGER PRIMARY KEY AUTOINCREMENT,
-                        unit_id INTEGER NOT NULL REFERENCES experiment_unit(id), fence INTEGER NOT NULL,
+                        unit_id INTEGER NOT NULL REFERENCES publication_unit(id), fence INTEGER NOT NULL,
                         UNIQUE(unit_id,fence), UNIQUE(unit_id,fence,stamp))
                     """,
                     """
-                    CREATE TABLE experiment_fact (
-                        unit_id INTEGER NOT NULL REFERENCES experiment_unit(id), fence INTEGER NOT NULL,
+                    CREATE TABLE publication_fact (
+                        unit_id INTEGER NOT NULL REFERENCES publication_unit(id), fence INTEGER NOT NULL,
                         stamp INTEGER NOT NULL,
                         family TEXT NOT NULL, scope TEXT NOT NULL, fact_key TEXT NOT NULL, payload TEXT,
-                        deadline_anchor INTEGER REFERENCES experiment_unit(id),
+                        deadline_anchor INTEGER REFERENCES publication_unit(id),
                         PRIMARY KEY(unit_id,fence,family,scope,fact_key),
-                        FOREIGN KEY(unit_id,fence,stamp) REFERENCES experiment_attempt(unit_id,fence,stamp),
+                        FOREIGN KEY(unit_id,fence,stamp) REFERENCES publication_attempt(unit_id,fence,stamp),
                         FOREIGN KEY(unit_id,fence,scope)
-                            REFERENCES experiment_dependency(unit_id,fence,scope)) WITHOUT ROWID
+                            REFERENCES publication_dependency(unit_id,fence,scope)) WITHOUT ROWID
                     """,
-                    "CREATE INDEX experiment_fact_lookup ON experiment_fact(family,scope,fact_key,stamp DESC)",
-                    "CREATE INDEX experiment_fact_deadline ON experiment_fact(deadline_anchor,family,scope)",
-                    "CREATE INDEX experiment_unit_deadline ON experiment_unit(valid_until) WHERE state='COMMITTED'",
+                    "CREATE INDEX publication_fact_lookup ON publication_fact(family,scope,fact_key,stamp DESC)",
+                    "CREATE INDEX publication_fact_deadline ON publication_fact(deadline_anchor,family,scope)",
+                    "CREATE INDEX publication_unit_deadline ON publication_unit(valid_until) WHERE state='COMMITTED'",
                     """
-                    CREATE TABLE experiment_chunk (
-                        unit_id INTEGER NOT NULL REFERENCES experiment_unit(id), fence INTEGER NOT NULL,
+                    CREATE TABLE publication_chunk (
+                        unit_id INTEGER NOT NULL REFERENCES publication_unit(id), fence INTEGER NOT NULL,
                         ordinal INTEGER NOT NULL, digest TEXT NOT NULL,
                         PRIMARY KEY(unit_id,fence,ordinal)) WITHOUT ROWID
                     """,
-                    "CREATE TABLE experiment_epoch (scope TEXT PRIMARY KEY, version INTEGER NOT NULL) WITHOUT ROWID",
+                    "CREATE TABLE publication_epoch (scope TEXT PRIMARY KEY, version INTEGER NOT NULL) WITHOUT ROWID",
                     """
-                    CREATE TABLE experiment_dependency (
-                        unit_id INTEGER NOT NULL REFERENCES experiment_unit(id), fence INTEGER NOT NULL,
+                    CREATE TABLE publication_dependency (
+                        unit_id INTEGER NOT NULL REFERENCES publication_unit(id), fence INTEGER NOT NULL,
                         scope TEXT NOT NULL, version INTEGER NOT NULL,
                         PRIMARY KEY(unit_id,fence,scope)) WITHOUT ROWID
                     """,
-                    "CREATE TABLE experiment_sequence (id INTEGER PRIMARY KEY CHECK(id=1), value INTEGER NOT NULL)",
-                    "INSERT INTO experiment_sequence VALUES(1,0)")) {
+                    "CREATE TABLE publication_sequence (id INTEGER PRIMARY KEY CHECK(id=1), value INTEGER NOT NULL)",
+                    "INSERT INTO publication_sequence VALUES(1,0)")) {
                 statement.execute(sql);
             }
         }
@@ -120,7 +120,7 @@ final class SqlitePublicationExperiment {
     Attempt begin(Connection connection, String identity, String pins, Manifest manifest) throws SQLException {
         requireTransaction(connection);
         try (PreparedStatement statement = connection.prepareStatement("""
-                INSERT INTO experiment_unit(identity,pins,expected_chunks,expected_contributions,minimum_deadline)
+                INSERT INTO publication_unit(identity,pins,expected_chunks,expected_contributions,minimum_deadline)
                 VALUES(?,?,?,?,?) RETURNING id
                 """)) {
             statement.setString(1, identity);
@@ -140,7 +140,7 @@ final class SqlitePublicationExperiment {
     Attempt rebuild(Connection connection, Attempt previous, String pins, Manifest manifest) throws SQLException {
         requireTransaction(connection);
         try (PreparedStatement statement = connection.prepareStatement("""
-                UPDATE experiment_unit SET fence=fence+1,state='PENDING',next_chunk=0,contributions=0,needs_validity=0,
+                UPDATE publication_unit SET fence=fence+1,state='PENDING',next_chunk=0,contributions=0,needs_validity=0,
                     minimum_deadline=?,expected_chunks=?,expected_contributions=?
                 WHERE id=? AND fence=? AND pins=? AND state IN ('PENDING','SEALED') RETURNING fence
                 """)) {
@@ -169,7 +169,7 @@ final class SqlitePublicationExperiment {
         facts = List.copyOf(facts);
         String digest = digest(facts);
         try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT digest FROM experiment_chunk WHERE unit_id=? AND fence=? AND ordinal=?
+                SELECT digest FROM publication_chunk WHERE unit_id=? AND fence=? AND ordinal=?
                 """)) {
             bindAttempt(statement, attempt);
             statement.setInt(3, ordinal);
@@ -184,7 +184,7 @@ final class SqlitePublicationExperiment {
         boolean needsValidity = facts.stream().anyMatch(fact -> fact.payload() != null
                 && Long.valueOf(attempt.unitId()).equals(fact.deadlineAnchor()));
         try (PreparedStatement statement = connection.prepareStatement("""
-                UPDATE experiment_unit SET next_chunk=next_chunk+1,contributions=contributions+?,
+                UPDATE publication_unit SET next_chunk=next_chunk+1,contributions=contributions+?,
                     minimum_deadline=MIN(minimum_deadline,?),needs_validity=MAX(needs_validity,?)
                 WHERE id=? AND fence=? AND next_chunk=? AND next_chunk<expected_chunks
                     AND contributions+?<=expected_contributions
@@ -200,7 +200,7 @@ final class SqlitePublicationExperiment {
         }
         try (PreparedStatement statement = connection.prepareStatement(
                 """
-                INSERT INTO experiment_fact VALUES(?,?,?,?,?,?,?,?)
+                INSERT INTO publication_fact VALUES(?,?,?,?,?,?,?,?)
                 ON CONFLICT(unit_id,fence,family,scope,fact_key)
                 DO UPDATE SET payload=excluded.payload,deadline_anchor=excluded.deadline_anchor
                 """)) {
@@ -217,7 +217,7 @@ final class SqlitePublicationExperiment {
             statement.executeBatch();
         }
         try (PreparedStatement statement = connection.prepareStatement(
-                "INSERT INTO experiment_chunk VALUES(?,?,?,?)")) {
+                "INSERT INTO publication_chunk VALUES(?,?,?,?)")) {
             bindAttempt(statement, attempt);
             statement.setInt(3, ordinal);
             statement.setString(4, digest);
@@ -229,7 +229,7 @@ final class SqlitePublicationExperiment {
     void seal(Connection connection, Attempt attempt) throws SQLException {
         requireTransaction(connection);
         try (PreparedStatement statement = connection.prepareStatement("""
-                UPDATE experiment_unit SET state='SEALED' WHERE id=? AND fence=? AND state='PENDING'
+                UPDATE publication_unit SET state='SEALED' WHERE id=? AND fence=? AND state='PENDING'
                     AND next_chunk=expected_chunks AND contributions=expected_contributions
                 """)) {
             bindAttempt(statement, attempt);
@@ -255,8 +255,8 @@ final class SqlitePublicationExperiment {
         Long validUntil = policy == null ? null
                 : policy.decide(asOf).requireValidAt(asOf).deadline().validUntil().toEpochMilli();
         try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT 1 FROM experiment_dependency d
-                LEFT JOIN experiment_epoch e ON e.scope=d.scope
+                SELECT 1 FROM publication_dependency d
+                LEFT JOIN publication_epoch e ON e.scope=d.scope
                 WHERE d.unit_id=? AND d.fence=? AND d.version<>COALESCE(e.version,0) LIMIT 1
                 """)) {
             bindAttempt(statement, attempt);
@@ -267,12 +267,12 @@ final class SqlitePublicationExperiment {
         long sequence;
         try (var statement = connection.createStatement();
              ResultSet result = statement.executeQuery(
-                     "UPDATE experiment_sequence SET value=value+1 WHERE id=1 RETURNING value")) {
+                     "UPDATE publication_sequence SET value=value+1 WHERE id=1 RETURNING value")) {
             if (!result.next()) { throw new SQLException("Missing publication sequence"); }
             sequence = result.getLong(1);
         }
         try (PreparedStatement statement = connection.prepareStatement("""
-                UPDATE experiment_unit SET state='COMMITTED',publication_sequence=?,effective_millis=?,receipt=?,
+                UPDATE publication_unit SET state='COMMITTED',publication_sequence=?,effective_millis=?,receipt=?,
                     valid_until=?
                 WHERE id=? AND fence=? AND state='SEALED' AND minimum_deadline>?
                 """)) {
@@ -286,8 +286,8 @@ final class SqlitePublicationExperiment {
             requireOne(statement.executeUpdate());
         }
         try (PreparedStatement statement = connection.prepareStatement("""
-                UPDATE experiment_epoch SET version=version+1
-                WHERE scope IN (SELECT scope FROM experiment_dependency WHERE unit_id=? AND fence=?)
+                UPDATE publication_epoch SET version=version+1
+                WHERE scope IN (SELECT scope FROM publication_dependency WHERE unit_id=? AND fence=?)
                 """)) {
             bindAttempt(statement, attempt);
             statement.executeUpdate();
@@ -298,7 +298,7 @@ final class SqlitePublicationExperiment {
     void cancel(Connection connection, Attempt attempt) throws SQLException {
         requireTransaction(connection);
         try (PreparedStatement statement = connection.prepareStatement("""
-                UPDATE experiment_unit SET state='CANCELLED'
+                UPDATE publication_unit SET state='CANCELLED'
                 WHERE id=? AND fence=? AND state IN ('PENDING','SEALED')
                 """)) {
             bindAttempt(statement, attempt);
@@ -320,7 +320,7 @@ final class SqlitePublicationExperiment {
     Optional<Receipt> receipt(Connection connection, long unitId) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT publication_sequence,effective_millis,receipt
-                FROM experiment_unit WHERE id=? AND state='COMMITTED'
+                FROM publication_unit WHERE id=? AND state='COMMITTED'
                 """)) {
             statement.setLong(1, unitId);
             try (ResultSet result = statement.executeQuery()) {
@@ -334,10 +334,10 @@ final class SqlitePublicationExperiment {
             throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT latest.payload FROM (
-                  SELECT f.payload,f.deadline_anchor FROM experiment_fact f
-                  JOIN experiment_unit u ON u.id=f.unit_id AND u.fence=f.fence AND u.state='COMMITTED'
+                  SELECT f.payload,f.deadline_anchor FROM publication_fact f
+                  JOIN publication_unit u ON u.id=f.unit_id AND u.fence=f.fence AND u.state='COMMITTED'
                   WHERE f.family=? AND f.scope=? AND f.fact_key=? ORDER BY f.stamp DESC LIMIT 1
-                ) latest JOIN experiment_unit anchor ON anchor.id=latest.deadline_anchor
+                ) latest JOIN publication_unit anchor ON anchor.id=latest.deadline_anchor
                 WHERE anchor.state='COMMITTED' AND anchor.valid_until>?
                 """)) {
             statement.setString(1, family);
@@ -364,7 +364,7 @@ final class SqlitePublicationExperiment {
     private long inheritedDeadline(Connection connection, Attempt attempt, List<Fact> facts) throws SQLException {
         long minimum = Long.MAX_VALUE;
         try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT valid_until FROM experiment_unit WHERE id=? AND state='COMMITTED' AND valid_until IS NOT NULL")) {
+                "SELECT valid_until FROM publication_unit WHERE id=? AND state='COMMITTED' AND valid_until IS NOT NULL")) {
             for (Fact fact : facts) {
                 Long anchor = fact.deadlineAnchor();
                 if (fact.payload() == null || anchor == null || anchor == attempt.unitId()) { continue; }
@@ -383,7 +383,7 @@ final class SqlitePublicationExperiment {
                              String family, String scope, String key) throws SQLException {
         requireTransaction(base);
         try (PreparedStatement statement = pending.prepareStatement("""
-                SELECT f.payload FROM experiment_fact f JOIN experiment_unit u
+                SELECT f.payload FROM publication_fact f JOIN publication_unit u
                     ON u.id=f.unit_id AND u.fence=f.fence
                 WHERE f.unit_id=? AND f.fence=? AND f.family=? AND f.scope=? AND f.fact_key=?
                     AND u.state IN ('PENDING','SEALED')
@@ -403,7 +403,7 @@ final class SqlitePublicationExperiment {
     void advanceEpoch(Connection connection, String scope) throws SQLException {
         requireTransaction(connection);
         try (PreparedStatement statement = connection.prepareStatement("""
-                INSERT INTO experiment_epoch VALUES(?,1)
+                INSERT INTO publication_epoch VALUES(?,1)
                 ON CONFLICT(scope) DO UPDATE SET version=version+1
                 """)) {
             statement.setString(1, scope);
@@ -414,15 +414,15 @@ final class SqlitePublicationExperiment {
     private void pinDependencies(Connection connection, Attempt attempt, Map<String, Long> dependencies)
             throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-                "INSERT INTO experiment_dependency VALUES(?,?,?,?)")) {
+                "INSERT INTO publication_dependency VALUES(?,?,?,?)")) {
             for (var dependency : dependencies.entrySet()) {
                 try (PreparedStatement epoch = connection.prepareStatement(
-                        "INSERT INTO experiment_epoch VALUES(?,0) ON CONFLICT(scope) DO NOTHING")) {
+                        "INSERT INTO publication_epoch VALUES(?,0) ON CONFLICT(scope) DO NOTHING")) {
                     epoch.setString(1, dependency.getKey());
                     epoch.executeUpdate();
                 }
                 try (PreparedStatement epoch = connection.prepareStatement(
-                        "SELECT version FROM experiment_epoch WHERE scope=?")) {
+                        "SELECT version FROM publication_epoch WHERE scope=?")) {
                     epoch.setString(1, dependency.getKey());
                     try (ResultSet result = epoch.executeQuery()) {
                         if (!result.next() || result.getLong(1) != dependency.getValue()) {
@@ -441,7 +441,7 @@ final class SqlitePublicationExperiment {
 
     private Attempt allocateAttempt(Connection connection, long unitId, long fence) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-                "INSERT INTO experiment_attempt(unit_id,fence) VALUES(?,?) RETURNING stamp")) {
+                "INSERT INTO publication_attempt(unit_id,fence) VALUES(?,?) RETURNING stamp")) {
             statement.setLong(1, unitId);
             statement.setLong(2, fence);
             try (ResultSet result = statement.executeQuery()) {
@@ -453,7 +453,7 @@ final class SqlitePublicationExperiment {
 
     private void requirePendingAttempt(Connection connection, Attempt attempt) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT 1 FROM experiment_unit WHERE id=? AND fence=? AND state IN ('PENDING','SEALED')")) {
+                "SELECT 1 FROM publication_unit WHERE id=? AND fence=? AND state IN ('PENDING','SEALED')")) {
             bindAttempt(statement, attempt);
             try (ResultSet result = statement.executeQuery()) {
                 if (!result.next()) { throw new SQLException("Stale attempt or invalid publication state"); }
@@ -463,7 +463,7 @@ final class SqlitePublicationExperiment {
 
     private void requireState(Connection connection, Attempt attempt, String state) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT 1 FROM experiment_unit WHERE id=? AND fence=? AND state=?")) {
+                "SELECT 1 FROM publication_unit WHERE id=? AND fence=? AND state=?")) {
             bindAttempt(statement, attempt);
             statement.setString(3, state);
             try (ResultSet result = statement.executeQuery()) {
@@ -492,15 +492,7 @@ final class SqlitePublicationExperiment {
             for (Fact fact : facts) {
                 for (String value : new String[]{fact.family(), fact.scope(), fact.key(), fact.payload(),
                         fact.deadlineAnchor() == null ? null : fact.deadlineAnchor().toString()}) {
-                    if (value != null && value.length() > CHUNK_BYTE_LIMIT - bytes - Integer.BYTES) {
-                        throw new IllegalArgumentException("Experiment chunk byte limit");
-                    }
-                    byte[] encoded = value == null ? new byte[0] : value.getBytes(StandardCharsets.UTF_8);
-                    bytes += encoded.length + Integer.BYTES;
-                    if (bytes > CHUNK_BYTE_LIMIT) { throw new IllegalArgumentException("Experiment chunk byte limit"); }
-                    int length = value == null ? -1 : encoded.length;
-                    for (int shift = 24; shift >= 0; shift -= 8) { digest.update((byte) (length >>> shift)); }
-                    digest.update(encoded);
+                    bytes = digestField(digest, value, bytes);
                 }
             }
             return HexFormat.of().formatHex(digest.digest());
@@ -508,4 +500,17 @@ final class SqlitePublicationExperiment {
             throw new IllegalStateException("SHA-256 unavailable", impossible);
         }
     }
+    private static int digestField(MessageDigest digest, String value, int bytes) {
+        if (value != null && value.length() > CHUNK_BYTE_LIMIT - bytes - Integer.BYTES) {
+            throw new IllegalArgumentException("Experiment chunk byte limit");
+        }
+        byte[] encoded = value == null ? new byte[0] : value.getBytes(StandardCharsets.UTF_8);
+        int next = bytes + encoded.length + Integer.BYTES;
+        if (next > CHUNK_BYTE_LIMIT) { throw new IllegalArgumentException("Experiment chunk byte limit"); }
+        int length = value == null ? -1 : encoded.length;
+        for (int shift = 24; shift >= 0; shift -= 8) { digest.update((byte) (length >>> shift)); }
+        digest.update(encoded);
+        return next;
+    }
+
 }

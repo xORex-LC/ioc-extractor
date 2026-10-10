@@ -1,8 +1,8 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
-import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Attempt;
-import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Fact;
-import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Manifest;
+import com.iocextractor.adapter.out.store.jdbc.JdbcPublicationProtocol.Attempt;
+import com.iocextractor.adapter.out.store.jdbc.JdbcPublicationProtocol.Fact;
+import com.iocextractor.adapter.out.store.jdbc.JdbcPublicationProtocol.Manifest;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
 import com.iocextractor.application.artifact.ArtifactRow;
@@ -63,7 +63,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
     final HikariDataSource working;
     final MutableClock wallClock;
     final JdbcWriterAdmission admission = new JdbcWriterAdmission();
-    private final SqlitePublicationExperiment probe = new SqlitePublicationExperiment();
+    private final JdbcPublicationProtocol probe = new JdbcPublicationProtocol();
     private final FixedRecordValidityPolicy validity = new FixedRecordValidityPolicy(Duration.ofHours(1));
     private final CanonicalArtifactKeyResolver keys = new CanonicalArtifactKeyResolver(List.of(IDENTITY));
     private final JdbcCanonicalMutationEngine kernel;
@@ -404,7 +404,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
         });
     }
 
-    SqlitePublicationExperiment.Receipt publish(Attempt attempt) {
+    JdbcPublicationProtocol.Receipt publish(Attempt attempt) {
         return write(c -> {
             var receipt = probe.receipt(c, attempt.unitId());
             long effectiveMillis = receipt.isPresent() ? receipt.orElseThrow().effectiveMillis()
@@ -464,14 +464,14 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
                        v.unit_id AS _probe_unit, v.fence AS _probe_fence,
                        v.first_anchor AS _probe_first_anchor,v.renewal_anchor AS _probe_renewal_anchor
                 FROM masks_probe_version v
-                JOIN experiment_unit u ON u.id=v.unit_id AND u.fence=v.fence AND u.state='COMMITTED'
-                LEFT JOIN experiment_unit first ON first.id=v.first_anchor AND first.state='COMMITTED'
-                LEFT JOIN experiment_unit renewal ON renewal.id=v.renewal_anchor AND renewal.state='COMMITTED'
-                JOIN experiment_fact f ON f.unit_id=v.unit_id AND f.fence=v.fence
+                JOIN publication_unit u ON u.id=v.unit_id AND u.fence=v.fence AND u.state='COMMITTED'
+                LEFT JOIN publication_unit first ON first.id=v.first_anchor AND first.state='COMMITTED'
+                LEFT JOIN publication_unit renewal ON renewal.id=v.renewal_anchor AND renewal.state='COMMITTED'
+                JOIN publication_fact f ON f.unit_id=v.unit_id AND f.fence=v.fence
                   AND f.family='row' AND f.scope='masks' AND f.fact_key=v.row_key AND f.payload IS NOT NULL
                 WHERE NOT EXISTS (
-                  SELECT 1 FROM experiment_fact newer
-                  JOIN experiment_unit n ON n.id=newer.unit_id AND n.fence=newer.fence AND n.state='COMMITTED'
+                  SELECT 1 FROM publication_fact newer
+                  JOIN publication_unit n ON n.id=newer.unit_id AND n.fence=newer.fence AND n.state='COMMITTED'
                   WHERE newer.family='row' AND newer.scope='masks' AND newer.fact_key=f.fact_key
                     AND newer.stamp>f.stamp)
                 """);
@@ -498,8 +498,8 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
             execute(c, "CREATE VIEW " + quote(table) + " AS SELECT " + projection + " FROM "
                     + quote(table + "_probe_version") + " v JOIN masks r ON " + rowJoin
                     + " AND v.unit_id=r._probe_unit AND v.fence=r._probe_fence"
-                    + (sources ? " LEFT JOIN experiment_unit first ON first.id=v.first_anchor AND first.state='COMMITTED'"
-                    + " LEFT JOIN experiment_unit last ON last.id=v.last_anchor AND last.state='COMMITTED'" : ""));
+                    + (sources ? " LEFT JOIN publication_unit first ON first.id=v.first_anchor AND first.state='COMMITTED'"
+                    + " LEFT JOIN publication_unit last ON last.id=v.last_anchor AND last.state='COMMITTED'" : ""));
         }
         for (String table : TABLES.subList(4, TABLES.size())) {
             String projection = columns.get(table).stream().map(name -> switch (name) {
@@ -507,7 +507,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
                 default -> "v." + quote(name);
             }).collect(java.util.stream.Collectors.joining(","));
             execute(c, "CREATE VIEW " + quote(table) + " AS SELECT " + projection + " FROM "
-                    + quote(table + "_probe_version") + " v JOIN experiment_unit u"
+                    + quote(table + "_probe_version") + " v JOIN publication_unit u"
                     + " ON u.id=v.unit_id AND u.fence=v.fence AND u.state='COMMITTED'");
         }
     }

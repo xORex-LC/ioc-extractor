@@ -1,8 +1,8 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
-import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Attempt;
-import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Fact;
-import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Manifest;
+import com.iocextractor.adapter.out.store.jdbc.JdbcPublicationProtocol.Attempt;
+import com.iocextractor.adapter.out.store.jdbc.JdbcPublicationProtocol.Fact;
+import com.iocextractor.adapter.out.store.jdbc.JdbcPublicationProtocol.Manifest;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
 import com.iocextractor.application.artifact.CanonicalMatchCardinality;
 import com.iocextractor.application.artifact.CanonicalRecordMutationKind;
@@ -40,6 +40,84 @@ class SqlitePublicationExperimentIT {
     private static final long NOW = 1_800_000_000_000L;
     private static final String PINS = "schema:12/catalog:fixture/policy:fixture/digest:fixture";
     @TempDir Path directory;
+
+    @Test
+    void nativeDmlCapturePreservesCountsConstraintsCascadesAndOnlyFinalChangedAddresses() throws Exception {
+        try (var fixture = new Fixture(directory)) {
+            fixture.write(OperationClass.CONTROL, c -> {
+                JdbcPublicationTable.execute(c, "CREATE TABLE capture_parent(id INTEGER PRIMARY KEY,value TEXT)");
+                JdbcPublicationTable.execute(c, "CREATE TABLE capture_child(parent INTEGER REFERENCES capture_parent(id)"
+                        + " ON DELETE CASCADE,source TEXT,count INTEGER,PRIMARY KEY(parent,source))");
+                JdbcPublicationTable.execute(c, "INSERT INTO capture_parent VALUES(1,'old'),(2,'unchanged')");
+                JdbcPublicationTable.execute(c, "INSERT INTO capture_child VALUES(1,'feed',3)");
+                var parent = JdbcPublicationTable.inspect(c, "capture_parent");
+                var child = JdbcPublicationTable.inspect(c, "capture_child");
+                JdbcPrivateChangeCapture.install(c, List.of(parent, child));
+                try (var statement = c.createStatement()) {
+                    assertThat(preparedUpdate(c, "INSERT INTO capture_parent VALUES(2,'temporary')"
+                            + " ON CONFLICT(id) DO UPDATE SET value=excluded.value")).isOne();
+                    assertThat(preparedUpdate(c, "UPDATE capture_parent SET value='unchanged' WHERE id=2")).isOne();
+                    assertThat(preparedUpdate(c, "INSERT INTO capture_parent VALUES(3,NULL)")).isOne();
+                    assertThat(preparedUpdate(c, "DELETE FROM capture_parent WHERE id=1")).isOne();
+                    assertThat(preparedUpdate(c, "INSERT INTO capture_parent VALUES(4,'transient')")).isOne();
+                    assertThat(preparedUpdate(c, "DELETE FROM capture_parent WHERE id=4")).isOne();
+                    assertThatThrownBy(() -> preparedUpdate(c, "INSERT INTO capture_parent VALUES(2,'duplicate')"))
+                            .isInstanceOf(SQLException.class);
+                }
+                var parents = new ArrayList<JdbcPrivateChanges.Effect>();
+                JdbcPrivateChanges.read(c, parent, 0, parents::add);
+                assertThat(parents).hasSize(2);
+                assertThat(parents).filteredOn(JdbcPrivateChanges.Effect::deleted).singleElement()
+                        .satisfies(effect -> assertThat(effect.previous()).containsExactly(1, "old"));
+                assertThat(parents).filteredOn(effect -> !effect.deleted()).singleElement()
+                        .satisfies(effect -> {
+                            assertThat(effect.values()).containsExactly(3, null);
+                            assertThat(effect.previous()).isNull();
+                        });
+                var children = new ArrayList<JdbcPrivateChanges.Effect>();
+                JdbcPrivateChanges.read(c, child, 0, children::add);
+                assertThat(children).singleElement().satisfies(effect -> {
+                    assertThat(effect.deleted()).isTrue();
+                    assertThat(effect.previous()).containsExactly(1, "feed", 3);
+                });
+                return null;
+            });
+        }
+    }
+
+    @Test
+    void nativeDmlCaptureMovesCompositeKeysAndRollsBackPrivateEffects() throws Exception {
+        try (var fixture = new Fixture(directory)) {
+            var table = fixture.write(OperationClass.CONTROL, c -> {
+                JdbcPublicationTable.execute(c, "CREATE TABLE capture_keys(a TEXT,b INTEGER,value TEXT,PRIMARY KEY(a,b))");
+                JdbcPublicationTable.execute(c, "INSERT INTO capture_keys VALUES('same',1,'old')");
+                var shape = JdbcPublicationTable.inspect(c, "capture_keys");
+                JdbcPrivateChangeCapture.install(c, List.of(shape));
+                return shape;
+            });
+            try (var c = fixture.dataSource.getConnection()) {
+                assertThatThrownBy(() -> JdbcPrivateChanges.read(c, table, 0, ignored -> { }))
+                        .isInstanceOf(IllegalArgumentException.class);
+                c.setAutoCommit(false);
+                JdbcPublicationTable.execute(c, "UPDATE capture_keys SET b=2,value='new'");
+                var effects = new ArrayList<JdbcPrivateChanges.Effect>();
+                JdbcPrivateChanges.read(c, table, 0, effects::add);
+                assertThat(effects).hasSize(2);
+                assertThat(effects).filteredOn(JdbcPrivateChanges.Effect::deleted).singleElement()
+                        .satisfies(effect -> assertThat(effect.previous()).containsExactly("same", 1, "old"));
+                assertThat(effects).filteredOn(effect -> !effect.deleted()).singleElement()
+                        .satisfies(effect -> {
+                            assertThat(effect.values()).containsExactly("same", 2, "new");
+                            assertThat(effect.previous()).isNull();
+                        });
+                c.rollback();
+                effects.clear();
+                JdbcPrivateChanges.read(c, table, 0, effects::add);
+                assertThat(effects).isEmpty();
+                c.rollback();
+            }
+        }
+    }
 
     @Test
     void privateMutationJournalFoldsRenewalsAndStreamsBoundedIndexedPagesWithPinnedIdentity() throws Exception {
@@ -380,7 +458,7 @@ class SqlitePublicationExperimentIT {
                     .hasRootCauseMessage("Incomplete, expired or stale publication attempt");
             try (var base = experiment.published.getConnection()) {
                 base.setAutoCommit(false);
-                assertThat(queryNumber(base, "SELECT COUNT(*) FROM experiment_unit WHERE state='COMMITTED'"))
+                assertThat(queryNumber(base, "SELECT COUNT(*) FROM publication_unit WHERE state='COMMITTED'"))
                         .isEqualTo(1);
                 assertThat(queryNumber(base, "SELECT COUNT(*) FROM masks_history" )).isZero();
                 assertThat(queryNumber(base, "SELECT safe_time_high_water_ms FROM canonical_lifecycle_control"))
@@ -541,7 +619,7 @@ class SqlitePublicationExperimentIT {
             assertThatThrownBy(() -> experiment.stage("over-byte-bound", "one.example", 0, Long.MAX_VALUE))
                     .hasRootCauseMessage("Typed snapshot byte bound exceeded");
             try (var c = experiment.published.getConnection()) {
-                assertThat(queryNumber(c, "SELECT COUNT(*) FROM experiment_unit" )).isZero();
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM publication_unit" )).isZero();
                 assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks_probe_version" )).isZero();
                 assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks" )).isZero();
             }
@@ -614,7 +692,7 @@ class SqlitePublicationExperimentIT {
                 experiment.admission.execute(OperationClass.CONTROL, () -> {
                     try (var c = experiment.published.getConnection()) {
                         c.setAutoCommit(false);
-                        new SqlitePublicationExperiment().advanceEpoch(c, "control-only");
+                        new JdbcPublicationProtocol().advanceEpoch(c, "control-only");
                         assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks")).isZero();
                         assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks_sources")).isZero();
                         c.commit();
@@ -700,7 +778,7 @@ class SqlitePublicationExperimentIT {
                 assertThat(rows.getString(1)).isEqualTo("original");
                 assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks_sources WHERE source_key='source:B'"))
                         .isZero();
-                assertThat(queryNumber(c, "SELECT COUNT(*) FROM experiment_unit WHERE state='COMMITTED'"))
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM publication_unit WHERE state='COMMITTED'"))
                         .isEqualTo(1);
                 assertThat(experiment.match(c, "one.example", experiment.wallClock.instant()).cardinality())
                         .isEqualTo(CanonicalMatchCardinality.ZERO);
@@ -1000,7 +1078,7 @@ class SqlitePublicationExperimentIT {
             assertThat(fixture.publish(unit, NOW, "receipt").sequence()).isEqualTo(1);
         }
         try (var fixture = new Fixture(directory, false)) {
-            assertThat(fixture.receipt(unit)).contains(new SqlitePublicationExperiment.Receipt(1, NOW, "receipt"));
+            assertThat(fixture.receipt(unit)).contains(new JdbcPublicationProtocol.Receipt(1, NOW, "receipt"));
             assertThat(fixture.publish(unit, NOW + 10_000, "receipt").sequence()).isEqualTo(1);
             assertThat(fixture.read("row", "masks", "key")).contains("value");
         }
@@ -1012,7 +1090,7 @@ class SqlitePublicationExperimentIT {
             Attempt empty = fixture.begin("empty-outcome", 0, 0, Long.MAX_VALUE, Map.of());
             fixture.seal(empty);
             assertThat(fixture.publish(empty, NOW, "accepted:0/changed:0").sequence()).isEqualTo(1);
-            assertThat(fixture.receipt(empty)).contains(new SqlitePublicationExperiment.Receipt(
+            assertThat(fixture.receipt(empty)).contains(new JdbcPublicationProtocol.Receipt(
                     1, NOW, "accepted:0/changed:0"));
             Attempt cancelled = fixture.begin("cancelled", 1, 1, Long.MAX_VALUE, Map.of("masks", 0L));
             fixture.append(cancelled, 0, List.of(new Fact("row", "masks", "key", "discarded")));
@@ -1089,7 +1167,7 @@ class SqlitePublicationExperimentIT {
             fixture.publish(patch, NOW + 1_000, "patch-receipt");
             long deadline = NOW + Duration.ofHours(1).toMillis();
             try (Connection connection = fixture.dataSource.getConnection();
-                 var plan = connection.prepareStatement("EXPLAIN QUERY PLAN " + SqlitePublicationExperiment.NEAREST_SQL)) {
+                 var plan = connection.prepareStatement("EXPLAIN QUERY PLAN " + JdbcPublicationProtocol.NEAREST_SQL)) {
                 assertThat(fixture.probe.nearest(connection, "row", "masks", NOW)).hasValue(deadline);
                 assertThat(fixture.probe.readActive(connection, "row", "masks", "key", deadline)).isEmpty();
                 plan.setLong(1, NOW); plan.setString(2, "row"); plan.setString(3, "masks");
@@ -1097,8 +1175,8 @@ class SqlitePublicationExperimentIT {
                 try (var result = plan.executeQuery()) {
                     while (result.next()) { details.add(result.getString("detail")); }
                 }
-                assertThat(details).anyMatch(detail -> detail.contains("experiment_unit_deadline"));
-                assertThat(details).anyMatch(detail -> detail.contains("experiment_fact_deadline"));
+                assertThat(details).anyMatch(detail -> detail.contains("publication_unit_deadline"));
+                assertThat(details).anyMatch(detail -> detail.contains("publication_fact_deadline"));
                 assertThat(details).noneMatch(detail -> detail.contains("USE TEMP B-TREE FOR ORDER BY"));
             }
             Attempt expiredPatch = fixture.begin("expired-patch", 1, 1, Long.MAX_VALUE, Map.of("masks", 2L));
@@ -1133,7 +1211,7 @@ class SqlitePublicationExperimentIT {
     @Test
     void releasesPhysicalAdmissionBetweenChunksForControlAndUsesSelectiveLookup() throws Exception {
         try (var fixture = new Fixture(directory)) {
-            int total = SqlitePublicationExperiment.CHUNK_FACT_LIMIT * 16;
+            int total = JdbcPublicationProtocol.CHUNK_FACT_LIMIT * 16;
             Attempt unit = fixture.begin("bulk", 16, total, Long.MAX_VALUE, Map.of("masks", 0L));
             CountDownLatch firstChunk = new CountDownLatch(1);
             CountDownLatch controlFinished = new CountDownLatch(1);
@@ -1142,7 +1220,7 @@ class SqlitePublicationExperimentIT {
                 var worker = executor.submit(() -> {
                     for (int ordinal = 0; ordinal < 16; ordinal++) {
                         List<Fact> facts = new ArrayList<>();
-                        for (int index = 0; index < SqlitePublicationExperiment.CHUNK_FACT_LIMIT; index++) {
+                        for (int index = 0; index < JdbcPublicationProtocol.CHUNK_FACT_LIMIT; index++) {
                             facts.add(new Fact("row", "masks", "key-" + (ordinal * 256 + index), "value"));
                         }
                         fixture.append(unit, ordinal, facts);
@@ -1175,13 +1253,13 @@ class SqlitePublicationExperimentIT {
             fixture.seal(unit);
             fixture.publish(unit, NOW, "bulk-receipt");
             try (Connection connection = fixture.dataSource.getConnection();
-                 var query = connection.prepareStatement("EXPLAIN QUERY PLAN " + SqlitePublicationExperiment.LOOKUP_SQL)) {
+                 var query = connection.prepareStatement("EXPLAIN QUERY PLAN " + JdbcPublicationProtocol.LOOKUP_SQL)) {
                 query.setString(1, "row"); query.setString(2, "masks"); query.setString(3, "key-4000");
                 List<String> plan = new ArrayList<>();
                 try (var result = query.executeQuery()) {
                     while (result.next()) { plan.add(result.getString("detail")); }
                 }
-                assertThat(plan).anyMatch(detail -> detail.contains("SEARCH f USING INDEX experiment_fact_lookup"));
+                assertThat(plan).anyMatch(detail -> detail.contains("SEARCH f USING INDEX publication_fact_lookup"));
                 assertThat(plan).noneMatch(detail -> detail.startsWith("SCAN f"));
                 assertThat(plan).noneMatch(detail -> detail.contains("USE TEMP B-TREE FOR ORDER BY"));
                 assertThat(fixture.probe.read(connection, "row", "masks", "key-4000")).contains("value");
@@ -1196,10 +1274,14 @@ class SqlitePublicationExperimentIT {
         }
     }
 
+    private static int preparedUpdate(Connection connection, String sql) throws SQLException {
+        try (var statement = connection.prepareStatement(sql)) { return statement.executeUpdate(); }
+    }
+
     private static final class Fixture implements AutoCloseable {
         private final HikariDataSource dataSource;
         private final JdbcWriterAdmission admission = new JdbcWriterAdmission();
-        private final SqlitePublicationExperiment probe = new SqlitePublicationExperiment();
+        private final JdbcPublicationProtocol probe = new JdbcPublicationProtocol();
 
         Fixture(Path directory) throws SQLException { this(directory, true); }
 
@@ -1228,16 +1310,16 @@ class SqlitePublicationExperimentIT {
             write(OperationClass.PROMOTION, c -> { probe.seal(c, attempt); return null; });
         }
 
-        SqlitePublicationExperiment.Receipt publish(Attempt attempt, long time, String value) {
+        JdbcPublicationProtocol.Receipt publish(Attempt attempt, long time, String value) {
             return write(OperationClass.PROMOTION, c -> probe.publish(c, attempt, time, value));
         }
 
-        SqlitePublicationExperiment.Receipt publishWithValidity(Attempt attempt, long time, String value, Duration ttl) {
+        JdbcPublicationProtocol.Receipt publishWithValidity(Attempt attempt, long time, String value, Duration ttl) {
             return write(OperationClass.PROMOTION,
                     c -> probe.publish(c, attempt, time, value, new FixedRecordValidityPolicy(ttl)));
         }
 
-        java.util.Optional<SqlitePublicationExperiment.Receipt> receipt(Attempt attempt) throws SQLException {
+        java.util.Optional<JdbcPublicationProtocol.Receipt> receipt(Attempt attempt) throws SQLException {
             try (Connection connection = dataSource.getConnection()) { return probe.receipt(connection, attempt.unitId()); }
         }
 

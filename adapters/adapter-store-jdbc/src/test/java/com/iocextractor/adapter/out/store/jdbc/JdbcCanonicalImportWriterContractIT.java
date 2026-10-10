@@ -810,7 +810,7 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
             assertThat(plan).anyMatch(detail -> detail.contains("masks_import_probe_absolute_deadline"));
             assertThat(plan).anyMatch(detail -> detail.contains("masks_import_probe_deadline_anchor"));
             assertThat(plan).anyMatch(detail -> detail.contains("masks_import_probe_address"));
-            assertThat(plan).anyMatch(detail -> detail.contains("experiment_unit_deadline"));
+            assertThat(plan).anyMatch(detail -> detail.contains("publication_unit_deadline"));
             long before = System.nanoTime();
             assertThat(canonical.queryLong("SELECT MIN(_valid_until_epoch_ms) FROM masks WHERE _valid_until_epoch_ms>"
                     + deadline)).isEqualTo(deadline + 1);

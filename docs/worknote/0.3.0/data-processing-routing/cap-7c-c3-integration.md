@@ -70,6 +70,22 @@ freshness. A passed journal slice is not acceptance of the complete C3 backend.
 
 ## Remaining C3 work in dependency order
 
+The physical protocol is now shared production-source code in
+`JdbcPublicationProtocol`; C2 tests execute that implementation instead of a
+second test-only transition engine. `JdbcPrivateChangeCapture` installs typed
+address capture on private native tables after hydration. Its triggers retain
+the initial committed value and the final native value/tombstone, including
+cascaded children and moved composite keys. `JdbcPrivateChanges` streams indexed
+256-address pages and omits reverted updates and transient insert/delete pairs.
+No whole-table copy or comparison is used by capture.
+
+Exact-driver checks distinguish SQLite JDBC update APIs: native kernel
+`PreparedStatement.executeUpdate()` preserves affected-row counts under capture;
+plain `Statement.executeUpdate(sql)` includes trigger work. Cardinality checks
+must keep using prepared statements. The deterministic tests cover UPSERT,
+constraint rejection, cascade deletion, NULL, key movement, rollback and final
+contribution folding. This is capture qualification, not complete C3 acceptance.
+
 1. Selectively hydrate the committed native base for affected rows/aliases,
    origins, sources and slot scopes in a bounded private workspace. Keep the
    same registered observation, source/rank/policy pins and authoritative

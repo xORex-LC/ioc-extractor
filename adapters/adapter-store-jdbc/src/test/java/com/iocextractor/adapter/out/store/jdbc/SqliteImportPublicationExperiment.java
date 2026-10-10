@@ -1,8 +1,8 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
-import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Attempt;
-import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Fact;
-import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Manifest;
+import com.iocextractor.adapter.out.store.jdbc.JdbcPublicationProtocol.Attempt;
+import com.iocextractor.adapter.out.store.jdbc.JdbcPublicationProtocol.Fact;
+import com.iocextractor.adapter.out.store.jdbc.JdbcPublicationProtocol.Manifest;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
 import com.iocextractor.common.IocExtractorException;
 
@@ -32,7 +32,7 @@ final class SqliteImportPublicationExperiment {
     private static final String SCOPE = "typed-import";
     private final DataSource published;
     private final JdbcWriterAdmission admission;
-    private final SqlitePublicationExperiment publication = new SqlitePublicationExperiment();
+    private final JdbcPublicationProtocol publication = new JdbcPublicationProtocol();
     private final Map<String, List<String>> columns = new LinkedHashMap<>();
     private final Map<String, List<String>> keys = new LinkedHashMap<>();
     private final List<String> artifacts;
@@ -108,7 +108,7 @@ final class SqliteImportPublicationExperiment {
                         changes.add(new TypedRow(table, deleted.getValue(), deleted.getKey(), true, ""));
                     }
                 }
-                long epoch = scalar(base, "SELECT version FROM experiment_epoch WHERE scope='" + SCOPE + "'");
+                long epoch = scalar(base, "SELECT version FROM publication_epoch WHERE scope='" + SCOPE + "'");
                 int count = changes.size();
                 long deadline = minimumDeadline;
                 Attempt attempt = write(c -> publication.begin(c, identity, pins,
@@ -187,7 +187,7 @@ final class SqliteImportPublicationExperiment {
         }
     }
 
-    SqlitePublicationExperiment.Receipt publish(Attempt attempt, JdbcLifecycleClock clock,
+    JdbcPublicationProtocol.Receipt publish(Attempt attempt, JdbcLifecycleClock clock,
                                               FixedRecordValidityPolicy validity, String pins) {
         return write(c -> {
             var committed = publication.receipt(c, attempt.unitId());
@@ -242,7 +242,7 @@ final class SqliteImportPublicationExperiment {
         var projection = columns.get(table).stream().map(name -> project(table, name))
                 .collect(java.util.stream.Collectors.joining(","));
         execute(c, "CREATE VIEW " + quote(table) + " AS SELECT " + projection + " FROM "
-                + quote(table + "_import_probe") + " v JOIN experiment_unit u"
+                + quote(table + "_import_probe") + " v JOIN publication_unit u"
                 + " ON u.id=v.unit_id AND u.fence=v.fence AND u.state='COMMITTED'"
                 + " WHERE " + latest(table, "v"));
     }
@@ -308,7 +308,7 @@ final class SqliteImportPublicationExperiment {
     private static String latest(String table, String alias) {
         return alias + ".deleted=0 AND NOT EXISTS (SELECT 1 FROM " + quote(table + "_import_probe")
                 + " newer WHERE newer.address=" + alias + ".address AND newer.stamp>" + alias + ".stamp"
-                + " AND EXISTS (SELECT 1 FROM experiment_unit nu WHERE nu.id=newer.unit_id"
+                + " AND EXISTS (SELECT 1 FROM publication_unit nu WHERE nu.id=newer.unit_id"
                 + " AND nu.fence=newer.fence AND nu.state='COMMITTED'))";
     }
 
@@ -317,12 +317,12 @@ final class SqliteImportPublicationExperiment {
         if (!artifacts.contains(artifact)) { throw new IllegalArgumentException("Unknown artifact"); }
         String versions = quote(artifact + "_import_probe");
         return "SELECT MIN(deadline) FROM (SELECT * FROM (SELECT v.absolute_deadline AS deadline FROM "
-                + versions + " v WHERE v.absolute_deadline>? AND EXISTS (SELECT 1 FROM experiment_unit u"
+                + versions + " v WHERE v.absolute_deadline>? AND EXISTS (SELECT 1 FROM publication_unit u"
                 + " WHERE u.id=v.unit_id AND u.fence=v.fence AND u.state='COMMITTED') AND " + latest(artifact, "v")
                 + " ORDER BY v.absolute_deadline LIMIT 1) UNION ALL SELECT * FROM ("
-                + "SELECT anchor.valid_until AS deadline FROM experiment_unit anchor WHERE anchor.state='COMMITTED'"
+                + "SELECT anchor.valid_until AS deadline FROM publication_unit anchor WHERE anchor.state='COMMITTED'"
                 + " AND anchor.valid_until>? AND EXISTS (SELECT 1 FROM " + versions
-                + " v WHERE v.deadline_anchor=anchor.id AND EXISTS (SELECT 1 FROM experiment_unit u"
+                + " v WHERE v.deadline_anchor=anchor.id AND EXISTS (SELECT 1 FROM publication_unit u"
                 + " WHERE u.id=v.unit_id AND u.fence=v.fence AND u.state='COMMITTED') AND " + latest(artifact, "v")
                 + ") ORDER BY anchor.valid_until LIMIT 1))";
     }

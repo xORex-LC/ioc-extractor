@@ -101,6 +101,14 @@ runtime JDBC drivers.
   of at most 256 entries. It owns only its statement, not the native transaction
   or connection. Runtime constructors use a no-op sink; this internal seam does
   not activate versioned storage or publish a canonical receipt.
+- `JdbcPublicationProtocol` owns the fenced physical unit/chunk/epoch/flip
+  transitions. `JdbcPrivateChangeCapture` records typed native DML in private
+  tables after selective hydration; `JdbcPrivateChanges` streams changed
+  addresses in indexed pages. Capture does not replace constraints, UPSERT,
+  kernel policy or native `PreparedStatement` update counts. Plain SQLite
+  `Statement.executeUpdate(sql)` counts trigger work and must not be used for
+  cardinality checks on captured tables. These internal candidate components
+  are not selected by the default runtime or a schema migration.
 - `JdbcLifecycleControlStore` uses one-way CAS and refuses `ACTIVE` until one
   set-based invariant scan proves that every configured active row has complete,
   ordered lifecycle metadata. Lifecycle/canonical-row ID ranges are reserved by
