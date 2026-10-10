@@ -106,7 +106,7 @@ class SqlitePublicationExperimentIT {
                 experiment.hydrate(base, "one.example", first);
                 base.rollback();
             }
-            experiment.confirm("one.example", "initial", "source:A", 11, 101, first, 0);
+            experiment.confirmReserved("one.example", "initial", "source:A", first, 0);
             var baseUnit = experiment.stage("deadline-base", "one.example", 0, Long.MAX_VALUE);
             experiment.publish(baseUnit);
             var incoming = experiment.register("deadline-incoming");
@@ -116,9 +116,9 @@ class SqlitePublicationExperimentIT {
                 experiment.hydrate(base, "one.example", incoming);
                 base.rollback();
             }
-            var premature = experiment.confirm("one.example", "updated", "source:B", 12, 102, incoming, 0);
+            var premature = experiment.confirmReserved("one.example", "updated", "source:B", incoming, 0);
             assertThat(premature.kind()).isEqualTo(CanonicalRecordMutationKind.UPDATED);
-            assertThat(premature.lifecycleId()).isEqualTo(101);
+            assertThat(premature.lifecycleId()).isEqualTo(1);
             long deadline = NOW + Duration.ofHours(1).toMillis();
             var pending = experiment.stage("deadline-incoming", "one.example", 1, deadline);
             experiment.wallClock.advance(Duration.ofMillis(1));
@@ -128,6 +128,7 @@ class SqlitePublicationExperimentIT {
                 base.setAutoCommit(false);
                 assertThat(queryNumber(base, "SELECT COUNT(*) FROM experiment_unit WHERE state='COMMITTED'"))
                         .isEqualTo(1);
+                assertThat(queryNumber(base, "SELECT COUNT(*) FROM masks_history" )).isZero();
                 assertThat(queryNumber(base, "SELECT safe_time_high_water_ms FROM canonical_lifecycle_control"))
                         .isEqualTo(NOW);
                 assertThat(experiment.match(base, "one.example", experiment.wallClock.instant()).cardinality())
@@ -135,29 +136,41 @@ class SqlitePublicationExperimentIT {
                 experiment.hydrate(base, "one.example", incoming);
                 base.rollback();
             }
-            var restarted = experiment.confirm("one.example", "updated", "source:B", 13, 103, incoming, 0);
+            var restarted = experiment.confirmReserved("one.example", "updated", "source:B", incoming, 0);
             assertThat(restarted.kind()).isEqualTo(CanonicalRecordMutationKind.RESTARTED);
             assertThat(restarted.canonicalRowId()).isEqualTo(13);
-            assertThat(restarted.lifecycleId()).isEqualTo(103);
+            assertThat(restarted.lifecycleId()).isEqualTo(3);
             var rebuilt = experiment.restage(pending, "one.example", 1, Long.MAX_VALUE);
             assertThat(rebuilt.unitId()).isEqualTo(pending.unitId());
             assertThat(rebuilt.fence()).isGreaterThan(pending.fence());
+            try (var c = experiment.published.getConnection()) {
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks_history" )).isZero();
+                assertThat(queryNumber(c, "SELECT next_value FROM artifact_id_allocator WHERE artifact='masks'"))
+                        .isEqualTo(14);
+                assertThat(queryNumber(c, "SELECT next_value FROM lifecycle_id_allocator" )).isEqualTo(4);
+            }
             var receipt = experiment.publish(rebuilt);
             assertThat(receipt.effectiveMillis()).isEqualTo(deadline);
             assertThatThrownBy(() -> experiment.publish(pending))
                     .hasRootCauseMessage("Stale attempt or invalid publication state");
             try (var c = experiment.published.getConnection()) {
                 assertThat(experiment.match(c, "one.example", experiment.wallClock.instant()).exactCandidate())
-                        .hasValueSatisfying(candidate -> assertThat(candidate.lifecycleId()).isEqualTo(103));
+                        .hasValueSatisfying(candidate -> assertThat(candidate.lifecycleId()).isEqualTo(3));
                 assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks WHERE id=11" )).isZero();
                 assertThat(queryNumber(c, "SELECT occurrences FROM masks_sources WHERE row_id=13"))
                         .isEqualTo(1);
                 assertThat(queryNumber(c, "SELECT _first_confirmed_at_epoch_ms FROM masks WHERE id=13"))
                         .isEqualTo(deadline);
+                assertThat(queryNumber(c, "SELECT _lifecycle_id FROM masks_history WHERE former_row_id=11"))
+                        .isEqualTo(1);
+                assertThat(queryNumber(c, "SELECT occurrences FROM masks_history_sources" )).isEqualTo(1);
+                assertThat(queryNumber(c, "SELECT closed_at_epoch_ms FROM masks_history" )).isEqualTo(deadline);
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM canonical_lifecycle_field_origin_history "
+                        + "WHERE lifecycle_id=1 AND field_name='name'" )).isEqualTo(1);
             }
             try (var c = experiment.working.getConnection()) {
                 assertThat(queryNumber(c, "SELECT _lifecycle_id FROM masks_history WHERE former_row_id=11"))
-                        .isEqualTo(101);
+                        .isEqualTo(1);
                 assertThat(queryNumber(c, "SELECT occurrences FROM masks_history_sources" )).isEqualTo(1);
             }
         }

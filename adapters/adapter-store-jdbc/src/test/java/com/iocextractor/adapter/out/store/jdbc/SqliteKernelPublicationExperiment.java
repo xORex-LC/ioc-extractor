@@ -4,6 +4,7 @@ import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Attem
 import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Fact;
 import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Manifest;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
+import com.iocextractor.application.artifact.ArtifactIdStrategy;
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.ArtifactRowKey;
 import com.iocextractor.application.artifact.CanonicalArtifactKeyResolver;
@@ -59,7 +60,8 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
             new CanonicalKeyDefinition("row-v1", CanonicalKeyMode.COMPOSITE, List.of("mask")),
             List.of(new CanonicalKeyDefinition("match-v1", CanonicalKeyMode.COMPOSITE, List.of("mask"))), 1);
     private static final List<String> TABLES = List.of("masks", "masks_sources",
-            "canonical_match_alias", "canonical_lifecycle_field_origin");
+            "canonical_match_alias", "canonical_lifecycle_field_origin", "masks_history",
+            "masks_history_sources", "canonical_lifecycle_field_origin_history");
     private static final String PINS = "kernel-probe/schema:12/identity:row-v1/ttl:1h";
     final HikariDataSource published;
     final HikariDataSource working;
@@ -70,6 +72,8 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
     private final CanonicalArtifactKeyResolver keys = new CanonicalArtifactKeyResolver(List.of(IDENTITY));
     private final JdbcCanonicalMutationEngine kernel;
     private final JdbcLifecycleClock safeClock;
+    private final JdbcArtifactIdAllocator rowIds;
+    private final JdbcLifecycleIdAllocator lifecycleIds;
     private final Map<String, List<String>> columns = new LinkedHashMap<>();
 
     SqliteKernelPublicationExperiment(Path directory, Instant start) throws SQLException {
@@ -84,6 +88,9 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
             kernel = new JdbcCanonicalMutationEngine(working, List.of(SCHEMA), List.of(IDENTITY));
             safeClock = new JdbcLifecycleClock(published, wallClock,
                     new LifecycleClockPolicy(Duration.ofSeconds(5), Duration.ofMinutes(1)), admission);
+            rowIds = new JdbcArtifactIdAllocator(published, wallClock);
+            rowIds.ensureInitialized(new ArtifactIdAllocatorDefinition("masks", ArtifactIdStrategy.ASCENDING, 11, 1));
+            lifecycleIds = new JdbcLifecycleIdAllocator(published, wallClock);
             try (var c = published.getConnection()) {
                 probe.initialize(c);
                 initializeVersions(c);
@@ -150,6 +157,16 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
                 throw failure;
             }
         }
+    }
+
+    /** Real dataframe-owned reservations commit before private kernel work and are never returned. */
+    CanonicalRecordMutationOutcome confirmReserved(String mask, String name, String source,
+                                                   RegisteredObservation registration, long position) throws SQLException {
+        var publicRange = admission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
+                () -> rowIds.reserve("masks", 1));
+        var lifecycleRange = admission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
+                () -> lifecycleIds.reserve(1));
+        return confirm(mask, name, source, publicRange.idAt(0), lifecycleRange.idAt(0).value(), registration, position);
     }
 
     /** One bounded typed snapshot; publication does not replay the kernel or copy N rows. */
@@ -260,7 +277,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
                   WHERE newer.family='row' AND newer.scope='masks' AND newer.fact_key=f.fact_key
                     AND newer.stamp>f.stamp)
                 """);
-        for (String table : TABLES.subList(1, TABLES.size())) {
+        for (String table : TABLES.subList(1, 4)) {
             String rowJoin = switch (table) {
                 case "masks_sources" -> "v.row_id=r.id";
                 case "canonical_match_alias" -> "v.artifact='masks' AND v.canonical_row_id=r.id AND v.lifecycle_id=r._lifecycle_id";
@@ -285,6 +302,15 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
                     + " AND v.unit_id=r._probe_unit AND v.fence=r._probe_fence"
                     + (sources ? " LEFT JOIN experiment_unit first ON first.id=v.first_anchor AND first.state='COMMITTED'"
                     + " LEFT JOIN experiment_unit last ON last.id=v.last_anchor AND last.state='COMMITTED'" : ""));
+        }
+        for (String table : TABLES.subList(4, TABLES.size())) {
+            String projection = columns.get(table).stream().map(name -> switch (name) {
+                case "closed_at_epoch_ms", "archived_at_ms" -> "u.effective_millis AS " + quote(name);
+                default -> "v." + quote(name);
+            }).collect(java.util.stream.Collectors.joining(","));
+            execute(c, "CREATE VIEW " + quote(table) + " AS SELECT " + projection + " FROM "
+                    + quote(table + "_probe_version") + " v JOIN experiment_unit u"
+                    + " ON u.id=v.unit_id AND u.fence=v.fence AND u.state='COMMITTED'");
         }
     }
 

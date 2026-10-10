@@ -152,7 +152,7 @@ record/match definition, a deferred public ID and an ordered `name` field. It
 is not a full-database clone, a new business mutation implementation, a generic
 persistence API or a production dataframe format.
 
-A bounded typed snapshot is written to hidden row/alias/source/origin tables.
+A bounded typed snapshot is written to hidden row/alias/source/origin/history tables.
 The same fenced publication header makes all of them visible together. Native
 kernel `UPSERT` and affected-row checks run against real private tables; public
 compatibility views are read-only. The existing `JdbcCanonicalMatchPlanner`
@@ -179,8 +179,10 @@ Four additional deterministic cases exercise the bridge:
   matcher and a pinned reader, then decode correctly after publication.
 - Preparation just before a deadline is rejected at publication equality.
   Rebuilding the same unit at a new fence invokes the kernel's real restart,
-  archives the old lifecycle in the private working set, creates new IDs and
-  publishes only the new lifecycle. Failed publication rolls back the safe
+  archives the old lifecycle, its compact source summaries and field origins,
+  then publishes history atomically with the new lifecycle. Real dataframe-owned
+  row/lifecycle allocators commit reservations before private work; the rejected
+  confirmation burns its reserved IDs rather than returning them. Failed publication rolls back the safe
   clock advance as well as visibility/receipt state.
 - One requested row is hydrated while an unrelated committed row remains
   visible but absent from the private working set. A later completion with an
@@ -189,11 +191,23 @@ Four additional deterministic cases exercise the bridge:
 - Combined-family row overflow and multibyte UTF-8 overflow roll staging back,
   leaving no publication header, typed row or public version.
 
-This bridge does **not** close C2. Its supplied reserved IDs are not a durable
-allocator qualification; it uses one key definition, one ordinary confirmation
-path and a synthetic experiment receipt. Non-renewing import patches, alternate
-match definitions, complete fan-out merge planning, production receipts/slots,
-public history, retention and restart of the private working set remain open.
+This bridge does **not** close C2. The deadline case exercises the actual
+allocators for one artifact with a configured public ID; other cases supply
+explicit fixture IDs. Artifacts without a public `id` still need a durable
+canonical-row reservation boundary. A private SQLite AUTOINCREMENT sequence
+must not allocate authoritative IDs independently: selectively loaded rows
+omit other artifacts' records, expired history and previously burned ranges.
+Upgrade must preserve the existing sequence high-water as well as active/history
+IDs. Reuse the existing reservation mechanics where valid, but do not infer
+that a public-ID allocator's history-column contract also covers an id-less
+artifact. Private history IDs need the same explicit durable ownership review.
+
+The bridge uses one key definition, one ordinary confirmation path and a
+synthetic experiment receipt. Non-renewing import patches, alternate match
+definitions, complete fan-out merge planning, production receipts/slots,
+retention and restart of the private working set remain open. Published history
+is a read-only experiment view; production retention writes are not supported
+by that view and require their own versioned persistence integration.
 The modified isolated database advertises the current migration baseline only
 so existing clock/registration owners can be exercised; no production migrator
 installs these probe views. Do not open an operator database with this helper.
