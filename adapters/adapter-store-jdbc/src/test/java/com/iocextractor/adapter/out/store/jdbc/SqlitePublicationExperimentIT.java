@@ -4,6 +4,8 @@ import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Attem
 import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Fact;
 import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Manifest;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
+import com.iocextractor.application.artifact.CanonicalMatchCardinality;
+import com.iocextractor.application.artifact.CanonicalRecordMutationKind;
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
@@ -15,6 +17,7 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +36,229 @@ class SqlitePublicationExperimentIT {
     private static final long NOW = 1_800_000_000_000L;
     private static final String PINS = "schema:12/catalog:fixture/policy:fixture/digest:fixture";
     @TempDir Path directory;
+
+    @Test
+    void realKernelWorksOnSelectedRowsAndPublishesTypedFactsToTheExistingMatcher() throws Exception {
+        Instant start = Instant.ofEpochMilli(NOW);
+        try (var experiment = new SqliteKernelPublicationExperiment(directory, start)) {
+            var original = experiment.register("typed-original");
+            try (var base = experiment.published.getConnection()) {
+                base.setAutoCommit(false);
+                experiment.hydrate(base, "one.example", original);
+                base.rollback();
+            }
+            var inserted = experiment.confirm("one.example", "first", "source:A", 11, 101, original, 0);
+            var repeated = experiment.confirm("one.example", "winner", "source:A", 12, 102, original, 1);
+            assertThat(inserted.kind()).isEqualTo(CanonicalRecordMutationKind.INSERTED);
+            assertThat(repeated.kind()).isEqualTo(CanonicalRecordMutationKind.UPDATED);
+            assertThat(repeated.canonicalRowId()).isEqualTo(11);
+            var pending = experiment.stage("typed-unit", "one.example", 0, Long.MAX_VALUE);
+            try (var pinned = experiment.published.getConnection()) {
+                pinned.setAutoCommit(false);
+                assertThat(experiment.match(pinned, "one.example", start).cardinality())
+                        .isEqualTo(CanonicalMatchCardinality.ZERO);
+                experiment.wallClock.advance(Duration.ofSeconds(10));
+                var receipt = experiment.publish(pending);
+                assertThat(receipt.effectiveMillis()).isEqualTo(NOW + 10_000);
+                assertThat(experiment.match(pinned, "one.example", start.plusSeconds(10)).cardinality())
+                        .isEqualTo(CanonicalMatchCardinality.ZERO);
+                pinned.rollback();
+                assertThat(experiment.match(pinned, "one.example", start.plusSeconds(10)).exactCandidate())
+                        .hasValueSatisfying(candidate -> {
+                            assertThat(candidate.canonicalRowId()).isEqualTo(11);
+                            assertThat(candidate.lifecycleId()).isEqualTo(101);
+                        });
+                try (var statement = pinned.prepareStatement(
+                        new JdbcCanonicalStoredRowReader(SqliteKernelPublicationExperiment.SCHEMA).sql())) {
+                    var row = new JdbcCanonicalStoredRowReader(SqliteKernelPublicationExperiment.SCHEMA)
+                            .load(statement, 11);
+                    assertThat(row.publicRow().value("name")).isEqualTo("winner");
+                    assertThat(row.validUntilEpochMs()).isEqualTo(NOW + 10_000 + Duration.ofHours(1).toMillis());
+                }
+                assertThat(queryNumber(pinned, "SELECT occurrences FROM masks_sources WHERE row_id=11"))
+                        .isEqualTo(2);
+                assertThat(queryNumber(pinned, "SELECT occurrence_position FROM canonical_lifecycle_field_origin "
+                        + "WHERE field_name='name'" )).isEqualTo(1);
+                assertThat(queryNumber(pinned, "SELECT _first_confirmed_at_epoch_ms FROM masks WHERE id=11"))
+                        .isEqualTo(receipt.effectiveMillis());
+                pinned.rollback();
+                experiment.wallClock.advance(Duration.ofMinutes(-1));
+                // Committed recovery uses the receipt, even when fresh UTC would be unsafe.
+                assertThat(experiment.publish(pending)).isEqualTo(receipt);
+            }
+        }
+    }
+
+    private static long queryNumber(Connection c, String sql) throws SQLException {
+        try (var statement = c.createStatement(); var rows = statement.executeQuery(sql)) {
+            assertThat(rows.next()).isTrue();
+            return rows.getLong(1);
+        }
+    }
+
+    @Test
+    void realKernelRebuildsAtPublicationDeadlineAndReplacesExpiredLifecycle() throws Exception {
+        Instant start = Instant.ofEpochMilli(NOW);
+        try (var experiment = new SqliteKernelPublicationExperiment(directory, start)) {
+            var first = experiment.register("deadline-original");
+            try (var base = experiment.published.getConnection()) {
+                base.setAutoCommit(false);
+                experiment.hydrate(base, "one.example", first);
+                base.rollback();
+            }
+            experiment.confirm("one.example", "initial", "source:A", 11, 101, first, 0);
+            var baseUnit = experiment.stage("deadline-base", "one.example", 0, Long.MAX_VALUE);
+            experiment.publish(baseUnit);
+            var incoming = experiment.register("deadline-incoming");
+            experiment.wallClock.advance(Duration.ofHours(1).minusMillis(1));
+            try (var base = experiment.published.getConnection()) {
+                base.setAutoCommit(false);
+                experiment.hydrate(base, "one.example", incoming);
+                base.rollback();
+            }
+            var premature = experiment.confirm("one.example", "updated", "source:B", 12, 102, incoming, 0);
+            assertThat(premature.kind()).isEqualTo(CanonicalRecordMutationKind.UPDATED);
+            assertThat(premature.lifecycleId()).isEqualTo(101);
+            long deadline = NOW + Duration.ofHours(1).toMillis();
+            var pending = experiment.stage("deadline-incoming", "one.example", 1, deadline);
+            experiment.wallClock.advance(Duration.ofMillis(1));
+            assertThatThrownBy(() -> experiment.publish(pending))
+                    .hasRootCauseMessage("Incomplete, expired or stale publication attempt");
+            try (var base = experiment.published.getConnection()) {
+                base.setAutoCommit(false);
+                assertThat(queryNumber(base, "SELECT COUNT(*) FROM experiment_unit WHERE state='COMMITTED'"))
+                        .isEqualTo(1);
+                assertThat(queryNumber(base, "SELECT safe_time_high_water_ms FROM canonical_lifecycle_control"))
+                        .isEqualTo(NOW);
+                assertThat(experiment.match(base, "one.example", experiment.wallClock.instant()).cardinality())
+                        .isEqualTo(CanonicalMatchCardinality.ZERO);
+                experiment.hydrate(base, "one.example", incoming);
+                base.rollback();
+            }
+            var restarted = experiment.confirm("one.example", "updated", "source:B", 13, 103, incoming, 0);
+            assertThat(restarted.kind()).isEqualTo(CanonicalRecordMutationKind.RESTARTED);
+            assertThat(restarted.canonicalRowId()).isEqualTo(13);
+            assertThat(restarted.lifecycleId()).isEqualTo(103);
+            var rebuilt = experiment.restage(pending, "one.example", 1, Long.MAX_VALUE);
+            assertThat(rebuilt.unitId()).isEqualTo(pending.unitId());
+            assertThat(rebuilt.fence()).isGreaterThan(pending.fence());
+            var receipt = experiment.publish(rebuilt);
+            assertThat(receipt.effectiveMillis()).isEqualTo(deadline);
+            assertThatThrownBy(() -> experiment.publish(pending))
+                    .hasRootCauseMessage("Stale attempt or invalid publication state");
+            try (var c = experiment.published.getConnection()) {
+                assertThat(experiment.match(c, "one.example", experiment.wallClock.instant()).exactCandidate())
+                        .hasValueSatisfying(candidate -> assertThat(candidate.lifecycleId()).isEqualTo(103));
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks WHERE id=11" )).isZero();
+                assertThat(queryNumber(c, "SELECT occurrences FROM masks_sources WHERE row_id=13"))
+                        .isEqualTo(1);
+                assertThat(queryNumber(c, "SELECT _first_confirmed_at_epoch_ms FROM masks WHERE id=13"))
+                        .isEqualTo(deadline);
+            }
+            try (var c = experiment.working.getConnection()) {
+                assertThat(queryNumber(c, "SELECT _lifecycle_id FROM masks_history WHERE former_row_id=11"))
+                        .isEqualTo(101);
+                assertThat(queryNumber(c, "SELECT occurrences FROM masks_history_sources" )).isEqualTo(1);
+            }
+        }
+    }
+
+    @Test
+    void selectiveKernelHydrationPreservesUnrelatedRowsAndEarlierSourceAnchors() throws Exception {
+        Instant start = Instant.ofEpochMilli(NOW);
+        try (var experiment = new SqliteKernelPublicationExperiment(directory, start)) {
+            var older = experiment.register("selective-older");
+            var newer = experiment.register("selective-newer");
+            try (var base = experiment.published.getConnection()) {
+                base.setAutoCommit(false);
+                experiment.hydrate(base, "one.example", newer);
+                base.rollback();
+            }
+            experiment.confirm("one.example", "winner", "source:A", 11, 101, newer, 0);
+            experiment.publish(experiment.stage("selective-one", "one.example", 0, Long.MAX_VALUE));
+            try (var base = experiment.published.getConnection()) {
+                base.setAutoCommit(false);
+                experiment.hydrate(base, "unrelated.example", newer);
+                base.rollback();
+            }
+            experiment.confirm("unrelated.example", "unrelated", "source:B", 21, 201, newer, 1);
+            experiment.publish(experiment.stage("selective-other", "unrelated.example", 1, Long.MAX_VALUE));
+            try (var base = experiment.published.getConnection()) {
+                base.setAutoCommit(false);
+                experiment.hydrate(base, "one.example", older);
+                base.rollback();
+            }
+            try (var c = experiment.working.getConnection()) {
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks" )).isEqualTo(1);
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks WHERE id=21" )).isZero();
+            }
+            // Equal clock values cannot be used to infer whether a source was confirmed.
+            var confirmed = experiment.confirm("one.example", "stale", "source:A", 31, 301, older, 50);
+            assertThat(confirmed.kind()).isEqualTo(CanonicalRecordMutationKind.TTL_CONFIRMED);
+            assertThat(confirmed.publicMutation()).isFalse();
+            assertThat(confirmed.metadataMutation()).isFalse();
+            var attempt = experiment.stage("selective-renewal", "one.example", 2,
+                    NOW + Duration.ofHours(1).toMillis());
+            experiment.wallClock.advance(Duration.ofSeconds(5));
+            experiment.publish(attempt);
+            try (var c = experiment.published.getConnection()) {
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks" )).isEqualTo(2);
+                assertThat(experiment.match(c, "unrelated.example", experiment.wallClock.instant()).exactCandidate())
+                        .hasValueSatisfying(candidate -> assertThat(candidate.canonicalRowId()).isEqualTo(21));
+                assertThat(queryNumber(c, "SELECT _first_confirmed_at_epoch_ms FROM masks WHERE id=11"))
+                        .isEqualTo(NOW);
+                assertThat(queryNumber(c, "SELECT _last_confirmed_at_epoch_ms FROM masks WHERE id=11"))
+                        .isEqualTo(NOW + 5_000);
+                assertThat(queryNumber(c, "SELECT occurrences FROM masks_sources WHERE row_id=11"))
+                        .isEqualTo(2);
+                try (var statement = c.createStatement(); var rows = statement.executeQuery(
+                        "SELECT first_seen_at,last_seen_at FROM masks_sources WHERE row_id=11")) {
+                    assertThat(rows.next()).isTrue();
+                    assertThat(Instant.parse(rows.getString(1))).isEqualTo(start);
+                    assertThat(Instant.parse(rows.getString(2))).isEqualTo(start.plusSeconds(5));
+                }
+                assertThat(queryNumber(c, "SELECT admission_order FROM canonical_lifecycle_field_origin "
+                        + "WHERE lifecycle_id=101 AND field_name='name'"))
+                        .isEqualTo(newer.admissionOrder().value());
+            }
+        }
+    }
+
+    @Test
+    void typedSnapshotBoundsIncludeAllFamiliesAndRollbackOversizedStaging() throws Exception {
+        try (var experiment = new SqliteKernelPublicationExperiment(directory, Instant.ofEpochMilli(NOW))) {
+            var registered = experiment.register("bounded-typed");
+            try (var base = experiment.published.getConnection()) {
+                base.setAutoCommit(false);
+                experiment.hydrate(base, "one.example", registered);
+                base.rollback();
+            }
+            experiment.confirm("one.example", "name", "source:A", 11, 101, registered, 0);
+            try (var c = experiment.working.getConnection(); var statement = c.createStatement()) {
+                statement.executeUpdate("""
+                        WITH RECURSIVE counts(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM counts WHERE value<254)
+                        INSERT INTO masks_sources(row_id,source_key,first_seen_at,last_seen_at,occurrences)
+                        SELECT 11,'fixture:'||value,'2027-01-15T00:00:00Z','2027-01-15T00:00:00Z',1 FROM counts
+                        """);
+            }
+            assertThatThrownBy(() -> experiment.stage("over-row-bound", "one.example", 0, Long.MAX_VALUE))
+                    .hasRootCauseMessage("Typed snapshot total row bound exceeded");
+            try (var c = experiment.working.getConnection(); var statement = c.createStatement()) {
+                statement.executeUpdate("DELETE FROM masks_sources WHERE source_key LIKE 'fixture:%'");
+                try (var update = c.prepareStatement("UPDATE masks SET name=? WHERE id=11")) {
+                    update.setString(1, "ж".repeat(600_000));
+                    update.executeUpdate();
+                }
+            }
+            assertThatThrownBy(() -> experiment.stage("over-byte-bound", "one.example", 0, Long.MAX_VALUE))
+                    .hasRootCauseMessage("Typed snapshot byte bound exceeded");
+            try (var c = experiment.published.getConnection()) {
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM experiment_unit" )).isZero();
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks_probe_version" )).isZero();
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks" )).isZero();
+            }
+        }
+    }
 
     @Test
     void publishesAllFamiliesTogetherWhilePinnedReadersRetainTheirSnapshot() throws Exception {

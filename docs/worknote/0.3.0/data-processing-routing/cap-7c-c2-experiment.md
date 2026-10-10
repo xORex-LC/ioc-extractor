@@ -141,6 +141,63 @@ the source inventory: one additional deterministic integration class,
 222 fast / 78 integration / 5 external / 295 deterministic classes. No coverage
 floor, analyzer exclusion or production baseline is relaxed.
 
+## Typed bridge to the existing kernel
+
+`SqliteKernelPublicationExperiment` extends the physical experiment in test
+scope. It uses a fresh migrated private SQLite working database, selectively
+hydrates one requested record and its aliases/source summaries/field origins
+from a pinned committed snapshot, and invokes the unchanged
+`JdbcCanonicalMutationEngine`. The fixed probe schema has one artifact, one
+record/match definition, a deferred public ID and an ordered `name` field. It
+is not a full-database clone, a new business mutation implementation, a generic
+persistence API or a production dataframe format.
+
+A bounded typed snapshot is written to hidden row/alias/source/origin tables.
+The same fenced publication header makes all of them visible together. Native
+kernel `UPSERT` and affected-row checks run against real private tables; public
+compatibility views are read-only. The existing `JdbcCanonicalMatchPlanner`
+and `JdbcCanonicalStoredRowReader` consume the published versions without a
+substitute matcher/decoder. Typed snapshots are limited to 256 total rows and
+1 MiB of framed values across all families, not 256 rows per family. The chunk
+payload includes a SHA-256 digest over table/column names, deterministic row
+order, framed values (including NULL), unit/fence and time-anchor metadata.
+These are experimental bounds, not approved production configuration.
+
+Publication samples the actual `JdbcLifecycleClock` inside the owned final
+transaction and uses the existing fixed-validity policy. New lifecycle first
+confirmation and creation time refer to the publication header; renewal keeps
+the prior first-confirmation anchor and updates last confirmation/validity.
+Source summary anchors follow occurrence-count changes, not timestamp equality:
+two confirmations at the same wall-clock value still increment provenance.
+Committed replay checks the receipt before sampling fresh UTC, so an unsafe
+wall-clock rollback cannot prevent receipt-only recovery.
+
+Four additional deterministic cases exercise the bridge:
+
+- Two confirmations of one IOC use the actual kernel's insert/update outcomes,
+  ordered winner and source count; pending versions are invisible to the real
+  matcher and a pinned reader, then decode correctly after publication.
+- Preparation just before a deadline is rejected at publication equality.
+  Rebuilding the same unit at a new fence invokes the kernel's real restart,
+  archives the old lifecycle in the private working set, creates new IDs and
+  publishes only the new lifecycle. Failed publication rolls back the safe
+  clock advance as well as visibility/receipt state.
+- One requested row is hydrated while an unrelated committed row remains
+  visible but absent from the private working set. A later completion with an
+  older registration retains the newer ordered-field origin, increments its
+  source count and preserves earlier time anchors.
+- Combined-family row overflow and multibyte UTF-8 overflow roll staging back,
+  leaving no publication header, typed row or public version.
+
+This bridge does **not** close C2. Its supplied reserved IDs are not a durable
+allocator qualification; it uses one key definition, one ordinary confirmation
+path and a synthetic experiment receipt. Non-renewing import patches, alternate
+match definitions, complete fan-out merge planning, production receipts/slots,
+public history, retention and restart of the private working set remain open.
+The modified isolated database advertises the current migration baseline only
+so existing clock/registration owners can be exercised; no production migrator
+installs these probe views. Do not open an operator database with this helper.
+
 ## Remaining C2 gate before C3
 
 On 2026-10-10 the owner confirmed fresh safe UTC at publication. A preparation
