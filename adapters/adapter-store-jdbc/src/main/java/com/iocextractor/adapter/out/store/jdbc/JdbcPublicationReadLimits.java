@@ -33,6 +33,15 @@ final class JdbcPublicationReadLimits implements AutoCloseable {
     public void close() throws SQLException {
         // SQLite JDBC rollback starts another transaction while auto-commit remains disabled.
         if (!connection.getAutoCommit()) { connection.rollback(); connection.setAutoCommit(true); }
-        write("cache_size", cache); write("temp.max_page_count", tempPages); write("temp.cache_size", tempCache); write("temp_store", tempStore);
+        SQLException failure = null;
+        String[] names = {"cache_size", "temp.max_page_count", "temp.cache_size", "temp_store"};
+        long[] values = {cache, tempPages, tempCache, tempStore};
+        for (int index = 0; index < names.length; index++) {
+            try { write(names[index], values[index]); }
+            catch (SQLException closing) {
+                if (failure == null) { failure = closing; } else { failure.addSuppressed(closing); }
+            }
+        }
+        if (failure != null) { throw failure; }
     }
 }

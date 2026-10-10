@@ -59,11 +59,11 @@ final class JdbcStagedPublication {
             return true;
         } catch (SQLException failure) {
             if (owner != null) { failOwner(owner, failure); }
-            else { failControl(unit, failure); }
+            else if (!unit.promotion()) { failControl(unit, failure); }
             throw new IocExtractorException("Staged canonical publication failed", failure);
         } catch (RuntimeException | Error failure) {
             if (owner != null) { failOwner(owner, failure); }
-            else { failControl(unit, failure); }
+            else if (!unit.promotion()) { failControl(unit, failure); }
             throw failure;
         }
     }
@@ -138,7 +138,7 @@ final class JdbcStagedPublication {
             Prepared prepared = hydrate(unit, task, privateState, preparedAt);
             var authority = new JdbcCanonicalReservationAuthority(environment.canonical(), environment.allocatorClock(), environment.admission());
             var context = new JdbcCanonicalPreparationContext(authority,
-                    c -> JdbcPrivateMutationJournal.open(c, unit.identity(), unit.pins()), prepared.slots());
+                    c -> JdbcPrivateMutationJournal.open(c, unit.identity(), unit.pins()), prepared.slots(), privateState.limits().cacheKiB());
             task.prepare(privateState.dataSource(), context, preparedAt);
             privateState.seal(unit.pins());
             observer.observe(JdbcPublicationObserver.Phase.PREPARED, number, 0);

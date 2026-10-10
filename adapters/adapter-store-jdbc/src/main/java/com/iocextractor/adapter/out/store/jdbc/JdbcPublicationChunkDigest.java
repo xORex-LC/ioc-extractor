@@ -26,18 +26,18 @@ final class JdbcPublicationChunkDigest {
 
     void field(Object value) throws SQLException {
         byte[] encoded = encoded(value);
-        bytes += 1L + Integer.BYTES + (encoded == null ? 0 : encoded.length);
+        bytes += 1L + Integer.BYTES + encoded.length;
         if (bytes > BYTE_LIMIT) { throw new SQLException("Typed snapshot byte bound exceeded"); }
         digest.update(type(value));
-        digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(encoded == null ? -1 : encoded.length).array());
-        if (encoded != null) { digest.update(encoded); }
+        digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(value == null ? -1 : encoded.length).array());
+        digest.update(encoded);
     }
 
     String finish() { return HexFormat.of().formatHex(digest.digest()); }
 
     static long framedBytes(Object value) throws SQLException {
         byte[] bytes = encoded(value);
-        return 5L + (bytes == null ? 0 : bytes.length);
+        return 5L + bytes.length;
     }
 
     private static byte type(Object value) throws SQLException {
@@ -52,7 +52,7 @@ final class JdbcPublicationChunkDigest {
 
     private static byte[] encoded(Object value) throws SQLException {
         type(value);
-        if (value == null) { return null; }
+        if (value == null) { return new byte[0]; }
         if (value instanceof byte[] bytes) {
             if (bytes.length > BYTE_LIMIT) { throw new SQLException("Typed snapshot byte bound exceeded"); }
             return bytes;

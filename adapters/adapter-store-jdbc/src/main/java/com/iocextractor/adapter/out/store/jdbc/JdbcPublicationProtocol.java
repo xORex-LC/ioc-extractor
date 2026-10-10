@@ -510,7 +510,7 @@ final class JdbcPublicationProtocol {
         int next = bytes + encoded.length + Integer.BYTES;
         if (next > CHUNK_BYTE_LIMIT) { throw new IllegalArgumentException("Experiment chunk byte limit"); }
         int length = value == null ? -1 : encoded.length;
-        for (int shift = 24; shift >= 0; shift -= 8) { digest.update((byte) (length >>> shift)); }
+        digest.update(java.nio.ByteBuffer.allocate(Integer.BYTES).putInt(length).array());
         digest.update(encoded);
         return next;
     }

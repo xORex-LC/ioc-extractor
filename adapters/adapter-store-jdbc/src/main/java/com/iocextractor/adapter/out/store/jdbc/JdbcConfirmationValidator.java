@@ -47,11 +47,16 @@ final class JdbcConfirmationValidator {
 
         private TemporaryKeys(Connection connection) throws SQLException {
             this.connection = connection;
+            long pageLimit;
+            try (var statement = connection.createStatement(); var rows = statement.executeQuery("PRAGMA temp.max_page_count")) {
+                if (!rows.next()) { throw new SQLException("Missing confirmation TEMP page limit"); }
+                pageLimit = Math.min(65536, rows.getLong(1));
+            }
             try (var ddl = connection.createStatement()) {
                 ddl.execute("CREATE TEMP TABLE cap_confirmation_keys(row_key TEXT PRIMARY KEY) WITHOUT ROWID");
                 ddl.execute("PRAGMA temp.cache_size=-64");
                 // A malformed external streaming command cannot fill the system temporary disk.
-                ddl.execute("PRAGMA temp.max_page_count=65536");
+                ddl.execute("PRAGMA temp.max_page_count=" + pageLimit);
             }
         }
 

@@ -60,6 +60,7 @@ final class JdbcStagedImportWriter implements CanonicalImportWriter {
             public void hydrate(JdbcPublicationSelection selection, JdbcSelectedCanonicalBase base, JdbcPublicationSlotBase slots, EffectiveTime asOf)
                     throws SQLException {
                 try (var stage = DriverManager.getConnection("jdbc:sqlite:" + input.path().toUri().toASCIIString() + "?mode=ro&immutable=1")) {
+                    JdbcImportStageReadPolicy.configure(stage, "main", backend.configuration().workspaces().canonicalReadCacheKiB());
                     requests(stage, selection);
                 }
                 base.registration(command.registration() == null ? null : command.registration().observationId().value());

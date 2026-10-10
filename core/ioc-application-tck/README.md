@@ -46,6 +46,10 @@ composed-аннотации `@IntegrationTest`, `@ContractTest`, `@EndToEndTest`
 - `com.iocextractor.application.tck.lifecycle.CanonicalRecordLifecycleContractTest`
   — active/due boundary, renewal, observation replay, new-lifecycle, revision,
   bounded expiry и ID non-reuse contract.
+  Время проверяется на границе опубликованного результата: все строки одного
+  подтверждения используют UTC результата и соответствующий deadline.
+  Replay не обращается к часам повторно. Число предварительных чтений часов
+  при claim или приватной подготовке не является контрактом порта.
 - `com.iocextractor.application.tck.dataframeimport.*` — контракты глобального
   порядка delivery-ledger и идемпотентной атомарной canonical promotion.
 

@@ -81,6 +81,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
     private final JdbcCanonicalMutationEngine mutationEngine;
     private final CanonicalArtifactKeyResolver keyResolver;
     private final JdbcExportSlotRegistry exportSlots;
+    private final int readCacheKiB;
     private final ImportMergeResolver mergeResolver = new ImportMergeResolver();
     private final ImportWorkspaceLayout workspaceLayout;
     private final ConnectionTimeSource timeSource;
@@ -211,6 +212,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
         var reservationAuthority = preparation.reservations();
         this.effectFactory = preparation.effects();
         this.exportSlots = preparation.exportSlots();
+        this.readCacheKiB = preparation.readCacheKiB();
         this.reservationAdmission = reservationAuthority.admission();
         this.observer = Objects.requireNonNull(observer, "observer");
         this.receiptRetention = requirePositive(receiptRetention, "receiptRetention");
@@ -337,6 +339,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
         }
         String url = "jdbc:sqlite:" + immutableUri(paths.sealed());
         try (Connection stageConnection = java.sql.DriverManager.getConnection(url)) {
+            JdbcImportStageReadPolicy.configure(stageConnection, "main", readCacheKiB);
             try (Statement statement = stageConnection.createStatement()) {
                 statement.execute("PRAGMA query_only=ON");
                 try (ResultSet integrity = statement.executeQuery("PRAGMA integrity_check")) {
@@ -398,6 +401,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
             statement.setString(1, immutableUri(path));
             statement.execute();
         }
+        JdbcImportStageReadPolicy.configure(connection, STAGE_SCHEMA, readCacheKiB);
     }
 
     private void detachSealedStage(Connection connection) throws SQLException {

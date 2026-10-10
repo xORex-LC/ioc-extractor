@@ -16,10 +16,17 @@ pinned command -> selective committed snapshot -> private native mutation
 ```
 
 The shared document workspace factory admits canonical preparation against its
-memory, cache and disk budgets. Admission is nonblocking when another workspace
+memory, cache and disk budgets. Configuration requires capacity for promotion,
+control work and a document lease; admission is nonblocking when another workspace
 would exhaust the budget. Hydration selects affected keys, aliases and dependent
 graphs; slot reconciliation additionally streams minimal lifecycle membership
 headers. It does not copy or diff the whole database.
+
+Byte-size guards reject oversized committed fields before JDBC materializes
+them. Private main/TEMP, committed-base requests, immutable stage readers and
+attached stage caches are bounded. Native duplicate validation preserves a
+stricter private TEMP cap. These are admission/accounting limits, not measured
+whole-process resource acceptance.
 
 Capture triggers run only on private native tables. They preserve initial and
 final typed values, NULL and cascaded tombstones. An explicit mutation journal
@@ -65,6 +72,15 @@ Controls reuse native expiry, history, projection, receipt-retention and slot
 operations in private selective snapshots. Their epochs invalidate stale
 promotion work. Their fixed cycle time remains literal; promotion timestamps and
 renewal deadlines use publication UTC.
+
+Physical cleanup advances persisted keyset cursors, checking at most 256
+addresses and deleting at most 256 rows per transaction. A tombstone remains
+until every other version of its address is gone, including hidden versions.
+Terminal transfer facts/chunks/dependencies and obsolete attempt identities can
+be reclaimed independently. Committed typed facts, live attempts and current
+attempt identities remain authoritative. Headers/pins and deadline anchors are
+retained conservatively; their long-term compaction and scheduling belong to
+operational qualification. SQLite WAL snapshots protect readers across cleanup.
 
 ## Extension and executable sources
 

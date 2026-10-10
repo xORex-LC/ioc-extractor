@@ -38,7 +38,7 @@ final class JdbcPublicationHydrator {
         if (base.getAutoCommit() || working.getAutoCommit()) {
             throw new SQLException("Selective hydration requires owned source and private snapshots");
         }
-        String selectSql = "SELECT " + table.selectColumns("b") + " FROM " + quote(table.name())
+        String selectSql = "SELECT " + sizeGuard(table) + "," + table.selectColumns("b") + " FROM " + quote(table.name())
                 + " b WHERE " + predicate;
         String insertSql = "INSERT OR IGNORE INTO " + quote(table.name()) + "(" + joinedQuoted(table.columns())
                 + ") VALUES(" + placeholders(table.columns().size()) + ")";
@@ -48,9 +48,10 @@ final class JdbcPublicationHydrator {
             try (var rows = select.executeQuery()) {
                 while (rows.next()) {
                     if (Thread.currentThread().isInterrupted()) { throw new SQLException("Selective hydration interrupted"); }
+                    if (rows.getInt(1) != 0) { throw new SQLException("Committed native row exceeds canonical preparation limits"); }
                     long bytes = 0;
                     for (int column = 1; column <= table.columns().size(); column++) {
-                        Object value = rows.getObject(column);
+                        Object value = rows.getObject(column + 1);
                         long field = JdbcPublicationChunkDigest.framedBytes(value);
                         bytes = Math.addExact(bytes, field);
                         if (field > limits.maximumFieldBytes() || bytes > limits.maximumRowBytes()) {
@@ -66,5 +67,14 @@ final class JdbcPublicationHydrator {
         }
         quota.run();
         return count;
+    }
+
+    /** SQLite checks byte sizes before the driver materializes an oversized text/blob into the JVM. */
+    private String sizeGuard(JdbcPublicationTable table) {
+        var sizes = table.columns().stream().map(column -> "(5+COALESCE(length(CAST(b."
+                + quote(column) + " AS BLOB)),0))").toList();
+        String fields = sizes.stream().map(size -> size + ">" + limits.maximumFieldBytes())
+                .collect(java.util.stream.Collectors.joining(" OR "));
+        return "CASE WHEN " + fields + " OR (" + String.join("+", sizes) + ")>" + limits.maximumRowBytes() + " THEN 1 ELSE 0 END";
     }
 }

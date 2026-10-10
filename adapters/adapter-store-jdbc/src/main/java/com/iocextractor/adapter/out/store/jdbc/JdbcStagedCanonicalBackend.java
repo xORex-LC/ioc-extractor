@@ -30,6 +30,7 @@ final class JdbcStagedCanonicalBackend {
             try (var connection = configuration.dataSource().getConnection()) {
                 JdbcPublicationCatalog.requireEmpty(connection, JdbcPublicationCatalog.inspectNative(connection, configuration.schemas()));
             }
+            new JdbcArtifactIdentityStore(configuration.dataSource(), configuration.allocatorClock()).ensureAll(configuration.identities());
             initializeIds(configuration);
             var transactions = new JdbcPublicationTransactions(configuration.dataSource(), configuration.admission());
             var store = transactions.execute(JdbcWriterAdmission.OperationClass.CONTROL,
@@ -104,7 +105,8 @@ final class JdbcStagedCanonicalBackend {
 
     JdbcCanonicalPreparationContext readContext() {
         return new JdbcCanonicalPreparationContext(new JdbcCanonicalReservationAuthority(configuration.dataSource(),
-                configuration.allocatorClock(), configuration.admission()));
+                configuration.allocatorClock(), configuration.admission()), JdbcMutationEffectSink.Factory.NONE,
+                new JdbcExportSlotRegistry(), configuration.workspaces().canonicalReadCacheKiB());
     }
 
     JdbcStagedCanonicalConfiguration configuration() { return configuration; }

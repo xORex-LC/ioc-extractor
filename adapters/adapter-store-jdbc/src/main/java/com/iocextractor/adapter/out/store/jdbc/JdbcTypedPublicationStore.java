@@ -31,6 +31,7 @@ final class JdbcTypedPublicationStore {
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
         new JdbcPublicationProtocol().initialize(connection);
         new JdbcPublicationOwner().initialize(connection);
+        JdbcPublicationCleanupCursor.initialize(connection);
         JdbcPublicationCatalog.persist(connection, tables);
         for (var table : tables) { JdbcTypedVersionTable.create(connection, table, artifacts.contains(table.name())); }
         for (var table : tables.reversed()) { execute(connection, "DROP TABLE " + quote(table.name())); }

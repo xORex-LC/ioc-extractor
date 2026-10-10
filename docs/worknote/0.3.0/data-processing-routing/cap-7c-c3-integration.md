@@ -1,8 +1,8 @@
 # CAP-7C C3: native kernel integration
 
-Status: started, transactional private mutation journal implemented. The complete
-versioned runtime adapter is not integrated or activated. C2's finite typed
-experiment is closed; C3, C4–C6 and G6 remain open.
+Status: candidate implementation integrated; final reactor/analyzer qualification
+is in progress. No runtime activation or existing-data migration is included.
+C2 is closed; C3 awaits its final gates, while C4–C6 and G6 remain open.
 
 ## First integration slice (2026-10-10)
 
@@ -86,7 +86,39 @@ Full completion checks are `make verify`, `make pmd-analysis`,
 `make pmd-watchlist` and `make docs`; `make context` identifies exact-HEAD
 freshness. A passed journal slice is not acceptance of the complete C3 backend.
 
-## Remaining C3 work in dependency order
+## Bounded cleanup and resource qualification slice
+
+The candidate now bounds physical cleanup's scanned prefix as well as deletion
+count, with persisted family/attempt cursors. Pending versions are retained;
+latest tombstones remain until all other versions of their address disappear.
+Terminal transfer journals can drain in 256-row transactions while typed data,
+receipt recovery and header deadline anchors remain available. Header/pin
+compaction and maintenance scheduling are explicitly deferred to C6.
+
+Hydration performs SQLite byte-size checks before driver materialization.
+Native private/committed-base/stage caches and TEMP pages respect the shared
+workspace budget. Native duplicate validation no longer increases a stricter
+private TEMP limit. Candidate catalog checks precede ID initialization;
+reopening rejects policy/catalog drift.
+
+Both inherited import and lifecycle TCKs run on the staged backend. The lifecycle
+TCK now checks one published timestamp/deadline across a multi-row confirmation
+using a clock that ticks on each read, and no additional clock sampling on replay.
+Counting all preliminary reads as confirmations was specific to the former
+single-transaction implementation and contradicted the approved publication-UTC
+decision. Test suite inventory, tags, coverage floors and ratchets are unchanged.
+
+Resource/fault regressions cover weighted nonblocking admission, released permits
+after pin failure, thread confinement, pooled policy restoration, oversized base
+fields, three-epoch-invalidation exhaustion, cancellation/retry and rejecting
+changed pins before ownership without cancelling existing pending state.
+
+The module integration command completed 381 tests with one opt-in load-profile
+skip and no failures/errors before the final cleanup/cache refinements. Failed
+development runs remain in `.dev/c3-*.log`: clock-call assertions, insufficient
+concurrent fixture headroom, an incorrect exhaustion expectation and a fixture
+type error were resolved without retries or gate relaxation. Final complete
+verification and analyzer review are recorded below once executed.
 
 The second integration slice implements a persisted typed catalog, immutable
 versions and one committed visibility predicate. Two streaming passes over the
@@ -100,7 +132,7 @@ warnings, proves hidden chunks and a pinned old reader, and compares every typed
 family with the corrected native writer at publication UTC. Receipt-only replay
 works after deleting the stage. This test qualifies typed transport; complete
 native port composition, control operations and cleanup still require their own
-checks below.
+port and resource checks recorded above.
 
 The physical protocol is now shared production-source code in
 `JdbcPublicationProtocol`; C2 tests execute that implementation instead of a
@@ -136,7 +168,7 @@ contribution folding. This is capture qualification, not complete C3 acceptance.
    committed-version visibility and indexed access. Cleanup must respect
    reader snapshots, active anchors and retained receipts.
 5. Run the corrected native semantic oracle and port/TCK tests over the complete
-   adapter. Then C4 owns the complete crash/concurrency matrix, C5 the paired
+   adapter. C4 owns the complete crash/concurrency matrix, C5 the paired
    whole-service capacity qualification, and C6 migration/operations/activation.
 
 The proposed [ADR 0041](../../../ADR/0041-sqlite-staged-publication-experiment.md)

@@ -16,6 +16,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -60,19 +62,24 @@ class JdbcCanonicalRecordLifecycleContractIT extends CanonicalRecordLifecycleCon
         activate(dataSource, schemas);
 
         Clock allocatorClock = Clock.fixed(START, ZoneOffset.UTC);
-        var writer = new JdbcCanonicalLifecycleWriter(
-                dataSource,
-                schemas,
-                List.of(new ArtifactIdAllocatorDefinition(
-                        ARTIFACT, ArtifactIdStrategy.ASCENDING, 1, 1)),
-                timeSource,
-                policy,
-                allocatorClock,
-                List.of(identityDefinition));
+        Clock wall = new Clock() {
+            @Override public java.time.ZoneId getZone() { return ZoneOffset.UTC; }
+            @Override public Clock withZone(java.time.ZoneId zone) { return this; }
+            @Override public Instant instant() { return timeSource.now().value(); }
+        };
+        var admission = new JdbcWriterAdmission();
+        var workspaces = new JdbcDocumentPreparationWorkspaceFactory(tempDir.resolve("canonical-" + fixtureSequence.get()),
+                new DocumentPreparationLimits(8 * 1024 * 1024, 64, 4096, 2048, 16 * 1024 * 1024, 256 * 1024 * 1024, 256),
+                new com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver(List.of(identityDefinition)), "lifecycle-tck");
+        var configuration = new JdbcStagedCanonicalConfiguration(dataSource, schemas,
+                List.of(new ArtifactIdAllocatorDefinition(ARTIFACT, ArtifactIdStrategy.ASCENDING, 1, 1)),
+                List.of(identityDefinition), new JdbcLifecycleClock(dataSource, wall,
+                new com.iocextractor.application.artifact.lifecycle.LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30)), admission),
+                allocatorClock, (com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy) policy,
+                admission, workspaces, tempDir, java.util.Map.of(), Duration.ofDays(30));
+        var backend = JdbcStagedCanonicalBackend.createEmpty(configuration, JdbcPublicationObserver.NOOP);
         return new LifecycleFixture(
-                writer,
-                new JdbcActiveArtifactReader(dataSource, schemas),
-                new JdbcExpiredArtifactStore(dataSource, schemas));
+                backend.confirmations(), backend.activeRows(), backend.expiry());
     }
 
     private void activate(HikariDataSource dataSource, List<DataframeArtifactSchema> schemas) {

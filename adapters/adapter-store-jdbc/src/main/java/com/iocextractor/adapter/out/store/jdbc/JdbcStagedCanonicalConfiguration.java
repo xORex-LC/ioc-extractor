@@ -28,6 +28,43 @@ record JdbcStagedCanonicalConfiguration(DataSource dataSource, List<DataframeArt
         if (schemas.isEmpty() || schemas.size() > 128 || importReceiptRetention.isZero() || importReceiptRetention.isNegative()) {
             throw new IllegalArgumentException("Invalid staged canonical catalog or retention");
         }
+        validateCatalog(schemas, publicIds, identities, policies);
+    }
+
+    private static void validateCatalog(List<DataframeArtifactSchema> schemas, List<ArtifactIdAllocatorDefinition> publicIds,
+                                        List<ArtifactIdentityDefinition> identities, Map<String, ArtifactWritePolicy> policies) {
+        var identityMap = identities.stream().collect(java.util.stream.Collectors.toMap(ArtifactIdentityDefinition::artifactName,
+                java.util.function.Function.identity()));
+        var idMap = publicIds.stream().collect(java.util.stream.Collectors.toMap(ArtifactIdAllocatorDefinition::artifact,
+                java.util.function.Function.identity()));
+        var names = schemas.stream().map(DataframeArtifactSchema::artifactName).collect(java.util.stream.Collectors.toSet());
+        if (names.size() != schemas.size() || !identityMap.keySet().equals(names) || !names.containsAll(policies.keySet())) {
+            throw new IllegalArgumentException("Staged schema, identity and policy catalogs disagree");
+        }
+        var withId = new java.util.HashSet<String>();
+        for (var schema : schemas) {
+            if (validateSchema(schema, identityMap.get(schema.artifactName()), idMap.get(schema.artifactName()))) {
+                withId.add(schema.artifactName());
+            }
+        }
+        if (!idMap.keySet().equals(withId)) { throw new IllegalArgumentException("Staged public ID catalog differs from schema"); }
+    }
+
+    private static boolean validateSchema(DataframeArtifactSchema schema, ArtifactIdentityDefinition identity,
+                                           ArtifactIdAllocatorDefinition allocator) {
+        var columns = schema.columns().stream().map(DataframeColumn::name).collect(java.util.stream.Collectors.toSet());
+        if (schema.artifactName().startsWith("publication_") || columns.isEmpty() || columns.size() != schema.columns().size()) {
+            throw new IllegalArgumentException("Invalid staged native schema");
+        }
+        var keys = new java.util.ArrayList<>(identity.matchKeys()); keys.add(identity.recordKey());
+        if (keys.stream().anyMatch(key -> !columns.containsAll(key.columns()))) {
+            throw new IllegalArgumentException("Staged identity references unknown public fields");
+        }
+        boolean withId = columns.contains("id");
+        if (withId && (allocator == null || allocator.identityEpoch() != identity.epoch())) {
+            throw new IllegalArgumentException("Staged public ID catalog disagrees with identity epoch");
+        }
+        return withId;
     }
 
     String fingerprint() {
