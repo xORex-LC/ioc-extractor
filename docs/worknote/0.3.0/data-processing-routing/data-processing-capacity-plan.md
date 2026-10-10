@@ -557,8 +557,11 @@ is implemented as an isolated SQLite candidate with deterministic native/TCK
 evidence. [C4 fault/restart qualification](cap-7c-c4-fault-matrix.md) implements
 the deterministic native matrix, including real service-ledger receipt-only
 recovery and cancellation/quota regressions. Final repository gates still apply.
-C5 whole-service capacity and C6 migration/operational activation remain open;
-the default native runtime and G6 NOT_ACCEPTED status are unchanged.
+C6 now has an [isolated operational implementation](cap-7c-c6-operations.md) for
+drained conversion, ownership/recovery, readiness, bounded cleanup and stopped
+restore. C5 whole-service capacity and C6 operational activation remain open,
+including default composition, complete deployment backup and safe promotion-pin
+compaction. The default native runtime and G6 NOT_ACCEPTED status are unchanged.
 
 Redis is outside the current mandatory track: no demonstrated shared reusable
 work justifies a remote cache, and it cannot correct an alias-range query or

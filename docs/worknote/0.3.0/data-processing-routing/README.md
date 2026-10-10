@@ -198,3 +198,9 @@ fault/concurrency scenarios, real child-process termination and reopening,
 all-family visibility and service-ledger recovery from receipt without stage.
 It also records cancellation-owner cleanup and SQLite sidecar-accounting fixes,
 failed development gates, focused regressions and final verification requirements.
+
+[CAP-7C C6 operational candidate](cap-7c-c6-operations.md) records isolated drained
+populated conversion, format/catalog guards, exclusive process ownership, bounded
+startup recovery/readiness, durable cleanup and coordinated stopped restore.
+It preserves the open C5 resource gate and C6 activation/backup/retention boundaries;
+the default application remains native.

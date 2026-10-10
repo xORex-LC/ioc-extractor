@@ -207,7 +207,7 @@ back to the current oversized transaction silently.
 | C3 complete integration | Implemented isolated candidate: native ordinary/import preparation, committed readers/controls and bounded capture/transfer/reclamation | Native equivalence and inherited import/lifecycle TCKs; final repository gates apply; default-runtime activation remains C6 |
 | C4 faults/concurrency | Implemented isolated native crash/cancel/conflict/restart matrix; see C4 execution report | 29 deterministic fault invocations plus workspace regressions; pending never visible, no half delivery, rank/TTL/slot/recovery oracles; final repository gates apply |
 | C5 capacity comparison | Corrected and versioned SQLite, identical workload/results/limits, complete-service metrics | Physical occupancy, eligible waits and total resources meet adopted limits; retain failed cells |
-| C6 migration/operations | Drained upgrade, rollback backup/restore, readiness/health, durable cleanup and deployment procedure | Full adapter/TCK and operational qualification; accepted ADR before activation |
+| C6 migration/operations | [Isolated operational implementation](cap-7c-c6-operations.md): drained populated conversion, stopped restore, exclusive ownership, bounded startup recovery/readiness and durable cleanup | Final adapter/TCK/operational gates apply; default composition, coordinated deployment backup and promotion-pin retention remain gated; C5 and accepted ADR before activation |
 
 No stage is accepted merely because ordinary CSV output is equal. The oracles
 must inspect canonical/lifecycle identities, aliases, ranks, provenance,

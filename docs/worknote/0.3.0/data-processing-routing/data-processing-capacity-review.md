@@ -854,3 +854,17 @@ cancellation cleanup and SQLite sidecar-accounting corrections with retained
 failed gates and focused regressions. The default runtime remains native; C7's
 whole-service occupancy question is still a C5 measurement and C6 activation
 decision. These finite fault oracles do not change G6 `NOT_ACCEPTED`.
+
+### 2026-10-11 isolated publication operations follow-up
+
+[CAP-7C C6](cap-7c-c6-operations.md) adds populated native conversion, a local
+process lease, bounded startup recovery/readiness, durable cleanup rotation and
+coordinated stopped restore. Thirty deterministic operational invocations cover
+literal fact preservation, receipt-only service-ledger recovery, abandoned owners,
+incompatible catalogs/formats, cross-process exclusion and resource ownership.
+
+The default application remains native. C5 resource acceptance, ADR acceptance,
+default port/backstop composition, complete deployment backup and promotion-pin
+retention remain explicit promotion boundaries. Database-only deployment backups
+are insufficient for this conversion. The operational candidate and stopped
+restore fixture do not qualify live deployment or change G6 `NOT_ACCEPTED`.
