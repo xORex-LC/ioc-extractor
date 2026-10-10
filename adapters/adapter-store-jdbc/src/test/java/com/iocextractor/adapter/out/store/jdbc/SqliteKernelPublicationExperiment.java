@@ -70,6 +70,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
     private final JdbcLifecycleClock safeClock;
     private final JdbcArtifactIdAllocator rowIds;
     private final JdbcLifecycleIdAllocator lifecycleIds;
+    private final SqliteInternalIdReservationExperiment historyIds;
     private final Map<String, List<String>> columns = new LinkedHashMap<>();
 
     SqliteKernelPublicationExperiment(Path directory, Instant start) throws SQLException {
@@ -87,6 +88,8 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
             rowIds = new JdbcArtifactIdAllocator(published, wallClock);
             rowIds.ensureInitialized(new ArtifactIdAllocatorDefinition("masks", ArtifactIdStrategy.ASCENDING, 11, 1));
             lifecycleIds = new JdbcLifecycleIdAllocator(published, wallClock);
+            historyIds = new SqliteInternalIdReservationExperiment(published, wallClock, admission);
+            historyIds.initializeHistory("masks", 1);
             try (var c = published.getConnection()) {
                 probe.initialize(c);
                 initializeVersions(c);
@@ -166,6 +169,17 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
                 () -> rowIds.reserve("masks", 1));
         var lifecycleRange = admission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
                 () -> lifecycleIds.reserve(1));
+        var historyRange = historyIds.reserve("masks_history", 1);
+        try (var c = working.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                SqliteInternalIdReservationExperiment.seedPrivateSequence(c, "masks_history", historyRange);
+                c.commit();
+            } catch (SQLException | RuntimeException | Error failure) {
+                rollback(c, failure);
+                throw failure;
+            }
+        }
         return confirm(mask, name, source, publicRange.idAt(0), lifecycleRange.idAt(0).value(), registration, position);
     }
 

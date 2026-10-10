@@ -32,14 +32,25 @@ final class SqliteInternalIdReservationExperiment {
     /** Pins active IDs, former row IDs, deleted AUTOINCREMENT IDs and burned reservations. */
     void initialize(String artifact, long identityEpoch) {
         String name = DataframeColumn.requireSqlIdentifier(artifact, "internal artifact");
+        initialize(name, identityEpoch, "SELECT MAX(value) FROM (SELECT MAX(id) AS value FROM "
+                + quote(name) + " UNION ALL SELECT MAX(former_row_id) FROM " + quote(name + "_history")
+                + " UNION ALL SELECT seq FROM sqlite_sequence WHERE name=?)");
+    }
+
+    /** History has a distinct internal sequence; former_row_id is not its identity. */
+    void initializeHistory(String artifact, long identityEpoch) {
+        String name = DataframeColumn.requireSqlIdentifier(artifact, "internal artifact") + "_history";
+        initialize(name, identityEpoch, "SELECT MAX(value) FROM (SELECT MAX(history_id) AS value FROM "
+                + quote(name) + " UNION ALL SELECT seq FROM sqlite_sequence WHERE name=?)");
+    }
+
+    private void initialize(String name, long identityEpoch, String highWaterSql) {
         admission.execute(JdbcWriterAdmission.OperationClass.CONTROL, () -> {
             try (var c = canonical.getConnection()) {
                 c.setAutoCommit(false);
                 try {
                     long extreme;
-                    try (var select = c.prepareStatement("SELECT MAX(value) FROM (SELECT MAX(id) AS value FROM "
-                            + quote(name) + " UNION ALL SELECT MAX(former_row_id) FROM " + quote(name + "_history")
-                            + " UNION ALL SELECT seq FROM sqlite_sequence WHERE name=?)")) {
+                    try (var select = c.prepareStatement(highWaterSql)) {
                         select.setString(1, name);
                         try (var rows = select.executeQuery()) {
                             if (!rows.next()) { throw new SQLException("Missing internal sequence high-water"); }

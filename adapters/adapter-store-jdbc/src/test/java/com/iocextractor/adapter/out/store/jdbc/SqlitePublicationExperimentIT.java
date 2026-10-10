@@ -261,6 +261,27 @@ class SqlitePublicationExperimentIT {
                         .isEqualTo(1);
                 assertThat(queryNumber(c, "SELECT occurrences FROM masks_history_sources" )).isEqualTo(1);
             }
+            experiment.wallClock.advance(Duration.ofHours(1));
+            var afterPrivateReset = experiment.register("deadline-private-reset");
+            try (var base = experiment.published.getConnection()) {
+                base.setAutoCommit(false);
+                experiment.hydrate(base, "one.example", afterPrivateReset);
+                base.rollback();
+            }
+            try (var c = experiment.working.getConnection(); var s = c.createStatement()) {
+                // A recreated selective workspace has no knowledge of published history IDs.
+                s.executeUpdate("DELETE FROM sqlite_sequence WHERE name='masks_history'");
+            }
+            experiment.confirmReserved("one.example", "after-reset", "source:C", afterPrivateReset, 0);
+            var resetUnit = experiment.stage("after-private-reset", "one.example", 2, Long.MAX_VALUE);
+            experiment.publish(resetUnit);
+            try (var c = experiment.published.getConnection()) {
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks_history")).isEqualTo(2);
+                assertThat(queryNumber(c, "SELECT COUNT(DISTINCT history_id) FROM masks_history")).isEqualTo(2);
+                assertThat(queryNumber(c, "SELECT history_id FROM masks_history WHERE former_row_id=11")).isEqualTo(3);
+                assertThat(queryNumber(c, "SELECT history_id FROM masks_history WHERE former_row_id=13")).isEqualTo(4);
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks_history_sources")).isEqualTo(2);
+            }
         }
     }
 

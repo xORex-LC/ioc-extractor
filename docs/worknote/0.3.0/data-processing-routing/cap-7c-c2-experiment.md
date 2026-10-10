@@ -240,7 +240,14 @@ reserve 175 through a recreated allocator. Epoch drift and private sequence
 rollback are rejected. This is a reservation experiment, not a production
 migration. Mixed native AUTOINCREMENT writers and range-reserving publishers
 are unsupported; C3 must route every writer through the same durable authority.
-History-row IDs still need their own separately scoped reservation integration.
+The kernel bridge additionally reserves a separate history-row range before
+private archival. The deadline/rebuild regression burns unused history ranges,
+then recreates the private history sequence between two expirations. Both real
+archives retain distinct dataframe-reserved history IDs (3 and 4), including
+their source children; the private AUTOINCREMENT value cannot recycle a
+published identity. The experiment uses an isolated history allocator namespace.
+Its production namespace/catalog validation, migration high-water and bulk
+reservation integration remain C3 requirements, not an activated runtime change.
 
 ### Native initial fan-out import and canonical receipt
 
