@@ -27,10 +27,6 @@ import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
 
 import java.nio.file.Path;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Clock;
@@ -43,7 +39,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.HexFormat;
 import java.util.function.IntConsumer;
 
 import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.quote;
@@ -277,7 +272,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
 
     private void appendTypedChunk(Attempt attempt, int ordinal, List<TypedRow> batch) {
         write(c -> {
-            var digest = new SnapshotDigest();
+            var digest = new SqlitePublicationChunkDigest();
             var facts = new ArrayList<Fact>(batch.size());
             for (int index = 0; index < batch.size(); index++) {
                 TypedRow row = batch.get(index);
@@ -329,7 +324,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
             var manifest = new Manifest(1, 1, minimumDeadline, Map.of("masks", epoch));
             Attempt attempt = previous == null ? probe.begin(c, unit, PINS, manifest)
                     : probe.rebuild(c, previous, PINS, manifest);
-            var digest = new SnapshotDigest();
+            var digest = new SqlitePublicationChunkDigest();
             try (var source = working.getConnection()) {
                 source.setAutoCommit(false);
                 try {
@@ -465,12 +460,12 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
     }
 
     private void copy(Connection source, Connection destination, String table, String predicate,
-                      String parameter, Attempt version, SnapshotDigest digest) throws SQLException {
+                      String parameter, Attempt version, SqlitePublicationChunkDigest digest) throws SQLException {
         copy(source, destination, table, predicate, parameter, version, digest, true);
     }
 
     private void copy(Connection source, Connection destination, String table, String predicate,
-                      String parameter, Attempt version, SnapshotDigest digest, boolean renewTtl) throws SQLException {
+                      String parameter, Attempt version, SqlitePublicationChunkDigest digest, boolean renewTtl) throws SQLException {
         List<String> names = columns.getOrDefault(table, List.of());
         if (names.isEmpty()) { throw new SQLException("Missing experiment column catalog"); }
         String projection = JdbcSql.joinedQuoted(names);
@@ -653,32 +648,6 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
     }
 
     @FunctionalInterface private interface Work<T> { T apply(Connection c) throws SQLException; }
-
-    /** Bounds all typed families together, including framed NULLs and anchor metadata. */
-    private static final class SnapshotDigest {
-        private final MessageDigest digest;
-        private int rows;
-        private long bytes;
-        SnapshotDigest() {
-            try { digest = MessageDigest.getInstance("SHA-256"); }
-            catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
-        }
-        void row() throws SQLException {
-            if (++rows > 256) { throw new SQLException("Typed snapshot total row bound exceeded"); }
-        }
-        void field(Object value) throws SQLException {
-            String text = value == null ? null : value.toString();
-            if (text != null && text.length() > 1_048_576) {
-                throw new SQLException("Typed snapshot byte bound exceeded");
-            }
-            byte[] encoded = text == null ? null : text.getBytes(StandardCharsets.UTF_8);
-            bytes += Integer.BYTES + (encoded == null ? 0 : encoded.length);
-            if (bytes > 1_048_576) { throw new SQLException("Typed snapshot byte bound exceeded"); }
-            digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(encoded == null ? -1 : encoded.length).array());
-            if (encoded != null) { digest.update(encoded); }
-        }
-        String finish() { return HexFormat.of().formatHex(digest.digest()); }
-    }
 
     /** Caller-controlled wall clock; effective UTC still goes through JdbcLifecycleClock. */
     static final class MutableClock extends Clock {

@@ -34,6 +34,7 @@ import com.iocextractor.application.dataframeimport.model.ImportExistingSlotPoli
 import com.iocextractor.application.dataframeimport.model.ImportLogicalRow;
 import com.iocextractor.application.dataframeimport.model.ImportMergePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportPromotionPolicy;
+import com.iocextractor.application.dataframeimport.model.ImportPromotionOutcome;
 import com.iocextractor.application.dataframeimport.model.ImportRejectedLogicalRow;
 import com.iocextractor.application.dataframeimport.model.ImportRequestedSlotPolicy;
 import com.iocextractor.application.dataframeimport.model.ImportRowFailurePolicy;
@@ -306,6 +307,136 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
              var result = statement.executeQuery()) {
             result.next();
             return result.getLong(1);
+        }
+    }
+
+    @Test
+    @Timeout(30)
+    void typedHiddenChunksPublishRealFanOutSlotsAndReceiptForStageFreeRecovery() throws Exception {
+        Environment privateBase = environment("typed-import-private");
+        Environment publicBase = environment("typed-import-public");
+        var rows = new ArrayList<ImportLogicalRow>();
+        for (int index = 0; index < 60; index++) {
+            rows.add(row(index + 2,
+                    branch(privateBase, "masks", ImportArtifactRole.PRIMARY,
+                            cells("mask", ImportCell.value("host-" + index + ".example"),
+                                    "source", ImportCell.absent()),
+                            index == 0 ? OptionalLong.of(7) : OptionalLong.empty()),
+                    branch(privateBase, "hashes", ImportArtifactRole.RELATED,
+                            cells("hash", ImportCell.value("HASH-" + index),
+                                    "source", ImportCell.absent()), OptionalLong.empty())));
+        }
+        rows.add(row(62,
+                branch(privateBase, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "host-0.example", "source", "coalesced-feed"), OptionalLong.of(7)),
+                branch(privateBase, "hashes", ImportArtifactRole.RELATED,
+                        values("hash", "HASH-0", "source", "coalesced-feed"), OptionalLong.empty())));
+        var warning = new ImportRowWarning(62, "masks", "IMPORT.VIEW_FALLBACK");
+        var issue = new ImportRowIssue(63, "masks", "IMPORT.INVALID_VALUE");
+        var policy = new ImportPromotionPolicy(ImportRowFailurePolicy.ACCEPT_VALID, false,
+                Optional.of(new ImportRequestedSlotPolicy("reputation", ImportExistingSlotPolicy.PRESERVE_EXISTING)));
+        var command = privateBase.stage("typed-fan-out", policy, rows,
+                List.of(new ImportRejectedLogicalRow(63, List.of(issue))), List.of(warning));
+        var nativeResult = privateBase.writer(JdbcCanonicalImportObserver.NOOP).promote(command);
+        assertThat(nativeResult.acceptedRows()).isEqualTo(60);
+        assertThat(nativeResult.rejectedRows()).isOne();
+        var admission = new JdbcWriterAdmission();
+        var experiment = new SqliteImportPublicationExperiment(publicBase.dataSource, admission,
+                List.of("masks", "hashes"));
+        var chunkCount = new AtomicInteger();
+        var attempt = experiment.stage(privateBase.dataSource, command.deliveryId().value(),
+                command.stage().digest().value(), ordinal -> {
+                    chunkCount.incrementAndGet();
+                    assertThat(publicBase.count("masks")).isZero();
+                    assertThat(publicBase.count("hashes")).isZero();
+                    assertThat(publicBase.count("canonical_match_alias")).isZero();
+                    assertThat(publicBase.count("export_slot_assignment")).isZero();
+                    assertThat(new JdbcImportCommitEvidenceStore(publicBase.dataSource).find(command.deliveryId()))
+                            .isEmpty();
+                });
+        assertThat(chunkCount.get()).isGreaterThan(1);
+        Instant publicationUtc = NOW.plusSeconds(3);
+        Environment corrected = environment("typed-import-corrected-oracle");
+        Environment correctedStage = new Environment(corrected.dataSource, privateBase.workspaceRoot,
+                corrected.schemas, corrected.identities);
+        correctedStage.writer(JdbcCanonicalImportObserver.NOOP, publicationUtc).promote(command);
+        var clock = new JdbcLifecycleClock(publicBase.dataSource, Clock.fixed(publicationUtc, ZoneOffset.UTC),
+                new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30)), admission);
+        try (var pinned = publicBase.dataSource.getConnection()) {
+            pinned.setAutoCommit(false);
+            assertThat(visibleCount(pinned, "masks")).isZero();
+            var publication = experiment.publish(attempt, clock, new FixedRecordValidityPolicy(TTL),
+                    command.stage().digest().value());
+            assertThat(publication.effectiveMillis()).isEqualTo(publicationUtc.toEpochMilli());
+            assertThat(visibleCount(pinned, "masks")).isZero();
+            assertThat(visibleCount(pinned, "import_commit")).isZero();
+            pinned.rollback();
+            assertThat(visibleCount(pinned, "masks")).isEqualTo(60);
+            assertThat(visibleCount(pinned, "hashes")).isEqualTo(60);
+            assertThat(visibleCount(pinned, "canonical_match_alias")).isEqualTo(120);
+        }
+        assertThat(publicBase.queryLong("SELECT COUNT(*) FROM export_slot_assignment WHERE profile='reputation'"))
+                .isEqualTo(60);
+        assertThat(publicBase.queryLong("SELECT assigned_slot FROM import_slot_resolution")).isOne();
+        assertThat(publicBase.queryLong("SELECT requested_slot FROM import_slot_resolution")).isEqualTo(7);
+        assertThat(publicBase.queryString("SELECT outcome FROM import_slot_resolution"))
+                .isEqualTo("OCCUPIED_FALLBACK");
+        assertThat(publicBase.queryLong("SELECT COUNT(DISTINCT slot) FROM export_slot_assignment"))
+                .isEqualTo(60);
+        assertThat(publicBase.queryLong("SELECT revision FROM artifact_revision WHERE artifact='masks'"))
+                .isOne();
+        assertThat(publicBase.queryLong("SELECT required_generation FROM artifact_projection_state WHERE artifact='hashes'"))
+                .isOne();
+        assertThat(publicBase.queryString("SELECT source FROM masks WHERE mask='host-0.example'"))
+                .isEqualTo("coalesced-feed");
+        assertThat(publicBase.queryLong("SELECT _valid_until_epoch_ms FROM masks WHERE mask='host-0.example'"))
+                .isEqualTo(publicationUtc.plus(TTL).toEpochMilli());
+        var request = new CanonicalMatchRequest("typed-match", new CanonicalArtifactKeyResolver(publicBase.identities)
+                .matchKeysOf("masks", ArtifactRow.ordered(Map.of("mask", "host-0.example"))));
+        assertThat(new JdbcCanonicalMatchPlanner(publicBase.dataSource, publicBase.schemas)
+                .plan("masks", EffectiveTime.at(publicationUtc), List.of(request)).getFirst().cardinality())
+                .isEqualTo(CanonicalMatchCardinality.ONE);
+        var evidence = new JdbcImportCommitEvidenceStore(publicBase.dataSource).find(command.deliveryId()).orElseThrow();
+        assertThat(evidence.acceptedRows()).isEqualTo(60);
+        assertThat(evidence.rejectedRows()).isOne();
+        assertThat(evidence.warnings()).containsExactly(warning);
+        assertThat(evidence.issues()).containsExactly(issue);
+        for (String table : experiment.tables()) {
+            assertThat(typedRows(publicBase.dataSource, table)).as("corrected canonical oracle: %s", table)
+                    .isEqualTo(typedRows(corrected.dataSource, table));
+        }
+        privateBase.deleteStage(command);
+        // Use the real canonical port and service journal; no replacement recovery algorithm.
+        var replay = publicBase.writer(JdbcCanonicalImportObserver.NOOP).promote(command);
+        assertThat(replay.outcome()).isEqualTo(ImportPromotionOutcome.ALREADY_COMMITTED);
+        assertThat(replay.effectiveAt()).isEqualTo(publicationUtc);
+        var ledger = stagedLedger(command);
+        var service = new DataframeImportPromotionService(ledger,
+                publicBase.writer(JdbcCanonicalImportObserver.NOOP), CLOCK);
+        service.processNext();
+        assertThat(ledger.find(command.deliveryId()).orElseThrow().state()).isEqualTo(ImportDeliveryState.CANONICAL_COMMITTED);
+        assertThat(publicBase.queryLong("SELECT SUM(occurrences) FROM masks_sources")).isEqualTo(60);
+        assertThat(new JdbcImportCommitEvidenceStore(publicBase.dataSource).find(command.deliveryId()))
+                .contains(evidence);
+    }
+
+    private static List<List<Object>> typedRows(HikariDataSource database, String table) throws SQLException {
+        try (var c = database.getConnection(); var s = c.createStatement()) {
+            var columns = new ArrayList<String>();
+            try (var meta = s.executeQuery("PRAGMA table_info(" + JdbcSql.quote(table) + ")")) {
+                while (meta.next()) { columns.add(meta.getString("name")); }
+            }
+            String projection = JdbcSql.joinedQuoted(columns);
+            var values = new ArrayList<List<Object>>();
+            try (var rows = s.executeQuery("SELECT " + projection + " FROM " + JdbcSql.quote(table)
+                    + " ORDER BY " + projection)) {
+                while (rows.next()) {
+                    var row = new ArrayList<Object>();
+                    for (int index = 1; index <= columns.size(); index++) { row.add(rows.getObject(index)); }
+                    values.add(java.util.Collections.unmodifiableList(row));
+                }
+            }
+            return List.copyOf(values);
         }
     }
 

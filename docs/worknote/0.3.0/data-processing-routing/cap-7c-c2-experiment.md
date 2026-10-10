@@ -221,6 +221,40 @@ installs these probe views. Do not open an operator database with this helper.
 
 ## Remaining C2 gate before C3
 
+### Native initial fan-out import and canonical receipt
+
+`SqliteImportPublicationExperiment` transports the typed effects of the actual
+`JdbcCanonicalImportWriter`, including its shared kernel and merge planner,
+from a fresh private database. Its separate publication database exposes all
+effect tables through committed-unit read views. This is explicitly an
+**empty-base experiment**: it is not an existing-data migration, selective
+hydration implementation, update/delete version resolver or runtime adapter.
+No opaque serialized business row or replacement import mutation algorithm is
+introduced. Native constraints and update counts still run in private tables.
+
+The additional existing-contract-suite case uses 60 logical rows with two
+fan-out artifacts, one COALESCE member warning and one rejected row. Real slot
+reconciliation allocates 60 unique namespace slots and records the occupied
+requested-slot fallback. Independently committed hidden typed chunks keep
+rows, aliases, slots and receipt children invisible. One publication makes
+them visible together; a pinned reader retains the old snapshot. The real
+safe clock owns publication UTC, including first/last confirmation, validity,
+source summaries, slot timestamps and complete import receipt timestamps.
+
+Every transported typed table is compared, including NULLs, internal identities,
+keys, counts, slots, revisions, generations and receipt evidence, with a second
+corrected current SQLite writer using the same stage and publication UTC.
+After deleting the stage, the production canonical import port returns
+ALREADY_COMMITTED and the actual service ledger advances to CANONICAL_COMMITTED
+through `DataframeImportPromotionService`. Provenance and warning/rejection
+evidence remain unchanged. No alternate recovery algorithm is supplied.
+
+ID reservations in this initial fan-out case still originate in its isolated
+private writer. They are not a qualified authoritative reservation adapter for
+concurrent publications. Slot mutations/readers, expiry/retention writes,
+populated-base selective hydration and complete ordinary confirmation receipts
+remain C2 integration seams. Do not infer C3 readiness from initial import replay.
+
 ### Bounded typed chunks for large source fan-in
 
 The typed kernel bridge now has an additional streaming path. One pinned
