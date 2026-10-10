@@ -5,6 +5,10 @@ activate it in the application, accept the proposed ADR, migrate populated
 databases, or close the capacity/operational gates C5/C6. SQLite remains the
 release backend; G6 remains `NOT_ACCEPTED`.
 
+Implementation references are `c4b93a4c` (cancellation and fault suite),
+`83112b94` (pending replacement/TTL/metadata oracles), `c93490ee` (sidecar race),
+`8b282266` (all-family crash oracle) and `e683f298` (root failure preservation).
+
 ## Executable boundaries
 
 `StagedPublicationFaultIT` owns a child JVM, real service/dataframe SQLite files,
@@ -66,6 +70,15 @@ quota relaxation. Deterministic visitor-failure regressions exercise this race
 without timing dependence; all 59 workspace-suite invocations passed in
 `.dev/c4-disk-focused-1.log`.
 
+The subsequent full run (`.dev/c4-verify-3.log`) passed functional suites,
+coverage and CPD, but SpotBugs rejected a nullable `Path.getFileName()` dereference
+in the new visitor. An explicit filename guard and root-callback regression
+preserve the original I/O error instead of replacing it with a null-pointer
+exception. All 60 workspace invocations then passed in
+`.dev/c4-disk-focused-2.log`; the module raw report returned to its 94 reviewed
+findings, with zero visible findings, analyzer errors or missing classes.
+No acceptance, suppression, analyzer scope or coverage baseline was changed.
+
 ## Remaining limits
 
 Forced termination is local process-loss evidence, not a power-loss or broken
@@ -84,7 +97,23 @@ service ledger continues to own forward delivery coordination.
 
 `make test-one MODULE=adapters/adapter-store-jdbc TEST=StagedPublicationFaultIT`
 passed all 29 invocations with zero failures, errors or skips
-(`.dev/c4-focused-11.log`). Complete final-worktree repository gates are required.
-The execution record will identify their results after review of the generated
-coverage, raw SpotBugs, CPD, PMD and resource watchlist reports. Intermediate
-failed fixture/gate logs remain under `.dev/`; they are not acceptance evidence.
+(`.dev/c4-focused-11.log`). The 60-invocation workspace suite also passes; its
+regressions cover the disk accounting correction and unchanged fail-closed limits.
+The full reactor additionally executed all 29 fault invocations successfully
+before the static-analysis rejection described above.
+
+The resource/exception watchlist was reviewed after the corrections: 79 advisory
+findings (67 CloseResource, 10 PreserveStackTrace, two NcssCount), unchanged from
+C3, with no processing errors. The new disk visitor and changed publication
+cleanup have no watchlist findings. The factory's six existing findings concern
+returned lease ownership and rethrowing the same typed fatal error; ownership
+callbacks, failed-open cleanup and original causes remain intact and exercised
+by the workspace suite. Watchlist results do not refresh regular PMD evidence.
+
+Repository completion requires `make verify`, `make pmd-analysis`,
+`make pmd-watchlist` and `make docs` after this documentation synchronization.
+Inspect the generated coverage, raw SpotBugs, CPD, PMD and resource watchlist
+reports. `make context` and the local verification records must identify the
+final HEAD, passing results, fresh verify/PMD evidence and a clean tree.
+Focused checks never substitute for those gates. Intermediate failed
+fixture/gate logs remain under `.dev/`; they are not acceptance evidence.

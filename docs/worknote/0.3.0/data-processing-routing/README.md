@@ -179,8 +179,8 @@ complete-service promotion decision. It does not imply G6 acceptance.
 [CAP-7C transaction design](cap-7c-transaction-design.md) records the current
 atomic-visibility regression, canonical ownership seams and staged/versioned
 SQLite protocol work. SQLite is mandatory for 0.3.0; PostgreSQL is deferred
-outside this release. Candidate integration is isolated; fault, capacity and
-operational promotion remain open.
+outside this release. Candidate integration and its deterministic fault matrix
+are isolated; capacity and operational promotion remain open.
 
 [CAP-7C C2 physical experiment](cap-7c-c2-experiment.md) records the fenced
 chunk/publication primitive, indexed visibility and deterministic checks in test
@@ -190,5 +190,11 @@ close C2; sustainable-load capacity acceptance remains separate.
 [CAP-7C C3 integration](cap-7c-c3-integration.md) records the isolated native-port
 candidate: bounded private capture/transfer, committed readers and controls,
 receipt-only replay, native/TCK equivalence and resource/failure boundaries.
-Default runtime constructors remain unchanged. C4 fault/restart, C5 whole-service
-capacity and C6 migration/operations/activation remain separate promotion gates.
+Default runtime constructors remain unchanged. C5 whole-service capacity and C6
+migration/operations/activation remain separate promotion gates.
+
+[CAP-7C C4 fault/restart qualification](cap-7c-c4-fault-matrix.md) records 29 native
+fault/concurrency scenarios, real child-process termination and reopening,
+all-family visibility and service-ledger recovery from receipt without stage.
+It also records cancellation-owner cleanup and SQLite sidecar-accounting fixes,
+failed development gates, focused regressions and final verification requirements.

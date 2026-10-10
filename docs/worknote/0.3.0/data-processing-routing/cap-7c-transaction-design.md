@@ -2,8 +2,9 @@
 
 Status: in progress, contract baseline and C1 proposed protocol implemented;
 SQLite is the required backend for release 0.3.0. The isolated native-port
-candidate is implemented and deterministically qualified; fault, whole-service capacity and operational promotion gates remain
-open. The default production transaction, schema, configuration and deployed
+candidate and deterministic fault/restart matrix are implemented; whole-service
+capacity and operational promotion gates remain open. The default production
+transaction, schema, configuration and deployed
 state are unchanged. This is an execution design for
 [CAP-7C](data-processing-capacity-plan.md#cap-7--conditional-follow-on-architecture-decisions),
 not capacity acceptance. [ADR 0041](../../../ADR/0041-sqlite-staged-publication-experiment.md)
@@ -21,8 +22,10 @@ The owner resolved the lifecycle race on 2026-10-10: use fresh safe UTC at
 publication. A lifecycle that expires during preparation must be replaced by
 a new lifecycle; it cannot be restored or renewed. Proposed ADR 0041 records
 this explicit refinement to ADR 0020. The candidate qualifies typed-kernel
-equivalence and publication-clock boundaries. Complete crash/restart recovery and resource/operational
-qualification are still required before production activation.
+equivalence and publication-clock boundaries. [C4 fault qualification](cap-7c-c4-fault-matrix.md)
+adds process termination/reopen, receipt-only service-ledger recovery, cancellation,
+stale workers, concurrent controls and all-family visibility oracles. Final repository
+gates and resource/operational qualification remain required before production activation.
 
 ## Confirmed release boundary
 
@@ -202,7 +205,7 @@ back to the current oversized transaction silently.
 | C1 SQLite protocol | Backend constraint confirmed; proposed ADR 0041 fixes the physical protocol | Proposed protocol recorded; publication UTC confirmed by owner; no production activation |
 | C2 persistence experiment | Implemented in isolated test scope, including real-kernel ordinary/populated-import ports and authoritative ranges | Typed table equivalence, receipt replay, safe clock, indexed 100,001-version deadline lookup and bounded durable ownership/rebuild checks pass; capacity acceptance remains C5 |
 | C3 complete integration | Implemented isolated candidate: native ordinary/import preparation, committed readers/controls and bounded capture/transfer/reclamation | Native equivalence and inherited import/lifecycle TCKs; final repository gates apply; default-runtime activation remains C6 |
-| C4 faults/concurrency | Crash/cancel/conflict/restart matrix below | Pending never visible; no half delivery; rank/TTL/slot/recovery equivalence |
+| C4 faults/concurrency | Implemented isolated native crash/cancel/conflict/restart matrix; see C4 execution report | 29 deterministic fault invocations plus workspace regressions; pending never visible, no half delivery, rank/TTL/slot/recovery oracles; final repository gates apply |
 | C5 capacity comparison | Corrected and versioned SQLite, identical workload/results/limits, complete-service metrics | Physical occupancy, eligible waits and total resources meet adopted limits; retain failed cells |
 | C6 migration/operations | Drained upgrade, rollback backup/restore, readiness/health, durable cleanup and deployment procedure | Full adapter/TCK and operational qualification; accepted ADR before activation |
 

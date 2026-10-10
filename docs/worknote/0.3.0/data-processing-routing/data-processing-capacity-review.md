@@ -844,3 +844,13 @@ Java or analyzer scope was changed in this review. Runtime `make verify` and
 `make pmd-analysis` were not rerun: `make context` reports their previous passing
 evidence at `860a3b2bdf3c`, with both freshness flags false for reviewed HEAD
 `ffccda9da84a`. Those gates are required again when a runtime correction is made.
+
+### 2026-10-11 isolated publication fault follow-up
+
+[CAP-7C C4](cap-7c-c4-fault-matrix.md) now implements the deterministic native
+fault/restart matrix, including process termination, pending visibility,
+receipt-only service-ledger recovery and competing controls/workers. It records
+cancellation cleanup and SQLite sidecar-accounting corrections with retained
+failed gates and focused regressions. The default runtime remains native; C7's
+whole-service occupancy question is still a C5 measurement and C6 activation
+decision. These finite fault oracles do not change G6 `NOT_ACCEPTED`.

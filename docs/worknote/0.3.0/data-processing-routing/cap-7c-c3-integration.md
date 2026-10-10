@@ -140,7 +140,9 @@ triggers. Neither detector scope nor coverage baseline was relaxed.
 ## Remaining promotion gates
 
 C4 owns the complete crash/cancel/conflict/process-restart matrix, including
-service-ledger wiring and recovery of abandoned ownership. C5 owns paired
+service-ledger wiring and recovery of abandoned ownership.
+The [C4 execution report](cap-7c-c4-fault-matrix.md) now records that implemented
+deterministic matrix and its remaining scope limits. C5 owns paired
 whole-service capacity comparison, sustainable invalidation/progress, physical
 writer occupancy, eligible waits, read amplification and total heap/RSS/WAL/disk
 cost. C6 owns drained migration/backup rollback, readiness/health, runtime

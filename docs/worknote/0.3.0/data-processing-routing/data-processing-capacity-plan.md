@@ -554,8 +554,10 @@ The [CAP-7C transaction design](cap-7c-transaction-design.md) decomposes this
 track into contract, architecture, candidate integration, fault, capacity and
 migration slices. C2 is closed and [C3 native-port integration](cap-7c-c3-integration.md)
 is implemented as an isolated SQLite candidate with deterministic native/TCK
-evidence. Final repository gates still apply. C4 crash/concurrency, C5
-whole-service capacity and C6 migration/operational activation remain open;
+evidence. [C4 fault/restart qualification](cap-7c-c4-fault-matrix.md) implements
+the deterministic native matrix, including real service-ledger receipt-only
+recovery and cancellation/quota regressions. Final repository gates still apply.
+C5 whole-service capacity and C6 migration/operational activation remain open;
 the default native runtime and G6 NOT_ACCEPTED status are unchanged.
 
 Redis is outside the current mandatory track: no demonstrated shared reusable
