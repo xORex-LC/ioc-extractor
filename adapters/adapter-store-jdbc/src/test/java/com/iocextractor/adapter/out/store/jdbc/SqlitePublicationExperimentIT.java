@@ -421,7 +421,7 @@ class SqlitePublicationExperimentIT {
                         11 + source, 101 + source, registration, source);
             }
             var chunks = new java.util.concurrent.atomic.AtomicInteger();
-            var pending = experiment.stageChunks("large-typed", "one.example", 0, ordinal -> {
+            var pending = experiment.stageChunks("large-typed", "one.example", 0, (attempt, ordinal) -> {
                 chunks.incrementAndGet();
                 // A real CONTROL transaction must commit after each released physical chunk.
                 experiment.admission.execute(OperationClass.CONTROL, () -> {
@@ -436,6 +436,24 @@ class SqlitePublicationExperimentIT {
                     }
                     return null;
                 });
+                try {
+                    experiment.retryChunk(attempt, ordinal - 1);
+                    if (ordinal == 1) {
+                        try (var c = experiment.working.getConnection(); var s = c.createStatement()) {
+                            s.executeUpdate("UPDATE masks SET name='changed-retry'");
+                        }
+                        try {
+                            assertThatThrownBy(() -> experiment.retryChunk(attempt, 0))
+                                    .hasRootCauseMessage("Changed chunk retry");
+                        } finally {
+                            try (var c = experiment.working.getConnection(); var s = c.createStatement()) {
+                                s.executeUpdate("UPDATE masks SET name='name'");
+                            }
+                        }
+                    }
+                } catch (SQLException failure) {
+                    throw new AssertionError(failure);
+                }
             });
             assertThat(chunks.get()).isEqualTo(3);
             experiment.wallClock.advance(Duration.ofSeconds(3));
@@ -444,6 +462,7 @@ class SqlitePublicationExperimentIT {
             try (var base = experiment.published.getConnection()) {
                 base.setAutoCommit(false);
                 assertThat(queryNumber(base, "SELECT COUNT(*) FROM masks_sources")).isEqualTo(520);
+                assertThat(queryNumber(base, "SELECT COUNT(*) FROM masks_sources_probe_version")).isEqualTo(520);
                 assertThat(queryNumber(base, "SELECT SUM(occurrences) FROM masks_sources")).isEqualTo(520);
                 assertThat(queryNumber(base, "SELECT MAX(_last_confirmed_at_epoch_ms) FROM masks"))
                         .isEqualTo(NOW + 3_000);
@@ -451,7 +470,7 @@ class SqlitePublicationExperimentIT {
                 base.rollback();
             }
             experiment.confirm("one.example", "new-name", "source:0", 1_000, 1_000, next, 0);
-            var update = experiment.stageChunks("large-typed-update", "one.example", 1, ignored -> { });
+            var update = experiment.stageChunks("large-typed-update", "one.example", 1, (attempt, ordinal) -> { });
             experiment.publish(update);
             try (var c = experiment.published.getConnection()) {
                 assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks_sources")).isEqualTo(520);

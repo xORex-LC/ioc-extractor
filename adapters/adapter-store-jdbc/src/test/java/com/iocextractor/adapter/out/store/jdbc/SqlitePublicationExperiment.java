@@ -159,7 +159,8 @@ final class SqlitePublicationExperiment {
         }
     }
 
-    void append(Connection connection, Attempt attempt, int ordinal, List<Fact> facts) throws SQLException {
+    /** Returns false for an exact acknowledged replay, before any typed effect must be copied. */
+    boolean append(Connection connection, Attempt attempt, int ordinal, List<Fact> facts) throws SQLException {
         requireTransaction(connection);
         requireState(connection, attempt, "PENDING");
         if (facts.isEmpty() || facts.size() > CHUNK_FACT_LIMIT) {
@@ -175,7 +176,7 @@ final class SqlitePublicationExperiment {
             try (ResultSet result = statement.executeQuery()) {
                 if (result.next()) {
                     if (!digest.equals(result.getString(1))) { throw new SQLException("Changed chunk retry"); }
-                    return;
+                    return false;
                 }
             }
         }
@@ -222,6 +223,7 @@ final class SqlitePublicationExperiment {
             statement.setString(4, digest);
             statement.executeUpdate();
         }
+        return true;
     }
 
     void seal(Connection connection, Attempt attempt) throws SQLException {

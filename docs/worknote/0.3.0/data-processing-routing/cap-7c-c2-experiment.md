@@ -293,7 +293,15 @@ complete selective hydration, and a subsequent source update with 521 total
 occurrences while keeping 520 source summaries. Private hydration streams all
 children; the old 256-child cap is no longer applied to that private operation.
 
-Chunk restart/replay for typed rows, byte-adaptive partitioning, private workspace
+Typed append now validates the journal before copying typed effects. An exact
+acknowledged replay is a no-op for both the physical typed tables and the generic
+pointer journal; a changed retry rolls back without changing the prior chunk.
+The large fan-in case replays each acknowledged chunk and changes one retained
+private value to verify digest mismatch rejection. It checks physical source
+version counts as well as public summaries, so duplicate copies cannot hide
+behind an unchanged CSV result.
+
+Process restart/ownership recovery, byte-adaptive partitioning, private workspace
 quotas and production retention still need integration. A single typed row over
 the byte limit fails closed; chunk overflow never invokes an oversized fallback.
 This small test is not a physical-hold or whole-service capacity measurement.

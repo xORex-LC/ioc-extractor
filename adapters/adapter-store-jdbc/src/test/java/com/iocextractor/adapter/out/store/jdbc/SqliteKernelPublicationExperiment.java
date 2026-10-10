@@ -39,7 +39,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.IntConsumer;
+import java.util.function.BiConsumer;
 
 import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.quote;
 
@@ -207,7 +207,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
     }
 
     /** Streams a complete typed working set through independently committed bounded chunks. */
-    Attempt stageChunks(String unit, String mask, long epoch, IntConsumer afterChunk) throws SQLException {
+    Attempt stageChunks(String unit, String mask, long epoch, BiConsumer<Attempt, Integer> afterChunk) throws SQLException {
         try (var source = working.getConnection()) {
             source.setAutoCommit(false);
             try {
@@ -245,14 +245,14 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
                             if (batch.size() == 256) {
                                 appendTypedChunk(attempt, ordinal++, batch);
                                 batch.clear();
-                                afterChunk.accept(ordinal);
+                                afterChunk.accept(attempt, ordinal);
                             }
                         }
                     }
                 }
                 if (!batch.isEmpty()) {
                     appendTypedChunk(attempt, ordinal++, batch);
-                    afterChunk.accept(ordinal);
+                    afterChunk.accept(attempt, ordinal);
                 }
                 int finalOrdinal = ordinal;
                 write(c -> {
@@ -274,6 +274,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
         write(c -> {
             var digest = new SqlitePublicationChunkDigest();
             var facts = new ArrayList<Fact>(batch.size());
+            var versions = new ArrayList<PendingTypedRow>(batch.size());
             for (int index = 0; index < batch.size(); index++) {
                 TypedRow row = batch.get(index);
                 List<String> names = columns.get(row.table());
@@ -298,25 +299,63 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
                 digest.row();
                 digest.field(row.table());
                 for (Object value : values) { digest.field(value); }
-                try (var insert = c.prepareStatement("INSERT INTO " + quote(row.table() + "_probe_version")
-                        + " (" + JdbcSql.joinedQuoted(names) + ",unit_id,fence" + anchors + ") VALUES ("
-                        + JdbcSql.placeholders(values.size()) + ")")) {
-                    for (int parameter = 0; parameter < values.size(); parameter++) {
-                        insert.setObject(parameter + 1, values.get(parameter));
-                    }
-                    insert.executeUpdate();
-                }
+                versions.add(new PendingTypedRow(row.table(), anchors,
+                        java.util.Collections.unmodifiableList(values)));
                 facts.add(new Fact("typed", "masks", ordinal + ":" + index, row.table()));
             }
             // The chunk journal covers typed bytes as well as its logical pointers.
             String payload = digest.finish();
             facts.replaceAll(fact -> new Fact(fact.family(), fact.scope(), fact.key(), payload));
-            probe.append(c, attempt, ordinal, facts);
+            if (probe.append(c, attempt, ordinal, facts)) {
+                for (var version : versions) {
+                    try (var insert = c.prepareStatement("INSERT INTO " + quote(version.table() + "_probe_version")
+                            + " (" + JdbcSql.joinedQuoted(columns.get(version.table())) + ",unit_id,fence"
+                            + version.anchors() + ") VALUES (" + JdbcSql.placeholders(version.values().size()) + ")")) {
+                        for (int parameter = 0; parameter < version.values().size(); parameter++) {
+                            insert.setObject(parameter + 1, version.values().get(parameter));
+                        }
+                        insert.executeUpdate();
+                    }
+                }
+            }
             return null;
         });
     }
 
+    /** Replays one acknowledged chunk from the retained private working set, under its current fence. */
+    void retryChunk(Attempt attempt, int ordinal) throws SQLException {
+        var batch = new ArrayList<TypedRow>(256);
+        long start = Math.multiplyExact((long) ordinal, 256);
+        long position = 0;
+        try (var c = working.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                for (String table : TABLES) {
+                    String projection = JdbcSql.joinedQuoted(columns.get(table));
+                    try (var s = c.createStatement(); var rows = s.executeQuery("SELECT " + projection
+                            + " FROM " + quote(table) + " ORDER BY " + projection)) {
+                        while (rows.next() && batch.size() < 256) {
+                            if (position++ < start) { continue; }
+                            var values = new ArrayList<Object>();
+                            for (int index = 1; index <= columns.get(table).size(); index++) {
+                                values.add(rows.getObject(index));
+                            }
+                            batch.add(new TypedRow(table, java.util.Collections.unmodifiableList(values)));
+                        }
+                    }
+                    if (batch.size() == 256) { break; }
+                }
+                c.rollback();
+            } catch (SQLException | RuntimeException | Error failure) {
+                rollback(c, failure);
+                throw failure;
+            }
+        }
+        appendTypedChunk(attempt, ordinal, batch);
+    }
+
     private record TypedRow(String table, List<Object> values) { }
+    private record PendingTypedRow(String table, String anchors, List<Object> values) { }
 
     private Attempt stage(String unit, Attempt previous, String mask, long epoch, long minimumDeadline,
                            boolean renewTtl) {

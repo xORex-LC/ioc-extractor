@@ -209,22 +209,25 @@ final class SqliteImportPublicationExperiment {
                 for (Object value : row.values()) { digest.field(value); }
                 digest.field(attempt.unitId());
                 digest.field(attempt.fence());
-                try (var insert = c.prepareStatement("INSERT INTO " + quote(row.table() + "_import_probe")
-                        + " (" + joinedQuoted(columns.get(row.table())) + ",unit_id,fence) VALUES ("
-                        + placeholders(row.values().size() + 2) + ")")) {
-                    int parameter = 1;
-                    for (Object value : row.values()) { insert.setObject(parameter++, value); }
-                    insert.setLong(parameter++, attempt.unitId());
-                    insert.setLong(parameter, attempt.fence());
-                    insert.executeUpdate();
-                }
             }
             var facts = new ArrayList<Fact>(batch.size());
             String payload = digest.finish();
             for (int index = 0; index < batch.size(); index++) {
                 facts.add(new Fact("import-effect", SCOPE, ordinal + ":" + index, payload, attempt.unitId()));
             }
-            publication.append(c, attempt, ordinal, facts);
+            if (publication.append(c, attempt, ordinal, facts)) {
+                for (var row : batch) {
+                    try (var insert = c.prepareStatement("INSERT INTO " + quote(row.table() + "_import_probe")
+                            + " (" + joinedQuoted(columns.get(row.table())) + ",unit_id,fence) VALUES ("
+                            + placeholders(row.values().size() + 2) + ")")) {
+                        int parameter = 1;
+                        for (Object value : row.values()) { insert.setObject(parameter++, value); }
+                        insert.setLong(parameter++, attempt.unitId());
+                        insert.setLong(parameter, attempt.fence());
+                        insert.executeUpdate();
+                    }
+                }
+            }
             return null;
         });
     }
