@@ -143,10 +143,11 @@ floor, analyzer exclusion or production baseline is relaxed.
 
 ## Remaining C2 gate before C3
 
-The owner question about initial-owned-transaction UTC versus fresh publication
-UTC is pending. The prototype tests the latter. A preparation spanning an old
-deadline can change lifecycle/ID outcomes relative to the current adapter; do
-not infer semantic equivalence or activate this choice from the probe tests.
+On 2026-10-10 the owner confirmed fresh safe UTC at publication. A preparation
+spanning an old deadline must rebuild and create a new lifecycle, with new
+internal IDs, rather than renew an expired lifecycle. This intentional boundary
+change still requires qualification through the real kernel and ports; the
+prototype alone does not authorize production activation.
 
 The physical probe alone does not meet the C2 gate. Next work must connect typed
 facts to the real shared mutation kernel and existing canonical ports, covering

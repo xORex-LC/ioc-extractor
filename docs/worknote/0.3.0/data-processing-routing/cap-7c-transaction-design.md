@@ -13,10 +13,11 @@ The [C2 physical experiment](cap-7c-c2-experiment.md) now implements fenced
 hidden chunks, contribution folding, publication and indexed visibility in
 test scope. It does not yet meet C2's real-kernel/canonical-port gate and does
 not authorize C3 production integration.
-The lifecycle race across preparation/publication now has an explicit owner
-question: preserve ADR 0020's initial-owned-transaction UTC or adopt final
-publication UTC. Proposed ADR 0041 and C2 tests demonstrate the latter; they
-do not silently supersede the existing lifecycle/ID behavior.
+The owner resolved the lifecycle race on 2026-10-10: use fresh safe UTC at
+publication. A lifecycle that expires during preparation must be replaced by
+a new lifecycle; it cannot be restored or renewed. Proposed ADR 0041 records
+this explicit refinement to ADR 0020. The protocol still needs typed-kernel,
+clock and recovery qualification before production activation.
 
 ## Confirmed release boundary
 
@@ -193,7 +194,7 @@ back to the current oversized transaction silently.
 | Slice | Deliverable | Gate |
 |---|---|---|
 | C0 contract baseline | Current real SQLite pending visibility, matching, pinned snapshots and receipt-only replay | Existing suite plus new deterministic regression; implemented |
-| C1 SQLite protocol | Backend constraint confirmed; proposed ADR 0041 fixes the physical protocol | Proposed protocol recorded; temporal owner decision remains open; no production activation |
+| C1 SQLite protocol | Backend constraint confirmed; proposed ADR 0041 fixes the physical protocol | Proposed protocol recorded; publication UTC confirmed by owner; no production activation |
 | C2 persistence experiment | Physical primitive implemented in test scope; real-kernel/port experiment still required | Exact-driver visibility/fence/query checks implemented; typed kernel, clock, deadline indexes and finite progress remain open |
 | C3 complete integration | Ordinary writer, import, active reads, lifecycle, slots, revisions and receipts use the chosen model | Same semantic oracle as corrected SQLite; no alternate runtime mutation engine |
 | C4 faults/concurrency | Crash/cancel/conflict/restart matrix below | Pending never visible; no half delivery; rank/TTL/slot/recovery equivalence |

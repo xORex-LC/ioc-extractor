@@ -100,15 +100,16 @@ attempts end the publication attempt with retryable failure, not an oversized
 fallback transaction. This bounds one attempt, not eventual queue progress;
 sustained mixed-load qualification must prove progress at admitted intake.
 
-**Open owner decision:** this publication-time proposal differs from the
-first-owned-transaction UTC used by [ADR 0020](0020-canonical-record-expiration-lifecycle.md).
-If preparation starts before an existing deadline but publication occurs after
-it, the current large transaction can renew the original lifecycle; the proposed
-fresh-UTC check requires a new lifecycle. The internal ID outcome and TTL origin
-therefore need an explicit decision before typed-kernel integration. Preserving
-initial-ownership semantics needs its own expiry/reader/conflict proof, not an
-implicit global writer lock or unqualified expiry deferral. The experiment's
-publication-time tests do not constitute acceptance of this business change.
+**Owner decision, 2026-10-10:** use fresh safe UTC at publication. This
+refines the first-owned-transaction time in
+[ADR 0020](0020-canonical-record-expiration-lifecycle.md) for the proposed
+staged protocol. If preparation starts before an existing deadline but
+publication occurs at or after it, rebuild against publication time and create
+a new lifecycle with new, non-reusable internal IDs. Never restore or renew
+the expired lifecycle. Preserve observation identity, admission rank and policy
+pins across the rebuild; burned ID reservations remain burned. The owner has
+confirmed this boundary behavior, but production activation still requires the
+integration, fault, migration and capacity gates of this proposed ADR.
 
 New or renewed versions reference the publishing header's effective UTC and
 their fixed validity duration. Versions not renewed retain their prior deadline

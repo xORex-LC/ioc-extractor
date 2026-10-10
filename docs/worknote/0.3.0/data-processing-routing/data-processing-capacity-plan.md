@@ -538,6 +538,12 @@ a prerequisite or an implicit fallback if this release fails its gates.
 | CAP-7C: SQLite transaction visibility | Largest atomic unit exceeds required control/export latency after SQL correction | ADR and complete crash/visibility/conflict/TTL/receipt/slot/revision protocol; compare corrected current SQLite and staged/versioned SQLite under equal guarantees/resources |
 | CAP-7D: alternate private reducer backend | Private spool dominates measured disk/CPU/native budget | Compare private SQLite, external sort/reduce or another admitted backend with serialization, cleanup/recovery and total resources included |
 
+**2026-10-10 temporal owner decision:** CAP-7C uses fresh safe UTC at publication.
+When an old lifecycle expires during preparation, rebuild creates a new
+lifecycle and new non-reusable internal IDs; it must not restore the expired
+lifecycle. Preserve observation, rank and policy pins across rebuilds. This
+refinement is recorded in proposed ADR 0041; it is not production activation.
+
 For CAP-7C, acceptance must prove pending data is never exported/matched as
 committed data, final receipt/visibility is atomic, concurrent observations keep
 their conflict/rank contract and restart/cancellation cannot expose half a
