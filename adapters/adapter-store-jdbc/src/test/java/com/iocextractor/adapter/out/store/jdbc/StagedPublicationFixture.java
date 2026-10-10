@@ -51,6 +51,8 @@ import com.iocextractor.application.export.ExportProfile;
 import com.iocextractor.application.export.SnapshotArtifactMetadata;
 import com.iocextractor.application.export.SnapshotMetadata;
 import com.iocextractor.application.export.SnapshotRequest;
+import com.iocextractor.application.observation.OccurrencePosition;
+import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportCommand;
 import com.iocextractor.application.port.out.dataframeimport.CreateImportWorkspaceCommand;
 import com.iocextractor.application.port.out.export.SnapshotRowConsumer;
@@ -90,6 +92,11 @@ final class StagedPublicationFixture implements AutoCloseable {
 
     StagedPublicationFixture(Path root, boolean fresh, JdbcPublicationObserver observer,
                              Map<String, ArtifactWritePolicy> policies) {
+        this(root, fresh, observer, policies, CLOCK);
+    }
+
+    StagedPublicationFixture(Path root, boolean fresh, JdbcPublicationObserver observer,
+                             Map<String, ArtifactWritePolicy> policies, Clock wall) {
         this.root = root;
         dataframe = database(root.resolve("dataframe.db"));
         try {
@@ -112,8 +119,8 @@ final class StagedPublicationFixture implements AutoCloseable {
                         new CanonicalArtifactIdentityResolver(identities), "fault-test");
                 var configuration = new JdbcStagedCanonicalConfiguration(dataframe, schemas,
                         schemas.stream().map(s -> new ArtifactIdAllocatorDefinition(s.artifactName(), ArtifactIdStrategy.ASCENDING, 1, 1)).toList(),
-                        identities, new JdbcLifecycleClock(dataframe, CLOCK,
-                        new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30)), admission), CLOCK,
+                        identities, new JdbcLifecycleClock(dataframe, wall,
+                        new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30)), admission), wall,
                         new FixedRecordValidityPolicy(Duration.ofHours(12)), admission, workspaces, root.resolve("stage"), policies, Duration.ofDays(90));
                 backend = fresh ? JdbcStagedCanonicalBackend.createEmpty(configuration, observer)
                         : JdbcStagedCanonicalBackend.reopen(configuration, observer);
@@ -127,14 +134,21 @@ final class StagedPublicationFixture implements AutoCloseable {
     }
 
     CanonicalArtifactConfirmation document(String observation, String value, String source) {
+        return document(observation, value, source, null);
+    }
+
+    CanonicalArtifactConfirmation document(String observation, String value, String source,
+                                           RegisteredObservation registration) {
         var fields = new LinkedHashMap<String, String>();
         fields.put("id", null); fields.put("mask", value); fields.put("source", source); fields.put("description", null);
-        var prepared = new PreparedArtifactRow(ArtifactRow.ordered(fields), Optional.of("id"));
+        var positions = registration == null ? Map.<String, OccurrencePosition>of()
+                : Map.of("source", new OccurrencePosition(0));
+        var prepared = new PreparedArtifactRow(ArtifactRow.ordered(fields), Optional.of("id"), positions);
         var key = new CanonicalArtifactKeyResolver(identities).recordKeyOf("masks", prepared.template()).orElseThrow();
         return new CanonicalArtifactConfirmation(new ObservationId(observation), source,
                 new ConfirmationReceiptContext(new ConfirmationReceiptId(observation + "-receipt"), "fault-policy", 1, Duration.ofDays(30)),
                 "masks", schemas.getFirst().columns().stream().map(DataframeColumn::name).toList(),
-                List.of(new CanonicalRecordConfirmation(new ArtifactRowKey(key.keyHash()), prepared)));
+                List.of(new CanonicalRecordConfirmation(new ArtifactRowKey(key.keyHash()), prepared)), registration);
     }
 
     CanonicalImportCommand stageAndRegister() {

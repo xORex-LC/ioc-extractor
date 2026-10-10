@@ -31,11 +31,11 @@ unchanged and advance the ledger to `CANONICAL_COMMITTED`.
 | Fan-out/receipt staged before visibility flip | Forced termination inside the uncommitted publication transaction; neither complete receipt nor partial artifact membership survives |
 | Flip failure/cancellation | SQLite trigger abort, runtime exception, fatal error, and thread interruption; publication sequence, public facts and ledger do not advance; burned reservations are not reused |
 | Commit before service-ledger transition | Real `DataframeImportPromotionService` resumes `PROMOTING` from receipt without stage, with identical canonical tables/IDs/provenance |
-| Old worker resumes after new fence | Timed two-worker test; replacement commits; obsolete worker cannot publish or cancel it; all native facts remain unchanged |
+| Old worker resumes after new fence | Timed two-worker test; replacement remains SEALED while the obsolete worker resumes; its fence, pending state and all native facts remain unchanged, then it commits |
 | Same-key document/import, reverse completion | Real shared observation registrations, ordered field origin, KEEP_FIRST identity and both source summaries; different ready units cannot overtake logical ownership |
-| TTL equality/preparation crossing deadline | C3 native import/lifecycle TCK and `stagedBackendUsesNativeImportAndRebuildsExpiredNoopAtPublicationWithoutResurrection`: same admitted observation, new non-reusable identities, no expired resurrection |
+| TTL equality/preparation crossing deadline | Actual expiry and slot reconciliation at deadline equality while import is prepared force one rebuild; new canonical/lifecycle IDs, fresh-publication deadline, old history/alias closure and lowest-hole slot reuse; C3 also covers deadline crossing without a control |
 | Slot collision/control during preparation | Real snapshot control acquires survivor slot while import is paused; dependency conflict forces rebuild; survivor remains at 1, fallbacks use lowest holes and receipt records collisions |
-| Metadata-only updates and renewal-only observations | Inherited native lifecycle/import TCK plus C3 tri-state/ordered-field and same-instant journal tests; no lost origin/deadline, supported revision/generation rules |
+| Metadata-only updates and renewal-only observations | Later registered observation advances ordered origin with equal public bytes; safe UTC advances inside publication, then renewal-only observation advances deadline; IDs, revision and generation remain stable; inherited native TCK covers merge/tri-state outcomes |
 | Reader across publication/cleanup | One real SQLite snapshot checks every transported family while publication and bounded version cleanup run; after rollback it sees new facts and WAL truncation is not busy |
 | Quota/corruption/shutdown | C3 actual workspace/hydration quota and interruption guards; C4 forced process death and missing/truncated sealed stage fail closed; restoring exactly the pinned bytes permits retry |
 
@@ -71,7 +71,9 @@ service ledger continues to own forward delivery coordination.
 
 ## Verification
 
-Focused fault-suite and complete final-worktree repository gates are required.
+`make test-one MODULE=adapters/adapter-store-jdbc TEST=StagedPublicationFaultIT`
+passed all 29 invocations with zero failures, errors or skips
+(`.dev/c4-focused-10.log`). Complete final-worktree repository gates are required.
 The execution record will identify their results after review of the generated
 coverage, raw SpotBugs, CPD, PMD and resource watchlist reports. Intermediate
 failed fixture/gate logs remain under `.dev/`; they are not acceptance evidence.

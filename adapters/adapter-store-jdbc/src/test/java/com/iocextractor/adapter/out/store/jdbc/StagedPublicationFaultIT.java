@@ -1,20 +1,21 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
-import com.iocextractor.application.artifact.PreparedArtifactRow;
-import com.iocextractor.application.artifact.lifecycle.CanonicalArtifactConfirmation;
-import com.iocextractor.application.artifact.lifecycle.CanonicalRecordConfirmation;
+import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryState;
 import com.iocextractor.application.observation.ObservationOrigin;
-import com.iocextractor.application.observation.OccurrencePosition;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportCommand;
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.common.IocExtractorException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -26,6 +27,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -102,27 +104,34 @@ class StagedPublicationFaultIT {
     @Test
     void anOldWorkerCannotPublishOrCancelTheReplacementAttempt() throws Exception {
         Path root = Files.createDirectory(temporary.resolve("fenced"));
-        var ready = new CountDownLatch(1);
-        var resume = new CountDownLatch(1);
+        var ready = new CountDownLatch(1); var resume = new CountDownLatch(1);
+        var replacementReady = new CountDownLatch(1); var replacementResume = new CountDownLatch(1);
         var armed = new AtomicBoolean();
         try (var fixture = new StagedPublicationFixture(root, true, (phase, attempt, chunk) -> {
-            if (armed.get() && phase == JdbcPublicationObserver.Phase.SEALED) {
-                ready.countDown(); await(resume);
-            }
-        }); var workers = Executors.newSingleThreadExecutor()) {
+            if (armed.get() && phase == JdbcPublicationObserver.Phase.SEALED) { ready.countDown(); await(resume); }
+        }); var replacement = new StagedPublicationFixture(root, false, (phase, attempt, chunk) -> {
+            if (phase == JdbcPublicationObserver.Phase.SEALED) { replacementReady.countDown(); await(replacementResume); }
+        }); var workers = Executors.newFixedThreadPool(2)) {
             fixture.seed(); var command = fixture.stageAndRegister(); armed.set(true);
             Future<?> obsolete = workers.submit(() -> fixture.backend.imports().promote(command));
             try {
                 assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
-                try (var replacement = new StagedPublicationFixture(root, false, JdbcPublicationObserver.NOOP)) {
-                    replacement.backend.imports().promote(command);
-                    var committed = allFacts(replacement);
-                    resume.countDown();
-                    assertThatThrownBy(() -> obsolete.get(10, TimeUnit.SECONDS)).hasRootCauseMessage("Stale logical promotion owner");
-                    assertThat(allFacts(replacement)).isEqualTo(committed);
-                    assertThat(replacement.text("SELECT state FROM publication_unit WHERE identity='import:fault-delivery'")).isEqualTo("COMMITTED");
-                }
-            } finally { resume.countDown(); workers.shutdownNow(); assertThat(workers.awaitTermination(5, TimeUnit.SECONDS)).isTrue(); }
+                Future<?> current = workers.submit(() -> replacement.backend.imports().promote(command));
+                assertThat(replacementReady.await(10, TimeUnit.SECONDS)).isTrue();
+                var before = allFacts(replacement);
+                long fence = replacement.number("SELECT fence FROM publication_unit WHERE identity='import:fault-delivery'");
+                resume.countDown();
+                assertThatThrownBy(() -> obsolete.get(10, TimeUnit.SECONDS)).hasRootCauseMessage("Stale logical promotion owner");
+                assertThat(replacement.text("SELECT state FROM publication_unit WHERE identity='import:fault-delivery'")).isEqualTo("SEALED");
+                assertThat(replacement.number("SELECT fence FROM publication_unit WHERE identity='import:fault-delivery'")).isEqualTo(fence);
+                assertThat(allFacts(replacement)).as("obsolete worker cannot cancel or mutate the live replacement").isEqualTo(before);
+                replacementResume.countDown(); current.get(10, TimeUnit.SECONDS);
+                assertThat(replacement.text("SELECT state FROM publication_unit WHERE identity='import:fault-delivery'")).isEqualTo("COMMITTED");
+                assertThat(replacement.number("SELECT COUNT(*) FROM import_commit")).isOne();
+            } finally {
+                resume.countDown(); replacementResume.countDown(); workers.shutdownNow();
+                assertThat(workers.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+            }
         }
     }
 
@@ -241,6 +250,79 @@ class StagedPublicationFaultIT {
     }
 
     @Test
+    void expiryAndSlotReconciliationDuringPreparationCannotResurrectTheOldLifecycle() throws Exception {
+        Path root = Files.createDirectory(temporary.resolve("expired-slots"));
+        var wall = new ControlledClock();
+        var paused = new CountDownLatch(1); var resume = new CountDownLatch(1);
+        var armed = new AtomicBoolean(); var rebuilds = new AtomicInteger();
+        try (var fixture = new StagedPublicationFixture(root, true, (phase, attempt, chunk) -> {
+            if (phase == JdbcPublicationObserver.Phase.REBUILD) { rebuilds.incrementAndGet(); }
+            if (phase == JdbcPublicationObserver.Phase.PREPARED && armed.getAndSet(false)) { paused.countDown(); await(resume); }
+        }, Map.of(), wall); var workers = Executors.newSingleThreadExecutor()) {
+            fixture.backend.confirmations().confirm(fixture.document("old-lifecycle", "fault-0.example", "fault-feed"));
+            long oldId = fixture.number("SELECT id FROM masks");
+            long oldLifecycle = fixture.number("SELECT _lifecycle_id FROM masks");
+            fixture.snapshot(); fixture.stageAndRegister();
+            wall.set(StagedPublicationFixture.NOW.plus(Duration.ofHours(12)).minusMillis(1));
+            armed.set(true);
+            var importWork = workers.submit(fixture::promoteHead);
+            try {
+                assertThat(paused.await(10, TimeUnit.SECONDS)).isTrue();
+                var equality = StagedPublicationFixture.NOW.plus(Duration.ofHours(12)); wall.set(equality);
+                assertThat(fixture.backend.expiry().expireDue("masks", EffectiveTime.at(equality), 1).expired()).isOne();
+                assertThat(fixture.snapshot()).isEmpty();
+                assertThat(fixture.number("SELECT COUNT(*) FROM export_slot_assignment")).isZero();
+                resume.countDown(); importWork.get(15, TimeUnit.SECONDS);
+                assertThat(rebuilds.get()).isOne();
+                assertThat(fixture.number("SELECT id FROM masks WHERE mask='fault-0.example'")).isGreaterThan(oldId);
+                long newLifecycle = fixture.number("SELECT _lifecycle_id FROM masks WHERE mask='fault-0.example'");
+                assertThat(newLifecycle).isGreaterThan(oldLifecycle);
+                assertThat(fixture.number("SELECT COUNT(*) FROM export_slot_assignment WHERE lifecycle_id=" + oldLifecycle)).isZero();
+                assertThat(fixture.number("SELECT slot FROM export_slot_assignment WHERE lifecycle_id=" + newLifecycle)).isOne();
+                assertThat(fixture.number("SELECT _valid_until_epoch_ms FROM masks WHERE mask='fault-0.example'"))
+                        .isEqualTo(equality.plus(Duration.ofHours(12)).toEpochMilli());
+                assertThat(fixture.number("SELECT effective_as_of_ms FROM import_commit")).isEqualTo(equality.toEpochMilli());
+                assertThat(fixture.number("SELECT COUNT(*) FROM masks_history WHERE former_row_id=" + oldId)).isOne();
+                assertThat(fixture.number("SELECT COUNT(*) FROM canonical_match_alias WHERE lifecycle_id=" + oldLifecycle)).isZero();
+            } finally { resume.countDown(); workers.shutdownNow(); assertThat(workers.awaitTermination(5, TimeUnit.SECONDS)).isTrue(); }
+        }
+    }
+
+    @Test
+    void metadataOnlyOriginAndRenewalOnlyObservationsPreserveRevisionAndGeneration() throws Exception {
+        Path root = Files.createDirectory(temporary.resolve("metadata-renewal"));
+        var wall = new ControlledClock(); var advance = new AtomicBoolean();
+        try (var fixture = new StagedPublicationFixture(root, true, (phase, attempt, chunk) -> {
+            if (phase == JdbcPublicationObserver.Phase.BEFORE_PUBLICATION && advance.getAndSet(false)) {
+                wall.set(StagedPublicationFixture.NOW.plusSeconds(5));
+            }
+        }, Map.of(), wall)) {
+            var registrations = new JdbcObservationRegistrationStore(fixture.dataframe, wall);
+            var first = registrations.registerNew(new ObservationId("origin-one"), ObservationOrigin.DOCUMENT);
+            fixture.backend.confirmations().confirm(fixture.document(first.observationId().value(), "metadata.example", "same-source", first));
+            long rowId = fixture.number("SELECT id FROM masks"); long lifecycle = fixture.number("SELECT _lifecycle_id FROM masks");
+            var second = registrations.registerNew(new ObservationId("origin-two"), ObservationOrigin.DOCUMENT);
+            advance.set(true);
+            var metadata = fixture.backend.confirmations().confirm(fixture.document(second.observationId().value(), "metadata.example", "same-source", second));
+            assertThat(metadata.metadataOnlyRows()).isOne(); assertThat(metadata.publicRowsChanged()).isZero();
+            assertThat(metadata.artifactRevision()).isOne(); assertThat(metadata.requiredProjectionGeneration().value()).isOne();
+            assertThat(fixture.number("SELECT admission_order FROM canonical_lifecycle_field_origin WHERE field_name='source'"))
+                    .isEqualTo(second.admissionOrder().value());
+            assertThat(fixture.number("SELECT _valid_until_epoch_ms FROM masks"))
+                    .isEqualTo(StagedPublicationFixture.NOW.plus(Duration.ofHours(12)).plusSeconds(5).toEpochMilli());
+            wall.set(StagedPublicationFixture.NOW.plusSeconds(10));
+            var renewal = fixture.backend.confirmations().confirm(fixture.document("renew-only", "metadata.example", "same-source"));
+            assertThat(renewal.renewed()).isOne(); assertThat(renewal.metadataOnlyRows()).isZero();
+            assertThat(renewal.artifactRevision()).isOne(); assertThat(renewal.requiredProjectionGeneration().value()).isOne();
+            assertThat(fixture.number("SELECT id FROM masks")).isEqualTo(rowId);
+            assertThat(fixture.number("SELECT _lifecycle_id FROM masks")).isEqualTo(lifecycle);
+            assertThat(fixture.number("SELECT _valid_until_epoch_ms FROM masks"))
+                    .isEqualTo(StagedPublicationFixture.NOW.plus(Duration.ofHours(12)).plusSeconds(10).toEpochMilli());
+            assertThat(fixture.number("SELECT COUNT(*) FROM canonical_observation_commit")).isEqualTo(3);
+        }
+    }
+
+    @Test
     void documentAndImportKeepSharedRegistrationPrecedenceWhenCompletionIsReversed() throws Exception {
         Path root = Files.createDirectory(temporary.resolve("ordered-origins"));
         var policy = new ArtifactWritePolicy(
@@ -253,16 +335,7 @@ class StagedPublicationFaultIT {
                     ObservationOrigin.MANAGED_IMPORT);
             var document = fixture.document("newer-document", "fault-0.example", "newer-source");
             var newer = registrations.registerNew(document.observationId(), ObservationOrigin.DOCUMENT);
-            CanonicalRecordConfirmation orderedRecord;
-            try (var cursor = document.records().open()) {
-                assertThat(cursor.next()).isTrue();
-                var record = cursor.value(); var prepared = record.preparedRow();
-                orderedRecord = new CanonicalRecordConfirmation(record.rowKey(),
-                        new PreparedArtifactRow(prepared.template(), prepared.idColumn(),
-                        Map.of("source", new OccurrencePosition(0))));
-            }
-            document = new CanonicalArtifactConfirmation(document.observationId(), document.sourceKey(),
-                    document.receipt(), document.artifactName(), document.header(), List.of(orderedRecord), newer);
+            document = fixture.document(document.observationId().value(), "fault-0.example", "newer-source", newer);
             fixture.backend.confirmations().confirm(document);
             long canonicalId = fixture.number("SELECT id FROM masks WHERE mask='fault-0.example'");
             fixture.backend.imports().promote(new CanonicalImportCommand(command.deliveryId(),
@@ -353,5 +426,14 @@ class StagedPublicationFaultIT {
     private static void await(CountDownLatch latch) {
         try { if (!latch.await(15, TimeUnit.SECONDS)) { throw new IllegalStateException("Worker release timed out"); } }
         catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IllegalStateException(interrupted); }
+    }
+
+    private static final class ControlledClock extends Clock {
+        private final AtomicReference<Instant> utc =
+                new AtomicReference<>(StagedPublicationFixture.NOW);
+        void set(Instant value) { utc.set(value); }
+        @Override public Instant instant() { return utc.get(); }
+        @Override public ZoneId getZone() { return ZoneOffset.UTC; }
+        @Override public Clock withZone(ZoneId zone) { return this; }
     }
 }
