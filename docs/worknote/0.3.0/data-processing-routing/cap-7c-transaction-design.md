@@ -1,11 +1,13 @@
 # CAP-7C SQLite transaction visibility
 
-Status: in progress, contract baseline implemented; SQLite is the required
+Status: in progress, contract baseline and C1 proposed protocol implemented; SQLite is the required
 backend for release 0.3.0. The publication protocol is not yet qualified.
 No production transaction, schema, configuration or
 deployed state has changed. This is an execution design for
 [CAP-7C](data-processing-capacity-plan.md#cap-7--conditional-follow-on-architecture-decisions),
-not an accepted ADR or capacity acceptance.
+not capacity acceptance. [ADR 0041](../../../ADR/0041-sqlite-staged-publication-experiment.md)
+records the proposed protocol and its integration gates; it is not accepted for
+production activation.
 
 ## Confirmed release boundary
 
@@ -116,8 +118,11 @@ service costs, not just the final visibility flip.
 
 ## Minimum staged/versioned protocol
 
-The following is a candidate protocol checklist, not permission to activate it.
-Its unresolved points must be settled in an ADR before a production migration.
+The checklist below is constrained by ADR 0041: publication-order sequences,
+attempt fences, scope epochs including metadata changes, final safe-UTC
+linearization and a three-attempt rebuild bound. Typed deadline indexes,
+durable logical ownership, retention and canonical-port equivalence remain
+integration gates before a production migration.
 
 1. Register a logical publication unit with immutable observation/delivery,
    contract, stage digest, schema/policy pins and a fencing token. Ordinary
@@ -179,7 +184,7 @@ back to the current oversized transaction silently.
 | Slice | Deliverable | Gate |
 |---|---|---|
 | C0 contract baseline | Current real SQLite pending visibility, matching, pinned snapshots and receipt-only replay | Existing suite plus new deterministic regression; implemented |
-| C1 SQLite protocol | Backend constraint confirmed; resolve visibility/clock/conflict decisions and proposed ADR | No unresolved authority/linearization decision in production code |
+| C1 SQLite protocol | Backend constraint confirmed; proposed ADR 0041 fixes visibility, clock and conflict protocol | Proposed protocol recorded; no production activation; C2/C3 must qualify the representation |
 | C2 persistence experiment | Isolated SQLite candidate behind existing ports, with exact driver/schema/resource identity | Reuse kernel semantics; no production activation; selective query plans |
 | C3 complete integration | Ordinary writer, import, active reads, lifecycle, slots, revisions and receipts use the chosen model | Same semantic oracle as corrected SQLite; no alternate runtime mutation engine |
 | C4 faults/concurrency | Crash/cancel/conflict/restart matrix below | Pending never visible; no half delivery; rank/TTL/slot/recovery equivalence |
