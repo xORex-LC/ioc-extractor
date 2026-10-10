@@ -13,6 +13,8 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -94,6 +96,91 @@ class SqlitePublicationExperimentIT {
         try (var statement = c.createStatement(); var rows = statement.executeQuery(sql)) {
             assertThat(rows.next()).isTrue();
             return rows.getLong(1);
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"100,170,140", "170,100,140", "100,140,170"})
+    void idlessReservationsPreserveSequenceHistoryAndBurnedRangesBeforePrivateKernelInsertion(
+            long activeId, long formerId, long sequence) throws Exception {
+        var schema = new DataframeArtifactSchema("blacklist", List.of(
+                new DataframeColumn("url"), new DataframeColumn("source")));
+        var definition = new com.iocextractor.application.artifact.CanonicalKeyDefinition("url-v1",
+                com.iocextractor.application.artifact.CanonicalKeyMode.COMPOSITE, List.of("url"));
+        var identity = new com.iocextractor.application.artifact.ArtifactIdentityDefinition(
+                "blacklist", definition, List.of(definition), 1);
+        var time = com.iocextractor.application.artifact.lifecycle.EffectiveTime.at(Instant.ofEpochMilli(NOW));
+        var validity = new FixedRecordValidityPolicy(Duration.ofHours(1));
+        try (var canonical = new Fixture(directory);
+             var privateBase = new Fixture(java.nio.file.Files.createDirectory(directory.resolve("private-idless")))) {
+            for (var fixture : List.of(canonical, privateBase)) {
+                new SqliteUserVersionSchemaMigrator(fixture.dataSource, DataframeFormatMigrations.sqlite()).migrate();
+                new DataframeSchemaReconciler(fixture.dataSource).reconcile(List.of(schema));
+                new JdbcArtifactIdentityStore(fixture.dataSource, java.time.Clock.systemUTC()).ensure(identity);
+            }
+            var row = com.iocextractor.application.artifact.ArtifactRow.ordered(
+                    Map.of("url", "https://one.example/path", "source", "feed"));
+            var keys = new com.iocextractor.application.artifact.CanonicalArtifactKeyResolver(List.of(identity));
+            var recordKey = new com.iocextractor.application.artifact.ArtifactRowKey(
+                    keys.recordKeyOf("blacklist", row).orElseThrow().keyHash());
+            var kernel = new JdbcCanonicalMutationEngine(canonical.dataSource, List.of(schema), List.of(identity));
+            try (var c = canonical.dataSource.getConnection()) {
+                c.setAutoCommit(false);
+                var original = kernel.insertPlanned(c, schema, "feed", row, recordKey,
+                        new com.iocextractor.application.artifact.lifecycle.LifecycleId(1), time, validity.decide(time));
+                new JdbcLifecycleArchive().archiveAndDelete(c, schema, original.canonicalRowId(), time);
+                var activeRow = row.withValue("url", "https://two.example/path");
+                var activeKey = new com.iocextractor.application.artifact.ArtifactRowKey(
+                        keys.recordKeyOf("blacklist", activeRow).orElseThrow().keyHash());
+                var active = kernel.insertPlanned(c, schema, "feed", activeRow, activeKey,
+                        new com.iocextractor.application.artifact.lifecycle.LifecycleId(2), time, validity.decide(time));
+                // Independently restored legacy high-water fixtures exercise each input to the maximum.
+                try (var s = c.createStatement()) {
+                    s.execute("PRAGMA defer_foreign_keys=ON");
+                    s.executeUpdate("UPDATE blacklist SET id=" + activeId + " WHERE id=" + active.canonicalRowId());
+                    s.executeUpdate("UPDATE blacklist_sources SET row_id=" + activeId + " WHERE row_id=" + active.canonicalRowId());
+                    s.executeUpdate("UPDATE canonical_match_alias SET canonical_row_id=" + activeId
+                            + " WHERE artifact='blacklist' AND canonical_row_id=" + active.canonicalRowId());
+                    s.executeUpdate("UPDATE blacklist_history SET former_row_id=" + formerId);
+                    s.executeUpdate("UPDATE sqlite_sequence SET seq=" + sequence + " WHERE name='blacklist'");
+                }
+                c.commit();
+            }
+            var reservations = new SqliteInternalIdReservationExperiment(canonical.dataSource,
+                    java.time.Clock.fixed(time.value(), java.time.ZoneOffset.UTC), canonical.admission);
+            reservations.initialize("blacklist", 1);
+            var burned = reservations.reserve("blacklist", 3);
+            assertThat(burned.idAt(0)).isEqualTo(171);
+            assertThat(burned.idAt(2)).isEqualTo(173);
+            try (var c = canonical.dataSource.getConnection(); var s = c.createStatement()) {
+                s.executeUpdate("DELETE FROM blacklist_history");
+            }
+            // Reinitialization after retained history removal cannot recover the burned IDs.
+            reservations.initialize("blacklist", 1);
+            var reserved = reservations.reserve("blacklist", 1);
+            assertThat(reserved.idAt(0)).isEqualTo(174);
+            var privateKernel = new JdbcCanonicalMutationEngine(privateBase.dataSource, List.of(schema), List.of(identity));
+            try (var c = privateBase.dataSource.getConnection()) {
+                c.setAutoCommit(false);
+                SqliteInternalIdReservationExperiment.seedPrivateSequence(c, "blacklist", reserved);
+                var inserted = privateKernel.insertPlanned(c, schema, "feed", row, recordKey,
+                        new com.iocextractor.application.artifact.lifecycle.LifecycleId(2), time, validity.decide(time));
+                assertThat(inserted.canonicalRowId()).isEqualTo(174);
+                c.commit();
+            }
+            // IDs are authoritative in the dataframe reservation store, not the private database.
+            var reopened = new SqliteInternalIdReservationExperiment(canonical.dataSource,
+                    java.time.Clock.systemUTC(), canonical.admission);
+            reopened.initialize("blacklist", 1);
+            assertThat(reopened.reserve("blacklist", 1).idAt(0)).isEqualTo(175);
+            try (var c = privateBase.dataSource.getConnection()) {
+                c.setAutoCommit(false);
+                assertThatThrownBy(() -> SqliteInternalIdReservationExperiment.seedPrivateSequence(c, "blacklist", burned))
+                        .isInstanceOf(SQLException.class).hasMessage("Private sequence exceeds reserved range");
+                c.rollback();
+            }
+            assertThatThrownBy(() -> reopened.initialize("blacklist", 2))
+                    .hasRootCauseMessage("Internal allocator identity drift");
         }
     }
 

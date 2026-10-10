@@ -221,6 +221,27 @@ installs these probe views. Do not open an operator database with this helper.
 
 ## Remaining C2 gate before C3
 
+### Internal canonical IDs without a public ID
+
+`SqliteInternalIdReservationExperiment` qualifies initialization of an id-less
+artifact's internal canonical space under exclusive protocol ownership. It
+reuses `JdbcArtifactIdAllocator.reserve` for the committed range transition.
+Initialization takes the maximum of active canonical IDs, history
+`former_row_id`, the native AUTOINCREMENT sequence and retained reservation
+state. It does not apply the public allocator's incompatible `history.id`
+initialization formula. Private insertion seeds only a previously empty or
+lower private sequence from the reserved range; it rejects a private high-water
+above the reservation instead of silently lowering it.
+
+Three independent legacy fixtures make active, history and native sequence
+high-water dominate in turn. All reserve 171–173, discard that attempt, remove
+retained history, then insert 174 through the real native id-less kernel and
+reserve 175 through a recreated allocator. Epoch drift and private sequence
+rollback are rejected. This is a reservation experiment, not a production
+migration. Mixed native AUTOINCREMENT writers and range-reserving publishers
+are unsupported; C3 must route every writer through the same durable authority.
+History-row IDs still need their own separately scoped reservation integration.
+
 ### Native initial fan-out import and canonical receipt
 
 `SqliteImportPublicationExperiment` transports the typed effects of the actual
