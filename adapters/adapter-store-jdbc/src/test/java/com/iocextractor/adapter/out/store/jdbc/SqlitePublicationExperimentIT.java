@@ -320,6 +320,64 @@ class SqlitePublicationExperimentIT {
     }
 
     @Test
+    void publishesLargeSourceFanInThroughBoundedTypedChunksAndRehydratesAllChildren() throws Exception {
+        Instant start = Instant.ofEpochMilli(NOW);
+        try (var experiment = new SqliteKernelPublicationExperiment(directory, start)) {
+            var registration = experiment.register("large-source-fan-in");
+            try (var base = experiment.published.getConnection()) {
+                base.setAutoCommit(false);
+                experiment.hydrate(base, "one.example", registration);
+                base.rollback();
+            }
+            for (int source = 0; source < 520; source++) {
+                experiment.confirm("one.example", "name", "source:" + source,
+                        11 + source, 101 + source, registration, source);
+            }
+            var chunks = new java.util.concurrent.atomic.AtomicInteger();
+            var pending = experiment.stageChunks("large-typed", "one.example", 0, ordinal -> {
+                chunks.incrementAndGet();
+                // A real CONTROL transaction must commit after each released physical chunk.
+                experiment.admission.execute(OperationClass.CONTROL, () -> {
+                    try (var c = experiment.published.getConnection()) {
+                        c.setAutoCommit(false);
+                        new SqlitePublicationExperiment().advanceEpoch(c, "control-only");
+                        assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks")).isZero();
+                        assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks_sources")).isZero();
+                        c.commit();
+                    } catch (SQLException failure) {
+                        throw new AssertionError(failure);
+                    }
+                    return null;
+                });
+            });
+            assertThat(chunks.get()).isEqualTo(3);
+            experiment.wallClock.advance(Duration.ofSeconds(3));
+            experiment.publish(pending);
+            var next = experiment.register("large-source-update");
+            try (var base = experiment.published.getConnection()) {
+                base.setAutoCommit(false);
+                assertThat(queryNumber(base, "SELECT COUNT(*) FROM masks_sources")).isEqualTo(520);
+                assertThat(queryNumber(base, "SELECT SUM(occurrences) FROM masks_sources")).isEqualTo(520);
+                assertThat(queryNumber(base, "SELECT MAX(_last_confirmed_at_epoch_ms) FROM masks"))
+                        .isEqualTo(NOW + 3_000);
+                experiment.hydrate(base, "one.example", next);
+                base.rollback();
+            }
+            experiment.confirm("one.example", "new-name", "source:0", 1_000, 1_000, next, 0);
+            var update = experiment.stageChunks("large-typed-update", "one.example", 1, ignored -> { });
+            experiment.publish(update);
+            try (var c = experiment.published.getConnection()) {
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM masks_sources")).isEqualTo(520);
+                assertThat(queryNumber(c, "SELECT SUM(occurrences) FROM masks_sources")).isEqualTo(521);
+                assertThat(queryNumber(c, "SELECT occurrences FROM masks_sources WHERE source_key='source:0'"))
+                        .isEqualTo(2);
+                assertThat(experiment.match(c, "one.example", start.plusSeconds(3)).exactCandidate())
+                        .hasValueSatisfying(candidate -> assertThat(candidate.canonicalRowId()).isEqualTo(11));
+            }
+        }
+    }
+
+    @Test
     void nonRenewingPatchAutomaticallyPinsItsInheritedDeadline() throws Exception {
         Instant start = Instant.ofEpochMilli(NOW);
         try (var experiment = new SqliteKernelPublicationExperiment(directory, start)) {

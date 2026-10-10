@@ -44,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.HexFormat;
+import java.util.function.IntConsumer;
 
 import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.quote;
 
@@ -210,6 +211,118 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
         return stage(unit, null, mask, epoch, Long.MAX_VALUE, false);
     }
 
+    /** Streams a complete typed working set through independently committed bounded chunks. */
+    Attempt stageChunks(String unit, String mask, long epoch, IntConsumer afterChunk) throws SQLException {
+        try (var source = working.getConnection()) {
+            source.setAutoCommit(false);
+            try {
+                try (var s = source.createStatement();
+                     var rows = s.executeQuery("SELECT COUNT(*),MIN(row_key) FROM masks")) {
+                    if (!rows.next() || rows.getLong(1) != 1 || !recordKey(mask).equals(rows.getString(2))) {
+                        throw new SQLException("Typed probe requires exactly its requested working row");
+                    }
+                }
+                long rowCount = 0;
+                for (String table : TABLES) {
+                    try (var s = source.createStatement();
+                         var rows = s.executeQuery("SELECT COUNT(*) FROM " + quote(table))) {
+                        if (!rows.next()) { throw new SQLException("Missing typed row count"); }
+                        rowCount = Math.addExact(rowCount, rows.getLong(1));
+                    }
+                }
+                int contributions = Math.toIntExact(Math.addExact(rowCount, 1));
+                int chunks = Math.toIntExact((rowCount + 255) / 256 + 1);
+                Attempt attempt = write(c -> probe.begin(c, unit, PINS,
+                        new Manifest(chunks, contributions, Long.MAX_VALUE, Map.of("masks", epoch))));
+                var batch = new ArrayList<TypedRow>(256);
+                int ordinal = 0;
+                for (String table : TABLES) {
+                    String projection = JdbcSql.joinedQuoted(columns.get(table));
+                    try (var select = source.createStatement();
+                         var rows = select.executeQuery("SELECT " + projection + " FROM " + quote(table)
+                                 + " ORDER BY " + projection)) {
+                        while (rows.next()) {
+                            var values = new ArrayList<Object>(columns.get(table).size());
+                            for (int index = 1; index <= columns.get(table).size(); index++) {
+                                values.add(rows.getObject(index));
+                            }
+                            batch.add(new TypedRow(table, java.util.Collections.unmodifiableList(values)));
+                            if (batch.size() == 256) {
+                                appendTypedChunk(attempt, ordinal++, batch);
+                                batch.clear();
+                                afterChunk.accept(ordinal);
+                            }
+                        }
+                    }
+                }
+                if (!batch.isEmpty()) {
+                    appendTypedChunk(attempt, ordinal++, batch);
+                    afterChunk.accept(ordinal);
+                }
+                int finalOrdinal = ordinal;
+                write(c -> {
+                    probe.append(c, attempt, finalOrdinal, List.of(new Fact("row", "masks", recordKey(mask),
+                            "typed-chunks:" + contributions, attempt.unitId())));
+                    probe.seal(c, attempt);
+                    return null;
+                });
+                source.rollback();
+                return attempt;
+            } catch (SQLException | RuntimeException | Error failure) {
+                rollback(source, failure);
+                throw failure;
+            }
+        }
+    }
+
+    private void appendTypedChunk(Attempt attempt, int ordinal, List<TypedRow> batch) {
+        write(c -> {
+            var digest = new SnapshotDigest();
+            var facts = new ArrayList<Fact>(batch.size());
+            for (int index = 0; index < batch.size(); index++) {
+                TypedRow row = batch.get(index);
+                List<String> names = columns.get(row.table());
+                var values = new ArrayList<>(row.values());
+                values.add(attempt.unitId());
+                values.add(attempt.fence());
+                String anchors = "";
+                if (row.table().equals("masks")) {
+                    anchors = ",first_anchor,renewal_anchor";
+                    values.add(firstAnchor(c, ((Number) row.values().get(names.indexOf("id"))).longValue(),
+                            attempt.unitId()));
+                    values.add(attempt.unitId());
+                } else if (row.table().equals("masks_sources")) {
+                    anchors = ",first_anchor,last_anchor";
+                    var sourceAnchors = sourceAnchors(c,
+                            ((Number) row.values().get(names.indexOf("row_id"))).longValue(),
+                            (String) row.values().get(names.indexOf("source_key")),
+                            ((Number) row.values().get(names.indexOf("occurrences"))).longValue(), attempt.unitId());
+                    values.add(sourceAnchors[0]);
+                    values.add(sourceAnchors[1]);
+                }
+                digest.row();
+                digest.field(row.table());
+                for (Object value : values) { digest.field(value); }
+                try (var insert = c.prepareStatement("INSERT INTO " + quote(row.table() + "_probe_version")
+                        + " (" + JdbcSql.joinedQuoted(names) + ",unit_id,fence" + anchors + ") VALUES ("
+                        + JdbcSql.placeholders(values.size()) + ")")) {
+                    for (int parameter = 0; parameter < values.size(); parameter++) {
+                        insert.setObject(parameter + 1, values.get(parameter));
+                    }
+                    insert.executeUpdate();
+                }
+                facts.add(new Fact("typed", "masks", ordinal + ":" + index, row.table()));
+            }
+            // The chunk journal covers typed bytes as well as its logical pointers.
+            String payload = digest.finish();
+            facts.replaceAll(fact -> new Fact(fact.family(), fact.scope(), fact.key(), payload));
+            probe.append(c, attempt, ordinal, facts);
+            return null;
+        });
+    }
+
+    private record TypedRow(String table, List<Object> values) { }
+
     private Attempt stage(String unit, Attempt previous, String mask, long epoch, long minimumDeadline,
                            boolean renewTtl) {
         return write(c -> {
@@ -371,7 +484,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
             digest.field(insertColumns);
         }
         try (var select = source.prepareStatement("SELECT " + projection + " FROM " + quote(table)
-                + " WHERE " + predicate + " ORDER BY " + projection + " LIMIT 257");
+                + " WHERE " + predicate + " ORDER BY " + projection + (version == null ? "" : " LIMIT 257"));
              var insert = destination.prepareStatement("INSERT INTO " + quote(target) + " (" + insertColumns
                      + ") VALUES (" + JdbcSql.placeholders(names.size() + (version == null ? 0 : 2)
                      + (rowAnchor ? 2 : 0) + (sourceAnchors ? 2 : 0)) + ")")) {
@@ -379,7 +492,9 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
             try (var rows = select.executeQuery()) {
                 int count = 0;
                 while (rows.next()) {
-                    if (++count > 256) { throw new SQLException("Typed experiment snapshot exceeds bound"); }
+                    if (++count > 256 && version != null) {
+                        throw new SQLException("Typed experiment snapshot exceeds bound");
+                    }
                     if (digest != null) { digest.row(); }
                     for (int index = 1; index <= names.size(); index++) {
                         Object value = rows.getObject(index);

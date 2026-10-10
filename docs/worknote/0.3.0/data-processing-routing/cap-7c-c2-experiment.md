@@ -221,6 +221,28 @@ installs these probe views. Do not open an operator database with this helper.
 
 ## Remaining C2 gate before C3
 
+### Bounded typed chunks for large source fan-in
+
+The typed kernel bridge now has an additional streaming path. One pinned
+private working snapshot is copied in independently admitted chunks of at most
+256 typed rows and 1 MiB of framed values. A separate final pointer/seal binds
+the complete row snapshot; no public row or child becomes visible between
+chunks. The journal digest includes typed values, NULLs and time anchors, not
+only generic fact pointers. The older single-transaction path retains its
+overflow regressions. These remain experiment bounds, not runtime settings.
+
+A deterministic case confirms one IOC from 520 different sources through the
+real mutation kernel, stages three physical chunks, and commits a CONTROL
+epoch write after each chunk. It asserts hidden rows/children, atomic publication,
+complete selective hydration, and a subsequent source update with 521 total
+occurrences while keeping 520 source summaries. Private hydration streams all
+children; the old 256-child cap is no longer applied to that private operation.
+
+Chunk restart/replay for typed rows, byte-adaptive partitioning, private workspace
+quotas and production retention still need integration. A single typed row over
+the byte limit fails closed; chunk overflow never invokes an oversized fallback.
+This small test is not a physical-hold or whole-service capacity measurement.
+
 On 2026-10-10 the owner confirmed fresh safe UTC at publication. A preparation
 spanning an old deadline must rebuild and create a new lifecycle, with new
 internal IDs, rather than renew an expired lifecycle. This intentional boundary
