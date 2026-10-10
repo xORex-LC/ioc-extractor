@@ -72,6 +72,8 @@ runtime JDBC drivers.
   IDs, revisions and export-slot ownership.
 - `JdbcDocumentPreparationWorkspaceFactory` owns private source pins, process-wide
   memory admission, root-wide disk reservations, leases and inactive-pin retention.
+  `DocumentWorkspaceDiskUsage` counts observed file sizes without following links;
+  only vanished SQLite sidecars tolerate the listing/attribute-read race.
   `DocumentTextSpool` owns decoded/refanged UTF-16 files; `PagedDocumentText`
   exposes absolute offsets through two fixed pages. `JdbcDocumentSourceWorkspace`
   owns indexed overlap claims and ordered extraction/attribution cursors. Source

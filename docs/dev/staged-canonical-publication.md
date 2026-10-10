@@ -28,6 +28,12 @@ attached stage caches are bounded. Native duplicate validation preserves a
 stricter private TEMP cap. These are admission/accounting limits, not measured
 whole-process resource acceptance.
 
+Disk accounting uses the file walker's observed attributes. SQLite can remove
+its known WAL/SHM/journal sidecars between listing and attribute reads; their
+disappearance is tolerated. Present sidecars still count against quota. Missing
+workspace roots or other owned files, inaccessible entries and symlinks fail
+closed; accounting never follows links.
+
 After its pool closes, a finished native workspace is deleted while both root
 admission and its file lease remain held. Disposal releases weighted permits
 even on filesystem failure. This avoids retaining one database per completed

@@ -17,7 +17,10 @@ import com.iocextractor.application.port.in.ExtractionCommand;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.diagnostics.result.DiagnosticSummary;
+import java.nio.file.AccessDeniedException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
@@ -47,6 +50,44 @@ class JdbcDocumentPreparationWorkspaceIT {
     private static final Map<String, ArtifactWritePolicy> POLICIES = Map.of("first", ArtifactWritePolicy.keepFirst(),
             "last", new ArtifactWritePolicy(ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY, "name", Map.of()));
     @TempDir Path temporary;
+
+    @Test
+    void diskAccountingCountsSqliteSidecarsAndRejectsSymlinks() throws Exception {
+        Path root = Files.createDirectory(temporary.resolve("accounting"));
+        Files.write(root.resolve("native.db"), new byte[100]);
+        Files.write(root.resolve("native.db-wal"), new byte[31]);
+        Files.write(root.resolve("prepared.db-shm"), new byte[17]);
+        Path nested = Files.createDirectory(root.resolve("nested"));
+        Files.write(nested.resolve("identity"), new byte[11]);
+        assertThat(DocumentWorkspaceDiskUsage.bytes(root)).isEqualTo(159);
+        assertThatThrownBy(() -> DocumentWorkspaceDiskUsage.bytes(root.resolve("prepared.db-journal")))
+                .isInstanceOf(NoSuchFileException.class);
+
+        Files.createSymbolicLink(root.resolve("alias"), root.resolve("native.db"));
+        assertThatThrownBy(() -> DocumentWorkspaceDiskUsage.bytes(root))
+                .hasMessage("Symlink in private document workspace");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"native.db-wal", "native.db-shm", "native.db-journal", "prepared.db-wal", "prepared.db-shm", "prepared.db-journal"})
+    void diskAccountingToleratesOnlySqliteSidecarsRemovedBeforeAttributeRead(String sidecar) throws Exception {
+        var usage = new DocumentWorkspaceDiskUsage(temporary);
+        Path vanished = temporary.resolve(sidecar);
+        var missing = new NoSuchFileException(vanished.toString());
+        assertThat(usage.visitFileFailed(vanished, missing)).isEqualTo(FileVisitResult.CONTINUE);
+        var denied = new AccessDeniedException(vanished.toString());
+        assertThatThrownBy(() -> usage.visitFileFailed(vanished, denied)).isSameAs(denied);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"native.db", "prepared.db", "identity", "lease", "unexpected-wal", "missing-directory"})
+    void diskAccountingPreservesMissingOwnedFileAndDirectoryFailures(String name) {
+        var usage = new DocumentWorkspaceDiskUsage(temporary);
+        Path vanished = temporary.resolve(name);
+        var missing = new NoSuchFileException(vanished.toString());
+        assertThatThrownBy(() -> usage.visitFileFailed(vanished, missing)).isSameAs(missing);
+        assertThatThrownBy(() -> DocumentWorkspaceDiskUsage.bytes(vanished)).isInstanceOf(NoSuchFileException.class);
+    }
 
     @Test
     void canonicalScratchDisposalDoesNotAccumulateCompletedAttemptPins() throws Exception {

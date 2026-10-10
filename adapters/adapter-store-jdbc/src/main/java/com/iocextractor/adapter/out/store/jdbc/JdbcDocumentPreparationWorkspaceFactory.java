@@ -322,16 +322,7 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
     }
 
     private static long bytes(Path directory) throws IOException {
-        try (var paths = Files.walk(directory)) {
-            var iterator = paths.iterator();
-            long bytes = 0;
-            while (iterator.hasNext()) {
-                Path path = iterator.next();
-                if (Files.isSymbolicLink(path)) { throw new IOException("Symlink in private document workspace"); }
-                if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) { bytes = Math.addExact(bytes, Files.size(path)); }
-            }
-            return bytes;
-        }
+        return DocumentWorkspaceDiskUsage.bytes(directory);
     }
 
     /** Cached pressure from quota checks; health never scans or locks an active source copy. */

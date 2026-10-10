@@ -44,7 +44,7 @@ inventory becomes 222 fast / 79 integration / 5 external / 296 deterministic
 offline classes. Coverage floors, analyzer baselines and discovery rules are
 unchanged.
 
-## Defect found during qualification
+## Defects found during qualification
 
 An interrupted promotion correctly refused publication, but the same interrupt
 flag caused admitted failure cleanup to refuse its own transaction. Hidden work
@@ -54,6 +54,17 @@ flag only for its bounded cancellation/release transaction and restores it
 afterwards. Cancellation before transfer, after a hidden chunk, before flip and
 inside flip is tested for promotions; controls test cancellation before/inside
 flip. No clearing occurs on the commit authorization path.
+
+The second full reactor run (`.dev/c4-verify-2.log`) failed during the healthy
+retry after cancellation: SQLite unlinked `native.db-wal` while `Files.walk`
+was reading entry attributes. The iterator raised `UncheckedIOException`
+before the per-file size check. Workspace accounting now uses `walkFileTree`
+and observed attributes, tolerating only a missing known SQLite sidecar below
+the requested root. Present sidecars still count; missing roots/main files,
+access failures and symlinks still fail closed. There is no automatic retry or
+quota relaxation. Deterministic visitor-failure regressions exercise this race
+without timing dependence; all 59 workspace-suite invocations passed in
+`.dev/c4-disk-focused-1.log`.
 
 ## Remaining limits
 
@@ -73,7 +84,7 @@ service ledger continues to own forward delivery coordination.
 
 `make test-one MODULE=adapters/adapter-store-jdbc TEST=StagedPublicationFaultIT`
 passed all 29 invocations with zero failures, errors or skips
-(`.dev/c4-focused-10.log`). Complete final-worktree repository gates are required.
+(`.dev/c4-focused-11.log`). Complete final-worktree repository gates are required.
 The execution record will identify their results after review of the generated
 coverage, raw SpotBugs, CPD, PMD and resource watchlist reports. Intermediate
 failed fixture/gate logs remain under `.dev/`; they are not acceptance evidence.
