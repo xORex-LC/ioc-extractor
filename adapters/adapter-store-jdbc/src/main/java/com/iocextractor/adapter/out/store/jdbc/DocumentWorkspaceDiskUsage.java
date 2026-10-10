@@ -35,8 +35,9 @@ final class DocumentWorkspaceDiskUsage extends SimpleFileVisitor<Path> {
     @Override
     public FileVisitResult visitFileFailed(Path file, IOException failure) throws IOException {
         // SQLite may unlink WAL/SHM/journal files after listing, before the walker reads attributes.
-        if (failure instanceof NoSuchFileException && !file.equals(directory)
-                && SQLITE_SIDECARS.contains(file.getFileName().toString())) {
+        Path filename = file.getFileName();
+        if (failure instanceof NoSuchFileException && !file.equals(directory) && filename != null
+                && SQLITE_SIDECARS.contains(filename.toString())) {
             return FileVisitResult.CONTINUE;
         }
         throw failure;

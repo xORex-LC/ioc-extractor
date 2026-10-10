@@ -90,6 +90,14 @@ class JdbcDocumentPreparationWorkspaceIT {
     }
 
     @Test
+    void diskAccountingRetainsTheOriginalRootFailureWhenThereIsNoFilename() {
+        var usage = new DocumentWorkspaceDiskUsage(temporary);
+        Path filesystemRoot = temporary.toAbsolutePath().getRoot();
+        var missing = new NoSuchFileException(filesystemRoot.toString());
+        assertThatThrownBy(() -> usage.visitFileFailed(filesystemRoot, missing)).isSameAs(missing);
+    }
+
+    @Test
     void canonicalScratchDisposalDoesNotAccumulateCompletedAttemptPins() throws Exception {
         var factory = factory(canonicalLimits());
         // Cross the root's 128-pin admission bound without depending on time-based retention.
