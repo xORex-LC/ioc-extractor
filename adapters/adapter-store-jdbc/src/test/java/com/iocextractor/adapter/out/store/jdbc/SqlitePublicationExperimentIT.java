@@ -132,6 +132,190 @@ class SqlitePublicationExperimentIT {
     }
 
     @Test
+    void typedChunksBoundPayloadBeforeRetentionAndRetryWithoutDuplicatingPhysicalVersions() throws Exception {
+        try (var fixture = new Fixture(directory)) {
+            var table = fixture.write(OperationClass.CONTROL, c -> {
+                JdbcPublicationTable.execute(c, "CREATE TABLE typed_payload(id INTEGER PRIMARY KEY,value TEXT,extra TEXT)");
+                var shape = JdbcPublicationTable.inspect(c, "typed_payload");
+                JdbcTypedVersionTable.create(c, shape, false);
+                JdbcPublicationTable.execute(c, "DROP TABLE typed_payload");
+                JdbcTypedVersionTable.createView(c, shape, false);
+                return shape;
+            });
+            var first = new JdbcPrivateChanges.Effect(table, List.of(1, "x".repeat(600_000), "a"), null, false, false);
+            var chunk = new JdbcTypedPublicationChunk(java.util.Set.of());
+            assertThat(chunk.add(first, false)).isTrue();
+            assertThat(chunk.add(new JdbcPrivateChanges.Effect(table, List.of(2, "y".repeat(600_000), "b"), null, false, false), false)).isFalse();
+            assertThat(chunk.size()).isOne();
+            assertThatThrownBy(() -> new JdbcTypedPublicationChunk(java.util.Set.of()).add(new JdbcPrivateChanges.Effect(
+                    table, List.of(3, "x".repeat(600_000), "y".repeat(600_000)), null, false, false), false))
+                    .isInstanceOf(SQLException.class).hasMessageContaining("chunk byte limit");
+            var attempt = fixture.begin("typed-payload", 1, 1, Long.MAX_VALUE, Map.of("payload", 0L));
+            fixture.write(OperationClass.PROMOTION, c -> { chunk.append(c, fixture.probe, attempt, "payload", 0); return null; });
+            fixture.write(OperationClass.PROMOTION, c -> { chunk.append(c, fixture.probe, attempt, "payload", 0); return null; });
+            try (var c = fixture.dataSource.getConnection()) {
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM publication_version_typed_payload")).isOne();
+                assertThat(queryNumber(c, "SELECT COUNT(*) FROM typed_payload")).isZero();
+            }
+            fixture.seal(attempt); fixture.publish(attempt, NOW, "typed-receipt");
+            try (var c = fixture.dataSource.getConnection()) {
+                assertThat(queryNumber(c, "SELECT length(value) FROM typed_payload")).isEqualTo(600_000);
+            }
+        }
+    }
+
+    @Test
+    void protocolRejectsUnownedTransactionsOversizedUtf8AndStaleReadOverlays() throws Exception {
+        try (var fixture = new Fixture(directory); var connection = fixture.dataSource.getConnection()) {
+            var manifest = new Manifest(1, 1, Long.MAX_VALUE, Map.of("masks", 0L));
+            assertThatThrownBy(() -> fixture.probe.begin(connection, "unowned", PINS, manifest))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Caller-owned");
+            assertThatThrownBy(() -> new JdbcPublicationOwner().acquire(connection, "unowned", 0))
+                    .isInstanceOf(SQLException.class).hasMessageContaining("owned transaction");
+            var attempt = fixture.begin("utf8-bound", 1, 1, Long.MAX_VALUE, Map.of("masks", 0L));
+            assertThatThrownBy(() -> fixture.append(attempt, 0, List.of(new Fact("row", "masks", "one", "Ω".repeat(600_000)))))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("chunk byte limit");
+            fixture.append(attempt, 0, List.of(new Fact("row", "masks", "one", "kept")));
+            connection.setAutoCommit(false);
+            assertThat(fixture.probe.readOwn(connection, connection, attempt, "row", "masks", "one")).contains("kept");
+            assertThat(fixture.probe.readOwn(connection, connection, attempt, "row", "masks", "missing")).isEmpty();
+            connection.rollback();
+            fixture.write(OperationClass.CONTROL, c -> { fixture.probe.cancel(c, attempt); return null; });
+            assertThatThrownBy(() -> fixture.probe.readOwn(connection, connection, attempt, "row", "masks", "missing"))
+                    .isInstanceOf(SQLException.class).hasMessageContaining("Stale attempt");
+            connection.rollback();
+        }
+    }
+
+    @Test
+    void borrowedReadPolicyRestorationReportsEveryFailureAndInitializationPreservesItsPrimaryError() throws Exception {
+        var limits = new DocumentPreparationLimits(4 * 1024 * 1024, 64, 4096, 2048, 16 * 1024 * 1024, 256 * 1024 * 1024, 256);
+        try (var fixture = new Fixture(directory); var physical = fixture.dataSource.getConnection()) {
+            var fail = new java.util.concurrent.atomic.AtomicBoolean();
+            Connection borrowed = proxy(Connection.class, physical, (method, arguments) -> {
+                Object value = invoke(physical, method, arguments);
+                if (method.getName().equals("createStatement")) {
+                    var statement = (java.sql.Statement) value;
+                    return proxy(java.sql.Statement.class, statement, (call, parameters) -> {
+                        if (fail.get() && call.getName().equals("execute")) { throw new SQLException("restore " + parameters[0]); }
+                        return invoke(statement, call, parameters);
+                    });
+                }
+                return value;
+            });
+            var policy = new JdbcPublicationReadLimits(borrowed, limits);
+            fail.set(true);
+            assertThatThrownBy(policy::close).isInstanceOf(SQLException.class).hasMessageContaining("cache_size")
+                    .satisfies(error -> assertThat(error.getSuppressed()).hasSize(3));
+            assertThat(physical.isClosed()).isFalse();
+            assertThatThrownBy(() -> new JdbcPublicationReadLimits(borrowed, limits))
+                    .isInstanceOf(SQLException.class).hasMessageContaining("cache_size")
+                    .satisfies(error -> assertThat(error.getSuppressed()).singleElement()
+                            .satisfies(restore -> assertThat(restore.getSuppressed()).hasSize(3)));
+            fail.set(false);
+            // The borrower still owns the connection and can restore/use its normal policy.
+            policy.close();
+            assertThat(queryNumber(physical, "SELECT 1")).isOne();
+        }
+    }
+
+    @Test
+    void missingControlFactsAndSuppressedSqlWritesFailClosedWithoutPublishingAnIncompleteUnit() throws Exception {
+        var tables = List.of("publication_unit", "publication_attempt", "publication_epoch");
+        var errors = List.of("Missing experiment unit identity", "Missing attempt stamp", "Stale dependency snapshot");
+        for (int index = 0; index < tables.size(); index++) {
+            String table = tables.get(index), expected = errors.get(index);
+            try (var fixture = new Fixture(java.nio.file.Files.createDirectory(directory.resolve("missing-" + index)))) {
+                fixture.write(OperationClass.CONTROL, c -> {
+                    JdbcPublicationTable.execute(c, "CREATE TRIGGER suppress_control BEFORE INSERT ON " + table + " BEGIN SELECT RAISE(IGNORE); END");
+                    return null;
+                });
+                assertThatThrownBy(() -> fixture.begin("incomplete-control", 1, 1, Long.MAX_VALUE, Map.of("masks", 0L)))
+                        .hasRootCauseMessage(expected);
+                try (var c = fixture.dataSource.getConnection()) {
+                    assertThat(queryNumber(c, "SELECT COUNT(*) FROM publication_unit")).isZero();
+                }
+            }
+        }
+        try (var fixture = new Fixture(directory)) {
+            var attempt = fixture.begin("no-publication-sequence", 0, 0, Long.MAX_VALUE, Map.of("masks", 0L));
+            fixture.seal(attempt);
+            fixture.write(OperationClass.CONTROL, c -> { JdbcPublicationTable.execute(c, "DELETE FROM publication_sequence"); return null; });
+            assertThatThrownBy(() -> fixture.publish(attempt, NOW, "no-receipt")).hasRootCauseMessage("Missing publication sequence");
+            assertThat(fixture.receipt(attempt)).isEmpty();
+        }
+    }
+
+    @Test
+    void protocolRefusesUnboundedChunksAndTombstonesDoNotCreateValidityAnchors() throws Exception {
+        try (var fixture = new Fixture(directory)) {
+            var attempt = fixture.begin("bounded-tombstone", 1, 1, Long.MAX_VALUE, Map.of("masks", 0L));
+            var deletion = new Fact("rows", "masks", "deleted", null, attempt.unitId());
+            assertThatThrownBy(() -> fixture.append(attempt, 0, List.of())).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> fixture.append(attempt, 0, java.util.Collections.nCopies(257, deletion)))
+                    .isInstanceOf(IllegalArgumentException.class);
+            fixture.append(attempt, 0, List.of(deletion));
+            try (var c = fixture.dataSource.getConnection()) {
+                c.setAutoCommit(false);
+                assertThat(fixture.probe.readOwn(c, c, attempt, "rows", "masks", "deleted")).isEmpty();
+                assertThat(queryNumber(c, "SELECT needs_validity FROM publication_unit")).isZero();
+                c.rollback();
+            }
+            fixture.seal(attempt); fixture.publish(attempt, NOW, "tombstone-receipt");
+            assertThat(fixture.receipt(attempt)).isPresent();
+        }
+    }
+
+    @Test
+    void privateIdInitializationFailsClosedWhenItsDurableAllocatorIsMissingOrUsesAnotherDirection() throws Exception {
+        try (var fixture = new Fixture(directory)) {
+            new SqliteUserVersionSchemaMigrator(fixture.dataSource, DataframeFormatMigrations.sqlite()).migrate();
+            fixture.write(OperationClass.CONTROL, c -> {
+                JdbcPublicationTable.execute(c, "CREATE TABLE idless(id INTEGER PRIMARY KEY AUTOINCREMENT)");
+                JdbcPublicationTable.execute(c, "CREATE TABLE idless_history(history_id INTEGER PRIMARY KEY AUTOINCREMENT,former_row_id INTEGER)");
+                return null;
+            });
+            var ids = new JdbcPrivateIdReservations(fixture.dataSource, java.time.Clock.systemUTC(), fixture.admission);
+            ids.initialize("idless", 1);
+            fixture.write(OperationClass.CONTROL, c -> {
+                JdbcPublicationTable.execute(c, "UPDATE artifact_id_allocator SET strategy='DESCENDING' WHERE artifact='idless'"); return null;
+            });
+            assertThatThrownBy(() -> ids.initialize("idless", 1)).hasRootCauseMessage("Internal allocator identity drift");
+            fixture.write(OperationClass.CONTROL, c -> {
+                JdbcPublicationTable.execute(c, "DELETE FROM artifact_id_allocator WHERE artifact='idless'");
+                JdbcPublicationTable.execute(c, "CREATE TRIGGER suppress_allocator BEFORE INSERT ON artifact_id_allocator BEGIN SELECT RAISE(IGNORE); END");
+                return null;
+            });
+            assertThatThrownBy(() -> ids.initialize("idless", 1)).hasRootCauseMessage("Internal allocator identity drift");
+            try (var c = fixture.dataSource.getConnection()) {
+                var empty = new com.iocextractor.application.artifact.ArtifactIdReservation(
+                        1, 0, com.iocextractor.application.artifact.ArtifactIdStrategy.ASCENDING);
+                assertThatThrownBy(() -> JdbcPrivateIdReservations.seedPrivateSequence(c, "idless", empty))
+                        .hasMessage("Private sequence requires an owned transaction");
+                c.setAutoCommit(false);
+                assertThatThrownBy(() -> JdbcPrivateIdReservations.seedPrivateSequence(c, "idless", empty))
+                        .hasMessage("Private insertion needs a non-empty reservation");
+                c.rollback();
+            }
+            assertThat(fixture.read("rows", "masks", "idless")).isEmpty();
+        }
+    }
+
+    private static <T> T proxy(Class<T> type, T delegate, JdbcCall call) {
+        return type.cast(java.lang.reflect.Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type},
+                (proxy, method, arguments) -> call.apply(method, arguments)));
+    }
+
+    private static Object invoke(Object delegate, java.lang.reflect.Method method, Object[] arguments) throws Throwable {
+        try { return method.invoke(delegate, arguments); }
+        catch (java.lang.reflect.InvocationTargetException failure) { throw failure.getCause(); }
+    }
+
+    @FunctionalInterface private interface JdbcCall {
+        Object apply(java.lang.reflect.Method method, Object[] arguments) throws Throwable;
+    }
+
+    @Test
     void nativeDmlCapturePreservesCountsConstraintsCascadesAndOnlyFinalChangedAddresses() throws Exception {
         try (var fixture = new Fixture(directory)) {
             fixture.write(OperationClass.CONTROL, c -> {

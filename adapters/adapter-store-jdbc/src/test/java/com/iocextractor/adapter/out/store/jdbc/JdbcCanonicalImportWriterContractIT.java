@@ -225,6 +225,230 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
 
     @Test
     @Timeout(30)
+    void stagedControlFailureCancelsHiddenChangesWithoutTakingPromotionOwnership() {
+        var canonical = environment("control-cancellation");
+        var fail = new java.util.concurrent.atomic.AtomicBoolean();
+        var backend = JdbcStagedCanonicalBackend.createEmpty(stagedConfiguration(canonical, CLOCK), (phase, attempt, chunk) -> {
+            if (phase == JdbcPublicationObserver.Phase.HIDDEN_CHUNK && fail.getAndSet(false)) { throw new IllegalStateException("control interrupted"); }
+        });
+        backend.imports().promote(canonical.stage("control-seed", ImportPromotionPolicy.defaults(), List.of(row(2,
+                branch(canonical, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "control.example"), OptionalLong.empty()))), List.of()));
+        var before = backend.projections().load("masks");
+        fail.set(true);
+        assertThatThrownBy(() -> backend.projections().recordFailure("masks", before.requiredGeneration(), "PROJECTION.FAILED"))
+                .isInstanceOf(IllegalStateException.class).hasMessage("control interrupted");
+        assertThat(backend.projections().load("masks")).isEqualTo(before);
+        assertThat(canonical.queryLong("SELECT COUNT(*) FROM publication_unit WHERE state='CANCELLED'")).isOne();
+        assertThat(canonical.count("publication_owner_failure")).isZero();
+        backend.projections().recordFailure("masks", before.requiredGeneration(), "PROJECTION.FAILED");
+        assertThat(backend.projections().load("masks")).isEqualTo(before);
+        assertThat(canonical.queryString("SELECT last_error_code FROM artifact_projection_state WHERE artifact='masks'"))
+                .isEqualTo("PROJECTION.FAILED");
+    }
+
+    @Test
+    @Timeout(30)
+    void stagedFatalPreparationReleasesOwnershipAndRetryReclaimsOnlyObsoleteAttemptEvidence() {
+        var canonical = environment("fatal-preparation");
+        var fail = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var failure = new AssertionError("private preparation failure");
+        var backend = JdbcStagedCanonicalBackend.createEmpty(stagedConfiguration(canonical, CLOCK), (phase, attempt, chunk) -> {
+            if (phase == JdbcPublicationObserver.Phase.SEALED && fail.getAndSet(false)) { throw failure; }
+        });
+        var command = canonical.stage("fatal-retry", ImportPromotionPolicy.defaults(), List.of(row(2,
+                branch(canonical, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "fatal.example", "source", "feed"), OptionalLong.empty()))), List.of());
+        assertThatThrownBy(() -> backend.imports().promote(command)).isSameAs(failure);
+        assertThat(canonical.count("masks")).isZero();
+        assertThat(backend.importEvidence().find(command.deliveryId())).isEmpty();
+        assertThat(backend.imports().promote(command).outcome()).isEqualTo(ImportPromotionOutcome.COMMITTED);
+        for (int pass = 0; pass < 100; pass++) {
+            assertThat(backend.cleanup().purgeJournal(1).removed()).isBetween(0, 1);
+        }
+        assertThat(canonical.count("publication_attempt")).isOne();
+        assertThat(canonical.count("publication_fact")).isZero();
+        canonical.deleteStage(command);
+        assertThat(backend.imports().promote(command).outcome()).isEqualTo(ImportPromotionOutcome.ALREADY_COMMITTED);
+    }
+
+    @Test
+    @Timeout(60)
+    void stagedOrderedFieldsPreserveNativeTriStateAndMergePolicyOutcomesAcrossRegisteredObservations() throws Exception {
+        var canonical = environment("ordered-staged-matrix");
+        var oracle = environment("ordered-native-matrix");
+        var fieldPolicy = new ArtifactWritePolicy(ArtifactWritePolicy.DuplicateSelection.KEEP_FIRST, null,
+                Map.of("description", ArtifactWritePolicy.FieldUpdatePolicy.LATEST_REGISTERED_KEEP_EXISTING));
+        var configuration = stagedConfiguration(canonical, CLOCK);
+        var backend = JdbcStagedCanonicalBackend.createEmpty(withCatalog(configuration, configuration.schemas(), configuration.publicIds(),
+                configuration.identities(), Map.of("masks", fieldPolicy), configuration.importReceiptRetention()), JdbcPublicationObserver.NOOP);
+        var nativeWriter = oracle.policyWriter(Map.of("masks", fieldPolicy));
+        var inputs = List.of(ImportCell.absent(), ImportCell.nullValue(), ImportCell.value(" "), ImportCell.value("seed"), ImportCell.value("new"));
+        for (var merge : ImportMergePolicy.values()) {
+            for (int index = 0; index < inputs.size(); index++) {
+                String name = merge.name().toLowerCase(java.util.Locale.ROOT) + "-" + index;
+                String mask = name + ".example";
+                for (var environment : List.of(canonical, oracle)) {
+                    var seed = environment.stage(name + "-seed", ImportPromotionPolicy.defaults(), List.of(row(2,
+                            branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                                    values("mask", mask, "description", "seed"), OptionalLong.empty()))), List.of());
+                    var incoming = new LinkedHashMap<>(values("mask", mask)); incoming.put("description", inputs.get(index));
+                    var command = environment.stage(name + "-next", ImportPromotionPolicy.defaults(), List.of(row(2,
+                            branch(environment, "masks", ImportArtifactRole.PRIMARY, incoming,
+                                    Map.of("mask", ImportMergePolicy.KEEP_EXISTING, "description", merge), OptionalLong.empty()))), List.of());
+                    var registrations = new JdbcObservationRegistrationStore(environment.dataSource, CLOCK);
+                    var first = registrations.registerNew(new ObservationId(seed.deliveryId().value()), ObservationOrigin.MANAGED_IMPORT);
+                    var second = registrations.registerNew(new ObservationId(command.deliveryId().value()), ObservationOrigin.MANAGED_IMPORT);
+                    var writer = environment == canonical ? backend.imports() : nativeWriter;
+                    writer.promote(withRegistration(seed, first)); writer.promote(withRegistration(command, second));
+                }
+                for (var table : backend.store().tables()) {
+                    assertThat(typedRows(canonical.dataSource, table.name())).as("ordered native oracle: %s/%s", name, table.name())
+                            .isEqualTo(typedRows(oracle.dataSource, table.name()));
+                }
+            }
+        }
+        assertThat(canonical.count("masks")).isEqualTo(25);
+        assertThat(canonical.count("import_commit")).isEqualTo(50);
+    }
+
+    @Test
+    @Timeout(30)
+    void checkedPreparationFailuresReleaseOwnedResourcesForPromotionAndControl() {
+        var canonical = environment("checked-preparation-failure");
+        var configuration = stagedConfiguration(canonical, CLOCK);
+        var backend = JdbcStagedCanonicalBackend.createEmpty(configuration, JdbcPublicationObserver.NOOP);
+        for (boolean promotion : List.of(true, false)) {
+            var task = new JdbcStagedPublication.NativeTask() {
+                public void hydrate(JdbcPublicationSelection selection, JdbcSelectedCanonicalBase base, JdbcPublicationSlotBase slots,
+                                    EffectiveTime asOf) throws SQLException { base.metadata("masks"); }
+                public void prepare(javax.sql.DataSource working, JdbcCanonicalPreparationContext context, EffectiveTime asOf) throws SQLException {
+                    throw new SQLException("native preparation refused");
+                }
+            };
+            var unit = new JdbcStagedPublication.Unit("checked-failure-" + promotion, "checked-pins", java.util.Set.of("artifact:masks"), promotion);
+            assertThatThrownBy(() -> backend.publication().execute(unit, task)).hasRootCauseMessage("native preparation refused");
+            assertThat(configuration.workspaces().pressure().leasedWorkspaces()).isZero();
+            assertThat(canonical.count("masks")).isZero();
+        }
+        assertThat(canonical.count("publication_owner_failure")).isOne();
+        assertThat(canonical.count("publication_unit")).isZero();
+        assertThat(canonical.queryString("SELECT unit FROM publication_logical_owner")).isNull();
+    }
+
+    @Test
+    void publicationUnitRejectsUnboundedOrUnpinnedWorkBeforeStartingPreparation() {
+        var bounded = java.util.Set.of("artifact:masks");
+        assertThatThrownBy(() -> new JdbcStagedPublication.Unit(" ", "pins", bounded, true)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new JdbcStagedPublication.Unit("unit", " ", bounded, true)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new JdbcStagedPublication.Unit("unit", "pins", java.util.Set.of(), true)).isInstanceOf(IllegalArgumentException.class);
+        var scopes = new java.util.HashSet<String>();
+        for (int index = 0; index < 257; index++) { scopes.add("artifact:" + index); }
+        assertThatThrownBy(() -> new JdbcStagedPublication.Unit("unit", "pins", scopes, true)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @Timeout(30)
+    void stagedImportRejectsForgedObservationAuthorityBeforeExposingCanonicalData() {
+        for (int mismatch = 0; mismatch < 4; mismatch++) {
+            var canonical = environment("forged-registration-" + mismatch);
+            var configuration = stagedConfiguration(canonical, CLOCK);
+            var policy = new ArtifactWritePolicy(ArtifactWritePolicy.DuplicateSelection.KEEP_FIRST, null,
+                    Map.of("description", ArtifactWritePolicy.FieldUpdatePolicy.LATEST_REGISTERED_KEEP_EXISTING));
+            var backend = JdbcStagedCanonicalBackend.createEmpty(withCatalog(configuration, configuration.schemas(),
+                    configuration.publicIds(), configuration.identities(), Map.of("masks", policy), configuration.importReceiptRetention()),
+                    JdbcPublicationObserver.NOOP);
+            var registrations = new JdbcObservationRegistrationStore(canonical.dataSource, CLOCK);
+            var command = canonical.stage("forged-" + mismatch, ImportPromotionPolicy.defaults(), List.of(row(2,
+                    branch(canonical, "masks", ImportArtifactRole.PRIMARY,
+                            values("mask", "forged-" + mismatch + ".example", "description", "ranked"), OptionalLong.empty()))), List.of());
+            var genuine = registrations.registerNew(new ObservationId(command.deliveryId().value()), ObservationOrigin.MANAGED_IMPORT);
+            var forged = new RegisteredObservation(
+                    mismatch == 0 ? new ObservationId("unregistered") : genuine.observationId(),
+                    mismatch == 3 ? "another-namespace" : genuine.namespaceId(),
+                    mismatch == 1 ? new com.iocextractor.application.observation.ObservationOrder(genuine.admissionOrder().value() + 1) : genuine.admissionOrder(),
+                    mismatch == 2 ? ObservationOrigin.DOCUMENT : genuine.origin());
+            assertThatThrownBy(() -> backend.imports().promote(withRegistration(command, forged)))
+                    .hasMessageContaining("Registered observation does not match dataframe authority");
+            assertThat(canonical.count("masks")).isZero();
+            assertThat(canonical.count("import_commit")).isZero();
+            assertThat(backend.imports().promote(withRegistration(command, genuine)).outcome()).isEqualTo(ImportPromotionOutcome.COMMITTED);
+            assertThat(canonical.count("import_commit")).isOne();
+        }
+    }
+
+    @Test
+    @Timeout(30)
+    void stagedAlternativeMatchesRejectStableIdentityChangesWithoutMutatingParticipants() throws Exception {
+        var schema = schema("masks", "mask");
+        var record = new CanonicalKeyDefinition("record-v1", CanonicalKeyMode.COMPOSITE, List.of("mask", "description"));
+        var match = new CanonicalKeyDefinition("mask-v1", CanonicalKeyMode.COMPOSITE, List.of("mask"));
+        var identity = new ArtifactIdentityDefinition("masks", record, List.of(match), 1);
+        var canonical = environment("alternative-match-staged", List.of(schema), List.of(identity));
+        var backend = JdbcStagedCanonicalBackend.createEmpty(stagedConfiguration(canonical, CLOCK), JdbcPublicationObserver.NOOP);
+        var confirmations = new ArrayList<CanonicalRecordConfirmation>();
+        for (var fields : List.of(Map.of("mask", "multiple.example", "description", "one", "source", "seed"),
+                Map.of("mask", "multiple.example", "description", "two", "source", "seed"),
+                Map.of("mask", "stable.example", "description", "initial", "source", "seed"))) {
+            var row = ArtifactRow.ordered(new LinkedHashMap<>(fields));
+            var key = new CanonicalArtifactKeyResolver(List.of(identity)).recordKeyOf("masks", row).orElseThrow();
+            confirmations.add(new CanonicalRecordConfirmation(new ArtifactRowKey(key.keyHash()), new PreparedArtifactRow(row, Optional.of("id"))));
+        }
+        backend.confirmations().confirm(new CanonicalArtifactConfirmation(new ObservationId("alternative-seed"), "alternative-source",
+                new ConfirmationReceiptContext(new ConfirmationReceiptId("alternative-receipt"), "alternative-policy", 1, Duration.ofDays(30)),
+                "masks", schema.columns().stream().map(DataframeColumn::name).toList(), confirmations));
+        var before = typedRows(canonical.dataSource, "masks");
+        var command = canonical.stage("alternative-import", ImportPromotionPolicy.defaults(), List.of(
+                row(2, branch(canonical, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "multiple.example", "description", "third"), OptionalLong.empty())),
+                row(3, branch(canonical, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "stable.example", "description", "changed"), OptionalLong.empty()))), List.of());
+        var result = backend.imports().promote(command);
+        assertThat(result.rejectedRows()).isEqualTo(2);
+        assertThat(result.publicMutations()).isZero();
+        assertThat(typedRows(canonical.dataSource, "masks")).isEqualTo(before);
+        var evidence = backend.importEvidence().find(command.deliveryId()).orElseThrow();
+        assertThat(evidence.issues()).extracting(ImportRowIssue::code)
+                .containsExactly("IMPORT.STABLE_IDENTITY_CONFLICT", "IMPORT.STABLE_IDENTITY_CONFLICT");
+    }
+
+    @Test
+    @Timeout(30)
+    void stagedEmptyConfirmationCompletesReceiptWithoutAllocatingOrConfirmingRows() {
+        var canonical = environment("empty-staged-confirmation");
+        var backend = JdbcStagedCanonicalBackend.createEmpty(stagedConfiguration(canonical, CLOCK), JdbcPublicationObserver.NOOP);
+        var command = new CanonicalArtifactConfirmation(new ObservationId("empty-staged"), "empty-source",
+                new ConfirmationReceiptContext(new ConfirmationReceiptId("empty-receipt"), "empty-policy", 1, Duration.ofDays(30)),
+                "masks", canonical.schemas.getFirst().columns().stream().map(DataframeColumn::name).toList(), List.of());
+        assertThat(backend.confirmations().confirm(command).created()).isZero();
+        assertThat(backend.confirmations().confirm(command).replayed()).isTrue();
+        assertThat(backend.receipts(Duration.ofDays(30)).findComplete("empty-source", "empty-policy", EffectiveTime.at(NOW))).isPresent();
+        assertThat(backend.expiry().nearestDeadline()).isEmpty();
+        assertThat(canonical.count("masks")).isZero();
+        assertThat(canonical.queryLong("SELECT next_value FROM artifact_id_allocator WHERE artifact='masks'")).isOne();
+    }
+
+    private static List<ArtifactRow> snapshot(JdbcStagedCanonicalBackend backend, DataframeArtifactSchema schema,
+                                             ArtifactIdentityDefinition identity, String profile) {
+        var rows = new ArrayList<ArtifactRow>();
+        var plan = new com.iocextractor.application.export.ExportPlan(1,
+                new com.iocextractor.application.export.ExportProfile(profile, com.iocextractor.application.export.ExportMode.COMPLETE, List.of(schema.artifactName())),
+                new com.iocextractor.application.export.ExportFormat("csv", "UTF-8", ";", "\"", "NULL"),
+                List.of(new com.iocextractor.application.export.ExportArtifactSpec(schema.artifactName(), schema.artifactName() + ".csv",
+                        schema.columns().stream().map(DataframeColumn::name).toList(), identity.epoch(), identity.identityHash(), DIGEST, FINGERPRINT)));
+        backend.snapshots().stream(new com.iocextractor.application.export.SnapshotRequest(plan),
+                new com.iocextractor.application.port.out.export.SnapshotRowConsumer() {
+                    public void begin(com.iocextractor.application.export.SnapshotMetadata metadata) { }
+                    public void beginArtifact(com.iocextractor.application.export.SnapshotArtifactMetadata metadata) { }
+                    public void row(ArtifactRow row) { rows.add(row); }
+                    public void endArtifact() { }
+                    public void end() { }
+                });
+        return rows;
+    }
+
+    @Test
+    @Timeout(30)
     void stagedCleanupBoundsScannedPrefixesAndDrainsTransferJournalsWithoutLosingReceiptOrAnchors() throws Exception {
         Environment canonical = environment("bounded-cleanup");
         var configuration = stagedConfiguration(canonical, CLOCK);
@@ -241,6 +465,8 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
         }
         var committed = canonical.stage("cleanup-live", ImportPromotionPolicy.defaults(), rows, List.of());
         backend.imports().promote(committed);
+        assertThat(snapshot(backend, canonical.schemas.getFirst(), canonical.identities.getFirst(), "bounded-profile")).hasSize(260);
+        assertThat(canonical.count("export_slot_assignment")).isEqualTo(260);
         var cancelled = canonical.stage("cleanup-cancelled", ImportPromotionPolicy.defaults(), List.of(row(2,
                 branch(canonical, "masks", ImportArtifactRole.PRIMARY,
                         values("mask", "cancelled.example", "source", "feed"), OptionalLong.empty()))), List.of());
@@ -268,7 +494,7 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
         assertThat(canonical.count("publication_fact")).isZero();
         assertThat(canonical.count("publication_chunk")).isZero();
         assertThat(canonical.count("publication_dependency")).isZero();
-        assertThat(canonical.count("publication_attempt")).isEqualTo(2);
+        assertThat(canonical.count("publication_attempt")).isEqualTo(3);
         assertThat(backend.expiry().nearestDeadline().orElseThrow().validUntil()).isEqualTo(NOW.plus(TTL));
         canonical.deleteStage(committed);
         assertThat(JdbcStagedCanonicalBackend.reopen(configuration, JdbcPublicationObserver.NOOP).imports().promote(committed).outcome())
@@ -337,8 +563,9 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
             }
         }
         assertThat(factory.pressure().leasedWorkspaces()).isZero();
-        assertThatThrownBy(() -> JdbcPrivatePublicationWorkspace.create(factory, "first", "changed"))
-                .isInstanceOf(IocExtractorException.class).hasRootCauseMessage("Canonical workspace pins changed");
+        try (var fresh = JdbcPrivatePublicationWorkspace.create(factory, "first", "changed")) {
+            fresh.checkQuota();
+        }
         try (var recovered = JdbcPrivatePublicationWorkspace.create(factory, "recovered", "pins")) {
             recovered.checkQuota();
             try (var connection = recovered.dataSource().getConnection()) {
@@ -423,6 +650,8 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
             var streamed = new ArrayList<ArtifactRow>();
             backend.streamReader().stream("addresses", streamed::add);
             assertThat(streamed).hasSize(1).allSatisfy(row -> assertThat(row.values()).doesNotContainKey("id"));
+            assertThat(snapshot(backend, schema, identity, "idless-profile")).hasSize(1)
+                    .allSatisfy(row -> assertThat(row.values()).doesNotContainKey("id"));
             utc.set(utc.get().plus(TTL));
             assertThat(backend.expiry().expireDue("addresses", EffectiveTime.at(utc.get()), 1).expired()).isOne();
         }
@@ -566,6 +795,8 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
         var commits = backend.store().tables().stream().filter(table -> table.name().equals("canonical_observation_commit")).findFirst().orElseThrow();
         assertThat(canonical.count(commits.versions())).isZero();
         assertThat(canonical.count("masks")).isOne();
+        assertThatThrownBy(() -> backend.confirmations().confirm(commands.getFirst()))
+                .isInstanceOf(IocExtractorException.class).hasMessageContaining("native confirmation marker");
         assertThat(canonical.queryLong("SELECT _valid_until_epoch_ms FROM masks")).isEqualTo(NOW.plus(TTL).toEpochMilli());
         assertThatThrownBy(() -> backend.cleanup().purgeVersions("masks", 257)).isInstanceOf(IllegalArgumentException.class);
     }
@@ -661,6 +892,8 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
         backend.importEvidence().purge(command.deliveryId());
         assertThat(backend.importEvidence().find(command.deliveryId())).isEmpty();
         assertThat(canonical.count("import_row_warning")).isZero();
+        assertThatThrownBy(() -> backend.imports().promote(command)).isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("native import receipt");
     }
 
     @Test
@@ -2268,6 +2501,10 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                     null,
                     Map.of("source",
                             ArtifactWritePolicy.FieldUpdatePolicy.LATEST_REGISTERED_KEEP_EXISTING));
+            return policyWriter(Map.of("masks", policy));
+        }
+
+        private JdbcCanonicalImportWriter policyWriter(Map<String, ArtifactWritePolicy> policies) {
             return new JdbcCanonicalImportWriter(
                     dataSource, schemas,
                     List.of(
@@ -2279,7 +2516,7 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                     ignored -> EffectiveTime.at(NOW),
                     new FixedRecordValidityPolicy(TTL), CLOCK,
                     new JdbcWriterAdmission(), JdbcCanonicalImportObserver.NOOP,
-                    Duration.ofDays(90), Map.of("masks", policy));
+                    Duration.ofDays(90), policies);
         }
 
         private void deleteStage(CanonicalImportCommand command) {
