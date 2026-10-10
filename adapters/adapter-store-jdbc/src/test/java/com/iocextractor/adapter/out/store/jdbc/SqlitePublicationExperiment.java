@@ -1,5 +1,7 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
+import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
+import com.iocextractor.application.artifact.lifecycle.RecordValidityPolicy;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -7,6 +9,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -26,9 +29,25 @@ final class SqlitePublicationExperiment {
             WHERE f.family=? AND f.scope=? AND f.fact_key=? AND u.state='COMMITTED'
             ORDER BY f.stamp DESC LIMIT 1
             """;
+    static final String NEAREST_SQL = """
+            SELECT anchor.valid_until FROM experiment_unit anchor
+            WHERE anchor.state='COMMITTED' AND anchor.valid_until>?
+              AND EXISTS (
+                SELECT 1 FROM experiment_fact f JOIN experiment_unit u
+                  ON u.id=f.unit_id AND u.fence=f.fence AND u.state='COMMITTED'
+                WHERE f.deadline_anchor=anchor.id AND f.family=? AND f.scope=? AND f.payload IS NOT NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM experiment_fact newer JOIN experiment_unit nu
+                      ON nu.id=newer.unit_id AND nu.fence=newer.fence AND nu.state='COMMITTED'
+                    WHERE newer.family=f.family AND newer.scope=f.scope AND newer.fact_key=f.fact_key
+                      AND newer.stamp>f.stamp))
+            ORDER BY anchor.valid_until LIMIT 1
+            """;
 
     record Attempt(long unitId, long fence, long stamp) { }
-    record Fact(String family, String scope, String key, String payload) { }
+    record Fact(String family, String scope, String key, String payload, Long deadlineAnchor) {
+        Fact(String family, String scope, String key, String payload) { this(family, scope, key, payload, null); }
+    }
     record Receipt(long sequence, long effectiveMillis, String value) { }
     record Manifest(int chunks, int contributions, long minimumDeadline, Map<String, Long> dependencies) {
         Manifest { dependencies = Map.copyOf(dependencies); }
@@ -47,8 +66,12 @@ final class SqlitePublicationExperiment {
                         expected_contributions INTEGER NOT NULL CHECK(expected_contributions>=0),
                         next_chunk INTEGER NOT NULL DEFAULT 0, contributions INTEGER NOT NULL DEFAULT 0,
                         minimum_deadline INTEGER NOT NULL,
+                        needs_validity INTEGER NOT NULL DEFAULT 0 CHECK(needs_validity IN (0,1)),
+                        valid_until INTEGER,
                         publication_sequence INTEGER UNIQUE, effective_millis INTEGER, receipt TEXT,
                         CHECK((expected_chunks=0)=(expected_contributions=0)),
+                        CHECK(valid_until IS NULL OR valid_until>effective_millis),
+                        CHECK(state<>'COMMITTED' OR needs_validity=0 OR valid_until IS NOT NULL),
                         CHECK((state='COMMITTED' AND publication_sequence IS NOT NULL
                             AND effective_millis IS NOT NULL AND receipt IS NOT NULL)
                             OR (state<>'COMMITTED' AND publication_sequence IS NULL
@@ -65,12 +88,15 @@ final class SqlitePublicationExperiment {
                         unit_id INTEGER NOT NULL REFERENCES experiment_unit(id), fence INTEGER NOT NULL,
                         stamp INTEGER NOT NULL,
                         family TEXT NOT NULL, scope TEXT NOT NULL, fact_key TEXT NOT NULL, payload TEXT,
+                        deadline_anchor INTEGER REFERENCES experiment_unit(id),
                         PRIMARY KEY(unit_id,fence,family,scope,fact_key),
                         FOREIGN KEY(unit_id,fence,stamp) REFERENCES experiment_attempt(unit_id,fence,stamp),
                         FOREIGN KEY(unit_id,fence,scope)
                             REFERENCES experiment_dependency(unit_id,fence,scope)) WITHOUT ROWID
                     """,
                     "CREATE INDEX experiment_fact_lookup ON experiment_fact(family,scope,fact_key,stamp DESC)",
+                    "CREATE INDEX experiment_fact_deadline ON experiment_fact(deadline_anchor,family,scope)",
+                    "CREATE INDEX experiment_unit_deadline ON experiment_unit(valid_until) WHERE state='COMMITTED'",
                     """
                     CREATE TABLE experiment_chunk (
                         unit_id INTEGER NOT NULL REFERENCES experiment_unit(id), fence INTEGER NOT NULL,
@@ -114,7 +140,7 @@ final class SqlitePublicationExperiment {
     Attempt rebuild(Connection connection, Attempt previous, String pins, Manifest manifest) throws SQLException {
         requireTransaction(connection);
         try (PreparedStatement statement = connection.prepareStatement("""
-                UPDATE experiment_unit SET fence=fence+1,state='PENDING',next_chunk=0,contributions=0,
+                UPDATE experiment_unit SET fence=fence+1,state='PENDING',next_chunk=0,contributions=0,needs_validity=0,
                     minimum_deadline=?,expected_chunks=?,expected_contributions=?
                 WHERE id=? AND fence=? AND pins=? AND state IN ('PENDING','SEALED') RETURNING fence
                 """)) {
@@ -153,23 +179,29 @@ final class SqlitePublicationExperiment {
                 }
             }
         }
+        long inheritedDeadline = inheritedDeadline(connection, attempt, facts);
+        boolean needsValidity = facts.stream().anyMatch(fact -> fact.payload() != null
+                && Long.valueOf(attempt.unitId()).equals(fact.deadlineAnchor()));
         try (PreparedStatement statement = connection.prepareStatement("""
-                UPDATE experiment_unit SET next_chunk=next_chunk+1,contributions=contributions+?
+                UPDATE experiment_unit SET next_chunk=next_chunk+1,contributions=contributions+?,
+                    minimum_deadline=MIN(minimum_deadline,?),needs_validity=MAX(needs_validity,?)
                 WHERE id=? AND fence=? AND next_chunk=? AND next_chunk<expected_chunks
                     AND contributions+?<=expected_contributions
                 """)) {
             statement.setInt(1, facts.size());
-            statement.setLong(2, attempt.unitId());
-            statement.setLong(3, attempt.fence());
-            statement.setInt(4, ordinal);
-            statement.setInt(5, facts.size());
+            statement.setLong(2, inheritedDeadline);
+            statement.setInt(3, needsValidity ? 1 : 0);
+            statement.setLong(4, attempt.unitId());
+            statement.setLong(5, attempt.fence());
+            statement.setInt(6, ordinal);
+            statement.setInt(7, facts.size());
             requireOne(statement.executeUpdate());
         }
         try (PreparedStatement statement = connection.prepareStatement(
                 """
-                INSERT INTO experiment_fact VALUES(?,?,?,?,?,?,?)
+                INSERT INTO experiment_fact VALUES(?,?,?,?,?,?,?,?)
                 ON CONFLICT(unit_id,fence,family,scope,fact_key)
-                DO UPDATE SET payload=excluded.payload
+                DO UPDATE SET payload=excluded.payload,deadline_anchor=excluded.deadline_anchor
                 """)) {
             for (Fact fact : facts) {
                 bindAttempt(statement, attempt);
@@ -178,6 +210,7 @@ final class SqlitePublicationExperiment {
                 statement.setString(5, fact.scope());
                 statement.setString(6, fact.key());
                 statement.setString(7, fact.payload());
+                statement.setObject(8, fact.deadlineAnchor());
                 statement.addBatch();
             }
             statement.executeBatch();
@@ -203,6 +236,11 @@ final class SqlitePublicationExperiment {
     }
 
     Receipt publish(Connection connection, Attempt attempt, long effectiveMillis, String receipt) throws SQLException {
+        return publish(connection, attempt, effectiveMillis, receipt, null);
+    }
+
+    Receipt publish(Connection connection, Attempt attempt, long effectiveMillis, String receipt,
+                    RecordValidityPolicy policy) throws SQLException {
         requireTransaction(connection);
         Optional<Receipt> committed = receipt(connection, attempt.unitId());
         if (committed.isPresent()) {
@@ -211,6 +249,9 @@ final class SqlitePublicationExperiment {
             return committed.get();
         }
         requireState(connection, attempt, "SEALED");
+        EffectiveTime asOf = EffectiveTime.at(Instant.ofEpochMilli(effectiveMillis));
+        Long validUntil = policy == null ? null
+                : policy.decide(asOf).requireValidAt(asOf).deadline().validUntil().toEpochMilli();
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT 1 FROM experiment_dependency d
                 LEFT JOIN experiment_epoch e ON e.scope=d.scope
@@ -229,15 +270,17 @@ final class SqlitePublicationExperiment {
             sequence = result.getLong(1);
         }
         try (PreparedStatement statement = connection.prepareStatement("""
-                UPDATE experiment_unit SET state='COMMITTED',publication_sequence=?,effective_millis=?,receipt=?
+                UPDATE experiment_unit SET state='COMMITTED',publication_sequence=?,effective_millis=?,receipt=?,
+                    valid_until=?
                 WHERE id=? AND fence=? AND state='SEALED' AND minimum_deadline>?
                 """)) {
             statement.setLong(1, sequence);
             statement.setLong(2, effectiveMillis);
             statement.setString(3, receipt);
-            statement.setLong(4, attempt.unitId());
-            statement.setLong(5, attempt.fence());
-            statement.setLong(6, effectiveMillis);
+            statement.setObject(4, validUntil);
+            statement.setLong(5, attempt.unitId());
+            statement.setLong(6, attempt.fence());
+            statement.setLong(7, effectiveMillis);
             requireOne(statement.executeUpdate());
         }
         try (PreparedStatement statement = connection.prepareStatement("""
@@ -283,6 +326,54 @@ final class SqlitePublicationExperiment {
                         result.getString(3))) : Optional.empty();
             }
         }
+    }
+
+    Optional<String> readActive(Connection connection, String family, String scope, String key, long asOf)
+            throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT latest.payload FROM (
+                  SELECT f.payload,f.deadline_anchor FROM experiment_fact f
+                  JOIN experiment_unit u ON u.id=f.unit_id AND u.fence=f.fence AND u.state='COMMITTED'
+                  WHERE f.family=? AND f.scope=? AND f.fact_key=? ORDER BY f.stamp DESC LIMIT 1
+                ) latest JOIN experiment_unit anchor ON anchor.id=latest.deadline_anchor
+                WHERE anchor.state='COMMITTED' AND anchor.valid_until>?
+                """)) {
+            statement.setString(1, family);
+            statement.setString(2, scope);
+            statement.setString(3, key);
+            statement.setLong(4, asOf);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.ofNullable(result.getString(1)) : Optional.empty();
+            }
+        }
+    }
+
+    java.util.OptionalLong nearest(Connection connection, String family, String scope, long asOf) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(NEAREST_SQL)) {
+            statement.setLong(1, asOf);
+            statement.setString(2, family);
+            statement.setString(3, scope);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? java.util.OptionalLong.of(result.getLong(1)) : java.util.OptionalLong.empty();
+            }
+        }
+    }
+
+    private long inheritedDeadline(Connection connection, Attempt attempt, List<Fact> facts) throws SQLException {
+        long minimum = Long.MAX_VALUE;
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT valid_until FROM experiment_unit WHERE id=? AND state='COMMITTED' AND valid_until IS NOT NULL")) {
+            for (Fact fact : facts) {
+                Long anchor = fact.deadlineAnchor();
+                if (fact.payload() == null || anchor == null || anchor == attempt.unitId()) { continue; }
+                statement.setLong(1, anchor);
+                try (ResultSet result = statement.executeQuery()) {
+                    if (!result.next()) { throw new SQLException("Missing committed deadline anchor"); }
+                    minimum = Math.min(minimum, result.getLong(1));
+                }
+            }
+        }
+        return minimum;
     }
 
     /** Own pending facts overlay the caller's pinned committed base, including tombstones. */
@@ -397,7 +488,8 @@ final class SqlitePublicationExperiment {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             int bytes = 0;
             for (Fact fact : facts) {
-                for (String value : new String[]{fact.family(), fact.scope(), fact.key(), fact.payload()}) {
+                for (String value : new String[]{fact.family(), fact.scope(), fact.key(), fact.payload(),
+                        fact.deadlineAnchor() == null ? null : fact.deadlineAnchor().toString()}) {
                     if (value != null && value.length() > CHUNK_BYTE_LIMIT - bytes - Integer.BYTES) {
                         throw new IllegalArgumentException("Experiment chunk byte limit");
                     }

@@ -3,6 +3,7 @@ package com.iocextractor.adapter.out.store.jdbc;
 import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Attempt;
 import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Fact;
 import com.iocextractor.adapter.out.store.jdbc.SqlitePublicationExperiment.Manifest;
+import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -349,6 +351,112 @@ class SqlitePublicationExperimentIT {
     }
 
     @Test
+    void anchorsDeadlineAtPublicationUsingTheRealValidityPolicyAndRequiresStrictActivity() throws Exception {
+        try (var fixture = new Fixture(directory)) {
+            Attempt unit = fixture.begin("deadline", 1, 1, Long.MAX_VALUE, Map.of("masks", 0L));
+            fixture.append(unit, 0, List.of(new Fact("row", "masks", "key", "value", unit.unitId())));
+            fixture.seal(unit);
+            assertThatThrownBy(() -> fixture.publish(unit, NOW, "receipt"))
+                    .hasRootCauseInstanceOf(SQLException.class);
+            assertThat(fixture.receipt(unit)).isEmpty();
+            assertThat(fixture.publishWithValidity(unit, NOW + 1_000, "receipt", Duration.ofHours(1)).sequence())
+                    .isEqualTo(1);
+            long deadline = NOW + 1_000 + Duration.ofHours(1).toMillis();
+            try (Connection connection = fixture.dataSource.getConnection()) {
+                assertThat(fixture.probe.readActive(connection, "row", "masks", "key", deadline - 1))
+                        .contains("value");
+                assertThat(fixture.probe.readActive(connection, "row", "masks", "key", deadline)).isEmpty();
+                assertThat(fixture.probe.nearest(connection, "row", "masks", NOW)).hasValue(deadline);
+                assertThat(fixture.probe.nearest(connection, "row", "masks", deadline)).isEmpty();
+            }
+        }
+    }
+
+    @Test
+    void expirationOfNewestVersionCannotRevealAnOlderVersionWithLongerValidity() throws Exception {
+        try (var fixture = new Fixture(directory)) {
+            Attempt initial = fixture.begin("initial", 1, 2, Long.MAX_VALUE, Map.of("masks", 0L));
+            fixture.append(initial, 0, List.of(new Fact("row", "masks", "renew", "old", initial.unitId()),
+                    new Fact("row", "masks", "survivor", "kept", initial.unitId())));
+            fixture.seal(initial);
+            fixture.publishWithValidity(initial, NOW, "initial-receipt", Duration.ofHours(2));
+            Attempt newer = fixture.begin("newer", 1, 1, Long.MAX_VALUE, Map.of("masks", 1L));
+            fixture.append(newer, 0, List.of(new Fact("row", "masks", "renew", "new", newer.unitId())));
+            fixture.seal(newer);
+            fixture.publishWithValidity(newer, NOW, "newer-receipt", Duration.ofHours(1));
+            long asOf = NOW + Duration.ofHours(1).toMillis();
+            try (Connection connection = fixture.dataSource.getConnection()) {
+                assertThat(fixture.probe.readActive(connection, "row", "masks", "renew", asOf)).isEmpty();
+                assertThat(fixture.probe.readActive(connection, "row", "masks", "survivor", asOf))
+                        .contains("kept");
+                assertThat(fixture.probe.nearest(connection, "row", "masks", asOf))
+                        .hasValue(NOW + Duration.ofHours(2).toMillis());
+            }
+            Attempt deletion = fixture.begin("delete", 1, 1, Long.MAX_VALUE, Map.of("masks", 2L));
+            fixture.append(deletion, 0, List.of(new Fact("row", "masks", "survivor", null)));
+            fixture.seal(deletion);
+            fixture.publish(deletion, asOf, "delete-receipt");
+            try (Connection connection = fixture.dataSource.getConnection()) {
+                assertThat(fixture.probe.nearest(connection, "row", "masks", asOf)).isEmpty();
+            }
+        }
+    }
+
+    @Test
+    void inheritedDeadlineIsNotRenewedAndItsExpiryAutomaticallyInvalidatesPublication() throws Exception {
+        try (var fixture = new Fixture(directory)) {
+            Attempt initial = fixture.begin("initial", 1, 1, Long.MAX_VALUE, Map.of("masks", 0L));
+            fixture.append(initial, 0, List.of(new Fact("row", "masks", "key", "original", initial.unitId())));
+            fixture.seal(initial);
+            fixture.publishWithValidity(initial, NOW, "initial-receipt", Duration.ofHours(1));
+            Attempt patch = fixture.begin("patch", 1, 1, Long.MAX_VALUE, Map.of("masks", 1L));
+            fixture.append(patch, 0, List.of(new Fact("row", "masks", "key", "patch", initial.unitId())));
+            fixture.seal(patch);
+            fixture.publish(patch, NOW + 1_000, "patch-receipt");
+            long deadline = NOW + Duration.ofHours(1).toMillis();
+            try (Connection connection = fixture.dataSource.getConnection();
+                 var plan = connection.prepareStatement("EXPLAIN QUERY PLAN " + SqlitePublicationExperiment.NEAREST_SQL)) {
+                assertThat(fixture.probe.nearest(connection, "row", "masks", NOW)).hasValue(deadline);
+                assertThat(fixture.probe.readActive(connection, "row", "masks", "key", deadline)).isEmpty();
+                plan.setLong(1, NOW); plan.setString(2, "row"); plan.setString(3, "masks");
+                List<String> details = new ArrayList<>();
+                try (var result = plan.executeQuery()) {
+                    while (result.next()) { details.add(result.getString("detail")); }
+                }
+                assertThat(details).anyMatch(detail -> detail.contains("experiment_unit_deadline"));
+                assertThat(details).anyMatch(detail -> detail.contains("experiment_fact_deadline"));
+                assertThat(details).noneMatch(detail -> detail.contains("USE TEMP B-TREE FOR ORDER BY"));
+            }
+            Attempt expiredPatch = fixture.begin("expired-patch", 1, 1, Long.MAX_VALUE, Map.of("masks", 2L));
+            fixture.append(expiredPatch, 0,
+                    List.of(new Fact("row", "masks", "key", "too-late", initial.unitId())));
+            fixture.seal(expiredPatch);
+            assertThatThrownBy(() -> fixture.publish(expiredPatch, deadline, "expired-receipt"))
+                    .hasRootCauseMessage("Incomplete, expired or stale publication attempt");
+            assertThat(fixture.receipt(expiredPatch)).isEmpty();
+            assertThat(fixture.read("row", "masks", "key")).contains("patch");
+        }
+    }
+
+    @Test
+    void cannotInheritAnUncommittedOrMissingDeadlineAnchor() throws Exception {
+        try (var fixture = new Fixture(directory)) {
+            Attempt pendingAnchor = fixture.begin("pending-anchor", 1, 1, Long.MAX_VALUE, Map.of("masks", 0L));
+            Attempt unit = fixture.begin("delivery", 1, 1, Long.MAX_VALUE, Map.of("masks", 0L));
+            assertThatThrownBy(() -> fixture.append(unit, 0,
+                    List.of(new Fact("row", "masks", "key", "value", pendingAnchor.unitId()))))
+                    .hasRootCauseMessage("Missing committed deadline anchor");
+            assertThatThrownBy(() -> fixture.append(unit, 0,
+                    List.of(new Fact("row", "masks", "key", "value", Long.MAX_VALUE))))
+                    .hasRootCauseMessage("Missing committed deadline anchor");
+            fixture.append(unit, 0, List.of(new Fact("row", "masks", "key", "value", unit.unitId())));
+            fixture.seal(unit);
+            fixture.publishWithValidity(unit, NOW, "receipt", Duration.ofHours(1));
+            assertThat(fixture.read("row", "masks", "key")).contains("value");
+        }
+    }
+
+    @Test
     void releasesPhysicalAdmissionBetweenChunksForControlAndUsesSelectiveLookup() throws Exception {
         try (var fixture = new Fixture(directory)) {
             int total = SqlitePublicationExperiment.CHUNK_FACT_LIMIT * 16;
@@ -448,6 +556,11 @@ class SqlitePublicationExperimentIT {
 
         SqlitePublicationExperiment.Receipt publish(Attempt attempt, long time, String value) {
             return write(OperationClass.PROMOTION, c -> probe.publish(c, attempt, time, value));
+        }
+
+        SqlitePublicationExperiment.Receipt publishWithValidity(Attempt attempt, long time, String value, Duration ttl) {
+            return write(OperationClass.PROMOTION,
+                    c -> probe.publish(c, attempt, time, value, new FixedRecordValidityPolicy(ttl)));
         }
 
         java.util.Optional<SqlitePublicationExperiment.Receipt> receipt(Attempt attempt) throws SQLException {

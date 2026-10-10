@@ -100,12 +100,35 @@ attempts end the publication attempt with retryable failure, not an oversized
 fallback transaction. This bounds one attempt, not eventual queue progress;
 sustained mixed-load qualification must prove progress at admitted intake.
 
+**Open owner decision:** this publication-time proposal differs from the
+first-owned-transaction UTC used by [ADR 0020](0020-canonical-record-expiration-lifecycle.md).
+If preparation starts before an existing deadline but publication occurs after
+it, the current large transaction can renew the original lifecycle; the proposed
+fresh-UTC check requires a new lifecycle. The internal ID outcome and TTL origin
+therefore need an explicit decision before typed-kernel integration. Preserving
+initial-ownership semantics needs its own expiry/reader/conflict proof, not an
+implicit global writer lock or unqualified expiry deferral. The experiment's
+publication-time tests do not constitute acceptance of this business change.
+
 New or renewed versions reference the publishing header's effective UTC and
 their fixed validity duration. Versions not renewed retain their prior deadline
 anchor. TTL remains a property of each canonical row lifecycle; a shared
 physical time anchor does not make delivery the business identity. Integration
 must qualify indexed active/nearest-deadline/expiry queries before adopting
 this representation. No N-row time correction is allowed at publication.
+The physical probe stores one absolute deadline in the publishing header using
+the existing `RecordValidityPolicy`. Pending renewal versions reference that
+header; a non-renewed version retains its prior committed anchor. Referenced
+old deadlines also constrain publication automatically. Active lookup must
+select the latest committed version **before** testing its deadline; filtering
+versions by activity first can resurrect an older version with longer validity.
+Nearest-deadline lookup excludes superseded versions and tombstones. Expiry,
+first/last confirmation timestamps, provenance timestamps and large retained
+anchor sets still require typed integration and resource qualification.
+Migration must preserve each legacy record's stored absolute deadlines and
+timestamps. It cannot assign one new confirmation anchor or current-config TTL
+to all old rows. The representation for legacy absolute values is a required
+typed-integration gate; the anchor-only physical probe does not authorize upgrade.
 
 ### Recovery and retention
 

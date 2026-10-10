@@ -39,6 +39,12 @@ does **not** substitute these payloads for typed canonical storage.
 - Readers select only committed current-fence versions. Own pending reads use
   a separate connection over one pinned committed base; a pending tombstone
   overrides the base rather than revealing its old value.
+- The physical lifecycle probe uses the real `RecordValidityPolicy`: new/renewed
+  versions reference a header deadline calculated at publication; non-renewed
+  versions retain a committed old anchor. Anchor references participate in the
+  chunk digest. Missing/pending inherited anchors fail; inherited deadlines
+  automatically lower the publication guard. The final transaction writes one
+  header deadline and does not rewrite row deadlines.
 
 The receipt here is an **opaque experiment header**, not `import_commit` or a
 complete `CanonicalImportResult`. Reopening it without preparation input proves
@@ -65,7 +71,9 @@ Retrying a journalled chunk never applies its contribution twice.
 The indexed lookup excludes artifact-wide scans and a temporary ORDER BY
 B-tree on the retained exact-driver query plan. This does not bound the number
 of cancelled/pending versions it may skip, nor qualify active/nearest-deadline
-queries. Retention and typed lifecycle indexes remain explicit gates.
+queries at reference size. A small deadline experiment now verifies indexed
+header/anchor lookup, exact equality and latest-version-before-activity ordering;
+retention, expiry and reference-size typed lifecycle costs remain explicit gates.
 
 ## Deterministic checks
 
@@ -96,6 +104,16 @@ The new Failsafe suite covers:
     transaction actually writes an unrelated control scope and commits between
     the first and second chunks. Query-plan checks
     require indexed fact search with no full fact scan or ORDER BY sort.
+14. A self-anchored row requires a validity policy, publication stores its
+    deadline, and equality is inactive. A failed validity publication rolls back
+    its sequence/receipt.
+15. A newer version with shorter validity expires without exposing an older
+    still-valid version. Nearest deadline respects surviving keys and tombstones.
+16. A non-renewed patch retains its old deadline; publication at that deadline
+    fails. The nearest query must use header/anchor indexes without an ORDER BY
+    sort.
+17. A pending or missing inherited anchor cannot be used; the failed chunk
+    rolls back and can be correctly restaged with its own anchor.
 
 Run through the normal facade:
 
@@ -103,9 +121,9 @@ Run through the normal facade:
 make test-one MODULE=adapters/adapter-store-jdbc TEST=SqlitePublicationExperimentIT
 ```
 
-The focused run executed 13 tests with zero failures/errors/skips; Failsafe
-reported 1.210 seconds for the suite. This is functional probe execution time,
-not a throughput or writer-occupancy result. Final repository evidence comes
+The first physical run passed 13 tests; the final deadline-focused run executed
+17 tests with zero failures/errors/skips in 1.361 seconds. This is functional
+probe execution time, not a throughput or writer-occupancy result. Final repository evidence comes
 from `make verify`, `make pmd-analysis`, `make docs` and exact-HEAD `make context`.
 
 The first full verify at `6a240d89839f70662adb9ae6684c118d0bc3874d` passed
@@ -125,15 +143,23 @@ floor, analyzer exclusion or production baseline is relaxed.
 
 ## Remaining C2 gate before C3
 
+The owner question about initial-owned-transaction UTC versus fresh publication
+UTC is pending. The prototype tests the latter. A preparation spanning an old
+deadline can change lifecycle/ID outcomes relative to the current adapter; do
+not infer semantic equivalence or activate this choice from the probe tests.
+
 The physical probe alone does not meet the C2 gate. Next work must connect typed
 facts to the real shared mutation kernel and existing canonical ports, covering
 ordinary confirmation and complete fan-out import. It must exercise real row,
 alias, registration-origin, provenance, slot and receipt outcomes against the
 corrected current adapter's independent oracles.
 
-In particular, qualify safe-clock ownership and indexed deadline anchors;
+In particular, qualify safe-clock ownership and deadline queries at reference size;
 do not use the probe's caller-supplied millisecond value as production time
-authority. Qualify durable logical promotion ownership, the three-attempt
+authority. Existing v12 records have individual persisted deadlines/timestamps;
+migration must preserve them, not reinterpret all of them through one new
+publication time or the current TTL setting. The anchor-only probe is not an
+existing-database migration. Qualify durable logical promotion ownership, the three-attempt
 rebuild policy, cancellation/retention and finite progress when expiry or slot
 work invalidates preparation. Coarse scope epochs are conservative, not evidence
 of adequate mixed-load progress. A passed 4,096-fact probe is not a 100k/1m
