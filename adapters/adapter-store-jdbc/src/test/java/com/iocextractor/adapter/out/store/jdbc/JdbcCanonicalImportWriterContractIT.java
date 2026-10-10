@@ -653,9 +653,9 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
             new JdbcCanonicalLifecycleWriter(working.dataSource, working.schemas,
                     List.of(new ArtifactIdAllocatorDefinition("masks", ArtifactIdStrategy.ASCENDING, 1, 1),
                             new ArtifactIdAllocatorDefinition("hashes", ArtifactIdStrategy.ASCENDING, 1, 1)),
-                    ignored -> EffectiveTime.at(NOW), new FixedRecordValidityPolicy(TTL), CLOCK,
+                    ignored -> EffectiveTime.at(NOW), new FixedRecordValidityPolicy(TTL),
                     JdbcLifecycleTransactionObserver.NOOP, working.identities, new JdbcWriterAdmission(),
-                    canonical.dataSource, admission).confirm(command);
+                    new JdbcCanonicalReservationAuthority(canonical.dataSource, CLOCK, admission)).confirm(command);
             Instant utc = NOW.plusSeconds(2L * (index + 1));
             ordinaryWriter(oracle, utc).confirm(command);
             var attempt = experiment.stage(working.dataSource, "ordinary-unit-" + index, "ordinary-pins", n -> {
@@ -1470,8 +1470,8 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                     List.of(new ArtifactIdAllocatorDefinition("masks", ArtifactIdStrategy.ASCENDING, 1, 1),
                             new ArtifactIdAllocatorDefinition("hashes", ArtifactIdStrategy.ASCENDING, 1, 1)),
                     identities, workspaceRoot, ignored -> EffectiveTime.at(utc),
-                    new FixedRecordValidityPolicy(TTL), CLOCK, new JdbcWriterAdmission(),
-                    observer, Duration.ofDays(90), Map.of(), authority.dataSource, admission);
+                    new FixedRecordValidityPolicy(TTL), new JdbcWriterAdmission(),
+                    observer, Duration.ofDays(90), Map.of(), new JdbcCanonicalReservationAuthority(authority.dataSource, CLOCK, admission));
         }
 
         private JdbcCanonicalImportWriter writer(JdbcCanonicalImportObserver observer,

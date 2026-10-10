@@ -140,8 +140,9 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                                          JdbcLifecycleTransactionObserver transactionObserver,
                                          List<ArtifactIdentityDefinition> identityDefinitions,
                                          JdbcWriterAdmission writerAdmission) {
-        this(dataSource, schemas, publicIdDefinitions, timeSource, validityPolicy, allocatorClock,
-                transactionObserver, identityDefinitions, writerAdmission, dataSource, writerAdmission);
+        this(dataSource, schemas, publicIdDefinitions, timeSource, validityPolicy,
+                transactionObserver, identityDefinitions, writerAdmission,
+                new JdbcCanonicalReservationAuthority(dataSource, allocatorClock, writerAdmission));
     }
 
     /** Uses the native kernel privately while durable identity ranges remain in the dataframe authority. */
@@ -150,25 +151,23 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                                  List<ArtifactIdAllocatorDefinition> publicIdDefinitions,
                                  ConnectionTimeSource timeSource,
                                  RecordValidityPolicy validityPolicy,
-                                 java.time.Clock allocatorClock,
                                  JdbcLifecycleTransactionObserver transactionObserver,
                                  List<ArtifactIdentityDefinition> identityDefinitions,
                                  JdbcWriterAdmission writerAdmission,
-                                 DataSource reservationDataSource,
-                                 JdbcWriterAdmission reservationAdmission) {
+                                 JdbcCanonicalReservationAuthority reservationAuthority) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
         this.timeSource = Objects.requireNonNull(timeSource, "timeSource");
         this.validityPolicy = Objects.requireNonNull(validityPolicy, "validityPolicy");
         this.transactionObserver = Objects.requireNonNull(transactionObserver, "transactionObserver");
         this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
-        this.reservationAdmission = Objects.requireNonNull(reservationAdmission, "reservationAdmission");
-        Objects.requireNonNull(allocatorClock, "allocatorClock");
-        Objects.requireNonNull(reservationDataSource, "reservationDataSource");
-        this.lifecycleIdAllocator = new JdbcLifecycleIdAllocator(reservationDataSource, allocatorClock);
+        Objects.requireNonNull(reservationAuthority, "reservationAuthority");
+        this.reservationAdmission = reservationAuthority.admission();
+        java.time.Clock allocatorClock = reservationAuthority.clock();
+        this.lifecycleIdAllocator = new JdbcLifecycleIdAllocator(reservationAuthority.dataSource(), allocatorClock);
         this.mutationEngine = new JdbcCanonicalMutationEngine(dataSource, schemas, identityDefinitions);
         this.receiptWriter = new JdbcConfirmationReceiptWriter(this.schemas);
-        this.publicIdAllocators = initializePublicIdAllocators(publicIdDefinitions, allocatorClock, reservationDataSource);
+        this.publicIdAllocators = initializePublicIdAllocators(publicIdDefinitions, allocatorClock, reservationAuthority.dataSource());
     }
 
     @Override

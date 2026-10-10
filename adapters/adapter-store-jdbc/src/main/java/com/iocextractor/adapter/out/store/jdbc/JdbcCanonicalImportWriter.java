@@ -155,8 +155,8 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
             Duration receiptRetention,
             Map<String, ArtifactWritePolicy> writePolicies) {
         this(dataSource, schemas, publicIdDefinitions, identityDefinitions, workspaceRoot,
-                timeSource, validityPolicy, allocatorClock, writerAdmission, observer,
-                receiptRetention, writePolicies, dataSource, writerAdmission);
+                timeSource, validityPolicy, writerAdmission, observer,
+                receiptRetention, writePolicies, new JdbcCanonicalReservationAuthority(dataSource, allocatorClock, writerAdmission));
     }
 
     /**
@@ -172,13 +172,11 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
             Path workspaceRoot,
             ConnectionTimeSource timeSource,
             RecordValidityPolicy validityPolicy,
-            Clock allocatorClock,
             JdbcWriterAdmission writerAdmission,
             JdbcCanonicalImportObserver observer,
             Duration receiptRetention,
             Map<String, ArtifactWritePolicy> writePolicies,
-            DataSource reservationDataSource,
-            JdbcWriterAdmission reservationAdmission) {
+            JdbcCanonicalReservationAuthority reservationAuthority) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
         List<ArtifactIdentityDefinition> identities = List.copyOf(
@@ -189,15 +187,15 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
         this.timeSource = Objects.requireNonNull(timeSource, "timeSource");
         this.validityPolicy = Objects.requireNonNull(validityPolicy, "validityPolicy");
         this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
-        this.reservationAdmission = Objects.requireNonNull(reservationAdmission, "reservationAdmission");
+        Objects.requireNonNull(reservationAuthority, "reservationAuthority");
+        this.reservationAdmission = reservationAuthority.admission();
         this.observer = Objects.requireNonNull(observer, "observer");
         this.receiptRetention = requirePositive(receiptRetention, "receiptRetention");
         this.writePolicies = Map.copyOf(Objects.requireNonNull(writePolicies, "writePolicies"));
-        Objects.requireNonNull(allocatorClock, "allocatorClock");
-        Objects.requireNonNull(reservationDataSource, "reservationDataSource");
-        this.lifecycleIdAllocator = new JdbcLifecycleIdAllocator(reservationDataSource, allocatorClock);
+        Clock allocatorClock = reservationAuthority.clock();
+        this.lifecycleIdAllocator = new JdbcLifecycleIdAllocator(reservationAuthority.dataSource(), allocatorClock);
         this.publicIdAllocators = initializePublicIdAllocators(
-                publicIdDefinitions, allocatorClock, reservationDataSource);
+                publicIdDefinitions, allocatorClock, reservationAuthority.dataSource());
     }
 
     @Override

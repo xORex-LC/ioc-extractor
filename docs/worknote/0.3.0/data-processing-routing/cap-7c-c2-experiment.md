@@ -386,3 +386,13 @@ ordinary receipt/observation retention. C4 owns the complete crash matrix, C5
 owns sustainable-load progress and resource acceptance, and C6 owns drained
 migration/rollback and activation. No experiment here changes the installed
 service or declares G6 accepted.
+
+### Quality-gate correction
+
+The first full C2 `make verify` passed on `e67ec5fe`; the subsequent adopted PMD
+policy rejected one new ExcessiveParameterList finding (14 parameters). The
+reservation datasource, allocator clock and physical admission now form one
+`JdbcCanonicalReservationAuthority` reused by both writers. The internal
+constructor stays below the existing threshold; no count/baseline or suppression
+changed. `make pmd-analysis` passed after this correction. Final verification
+will be repeated on the final committed worktree.
