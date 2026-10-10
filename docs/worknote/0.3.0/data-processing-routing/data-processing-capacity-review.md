@@ -6,6 +6,13 @@ open. This report was updated during the investigation; confirmed observations
 and proposals are kept separate. It is not performance acceptance or
 authorization to change deployed state.
 
+**2026-10-10 release-scope decision:** the owner requires SQLite for 0.3.0.
+PostgreSQL will not be added or adopted in this release. The concurrent-store
+alternatives below are historical research and possible future work, not
+current implementation or qualification requirements. CAP-7C now compares the
+corrected SQLite implementation with staged/versioned SQLite; see its
+[transaction design](cap-7c-transaction-design.md).
+
 The incident is a **storage/execution capacity defect**, rather than an
 established inherent cost of configuration-driven routing. Exact-driver evidence
 shows artifact-wide matching repeated once per row; a long canonical transaction

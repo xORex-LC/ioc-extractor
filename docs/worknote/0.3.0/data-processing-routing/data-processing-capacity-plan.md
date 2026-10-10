@@ -362,9 +362,9 @@ is a lower bound on another writer's worst wait. More executor threads or
 smaller Java batches inside the same transaction cannot remove that bound.
 
 If it exceeds the frozen latency targets, CAP-5 is **not accepted** merely
-because weighted scheduling was added. Activate CAP-7C: choose an explicit
-versioned visibility protocol or a different transactional adapter. Do not
-commit ordinary/import chunks into today's visible tables as an implicit fix.
+because weighted scheduling was added. Activate CAP-7C: implement an explicit
+versioned SQLite visibility protocol within the confirmed 0.3.0 release scope.
+Do not commit ordinary/import chunks into today's visible tables as an implicit fix.
 
 ## CAP-6 — Whole-service acceptance and deployment evidence
 
@@ -525,23 +525,30 @@ remain open; no budget was relaxed and no candidate was activated on the stand.
 Conditional does not mean optional when a required target is still failing.
 Choose the cell that addresses the measured remaining mechanism.
 
+**2026-10-10 owner decision:** SQLite remains mandatory for release 0.3.0.
+Adding or migrating to PostgreSQL is outside this release. CAP-7C's required
+comparison is the corrected current SQLite path versus staged/versioned SQLite
+with equal guarantees and resource limits. A future concurrent adapter is not
+a prerequisite or an implicit fallback if this release fails its gates.
+
 | Track | Trigger | Design and promotion gate |
 |---|---|---|
 | CAP-7A: source/extraction streaming | Full-text/occurrence retention prevents G6 after workspace migration | Specify refang/match/marker carry-over, ordered absolute offsets, overlap resolution and Tika-format support; adversarial boundary oracle plus actual DOCX; retest total-process memory |
 | CAP-7B: native execution granularity or compiled evaluator | Corrected profiles show material dispatch/collection cost | Compare equal demanded views, selections, short-circuit/failure/trace and branch isolation; use real cursors/batches, require net complete-service benefit and simpler ownership; no new fallback runtime |
-| CAP-7C: transaction visibility or canonical adapter | Largest atomic unit exceeds required control/export latency after SQL correction | ADR and complete crash/visibility/conflict/TTL/receipt/slot/revision protocol; compare staged/versioned SQLite and a qualified concurrent adapter under equal guarantees/resources |
+| CAP-7C: SQLite transaction visibility | Largest atomic unit exceeds required control/export latency after SQL correction | ADR and complete crash/visibility/conflict/TTL/receipt/slot/revision protocol; compare corrected current SQLite and staged/versioned SQLite under equal guarantees/resources |
 | CAP-7D: alternate private reducer backend | Private spool dominates measured disk/CPU/native budget | Compare private SQLite, external sort/reduce or another admitted backend with serialization, cleanup/recovery and total resources included |
 
 For CAP-7C, acceptance must prove pending data is never exported/matched as
 committed data, final receipt/visibility is atomic, concurrent observations keep
 their conflict/rank contract and restart/cancellation cannot expose half a
-delivery. A storage replacement needs an adapter/TCK, migration and operational
-qualification, not merely a faster bulk insert demo.
+delivery. The SQLite visibility change needs adapter/TCK, migration and operational
+qualification, not merely a faster bulk insert or visibility-flip demo.
 
 The [CAP-7C transaction design](cap-7c-transaction-design.md) decomposes this
 track into contract, architecture, candidate integration, fault, capacity and
 migration slices. Its current SQLite atomic-visibility regression is implemented;
-backend selection and the production publication protocol remain open.
+SQLite is confirmed; the production publication protocol and its qualification
+remain open.
 
 Redis is outside the current mandatory track: no demonstrated shared reusable
 work justifies a remote cache, and it cannot correct an alias-range query or

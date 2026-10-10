@@ -1,10 +1,21 @@
-# CAP-7C transaction visibility and canonical adapter
+# CAP-7C SQLite transaction visibility
 
-Status: in progress, contract baseline implemented; backend and publication
-protocol are not selected. No production transaction, schema, configuration or
+Status: in progress, contract baseline implemented; SQLite is the required
+backend for release 0.3.0. The publication protocol is not yet qualified.
+No production transaction, schema, configuration or
 deployed state has changed. This is an execution design for
 [CAP-7C](data-processing-capacity-plan.md#cap-7--conditional-follow-on-architecture-decisions),
 not an accepted ADR or capacity acceptance.
+
+## Confirmed release boundary
+
+On 2026-10-10 the owner excluded adding or migrating to PostgreSQL from the
+current release. A future PostgreSQL migration is a separate planned track,
+not a CAP-7C experiment, dependency, module or acceptance prerequisite here.
+CAP-7C proceeds with bounded hidden writes and atomic publication in SQLite.
+Compare that candidate with the corrected SQLite implementation under the same
+semantics and resource limits. Failure to meet a gate retains NOT_ACCEPTED;
+it does not authorize a backend swap or a relaxed transaction contract.
 
 Entry HEAD: `39237cb3f9edf7763aa1799c9d7cd98d6adff69d`,
 branch `module/platform/router`. Entry verify and PMD evidence was fresh for
@@ -65,7 +76,7 @@ make test-one MODULE=adapters/adapter-store-jdbc TEST=JdbcCanonicalImportWriterC
 
 Final repository checks are `make verify`, `make pmd-analysis` and `make docs`;
 their exact-HEAD freshness comes from `make context`. Passing these checks does
-not select a backend or close the C1–C6 gates below.
+not qualify the publication protocol or close the C1–C6 gates below.
 
 ## Current owners and migration seams
 
@@ -87,28 +98,21 @@ lifecycle IDs must never be reused. Requested import IDs remain export slots.
 The service journal coordinates delivery; it must not become canonical commit
 authority or carry the visibility flip.
 
-## Candidate comparison
+## SQLite implementation comparison
 
-| Dimension | Staged/versioned SQLite | Concurrent transactional adapter |
+| Dimension | Corrected current SQLite | Staged/versioned SQLite candidate |
 |---|---|---|
-| Physical mechanism | Commit bounded hidden versions, then atomically publish their unit | Allow unrelated transactions concurrently with database locking/MVCC |
-| Atomicity | Final header, receipt and visibility transition in one dataframe transaction | One atomic canonical transaction, or an explicitly qualified publication protocol |
-| Required code changes | Version-aware rows, aliases, origins, slots, history, readers, matching, receipts and cleanup | New adapter/dialect, schema/migration, concurrency ownership, clock/slot/identity locking and runtime composition |
-| Current kernel reuse | Adapt persistence surfaces of the existing match/mutation kernel | Extract genuinely shared semantics; keep dialect and resources in adapters |
-| Main risk | Pending/old-version leakage, invalidation starvation, index/read amplification and version retention | Changed conflict/rank ordering, global locks surviving the swap, aggregate DB-service resource cost and operational migration |
-| Five-second gate | Every staging chunk and final publication must satisfy the physical occupancy limit | A long PostgreSQL transaction is not an automatic pass; distinguish transaction duration and conflicting lock occupancy, and retain the adopted gate until an explicit owner decision |
+| Physical mechanism | One physical transaction per ordinary artifact or import delivery | Commit bounded hidden versions, then atomically publish their unit |
+| Atomicity | Current transaction contains canonical facts and receipt | Final header, receipt and visibility transition in one dataframe transaction |
+| Required code changes | Baseline only; batching within the same transaction does not release the writer | Version-aware rows, aliases, origins, slots, history, readers, matching, receipts and cleanup |
+| Current kernel reuse | Existing shared match/mutation kernel | Adapt that kernel's persistence surfaces; keep SQL/resources in the existing JDBC adapter |
+| Main risk | Non-preemptive large unit blocks eligible control/export work | Pending/old-version leakage, invalidation starvation, index/read amplification and version retention |
+| Five-second gate | The retained 100k screen fails | Every staging chunk and final publication must satisfy the physical occupancy limit |
 
-PostgreSQL is a candidate, not an approved backend. Its locking model allows
-different contention scopes, but a port retaining the Java admission mutex and
-the singleton lifecycle-control update would still serialize this workload.
-See [PostgreSQL explicit locking](https://www.postgresql.org/docs/current/explicit-locking.html).
-The application and database service must share the declared total CPU/memory
-budget during comparison; giving each process the full budget is not equivalent.
-
-The open deployment constraint is whether SQLite remains mandatory or a
-PostgreSQL canonical adapter may be considered. A bulk insert or generic MVCC
-demo cannot substitute for a qualified canonical adapter. No dependency/module
-or production configuration is added before this choice.
+The existing SQLite JDBC integration family remains in `adapter-store-jdbc`;
+this protocol does not justify a duplicate storage adapter or mutation engine.
+The baseline and candidate include read, cleanup, WAL, workspace and complete
+service costs, not just the final visibility flip.
 
 ## Minimum staged/versioned protocol
 
@@ -175,11 +179,11 @@ back to the current oversized transaction silently.
 | Slice | Deliverable | Gate |
 |---|---|---|
 | C0 contract baseline | Current real SQLite pending visibility, matching, pinned snapshots and receipt-only replay | Existing suite plus new deterministic regression; implemented |
-| C1 architecture choice | Deployment/backend constraint, visibility/clock/conflict decisions and proposed ADR | No unresolved authority/linearization decision in production code |
-| C2 persistence experiment | Isolated candidate implementation behind existing ports, with exact driver/schema/resource identity | Reuse kernel semantics; no production activation; selective query plans |
+| C1 SQLite protocol | Backend constraint confirmed; resolve visibility/clock/conflict decisions and proposed ADR | No unresolved authority/linearization decision in production code |
+| C2 persistence experiment | Isolated SQLite candidate behind existing ports, with exact driver/schema/resource identity | Reuse kernel semantics; no production activation; selective query plans |
 | C3 complete integration | Ordinary writer, import, active reads, lifecycle, slots, revisions and receipts use the chosen model | Same semantic oracle as corrected SQLite; no alternate runtime mutation engine |
 | C4 faults/concurrency | Crash/cancel/conflict/restart matrix below | Pending never visible; no half delivery; rank/TTL/slot/recovery equivalence |
-| C5 capacity comparison | Corrected baseline and candidates, identical workload/results/limits, complete-service metrics | Physical occupancy, eligible waits and total resources meet adopted limits; retain failed cells |
+| C5 capacity comparison | Corrected and versioned SQLite, identical workload/results/limits, complete-service metrics | Physical occupancy, eligible waits and total resources meet adopted limits; retain failed cells |
 | C6 migration/operations | Drained upgrade, rollback backup/restore, readiness/health, durable cleanup and deployment procedure | Full adapter/TCK and operational qualification; accepted ADR before activation |
 
 No stage is accepted merely because ordinary CSV output is equal. The oracles
@@ -207,9 +211,9 @@ revisions, generations, slots, receipt fields and recovery results.
 Drain intake and logical publications before migration; back up both databases
 and owned files together. Schema/catalog/recovery pins must reject incompatible
 binaries. Rollback restores the coordinated backup; changing `user_version`
-or copying only the dataframe file is unsupported. A database replacement also
-needs backup/restore, credentials/configuration, connection limits, readiness,
-service lifecycle and total resource qualification.
+or copying only the dataframe file is unsupported. The SQLite protocol needs
+readiness/health, connection and reader limits, bounded version cleanup, backup
+and restore, service lifecycle and total resource qualification.
 
 Retain exact runtime/input/configuration/driver/schema identities, all failed
 screens, query plans, physical hold/wait counts, complete-service time/CPU,
