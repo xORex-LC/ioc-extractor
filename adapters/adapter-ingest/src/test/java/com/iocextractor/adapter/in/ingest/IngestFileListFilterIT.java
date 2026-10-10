@@ -49,6 +49,22 @@ class IngestFileListFilterIT {
     }
 
     @Test
+    void matchingDirectoriesAndVanishedFilesAreRejectedWithoutQuietPeriodRetry() throws Exception {
+        var directory = Files.createDirectory(tempDir.resolve("directory.html"));
+        var vanished = Files.writeString(tempDir.resolve("vanished.html"), "data");
+        Files.delete(vanished);
+        var retried = new ArrayList<File>();
+        var filter = new IngestFileListFilter(List.of("*.html"), List.of(),
+                Duration.ofSeconds(5), Clock.fixed(Instant.parse("2026-06-22T00:00:10Z"), ZoneOffset.UTC));
+        filter.addDiscardCallback(retried::add);
+
+        var accepted = filter.filterFiles(new File[] {directory.toFile(), vanished.toFile()});
+
+        assertThat(accepted).isEmpty();
+        assertThat(retried).as("Non-files cannot become stable ingestion candidates").isEmpty();
+    }
+
+    @Test
     void retries_only_matching_files_rejected_during_quiet_period() throws Exception {
         var clock = Clock.fixed(Instant.parse("2026-06-22T00:00:10Z"), ZoneOffset.UTC);
         var fresh = Files.writeString(tempDir.resolve("fresh.html"), "data");
