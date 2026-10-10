@@ -120,6 +120,10 @@ runtime JDBC drivers.
   receipt recovery. Fresh publication UTC revalidates selected lifecycles;
   expiry or epoch conflict rebuilds at most three times with unchanged pins
   and burned reservations. Details: [staged publication](../../docs/dev/staged-canonical-publication.md).
+  `StagedPublicationFaultIT` qualifies forced child-JVM termination/reopen,
+  interruption cleanup, fenced workers, slot-control conflicts and pinned readers
+  through real native ports and the service import ledger. Capacity acceptance
+  and default-runtime activation remain separate gates.
 - `JdbcLifecycleControlStore` uses one-way CAS and refuses `ACTIVE` until one
   set-based invariant scan proves that every configured active row has complete,
   ordered lifecycle metadata. Lifecycle/canonical-row ID ranges are reserved by

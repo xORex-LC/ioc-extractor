@@ -104,22 +104,27 @@ final class JdbcStagedPublication {
     }
 
     private void failOwner(JdbcPublicationOwner.Owner owner, Throwable failure) {
-        try {
-            transactions.execute(JdbcWriterAdmission.OperationClass.CONTROL, c -> {
-                owners.require(c, owner);
-                cancelHidden(c, owner.unit());
-                // Operational failure time is not confirmation authority. Cleanup must
-                // remain available when the safe lifecycle clock itself rejected publication.
-                owners.fail(c, owner, environment.allocatorClock().millis(), "PUBLICATION.RETRYABLE_FAILURE");
-                return null;
-            });
-        } catch (SQLException | RuntimeException cleanup) { failure.addSuppressed(cleanup); }
+        cleanup(failure, c -> {
+            owners.require(c, owner);
+            cancelHidden(c, owner.unit());
+            // Operational failure time is not confirmation authority. Cleanup must
+            // remain available when the safe lifecycle clock itself rejected publication.
+            owners.fail(c, owner, environment.allocatorClock().millis(), "PUBLICATION.RETRYABLE_FAILURE");
+            return null;
+        });
     }
 
     private void failControl(Unit unit, Throwable failure) {
+        cleanup(failure, c -> { cancelHidden(c, unit.identity()); return null; });
+    }
+
+    /** Cancellation must not cancel its own durable rollback/release; preserve the caller's flag. */
+    private void cleanup(Throwable failure, JdbcPublicationTransactions.Work<Void> work) {
+        boolean interrupted = Thread.interrupted();
         try {
-            transactions.execute(JdbcWriterAdmission.OperationClass.CONTROL, c -> { cancelHidden(c, unit.identity()); return null; });
+            transactions.execute(JdbcWriterAdmission.OperationClass.CONTROL, work);
         } catch (SQLException | RuntimeException cleanup) { failure.addSuppressed(cleanup); }
+        finally { if (interrupted) { Thread.currentThread().interrupt(); } }
     }
 
     private void cancelHidden(Connection connection, String identity) throws SQLException {
@@ -152,7 +157,7 @@ final class JdbcStagedPublication {
                 var writer = new TransferWriter(unit, owner, number);
                 var attempt = transfer.stage(source, unit.identity(), unit.pins(), prepared.dependencies(), description, unit.promotion(), writer);
                 observer.observe(JdbcPublicationObserver.Phase.BEFORE_PUBLICATION, number, 0);
-                publish(unit, owner, attempt);
+                publish(unit, owner, attempt, number);
                 source.rollback();
                 } catch (SQLException | RuntimeException | Error failure) {
                     JdbcLifecycleTransactions.rollback(source, failure); throw failure;
@@ -208,13 +213,15 @@ final class JdbcStagedPublication {
         return Map.copyOf(result);
     }
 
-    private void publish(Unit unit, JdbcPublicationOwner.Owner owner, JdbcPublicationProtocol.Attempt attempt) throws SQLException {
+    private void publish(Unit unit, JdbcPublicationOwner.Owner owner, JdbcPublicationProtocol.Attempt attempt, int number) throws SQLException {
         transactions.execute(operation(unit), c -> {
             if (owner != null) { owners.require(c, owner); }
             JdbcLifecycleTransactions.acquireActiveWriteOwnership(c);
             long utc = environment.clock().now(c).value().toEpochMilli();
             protocol.publish(c, attempt, utc, unit.pins(), environment.validity());
+            observer.observe(JdbcPublicationObserver.Phase.PUBLICATION_STAGED, number, 0);
             if (owner != null) { owners.release(c, owner); }
+            if (Thread.currentThread().isInterrupted()) { throw new SQLException("Canonical publication interrupted before commit"); }
             return null;
         });
     }
@@ -256,6 +263,7 @@ final class JdbcStagedPublication {
         }
         public void append(JdbcPublicationProtocol.Attempt attempt, String scope, int ordinal, JdbcTypedPublicationChunk chunk)
                 throws SQLException {
+            observer.observe(JdbcPublicationObserver.Phase.BEFORE_HIDDEN_CHUNK, number, ordinal);
             transactions.execute(operation(unit), c -> {
                 if (owner != null) { owners.require(c, owner); }
                 chunk.append(c, protocol, attempt, scope, ordinal); return null;

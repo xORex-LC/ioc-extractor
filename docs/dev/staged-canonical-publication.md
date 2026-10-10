@@ -79,6 +79,12 @@ This lets cancellation and ownership release complete after unsafe UTC rejects
 publication. That audit timestamp neither confirms a lifecycle nor advances its
 safe-time high-water mark. A healthy retry must still pass safe UTC validation.
 
+Interruption also rolls back an uncommitted visibility flip. Failure cleanup
+temporarily clears an already-set interrupt flag while it persists cancellation
+and releases ownership, then restores that flag for the caller. It never clears
+interruption to authorize publication. Physical publication and cleanup failures
+remain attached to the original error; a failed cleanup still requires recovery.
+
 Controls reuse native expiry, history, projection, receipt-retention and slot
 operations in private selective snapshots. Their epochs invalidate stale
 promotion work. Their fixed cycle time remains literal; promotion timestamps and
@@ -103,6 +109,14 @@ workspace connections.
 - [Candidate composition](../../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcStagedCanonicalBackend.java).
 - [Native import oracle and TCK](../../adapters/adapter-store-jdbc/src/test/java/com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalImportWriterContractIT.java).
 - [Physical publication checks](../../adapters/adapter-store-jdbc/src/test/java/com/iocextractor/adapter/out/store/jdbc/SqlitePublicationExperimentIT.java).
+- [Native crash and concurrency matrix](../../adapters/adapter-store-jdbc/src/test/java/com/iocextractor/adapter/out/store/jdbc/StagedPublicationFaultIT.java).
+
+The fault suite owns killable child JVMs, reopens both SQLite databases after
+forced process loss, and advances the real import service ledger from its
+canonical receipt with the stage deleted. It checks all transported native
+families, rather than using CSV equality as a commit oracle. Deterministic
+crash/concurrency evidence does not establish sustained WAL, memory or latency
+budgets, automatic takeover eligibility, or default-runtime activation.
 
 Update this document when visibility, publication time, resource ownership,
 recovery or activation boundaries change.

@@ -4,6 +4,6 @@ package com.iocextractor.adapter.out.store.jdbc;
 @FunctionalInterface
 interface JdbcPublicationObserver {
     JdbcPublicationObserver NOOP = (phase, attempt, chunk) -> { };
-    enum Phase { PREPARED, HIDDEN_CHUNK, SEALED, BEFORE_PUBLICATION, COMMITTED, REBUILD }
+    enum Phase { PREPARED, BEFORE_HIDDEN_CHUNK, HIDDEN_CHUNK, SEALED, BEFORE_PUBLICATION, PUBLICATION_STAGED, COMMITTED, REBUILD }
     void observe(Phase phase, int attempt, int chunk);
 }
