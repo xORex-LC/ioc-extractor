@@ -28,6 +28,12 @@ attached stage caches are bounded. Native duplicate validation preserves a
 stricter private TEMP cap. These are admission/accounting limits, not measured
 whole-process resource acceptance.
 
+After its pool closes, a finished native workspace is deleted while both root
+admission and its file lease remain held. Disposal releases weighted permits
+even on filesystem failure. This avoids retaining one database per completed
+attempt until the pin-retention deadline. A crash still leaves a private pin for
+the existing lease-aware retention backstop; it is never canonical authority.
+
 Capture triggers run only on private native tables. They preserve initial and
 final typed values, NULL and cascaded tombstones. An explicit mutation journal
 preserves renewals even when timestamps have not changed. Two passes over one

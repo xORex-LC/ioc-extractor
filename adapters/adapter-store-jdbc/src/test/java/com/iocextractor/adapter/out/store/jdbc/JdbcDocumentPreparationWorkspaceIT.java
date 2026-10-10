@@ -49,6 +49,86 @@ class JdbcDocumentPreparationWorkspaceIT {
     @TempDir Path temporary;
 
     @Test
+    void canonicalScratchDisposalDoesNotAccumulateCompletedAttemptPins() throws Exception {
+        var factory = factory(canonicalLimits());
+        // Cross the root's 128-pin admission bound without depending on time-based retention.
+        for (int index = 0; index < 130; index++) {
+            try (var workspace = JdbcPrivatePublicationWorkspace.create(factory, "finished-" + index, "pins")) {
+                try (var connection = workspace.dataSource().getConnection(); var statement = connection.createStatement()) {
+                    statement.execute("CREATE TABLE scratch(id INTEGER PRIMARY KEY, value TEXT)");
+                    statement.execute("INSERT INTO scratch VALUES(1,'private')");
+                }
+                workspace.seal("pins");
+            }
+            assertThat(factory.pressure().leasedWorkspaces()).isZero();
+        }
+        try (var files = Files.list(temporary.resolve("workspace"))) {
+            assertThat(files.filter(Files::isDirectory).toList()).isEmpty();
+        }
+    }
+
+    @Test
+    void failedCanonicalDisposalReleasesAdmissionAndCannotRetainAnActiveLease() throws Exception {
+        var factory = factory(canonicalLimits());
+        var lease = factory.openCanonicalState("bad-disposal", "pins");
+        Path directory = lease.directory(), nested = directory.resolve("unexpected-directory");
+        Files.createDirectory(nested); Files.writeString(nested.resolve("file"), "preserve");
+        assertThatThrownBy(lease::discard).hasRootCauseInstanceOf(java.nio.file.DirectoryNotEmptyException.class);
+        lease.close();
+        assertThat(factory.pressure().leasedWorkspaces()).isZero();
+        Files.delete(nested.resolve("file")); Files.delete(nested);
+        try (var retry = factory.openCanonicalState("bad-disposal", "pins")) { retry.discard(); }
+        assertThat(directory).doesNotExist();
+    }
+
+    @Test
+    void canonicalAdmissionRejectsChangedPinsOversizedPinsAndReusedNativeScratch() throws Exception {
+        var factory = factory(canonicalLimits());
+        try (var lease = factory.openCanonicalState("retained", "pins")) {
+            assertThatThrownBy(() -> factory.openCanonicalState("retained", "pins"))
+                    .hasRootCauseMessage("Canonical workspace is already leased");
+            DocumentWorkspaceFiles.write(lease.directory().resolve("seal"), "pins");
+            Files.writeString(lease.directory().resolve("native.db"), "retained scratch");
+        }
+        assertThatThrownBy(() -> factory.openCanonicalState("retained", "changed"))
+                .hasRootCauseMessage("Canonical workspace pins changed");
+        assertThatThrownBy(() -> JdbcPrivatePublicationWorkspace.create(factory, "retained", "pins"))
+                .hasRootCauseMessage("A native attempt workspace must be fresh");
+        assertThatThrownBy(() -> factory.openCanonicalState("oversized", "x".repeat(32769)))
+                .hasRootCauseMessage("Canonical identity pin exceeds limit");
+        assertThatThrownBy(() -> factory(limits(1)).requireCanonicalCapacity()).hasMessageContaining("requires promotion");
+        assertThat(factory.pressure().leasedWorkspaces()).isZero();
+        try (var retained = factory.openCanonicalState("retained", "pins")) { retained.discard(); }
+        try (var fresh = JdbcPrivatePublicationWorkspace.create(factory, "retained", "pins")) {
+            assertThatThrownBy(() -> fresh.dataSource().getConnection("user", "password"))
+                    .hasMessageContaining("alternate connection credentials");
+        }
+    }
+
+    @Test
+    void canonicalLeaseAndConnectionsStayConfinedToTheirOwnerThread() throws Exception {
+        var factory = factory(canonicalLimits());
+        try (var lease = factory.openCanonicalState("thread-confined-lease", "pins");
+             var workspace = JdbcPrivatePublicationWorkspace.create(factory, "thread-confined-native", "pins");
+             var executor = Executors.newSingleThreadExecutor()) {
+            executor.submit(() -> {
+                assertThatThrownBy(lease::discard).hasMessageContaining("another thread");
+                assertThatThrownBy(() -> workspace.dataSource().getConnection()).hasMessageContaining("another thread");
+                assertThatThrownBy(workspace::close).hasMessageContaining("another thread");
+            }).get(5, TimeUnit.SECONDS);
+            executor.shutdown();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+            try (var connection = workspace.dataSource().getConnection()) { assertThat(connection.isClosed()).isFalse(); }
+            lease.discard();
+        }
+        assertThat(factory.pressure().leasedWorkspaces()).isZero();
+    }
+
+    private DocumentPreparationLimits canonicalLimits() {
+        return new DocumentPreparationLimits(8 * 1024 * 1024, 64, 4096, 2048, 10485760, 104857600, 1);
+    }
+
+    @Test
     void corruptRowLengthsCountsNamesAndDuplicateFieldsAreRejectedBeforeAllocation() throws Exception {
         var codec = new DocumentRowCodec(4096, 2048);
         for (int fields : new int[]{-1, 129}) {

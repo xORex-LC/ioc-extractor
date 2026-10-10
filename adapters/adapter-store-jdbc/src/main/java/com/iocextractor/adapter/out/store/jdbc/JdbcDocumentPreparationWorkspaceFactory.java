@@ -92,7 +92,7 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
                     return new CanonicalLease(directory, limits, () -> checkDisk(directory), () -> {
                         try { release(directory, owner); }
                         finally { leases.release(permits - 1); }
-                    });
+                    }, () -> discardCanonical(directory, owner, permits));
                 }
             }
         } catch (IOException | RuntimeException | Error failure) {
@@ -124,20 +124,31 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
         private final DocumentPreparationLimits limits;
         private final Runnable checkQuota;
         private final Runnable release;
+        private final Runnable discard;
         private final Thread owner = Thread.currentThread();
         private boolean closed;
 
-        CanonicalLease(Path directory, DocumentPreparationLimits limits, Runnable checkQuota, Runnable release) {
-            this.directory = directory; this.limits = limits; this.checkQuota = checkQuota; this.release = release;
+        CanonicalLease(Path directory, DocumentPreparationLimits limits, Runnable checkQuota, Runnable release, Runnable discard) {
+            this.directory = directory; this.limits = limits; this.checkQuota = checkQuota;
+            this.release = release; this.discard = discard;
         }
 
         Path directory() { return directory; }
         DocumentPreparationLimits limits() { return limits; }
         void checkQuota() { checkQuota.run(); }
 
-        @Override public void close() {
+        /** Disposes finished scratch state; durable publication facts live in the dataframe database. */
+        void discard() { finish(discard); }
+
+        @Override public void close() { finish(release); }
+
+        void requireOwner() {
             if (Thread.currentThread() != owner) { throw new IllegalStateException("Canonical workspace belongs to another thread"); }
-            if (!closed) { closed = true; release.run(); }
+        }
+
+        private void finish(Runnable action) {
+            requireOwner();
+            if (!closed) { closed = true; action.run(); }
         }
     }
 
@@ -285,6 +296,19 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
         try { lease.close(); }
         catch (IOException failure) { throw new IocExtractorException("Cannot release document workspace lease", failure); }
         finally { active.remove(directory); activeWorkspaceCount = active.size(); leases.release(); }
+    }
+
+    private synchronized void discardCanonical(Path directory, Lease lease, int permits) {
+        // Keep admission and the workspace lease until unlinking is complete: a new opener
+        // must never lock a replacement lease file while the former owner is retiring it.
+        try (var ignored = new Lease(root.resolve(".admission"), true)) {
+            deletePrivateDirectory(directory);
+        } catch (IOException failure) {
+            throw new IocExtractorException("Cannot discard private canonical workspace", failure);
+        } finally {
+            try { release(directory, lease); }
+            finally { leases.release(permits - 1); }
+        }
     }
 
     private synchronized void checkDisk(Path directory) {

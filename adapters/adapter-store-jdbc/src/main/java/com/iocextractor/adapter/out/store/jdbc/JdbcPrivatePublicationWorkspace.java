@@ -54,7 +54,8 @@ final class JdbcPrivatePublicationWorkspace implements AutoCloseable {
     }
 
     @Override public void close() {
-        try (var ignored = lease) { pool.close(); }
+        lease.requireOwner();
+        try (var ignored = lease) { pool.close(); lease.discard(); }
     }
 
     private static final class BoundedDataSource extends DelegatingDataSource {
