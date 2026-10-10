@@ -41,6 +41,70 @@ class SqlitePublicationExperimentIT {
     @TempDir Path directory;
 
     @Test
+    void durableOwnershipFencesRestartAndBoundsConflictingPreparationWhileControlProgresses() throws Exception {
+        var ownership = new SqlitePublicationOwnershipExperiment();
+        SqlitePublicationOwnershipExperiment.Owner stale;
+        Attempt last;
+        try (var fixture = new Fixture(directory)) {
+            fixture.write(OperationClass.CONTROL, c -> { ownership.initialize(c); return null; });
+            stale = fixture.write(OperationClass.CONTROL, c -> ownership.acquire(c, "bounded-unit", 0));
+            assertThatThrownBy(() -> fixture.write(OperationClass.CONTROL,
+                    c -> ownership.acquire(c, "another-ready-unit", stale.fence())))
+                    .hasRootCauseMessage("Logical promotion ownership changed or occupied");
+            Attempt pending = null;
+            for (int index = 0; index < 3; index++) {
+                int expected = index + 1;
+                assertThat((int) fixture.write(OperationClass.CONTROL, c -> ownership.nextAttempt(c, stale))).isEqualTo(expected);
+                final Attempt previous = pending;
+                final long epoch = index;
+                pending = fixture.write(OperationClass.PROMOTION, c -> {
+                    ownership.require(c, stale);
+                    var manifest = new Manifest(1, 1, Long.MAX_VALUE, Map.of("masks", epoch));
+                    return previous == null ? fixture.probe.begin(c, "bounded-unit", PINS, manifest)
+                            : fixture.probe.rebuild(c, previous, PINS, manifest);
+                });
+                fixture.append(pending, 0, List.of(new Fact("row", "masks", "one", "pending")));
+                fixture.seal(pending);
+                fixture.write(OperationClass.CONTROL, c -> { fixture.probe.advanceEpoch(c, "masks"); return null; });
+                final Attempt conflicting = pending;
+                assertThatThrownBy(() -> fixture.publish(conflicting, NOW, "receipt"))
+                        .hasRootCauseMessage("Dependency changed; rebuild required");
+            }
+            last = pending;
+            assertThatThrownBy(() -> fixture.write(OperationClass.CONTROL, c -> ownership.nextAttempt(c, stale)))
+                    .hasRootCauseMessage("Publication rebuild budget exhausted");
+            assertThat(fixture.read("row", "masks", "one")).isEmpty();
+        }
+        // Recreate all process-local objects against the same physical database.
+        try (var recovered = new Fixture(directory, false)) {
+            var owner = recovered.write(OperationClass.CONTROL,
+                    c -> ownership.acquire(c, "bounded-unit", stale.fence()));
+            assertThatThrownBy(() -> recovered.write(OperationClass.PROMOTION,
+                    c -> { ownership.require(c, stale); return null; }))
+                    .hasRootCauseMessage("Stale logical promotion owner");
+            assertThat((int) recovered.write(OperationClass.CONTROL, c -> ownership.nextAttempt(c, owner))).isOne();
+            var attempt = recovered.write(OperationClass.PROMOTION, c -> {
+                ownership.require(c, owner);
+                return recovered.probe.rebuild(c, last, PINS,
+                        new Manifest(1, 1, Long.MAX_VALUE, Map.of("masks", 3L)));
+            });
+            recovered.append(attempt, 0, List.of(new Fact("row", "masks", "one", "committed")));
+            recovered.seal(attempt);
+            recovered.write(OperationClass.CONTROL, c -> { recovered.probe.advanceEpoch(c, "control-only"); return null; });
+            recovered.write(OperationClass.PROMOTION, c -> {
+                ownership.require(c, owner);
+                recovered.probe.publish(c, attempt, NOW, "receipt");
+                ownership.release(c, owner);
+                return null;
+            });
+            assertThat(recovered.read("row", "masks", "one")).contains("committed");
+            assertThat(recovered.receipt(attempt)).isPresent();
+            assertThat(recovered.write(OperationClass.CONTROL,
+                    c -> ownership.acquire(c, "next-ready-unit", owner.fence())).fence()).isEqualTo(owner.fence() + 1);
+        }
+    }
+
+    @Test
     void realKernelWorksOnSelectedRowsAndPublishesTypedFactsToTheExistingMatcher() throws Exception {
         Instant start = Instant.ofEpochMilli(NOW);
         try (var experiment = new SqliteKernelPublicationExperiment(directory, start)) {

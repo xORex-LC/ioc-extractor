@@ -47,6 +47,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
     private final RecordValidityPolicy validityPolicy;
     private final JdbcLifecycleTransactionObserver transactionObserver;
     private final JdbcWriterAdmission writerAdmission;
+    private final JdbcWriterAdmission reservationAdmission;
 
     /** Creates and validates the lifecycle writer's durable ID allocators. */
     public JdbcCanonicalLifecycleWriter(DataSource dataSource,
@@ -139,17 +140,35 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                                          JdbcLifecycleTransactionObserver transactionObserver,
                                          List<ArtifactIdentityDefinition> identityDefinitions,
                                          JdbcWriterAdmission writerAdmission) {
+        this(dataSource, schemas, publicIdDefinitions, timeSource, validityPolicy, allocatorClock,
+                transactionObserver, identityDefinitions, writerAdmission, dataSource, writerAdmission);
+    }
+
+    /** Uses the native kernel privately while durable identity ranges remain in the dataframe authority. */
+    JdbcCanonicalLifecycleWriter(DataSource dataSource,
+                                 List<DataframeArtifactSchema> schemas,
+                                 List<ArtifactIdAllocatorDefinition> publicIdDefinitions,
+                                 ConnectionTimeSource timeSource,
+                                 RecordValidityPolicy validityPolicy,
+                                 java.time.Clock allocatorClock,
+                                 JdbcLifecycleTransactionObserver transactionObserver,
+                                 List<ArtifactIdentityDefinition> identityDefinitions,
+                                 JdbcWriterAdmission writerAdmission,
+                                 DataSource reservationDataSource,
+                                 JdbcWriterAdmission reservationAdmission) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
         this.timeSource = Objects.requireNonNull(timeSource, "timeSource");
         this.validityPolicy = Objects.requireNonNull(validityPolicy, "validityPolicy");
         this.transactionObserver = Objects.requireNonNull(transactionObserver, "transactionObserver");
         this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
+        this.reservationAdmission = Objects.requireNonNull(reservationAdmission, "reservationAdmission");
         Objects.requireNonNull(allocatorClock, "allocatorClock");
-        this.lifecycleIdAllocator = new JdbcLifecycleIdAllocator(dataSource, allocatorClock);
+        Objects.requireNonNull(reservationDataSource, "reservationDataSource");
+        this.lifecycleIdAllocator = new JdbcLifecycleIdAllocator(reservationDataSource, allocatorClock);
         this.mutationEngine = new JdbcCanonicalMutationEngine(dataSource, schemas, identityDefinitions);
         this.receiptWriter = new JdbcConfirmationReceiptWriter(this.schemas);
-        this.publicIdAllocators = initializePublicIdAllocators(publicIdDefinitions, allocatorClock);
+        this.publicIdAllocators = initializePublicIdAllocators(publicIdDefinitions, allocatorClock, reservationDataSource);
     }
 
     @Override
@@ -337,10 +356,10 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                 throw new IocExtractorException(
                         "Public id allocator is not configured for artifact: " + schema.artifactName());
             }
-            publicIds = writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
+            publicIds = reservationAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
                     () -> allocator.reserve(schema.artifactName(), publicCount));
         }
-        return new ReservedIds(publicIds, writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
+        return new ReservedIds(publicIds, reservationAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
                 () -> lifecycleIdAllocator.reserve(records.size())));
     }
 
@@ -506,7 +525,8 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
 
     private Map<String, JdbcArtifactIdAllocator> initializePublicIdAllocators(
             List<ArtifactIdAllocatorDefinition> definitions,
-            java.time.Clock allocatorClock) {
+            java.time.Clock allocatorClock,
+            DataSource reservationDataSource) {
         Objects.requireNonNull(definitions, "publicIdDefinitions");
         Map<String, JdbcArtifactIdAllocator> allocators = new LinkedHashMap<>();
         for (ArtifactIdAllocatorDefinition definition : definitions) {
@@ -516,7 +536,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                 throw new IllegalArgumentException(
                         "Public id allocator does not match an id-bearing artifact: " + definition.artifact());
             }
-            JdbcArtifactIdAllocator allocator = new JdbcArtifactIdAllocator(dataSource, allocatorClock);
+            JdbcArtifactIdAllocator allocator = new JdbcArtifactIdAllocator(reservationDataSource, allocatorClock);
             allocator.ensureInitialized(definition);
             if (allocators.put(definition.artifact(), allocator) != null) {
                 throw new IllegalArgumentException(
@@ -550,7 +570,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
     }
 
     @FunctionalInterface
-    private interface ConnectionTimeSource {
+    interface ConnectionTimeSource {
         EffectiveTime now(Connection connection) throws SQLException;
     }
 

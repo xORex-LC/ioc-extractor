@@ -5,6 +5,12 @@ import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.ArtifactRow;
+import com.iocextractor.application.artifact.ArtifactRowKey;
+import com.iocextractor.application.artifact.PreparedArtifactRow;
+import com.iocextractor.application.artifact.lifecycle.CanonicalArtifactConfirmation;
+import com.iocextractor.application.artifact.lifecycle.CanonicalRecordConfirmation;
+import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptContext;
+import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptId;
 import com.iocextractor.application.artifact.CanonicalArtifactKeyResolver;
 import com.iocextractor.application.artifact.CanonicalKeyDefinition;
 import com.iocextractor.application.artifact.CanonicalKeyMaterial;
@@ -473,6 +479,264 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                 }
             }
             return List.copyOf(values);
+        }
+    }
+
+    @Test
+    @Timeout(30)
+    void populatedTypedPublicationPreservesClearsCoalescingSlotsAndExpiryHistory() throws Exception {
+        Environment working = environment("populated-working");
+        Environment canonical = environment("populated-canonical");
+        Environment oracle = environment("populated-oracle");
+        var policy = new ImportPromotionPolicy(ImportRowFailurePolicy.ACCEPT_VALID, false,
+                Optional.of(new ImportRequestedSlotPolicy("reputation", ImportExistingSlotPolicy.PRESERVE_EXISTING)));
+        var initial = working.stage("populated-initial", policy, List.of(row(2,
+                branch(working, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "existing.example", "description", "old"), OptionalLong.of(1)),
+                branch(working, "hashes", ImportArtifactRole.RELATED,
+                        values("hash", "EXISTING-HASH"), OptionalLong.empty()))), List.of());
+        working.writer(JdbcCanonicalImportObserver.NOOP).promote(initial);
+        var canonicalWriter = new Environment(canonical.dataSource, working.workspaceRoot,
+                canonical.schemas, canonical.identities);
+        var oracleWriter = new Environment(oracle.dataSource, working.workspaceRoot, oracle.schemas, oracle.identities);
+        canonicalWriter.writer(JdbcCanonicalImportObserver.NOOP).promote(initial);
+        oracleWriter.writer(JdbcCanonicalImportObserver.NOOP).promote(initial);
+        var admission = new JdbcWriterAdmission();
+        var experiment = new SqliteImportPublicationExperiment(canonical.dataSource, admission, List.of("masks", "hashes"));
+        for (String table : experiment.tables()) {
+            assertThat(typedRows(canonical.dataSource, table)).as("legacy absolute values: %s", table)
+                    .isEqualTo(typedRows(oracle.dataSource, table));
+        }
+
+        var clear = row(2,
+                branch(working, "masks", ImportArtifactRole.PRIMARY,
+                        cells("mask", ImportCell.value("existing.example"), "description", ImportCell.nullValue()),
+                        OptionalLong.of(9)),
+                branch(working, "hashes", ImportArtifactRole.RELATED,
+                        values("hash", "EXISTING-HASH"), OptionalLong.empty()));
+        var added = row(3,
+                branch(working, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "new.example", "description", "new"), OptionalLong.of(1)),
+                branch(working, "hashes", ImportArtifactRole.RELATED,
+                        values("hash", "NEW-HASH"), OptionalLong.empty()));
+        var duplicate = row(4,
+                branch(working, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "new.example", "description", "new"), OptionalLong.of(1)),
+                branch(working, "hashes", ImportArtifactRole.RELATED,
+                        values("hash", "NEW-HASH"), OptionalLong.empty()));
+        var warning = new ImportRowWarning(4, "masks", "IMPORT.VIEW_FALLBACK");
+        var update = working.stage("populated-update", policy, List.of(clear, added, duplicate), List.of(), List.of(warning));
+        var renewals = new java.util.LinkedHashSet<String>();
+        var observer = new JdbcCanonicalImportObserver() {
+            public void after(Phase phase) { }
+            public void afterMutation(String artifact, long canonicalRowId, boolean renewsValidity) {
+                if (renewsValidity) { renewals.add(artifact + ":" + canonicalRowId); }
+            }
+        };
+        working.reservedWriter(observer, canonical, admission).promote(update);
+        Instant utc = NOW.plusSeconds(3);
+        oracleWriter.writer(JdbcCanonicalImportObserver.NOOP, utc).promote(update);
+        var attempt = experiment.stage(working.dataSource, update.deliveryId().value(), update.stage().digest().value(), renewals, n -> {
+            assertThat(canonical.count("masks")).isOne();
+            assertThat(canonical.queryString("SELECT description FROM masks")).isEqualTo("old");
+            assertThat(new JdbcImportCommitEvidenceStore(canonical.dataSource).find(update.deliveryId())).isEmpty();
+        });
+        experiment.publish(attempt, new JdbcLifecycleClock(canonical.dataSource, Clock.fixed(utc, ZoneOffset.UTC),
+                new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30)), admission),
+                new FixedRecordValidityPolicy(TTL), update.stage().digest().value());
+        for (String table : experiment.tables()) {
+            assertThat(typedRows(canonical.dataSource, table)).as("populated delta: %s", table)
+                    .isEqualTo(typedRows(oracle.dataSource, table));
+        }
+        assertThat(canonical.queryObject("SELECT description FROM masks WHERE mask='existing.example'")).isNull();
+        assertThat(canonical.queryLong("SELECT id FROM masks WHERE mask='new.example'")).isEqualTo(2);
+        assertThat(canonical.queryLong("SELECT slot FROM export_slot_assignment WHERE lifecycle_id=1")).isOne();
+        assertThat(new JdbcImportCommitEvidenceStore(canonical.dataSource).find(update.deliveryId()).orElseThrow().warnings())
+                .containsExactly(warning);
+        working.deleteStage(update);
+        assertThat(canonicalWriter.writer(JdbcCanonicalImportObserver.NOOP).promote(update).outcome())
+                .isEqualTo(ImportPromotionOutcome.ALREADY_COMMITTED);
+
+        copyVisibleFixture(canonical.dataSource, working.dataSource, experiment.tables());
+        assertThat(experiment.nearest("masks", NOW.toEpochMilli())).hasValue(NOW.plus(TTL).plusSeconds(3).toEpochMilli());
+        Instant expiredUtc = NOW.plus(TTL).plusSeconds(3);
+        var expired = working.stage("populated-expired", policy, List.of(row(2,
+                branch(working, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "existing.example", "description", "returned"), OptionalLong.empty()),
+                branch(working, "hashes", ImportArtifactRole.RELATED,
+                        values("hash", "EXISTING-HASH"), OptionalLong.empty()))), List.of());
+        working.reservedWriter(JdbcCanonicalImportObserver.NOOP, canonical, admission, expiredUtc).promote(expired);
+        oracleWriter.writer(JdbcCanonicalImportObserver.NOOP, expiredUtc).promote(expired);
+        var expiredAttempt = experiment.stage(working.dataSource, expired.deliveryId().value(),
+                expired.stage().digest().value(), n -> {
+                    assertThat(canonical.queryLong("SELECT id FROM masks WHERE mask='existing.example'")).isOne();
+                    assertThat(canonical.count("masks_history")).isZero();
+                });
+        experiment.publish(expiredAttempt,
+                new JdbcLifecycleClock(canonical.dataSource, Clock.fixed(expiredUtc, ZoneOffset.UTC),
+                        new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30)), admission),
+                new FixedRecordValidityPolicy(TTL), expired.stage().digest().value());
+        for (String table : experiment.tables()) {
+            assertThat(typedRows(canonical.dataSource, table)).as("expired reappearance: %s", table)
+                    .isEqualTo(typedRows(oracle.dataSource, table));
+        }
+        assertThat(canonical.queryLong("SELECT id FROM masks WHERE mask='existing.example'")).isEqualTo(4);
+        assertThat(canonical.queryLong("SELECT former_row_id FROM masks_history")).isOne();
+        assertThat(canonical.count("masks")).isEqualTo(2);
+        assertThat(experiment.nearest("masks", expiredUtc.toEpochMilli()))
+                .hasValue(expiredUtc.plus(TTL).toEpochMilli());
+        working.deleteStage(expired);
+        assertThat(canonicalWriter.writer(JdbcCanonicalImportObserver.NOOP).promote(expired).outcome())
+                .isEqualTo(ImportPromotionOutcome.ALREADY_COMMITTED);
+    }
+
+    /** Finite C2 oracle hydration only; C3 must use selective streamed hydration. */
+    private static void copyVisibleFixture(HikariDataSource source, HikariDataSource target, List<String> tables)
+            throws SQLException {
+        try (var c = target.getConnection(); var s = c.createStatement()) {
+            s.execute("PRAGMA foreign_keys=OFF");
+            c.setAutoCommit(false);
+            Throwable failure = null;
+            try {
+                for (String table : tables.reversed()) { s.executeUpdate("DELETE FROM " + JdbcSql.quote(table)); }
+                for (String table : tables) {
+                    var rows = typedRows(source, table);
+                    if (rows.isEmpty()) { continue; }
+                    try (var insert = c.prepareStatement("INSERT INTO " + JdbcSql.quote(table) + " VALUES ("
+                            + JdbcSql.placeholders(rows.getFirst().size()) + ")")) {
+                        for (var row : rows) {
+                            for (int i = 0; i < row.size(); i++) { insert.setObject(i + 1, row.get(i)); }
+                            insert.executeUpdate();
+                        }
+                    }
+                }
+                c.commit();
+            } catch (SQLException | RuntimeException | Error caught) {
+                failure = caught;
+                try { c.rollback(); } catch (SQLException rollback) { caught.addSuppressed(rollback); }
+                throw caught;
+            } finally {
+                try {
+                    c.setAutoCommit(true);
+                    s.execute("PRAGMA foreign_keys=ON");
+                } catch (SQLException restoration) {
+                    if (failure == null) { throw restoration; }
+                    failure.addSuppressed(restoration);
+                }
+            }
+        }
+    }
+
+    @Test
+    @Timeout(30)
+    void ordinaryPerArtifactPublicationCompletesAndReplaysTheRealTypedConfirmationReceipt() throws Exception {
+        Environment working = environment("ordinary-private");
+        Environment canonical = environment("ordinary-public");
+        Environment oracle = environment("ordinary-oracle");
+        var admission = new JdbcWriterAdmission();
+        var experiment = new SqliteImportPublicationExperiment(canonical.dataSource, admission, List.of("masks", "hashes"));
+        var context = new ConfirmationReceiptContext(new ConfirmationReceiptId("ordinary-receipt"),
+                "ordinary-policy", 2, Duration.ofDays(30));
+        var commands = new ArrayList<CanonicalArtifactConfirmation>();
+        for (int index = 0; index < working.schemas.size(); index++) {
+            var schema = working.schemas.get(index);
+            var values = new LinkedHashMap<String, String>();
+            for (var column : schema.columns()) { values.put(column.name(), null); }
+            values.put(schema.artifactName().equals("masks") ? "mask" : "hash", "ordinary-" + index);
+            values.put("source", "ordinary-feed");
+            var row = ArtifactRow.ordered(values);
+            var key = new CanonicalArtifactKeyResolver(working.identities).recordKeyOf(schema.artifactName(), row).orElseThrow();
+            var command = new CanonicalArtifactConfirmation(new ObservationId("ordinary-observation"), "ordinary-source",
+                    context, schema.artifactName(), List.copyOf(values.keySet()), List.of(new CanonicalRecordConfirmation(
+                    new ArtifactRowKey(key.keyHash()), new PreparedArtifactRow(row, Optional.of("id")))));
+            commands.add(command);
+            new JdbcCanonicalLifecycleWriter(working.dataSource, working.schemas,
+                    List.of(new ArtifactIdAllocatorDefinition("masks", ArtifactIdStrategy.ASCENDING, 1, 1),
+                            new ArtifactIdAllocatorDefinition("hashes", ArtifactIdStrategy.ASCENDING, 1, 1)),
+                    ignored -> EffectiveTime.at(NOW), new FixedRecordValidityPolicy(TTL), CLOCK,
+                    JdbcLifecycleTransactionObserver.NOOP, working.identities, new JdbcWriterAdmission(),
+                    canonical.dataSource, admission).confirm(command);
+            Instant utc = NOW.plusSeconds(2L * (index + 1));
+            ordinaryWriter(oracle, utc).confirm(command);
+            var attempt = experiment.stage(working.dataSource, "ordinary-unit-" + index, "ordinary-pins", n -> {
+                assertThat(new JdbcConfirmationReceiptStore(canonical.dataSource, canonical.schemas, Duration.ofDays(30))
+                        .findComplete("ordinary-source", "ordinary-policy", EffectiveTime.at(utc))).isEmpty();
+            });
+            experiment.publish(attempt, new JdbcLifecycleClock(canonical.dataSource, Clock.fixed(utc, ZoneOffset.UTC),
+                    new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30)), admission),
+                    new FixedRecordValidityPolicy(TTL), "ordinary-pins");
+            for (String table : experiment.tables()) {
+                assertThat(typedRows(canonical.dataSource, table)).as("ordinary unit %s: %s", index, table)
+                        .isEqualTo(typedRows(oracle.dataSource, table));
+            }
+            copyVisibleFixture(canonical.dataSource, working.dataSource, experiment.tables());
+        }
+        var receipt = new JdbcConfirmationReceiptStore(canonical.dataSource, canonical.schemas, Duration.ofDays(30))
+                .findComplete("ordinary-source", "ordinary-policy", EffectiveTime.at(NOW.plusSeconds(4))).orElseThrow();
+        assertThat(receipt.artifacts()).hasSize(2);
+        var before = typedRows(canonical.dataSource, "masks_sources");
+        ordinaryWriter(canonical, NOW.plusSeconds(9)).confirm(commands.getFirst());
+        assertThat(typedRows(canonical.dataSource, "masks_sources")).isEqualTo(before);
+    }
+
+    private JdbcCanonicalLifecycleWriter ordinaryWriter(Environment environment, Instant utc) {
+        return new JdbcCanonicalLifecycleWriter(environment.dataSource, environment.schemas,
+                List.of(new ArtifactIdAllocatorDefinition("masks", ArtifactIdStrategy.ASCENDING, 1, 1),
+                        new ArtifactIdAllocatorDefinition("hashes", ArtifactIdStrategy.ASCENDING, 1, 1)),
+                () -> EffectiveTime.at(utc), new FixedRecordValidityPolicy(TTL), CLOCK, environment.identities);
+    }
+
+    @Test
+    @Timeout(30)
+    void typedDeadlineIndexesFindTheNextLegacyDeadlineAtReferenceSize() throws Exception {
+        Environment canonical = environment("deadline-reference");
+        var initial = canonical.stage("deadline-reference-seed", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(canonical, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "seed.example"), OptionalLong.empty()))), List.of());
+        canonical.writer(JdbcCanonicalImportObserver.NOOP).promote(initial);
+        var experiment = new SqliteImportPublicationExperiment(canonical.dataSource, new JdbcWriterAdmission(),
+                List.of("masks", "hashes"));
+        long deadline = NOW.plus(TTL).toEpochMilli();
+        try (var c = canonical.dataSource.getConnection(); var s = c.createStatement()) {
+            var names = new ArrayList<String>();
+            try (var metadata = s.executeQuery("PRAGMA table_info(masks_import_probe)")) {
+                while (metadata.next()) { names.add(metadata.getString("name")); }
+            }
+            var expressions = new ArrayList<String>();
+            for (String name : names) {
+                expressions.add(switch (name) {
+                    case "id", "_lifecycle_id" -> "n+100";
+                    case "mask" -> "'host-'||n||'.example'";
+                    case "_row_key" -> "printf('%064x',n)";
+                    case "address" -> "'reference:'||n";
+                    case "absolute_deadline", "_valid_until_epoch_ms" -> deadline + "+n";
+                    default -> "v." + JdbcSql.quote(name);
+                });
+            }
+            s.executeUpdate("WITH RECURSIVE numbers(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM numbers WHERE n<100000)"
+                    + " INSERT INTO masks_import_probe(" + JdbcSql.joinedQuoted(names) + ") SELECT "
+                    + String.join(",", expressions) + " FROM numbers CROSS JOIN masks_import_probe v WHERE v.id=1");
+            s.execute("ANALYZE");
+            var plan = new ArrayList<String>();
+            try (var query = c.prepareStatement("EXPLAIN QUERY PLAN " + experiment.nearestSql("masks"))) {
+                query.setLong(1, deadline);
+                query.setLong(2, deadline);
+                try (var rows = query.executeQuery()) { while (rows.next()) { plan.add(rows.getString("detail")); } }
+            }
+            assertThat(plan).anyMatch(detail -> detail.contains("masks_import_probe_absolute_deadline"));
+            assertThat(plan).anyMatch(detail -> detail.contains("masks_import_probe_deadline_anchor"));
+            assertThat(plan).anyMatch(detail -> detail.contains("masks_import_probe_address"));
+            assertThat(plan).anyMatch(detail -> detail.contains("experiment_unit_deadline"));
+            long before = System.nanoTime();
+            assertThat(canonical.queryLong("SELECT MIN(_valid_until_epoch_ms) FROM masks WHERE _valid_until_epoch_ms>"
+                    + deadline)).isEqualTo(deadline + 1);
+            long baseline = System.nanoTime() - before;
+            long after = System.nanoTime();
+            assertThat(experiment.nearest("masks", deadline)).hasValue(deadline + 1);
+            long indexed = System.nanoTime() - after;
+            System.out.println("C2_TYPED_DEADLINE rows=100001 baseline_ns=" + baseline
+                    + " indexed_ns=" + indexed + " plan=" + plan);
+            assertThat(experiment.nearest("masks", deadline + 100000)).isEmpty();
         }
     }
 
@@ -1195,10 +1459,17 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
         private JdbcCanonicalImportWriter reservedWriter(JdbcCanonicalImportObserver observer,
                                                           Environment authority,
                                                           JdbcWriterAdmission admission) {
+            return reservedWriter(observer, authority, admission, NOW);
+        }
+
+        private JdbcCanonicalImportWriter reservedWriter(JdbcCanonicalImportObserver observer,
+                                                          Environment authority,
+                                                          JdbcWriterAdmission admission,
+                                                          Instant utc) {
             return new JdbcCanonicalImportWriter(dataSource, schemas,
                     List.of(new ArtifactIdAllocatorDefinition("masks", ArtifactIdStrategy.ASCENDING, 1, 1),
                             new ArtifactIdAllocatorDefinition("hashes", ArtifactIdStrategy.ASCENDING, 1, 1)),
-                    identities, workspaceRoot, ignored -> EffectiveTime.at(NOW),
+                    identities, workspaceRoot, ignored -> EffectiveTime.at(utc),
                     new FixedRecordValidityPolicy(TTL), CLOCK, new JdbcWriterAdmission(),
                     observer, Duration.ofDays(90), Map.of(), authority.dataSource, admission);
         }

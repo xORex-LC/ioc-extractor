@@ -147,3 +147,12 @@ business fields requires a separate versioned consumer contract.
 - Export behavior: [artifact-export.md](artifact-export.md).
 - Ingestion confirmation point: [ingestion.md](ingestion.md).
 - Module map: [MODULARIZATION.md](../MODULARIZATION.md).
+
+### Private preparation and reservation authority
+
+The JDBC confirmation writer has an internal reservation datasource/admission
+seam, shared in purpose with managed import. A private native mutation database
+can consume row and lifecycle ranges committed independently in the authoritative
+dataframe database. Runtime constructors continue to use the canonical datasource
+and its admission. This does not activate staged publication or change existing
+reader, expiry, receipt, retention or migration behavior.

@@ -1,7 +1,7 @@
 # CAP-7C C2: physical SQLite publication experiment
 
-Status: physical primitive implemented in test scope; C2 canonical-port and
-mutation-kernel qualification remains open. C3 production integration has not
+Status: C2 functional persistence experiment implemented and qualified through
+the real kernel and canonical receipt/matching ports. C3 complete integration has not
 started. This is neither a capacity acceptance nor an activated schema.
 
 ## Implementation
@@ -219,7 +219,7 @@ The modified isolated database advertises the current migration baseline only
 so existing clock/registration owners can be exercised; no production migrator
 installs these probe views. Do not open an operator database with this helper.
 
-## Remaining C2 gate before C3
+## Earlier integration seams and their disposition
 
 ### Internal canonical IDs without a public ID
 
@@ -277,11 +277,11 @@ ALREADY_COMMITTED and the actual service ledger advances to CANONICAL_COMMITTED
 through `DataframeImportPromotionService`. Provenance and warning/rejection
 evidence remain unchanged. No alternate recovery algorithm is supplied.
 
-ID reservations in this initial fan-out case still originate in its isolated
-private writer. They are not a qualified authoritative reservation adapter for
-concurrent publications. Slot mutations/readers, expiry/retention writes,
-populated-base selective hydration and complete ordinary confirmation receipts
-remain C2 integration seams. Do not infer C3 readiness from initial import replay.
+The original initial fan-out fixture used its isolated private allocator.
+The completion matrix below adds authoritative reservation seams, populated-base
+updates/clears/expiry history, slot outcomes and ordinary confirmation receipts.
+The finite fixture bridge is still not the C3 production preparation algorithm;
+version-aware runtime expiry/retention and selective hydration remain C3 work.
 
 ### Bounded typed chunks for large source fan-in
 
@@ -319,20 +319,19 @@ internal IDs, rather than renew an expired lifecycle. This intentional boundary
 change still requires qualification through the real kernel and ports; the
 prototype alone does not authorize production activation.
 
-The physical probe alone does not meet the C2 gate. Next work must connect typed
-facts to the real shared mutation kernel and existing canonical ports, covering
-ordinary confirmation and complete fan-out import. It must exercise real row,
-alias, registration-origin, provenance, slot and receipt outcomes against the
-corrected current adapter's independent oracles.
+The physical probe alone did not meet C2. The completion matrix below connects
+typed versions to the real shared kernel, matching/receipt ports, ordinary
+confirmation and populated fan-out import. C3 must integrate these mechanisms
+into one runtime adapter without the fixture's full-table hydration/diff.
 
-In particular, qualify safe-clock ownership and deadline queries at reference size;
-do not use the probe's caller-supplied millisecond value as production time
-authority. Existing v12 records have individual persisted deadlines/timestamps;
+The typed bridge uses the real safe clock at publication, and the 100,001-version
+fixture qualifies the indexed nearest-deadline query. Runtime paths must preserve
+that clock ownership and indexed access when integrated in C3. Existing v12 records have individual persisted deadlines/timestamps;
 migration must preserve them, not reinterpret all of them through one new
 publication time or the current TTL setting. The anchor-only probe is not an
-existing-database migration. Qualify durable logical promotion ownership, the three-attempt
-rebuild policy, cancellation/retention and finite progress when expiry or slot
-work invalidates preparation. Coarse scope epochs are conservative, not evidence
+existing-database migration. Durable logical fencing and a three-attempt budget now have a deterministic
+experiment. C3 must enforce them across all runtime paths and implement retention;
+C4/C5 still qualify the complete cancellation and sustainable-load progress matrix. Coarse scope epochs are conservative, not evidence
 of adequate mixed-load progress. A passed 4,096-fact probe is not a 100k/1m
 whole-service measurement, a five-second writer qualification, a process-kill
 qualification, a service-ledger recovery test or a migration/rollback test.
@@ -353,3 +352,37 @@ allocator authority limitation; it does not yet qualify populated-base publicati
 Validation: `make test-one MODULE=adapters/adapter-store-jdbc
 TEST=JdbcCanonicalImportWriterContractIT#privatePreparationBurnsReservationsOnlyInTheAuthoritativeDatabase`
 passed. Full final-HEAD verification follows completion of this change set.
+
+## Typed experiment completion matrix (2026-10-10)
+
+The populated-base bridge retains typed immutable versions by primary-key address,
+selects the newest committed attempt before reading any deadline, and transports
+deletions as tombstones. Legacy absolute timestamps and deadlines remain literal
+values. New confirmations reference publication UTC; the native import planner's
+renewal decision is observed explicitly rather than inferred from equal stored
+timestamps. This metadata is uncommitted and must be discarded on rollback.
+
+| C2 experiment cell | Executable evidence | Outcome |
+|---|---|---|
+| Populated import, explicit clear, COALESCE warning, existing/occupied slots | `populatedTypedPublicationPreservesClearsCoalescingSlotsAndExpiryHistory` | Every transported table equals the corrected native writer, including keys, IDs, NULLs, provenance, revisions, slots and complete receipt |
+| Expired reappearance and deletion of old live facts | Same populated-base test at strict deadline equality | New internal IDs; old row/source history retained; old versions do not reappear |
+| Ordinary per-artifact confirmation and typed receipt | `ordinaryPerArtifactPublicationCompletesAndReplaysTheRealTypedConfirmationReceipt` | First artifact remains receipt-STAGING, second completes it, production receipt reader/replay preserve occurrences |
+| Authoritative ranges for ordinary and import work | Production writers' internal reservation datasource/admission seams | Private preparation uses dataframe-owned independently committed ranges |
+| Typed nearest deadline | `typedDeadlineIndexesFindTheNextLegacyDeadlineAtReferenceSize` | 100,001 typed versions; indexes on absolute deadline, header deadline, anchor and address used |
+| Logical fencing and bounded rebuild | `durableOwnershipFencesRestartAndBoundsConflictingPreparationWhileControlProgresses` | Three conflicts consume the durable budget; CONTROL runs between chunks; restarted ownership fences the previous worker; a stable retry publishes and releases ownership |
+
+A retained focused-module run measured the original MIN-through-view query at
+72,742,498 ns and the indexed typed query at 428,149 ns for the same nearest
+deadline. This is one diagnostic sample, not a repeatable capacity verdict. Its
+first plan exposed a scan and temporary sort despite an available deadline index;
+using address-first EXISTS checks and separate ordered absolute/anchor queries
+removed that access pattern. Final full-gate samples are retained independently.
+
+The bridge's whole-table finite-fixture diff/hydration is a test oracle, not an
+admitted runtime preparation implementation. C3 must stream selective hydration
+and typed effects, enforce logical ownership on every production entry, connect
+version-aware expiry/slot/retention writers and readers together, and preserve
+ordinary receipt/observation retention. C4 owns the complete crash matrix, C5
+owns sustainable-load progress and resource acceptance, and C6 owns drained
+migration/rollback and activation. No experiment here changes the installed
+service or declares G6 accepted.

@@ -939,6 +939,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
                                     reservations.lifecycleIds().idAt(lifecycleOffset++),
                                     registration);
                 }
+                observer.afterMutation(artifact, outcome.canonicalRowId(), rows.getInt("renew_ttl") == 1);
                 if (outcome.publicMutation()) {
                     publicMutations++;
                     affected.add(artifact);

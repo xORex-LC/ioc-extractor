@@ -30,7 +30,11 @@ CAP-7C adds `SqlitePublicationExperimentIT`, an isolated exact-driver Failsafe
 probe for committed visibility, chunk replay, fencing, conflict/expiry rejection,
 rollback, publication order, tombstones, pinned snapshots and inter-chunk control
 admission. It uses a separate experimental database; it does not activate a
-production migration or assert canonical-port/capacity equivalence.
+production migration or assert whole-service capacity acceptance. Its real-kernel
+bridges also compare ordinary typed confirmation receipts and populated fan-out
+imports with the existing canonical ports. A 100,001-version deadline fixture
+checks the actual SQLite plans; durable logical-owner fencing and a three-attempt
+budget are tested separately from sustainable-load/resource qualification.
 The reviewed source universe is 222 fast classes and 78 integration classes,
 including five external shells (295 deterministic classes). The exact inventory
 in `build-support/test-quality/test-lifecycle.properties` reflects this scope;
