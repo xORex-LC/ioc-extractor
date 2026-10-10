@@ -22,6 +22,7 @@
     <review-trigger id="ingestion-cleanup-propagation-change">Review when ingestion cleanup, failed-state accounting, or exact typed primary-failure propagation changes.</review-trigger>
     <review-trigger id="keyed-accounting-compute-change">Review when admission or release accounting mutates users outside same-key ConcurrentHashMap.compute.</review-trigger>
     <review-trigger id="lifecycle-failure-contract-change">Review when lifecycle admission, reconciliation, projection convergence, or bootstrap observation stops preserving fail-closed failure propagation.</review-trigger>
+    <review-trigger id="staged-publication-query-boundary-change">Review when staged native DDL or query predicates cease to come from the adapter catalog, identifiers bypass validation and quoting, or data values bypass binding.</review-trigger>
     <finding id="SB04-089" module="adapters/adapter-cli-picocli" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="3715419b138a600afca4c34bc44a6f39" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-A" review="cli-exception-boundary-change">
         <class name="com.iocextractor.adapter.in.cli.ExportCommand" />
         <method name="call" signature="()Ljava/lang/Integer;" />
@@ -443,60 +444,60 @@
         </suppression>
         <rationale>Reviewed analyzer false positive: construction validates and deduplicates every candidate, then stores a List.copyOf result; callers cannot mutate the record-owned candidate list.</rationale>
     </finding>
-    <finding id="DATA-TTL-P7-SB-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="355782df4a07f496740324ba980404f6" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P7-SQL-TRUST" review="sparse-preferred-slot-query-shape-change">
+    <finding id="DATA-TTL-P7-SB-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="355782df4a07f496740324ba980404f6" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
         <method name="releaseVanishedAssignments" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;Ljava/time/Instant;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="314" bytecode="33" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="330" bytecode="34" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
             <Method name="releaseVanishedAssignments" />
         </suppression>
-        <rationale>Reviewed false positive: the artifact identifier is validated and quoted; profile and lifecycle cutoff values are bound.</rationale>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
     </finding>
-    <finding id="DATA-TTL-P7-SB-004" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="c4d10f6bd4b9ed07dfed654975b672a9" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P7-SQL-TRUST" review="export-query-shape-contract-change">
+    <finding id="DATA-TTL-P7-SB-004" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="c4d10f6bd4b9ed07dfed654975b672a9" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
         <method name="requireCompleteAssignments" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;Ljava/time/Instant;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="472" bytecode="37" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="1114" bytecode="38" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
             <Method name="requireCompleteAssignments" />
         </suppression>
-        <rationale>Reviewed false positive: the artifact identifier is validated and quoted; profile and lifecycle cutoff values are bound.</rationale>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
     </finding>
-    <finding id="DATA-TTL-P7-SB-005" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="28f0374bb762bb997ff6b26236812087" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P7-SQL-TRUST" review="sparse-preferred-slot-query-shape-change">
+    <finding id="DATA-TTL-P7-SB-005" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="28f0374bb762bb997ff6b26236812087" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
         <method name="requireSeedableRows" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/time/Instant;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="242" bytecode="43" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="258" bytecode="45" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
             <Method name="requireSeedableRows" />
         </suppression>
-        <rationale>Reviewed false positive: the artifact identifier is validated and quoted; the lifecycle cutoff is bound.</rationale>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
     </finding>
-    <finding id="DATA-TTL-P7-SB-006" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="25d85867ecba53d0379f314ab3628ab6" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P7-SQL-TRUST" review="sparse-preferred-slot-query-shape-change">
+    <finding id="DATA-TTL-P7-SB-006" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="25d85867ecba53d0379f314ab3628ab6" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
         <method name="seedActiveAssignments" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="219" bytecode="65" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="235" bytecode="66" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
             <Method name="seedActiveAssignments" />
         </suppression>
-        <rationale>Reviewed false positive: the artifact and canonical-column identifiers are validated and quoted; profile, cutoff and timestamps are bound.</rationale>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
     </finding>
-    <finding id="DATA-TTL-P7-SB-007" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="93a08788dc50b9655188b5ce22163f2" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P7-SQL-TRUST" review="export-query-shape-contract-change">
+    <finding id="DATA-TTL-P7-SB-007" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="93a08788dc50b9655188b5ce22163f2" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
         <method name="upperSlot" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;Ljava/time/Instant;)J" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="83" bytecode="36" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="151" bytecode="37" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
             <Method name="upperSlot" />
         </suppression>
-        <rationale>Reviewed false positive: the artifact identifier is validated and quoted; profile and lifecycle cutoff values are bound.</rationale>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
     </finding>
     <finding id="DATA-IMPORT-P3-SB-001" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="e6850ce7bbed94d1323b58cb271d8bc8" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-IMPORT-01" evidence="P3-SQL-TRUST" review="sparse-preferred-slot-query-shape-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
@@ -520,27 +521,27 @@
         </suppression>
         <rationale>Reviewed false positive: both generated identifiers are adapter-owned temporary table constants; profile and artifact values are bound.</rationale>
     </finding>
-    <finding id="DATA-IMPORT-P3-SB-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="d731024eb72783477e95d3878951918c" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-IMPORT-01" evidence="P3-SQL-TRUST" review="sparse-preferred-slot-query-shape-change">
+    <finding id="DATA-IMPORT-P3-SB-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="d731024eb72783477e95d3878951918c" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-IMPORT-01" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
         <method name="populatePendingLifecycles" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;Ljava/time/Instant;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="444" bytecode="109" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="460" bytecode="110" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
             <Method name="populatePendingLifecycles" />
         </suppression>
-        <rationale>Reviewed false positive: the artifact identifier is grammar-validated and quoted, the scratch identifier is an adapter-owned constant, and all values are bound.</rationale>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
     </finding>
-    <finding id="DATA-IMPORT-P3-SB-004" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="eb612f9473fce6837f1a1ca254b4974e" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-IMPORT-01" evidence="P3-SQL-TRUST" review="sparse-preferred-slot-query-shape-change">
+    <finding id="DATA-IMPORT-P3-SB-004" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="eb612f9473fce6837f1a1ca254b4974e" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-IMPORT-01" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
         <method name="requireActiveLifecycle" signature="(Ljava/sql/Connection;Ljava/lang/String;JLjava/time/Instant;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="959" bytecode="24" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="975" bytecode="25" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
             <Method name="requireActiveLifecycle" />
         </suppression>
-        <rationale>Reviewed false positive: the artifact identifier is grammar-validated and quoted; lifecycle and cutoff values are bound.</rationale>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
     </finding>
     <finding id="DATA-IMPORT-P4-SB-001" module="adapters/adapter-store-jdbc" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="cb04b55a4f02854fce439c638ed6a494" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P4-FAILURE-BOUNDARY" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcImportWorkspaceWriter" />
@@ -1520,5 +1521,280 @@
         <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/DocumentTextSpool.java" startLine="94" bytecode="147" />
         <suppression><Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" /><Class name="com.iocextractor.adapter.out.store.jdbc.DocumentTextSpool" /><Method name="close" /></suppression>
         <rationale>Reviewed exception-policy signal: close attempts every owned handle and both scratch files after IO, runtime or fatal failure; fatal failure has precedence and secondary failures remain suppressed. Physical workspace fixtures qualify all three failure modes, preserving the exact primary and removal of the independent second file.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-001" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="d1caa0fde48996506423b2eaac170ca" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="sqlite-pragma-policy-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcImportStageReadPolicy" />
+        <method name="configure" signature="(Ljava/sql/Connection;Ljava/lang/String;I)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcImportStageReadPolicy.java" startLine="11" bytecode="15" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcImportStageReadPolicy" />
+            <Method name="configure" />
+        </suppression>
+        <rationale>The schema name is identifier-validated and quoted; the cache limit is an internal positive integer. No data value supplies PRAGMA syntax.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-002" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="6c43878af2232edeb4df74dad1c6a008" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPrivateChangeCapture" />
+        <method name="install" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationTable;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPrivateChangeCapture.java" startLine="45" bytecode="295" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPrivateChangeCapture" />
+            <Method name="install" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-003" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="6c43878af2232edeb4df74dad1c6a008" occurrence="1" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPrivateChangeCapture" />
+        <method name="install" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationTable;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPrivateChangeCapture.java" startLine="25" bytecode="22" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPrivateChangeCapture" />
+            <Method name="install" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-004" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="443b589f70ae9820697a6ae04a6cca46" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationCatalog" />
+        <method name="requireEmpty" signature="(Ljava/sql/Connection;Ljava/util/List;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationCatalog.java" startLine="84" bytecode="48" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationCatalog" />
+            <Method name="requireEmpty" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-005" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="ed4e98b82b45fbc76564bc2d83f4909f" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="sql-format-template-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationProtocol" />
+        <method name="initialize" signature="(Ljava/sql/Connection;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationProtocol.java" startLine="115" bytecode="104" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationProtocol" />
+            <Method name="initialize" />
+        </suppression>
+        <rationale>Initialization executes a closed list of adapter-owned DDL and index literals. No external value is interpolated into the executed statements.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-006" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="9fdd7b52c52b76ea97b0645a29c48d84" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="sqlite-pragma-policy-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationReadLimits" />
+        <method name="read" signature="(Ljava/lang/String;)J" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationReadLimits.java" startLine="25" bytecode="17" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationReadLimits" />
+            <Method name="read" />
+        </suppression>
+        <rationale>PRAGMA names are fixed adapter call-site literals; limits are validated numeric bounds and saved SQLite numeric settings. IOC and operator strings cannot supply SQL tokens.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-007" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="81600fd5ddcd2105a00c15085a23490b" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="sqlite-pragma-policy-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationReadLimits" />
+        <method name="write" signature="(Ljava/lang/String;J)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationReadLimits.java" startLine="31" bytecode="11" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationReadLimits" />
+            <Method name="write" />
+        </suppression>
+        <rationale>PRAGMA names are fixed adapter call-site literals; limits are validated numeric bounds and saved SQLite numeric settings. IOC and operator strings cannot supply SQL tokens.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-008" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="9b4282a8b0d26edb465b59b3910f4660" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationSlotBase" />
+        <method name="hydrate" signature="(Ljava/lang/String;J)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationSlotBase.java" startLine="28" bytecode="52" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationSlotBase" />
+            <Method name="hydrate" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-009" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="1d1a50b122a551d66952350e6245b31a" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationTable" />
+        <method name="createEmptyCopy" signature="(Ljava/sql/Connection;Ljava/lang/String;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationTable.java" startLine="59" bytecode="24" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationTable" />
+            <Method name="createEmptyCopy" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-010" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="907e468deba1aee7abe5eeebb53f9f65" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcTypedPublicationStore" />
+        <method name="initializeEmpty" signature="(Ljava/sql/Connection;Ljava/util/List;)Lcom/iocextractor/adapter/out/store/jdbc/JdbcTypedPublicationStore;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcTypedPublicationStore.java" startLine="37" bytecode="208" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcTypedPublicationStore" />
+            <Method name="initializeEmpty" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-011" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="b55033049e5ace62667cd0ac977cbe87" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcTypedVersionTable" />
+        <method name="create" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationTable;Z)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcTypedVersionTable.java" startLine="15" bytecode="27" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcTypedVersionTable" />
+            <Method name="create" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-012" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="9632e54e544485bf08940ebcfd4217f7" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcTypedVersionTable" />
+        <method name="createView" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationTable;Z)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcTypedVersionTable.java" startLine="66" bytecode="62" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcTypedVersionTable" />
+            <Method name="createView" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-013" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="cee832370b4f1ee14b8eac460cf9deb7" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcTypedVersionTable" />
+        <method name="index" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationTable;Ljava/lang/String;Ljava/lang/String;Z)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcTypedVersionTable.java" startLine="35" bytecode="86" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcTypedVersionTable" />
+            <Method name="index" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-014" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="3e54d93621abe8d99226c3cc237125b9" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPrivateChanges" />
+        <method name="read" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationTable;JLcom/iocextractor/adapter/out/store/jdbc/JdbcPrivateChanges$EffectConsumer;)J" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPrivateChanges.java" startLine="45" bytecode="158" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPrivateChanges" />
+            <Method name="read" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-015" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="62cce6a75f7079bd147cce5019a3dc9f" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationHydrator" />
+        <method name="copy" signature="(Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationTable;Ljava/lang/String;Ljava/util/List;)J" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationHydrator.java" startLine="46" bytecode="102" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationHydrator" />
+            <Method name="copy" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-016" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="62c8f9d0b2854798ec36f8726af6794" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationJournalCleanup" />
+        <method name="delete" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;JJI)I" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationJournalCleanup.java" startLine="54" bytecode="22" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationJournalCleanup" />
+            <Method name="delete" />
+        </suppression>
+        <rationale>Table and key expressions are a closed private call-site catalog; unit, fence and page limit are prepared parameters. No business value supplies identifiers or predicates.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-017" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="2a5ceb68d27139c3715bd3be731bf665" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationJournalCleanup" />
+        <method name="hasRows" signature="(Ljava/sql/Connection;Ljava/lang/String;JJ)Z" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationJournalCleanup.java" startLine="67" bytecode="7" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationJournalCleanup" />
+            <Method name="hasRows" />
+        </suppression>
+        <rationale>Table and key expressions are a closed private call-site catalog; unit, fence and page limit are prepared parameters. No business value supplies identifiers or predicates.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-018" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="3a545f08243640ddf276b8c219755745" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationSelection" />
+        <method name="minimumDeadline" signature="(Ljava/util/Set;J)J" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationSelection.java" startLine="68" bytecode="53" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationSelection" />
+            <Method name="minimumDeadline" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-019" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="191d19f0f19279ea0972fd58a8ef1e15" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationSelection" />
+        <method name="select" signature="(Ljava/lang/String;J)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationSelection.java" startLine="47" bytecode="17" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationSelection" />
+            <Method name="select" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-020" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="1a08e9d74700e039782091e4d2bfdf38" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationSlotBase" />
+        <method name="hydrate" signature="(Ljava/lang/String;J)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationSlotBase.java" startLine="33" bytecode="107" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationSlotBase" />
+            <Method name="hydrate" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-021" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="26b572b5b0bc404dcd6722bba73a7efb" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationSlotBase" />
+        <method name="stream" signature="(Ljava/lang/String;Ljava/lang/String;J)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationSlotBase.java" startLine="48" bytecode="17" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationSlotBase" />
+            <Method name="stream" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-022" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="ffc56632c2c9f59ce80015879679d9fc" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationVersionCleanup" />
+        <method name="scan" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationVersionCleanup$Page;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationVersionCleanup.java" startLine="37" bytecode="25" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationVersionCleanup" />
+            <Method name="scan" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-023" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="993d260e1915fa78d981f8213bf818fb" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcStagedExpiryStore" />
+        <method name="lambda$expireDue$1" signature="(Ljava/lang/String;Lcom/iocextractor/application/artifact/lifecycle/EffectiveTime;ILcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationSelection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcSelectedCanonicalBase;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationSlotBase;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcStagedExpiryStore.java" startLine="47" bytecode="58" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcStagedExpiryStore" />
+            <Method name="lambda$expireDue$1" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-024" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="37b2c03dd06d6c85657a86dbc1ddfe77" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcStagedExpiryStore" />
+        <method name="nearestDeadline" signature="()Ljava/util/Optional;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcStagedExpiryStore.java" startLine="27" bytecode="98" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcStagedExpiryStore" />
+            <Method name="nearestDeadline" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+    </finding>
+    <finding id="CAP-7C-C3-SB-025" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="4f353b03082a972d6bc69b16e1c773a7" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcTypedPublicationChunk" />
+        <method name="insert" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationProtocol$Attempt;Lcom/iocextractor/adapter/out/store/jdbc/JdbcTypedPublicationChunk$Row;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcTypedPublicationChunk.java" startLine="60" bytecode="47" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcTypedPublicationChunk" />
+            <Method name="insert" />
+        </suppression>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
     </finding>
 </spotbugs-accepted-findings>
