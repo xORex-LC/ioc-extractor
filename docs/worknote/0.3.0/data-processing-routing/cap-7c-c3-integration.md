@@ -1,176 +1,153 @@
 # CAP-7C C3: native kernel integration
 
-Status: candidate implementation integrated; final reactor/analyzer qualification
-is in progress. No runtime activation or existing-data migration is included.
-C2 is closed; C3 awaits its final gates, while C4–C6 and G6 remain open.
+Status: isolated SQLite candidate implemented. Native-port deterministic
+qualification is recorded below; repository completion requires fresh gates on
+the final proposed HEAD. C2 is closed; C4–C6 and G6 remain separate. This change
+neither activates the candidate nor migrates existing data.
 
-## First integration slice (2026-10-10)
+## Implemented boundaries
 
-`JdbcCanonicalImportWriter` and `JdbcCanonicalLifecycleWriter` share an internal
-`JdbcCanonicalPreparationContext`: dataframe-owned ID reservations and a
-transactional effect-sink factory. Their public constructors use the existing
-canonical datasource and a no-op sink. No bootstrap switch, schema migration,
-dependency or alternative mutation engine is introduced.
+`JdbcStagedCanonicalBackend` composes the existing application ports entirely
+inside `adapter-store-jdbc`. Ordinary confirmation publishes per artifact;
+managed import publishes all affected artifacts and its canonical receipt
+atomically. The existing mutation kernel, import planner, identity/rank/merge
+rules and sparse slot allocator still decide business behavior.
 
-The factory receives the native mutation transaction's borrowed connection.
-`JdbcPrivateMutationJournal` is opened only in the private preparation database.
-It records actual artifact, canonical-row and lifecycle identities plus the
-explicit renewal decision from the kernel/import plan. Recording failure aborts
-the native transaction; journal DDL and entries roll back together with canonical
-facts in that private database. Independently reserved authoritative ID ranges
-remain burned.
+The native writers share an internal `JdbcCanonicalPreparationContext` for
+canonical ID reservations, explicit renewal capture, slot membership overlays
+and bounded stage reads. Their public constructors retain the existing native
+runtime behavior. No new dependency, Maven module, bootstrap switch or
+alternative mutation-policy engine is introduced.
 
-The journal pins one unit and its supplied preparation fingerprint. Changed
-unit/pins or a different lifecycle for an existing row fail closed. Repeated
-contributions fold renewal with logical OR; a later non-renewal cannot erase an
-earlier renewal. An indexed ordinal cursor streams at most 256 entries per page.
-The caller owns the sealed read snapshot, private workspace, quota and disposal;
-the journal closes its prepared statement, never the borrowed connection.
+Selective hydration reads affected committed rows, aliases, origins, sources,
+receipts and slot namespaces into a private native database. Slot reconciliation
+streams minimal lifecycle membership headers; it does not copy every public
+row. Borrowed canonical connections restore their cache/TEMP policy after the
+owned snapshot closes. No whole-table copy or diff runs on the candidate path.
 
-A renewal can leave every native row timestamp unchanged when preparation uses
-the same safe UTC as the previous confirmation. Comparing old/new timestamps
-would lose it. The explicit journal flag survives this case and allows the typed
-experiment to publish the native outcome at fresh publication UTC. The journal
-is not a canonical receipt, publication header, complete version payload or
-replacement for epoch/fence validation.
+Private native DML capture records the original committed value and final typed
+value/tombstone for each changed address, including cascades and moved keys.
+The explicit renewal journal preserves renewals whose timestamps did not change.
+Two passes over one sealed snapshot describe and transfer at most 256 effects /
+1 MiB per physical chunk. Typed digests preserve field boundaries and distinguish
+NULL, text, numeric and binary values. Hidden chunks and the final visibility
+transition use the same shared `JdbcPublicationProtocol` exercised by C2.
 
-## Native port composition slice
+All canonical readers and controls use one committed-version predicate:
+matching, active/stream/snapshot reads, projection, indexed deadlines, expiry,
+slot reconciliation, history and receipt retention. A unit commits its receipt
+and visibility in one short transaction; existing WAL readers retain their old
+snapshot across publication and cleanup.
 
-The isolated `JdbcStagedCanonicalBackend` now composes ordinary confirmation,
-cross-artifact import, matching/active/stream/snapshot readers, expiry, native
-slot reconciliation, projection CAS and receipt/history retention. Preparation
-uses selective hydration and the shared workspace admission/quota owner. The
-canonical-base and private TEMP caches are bounded; pooled read policy is
-restored after closing the owned snapshot. No default bootstrap switch exists.
+## Temporal, recovery and resource contract
 
-The import TCK runs on this candidate. The latest focused command executes 33
-tests with no failures/errors/skips. Additional native-table oracles cover
-ordinary multi-artifact receipts, import COALESCE diagnostics, fixed-cycle
-controls, slot export, history and receipt cascades. Fault regression proves
-hidden-chunk cancellation and burned IDs. A deadline-equality regression rebuilds
-a no-op import at fresh publication UTC without resurrecting the old lifecycle.
-Version/journal cleanup, remaining resource-bound tests and the complete reactor
-gates are still in progress; this slice does not close C3.
+- Fresh safe UTC at publication confirms or renews a lifecycle. Equality with
+  its deadline is expired. Expiry during preparation requires a fresh native
+  plan with new non-reusable IDs; the admitted observation, rank and policy pins
+  remain unchanged. Authoritative reservations stay burned after failure.
+- Durable logical ownership, fences and dependency epochs reject stale workers
+  and invalidate stale preparation. One execution has at most three attempts;
+  exhaustion cancels hidden state, records failure and releases ownership for
+  ordered retry. It does not silently fall back to a large native transaction.
+- After commit, import recovery reads the canonical receipt without requiring
+  the stage. The service database retains delivery/retry authority; canonical
+  visibility, lifecycle, reservations and receipts remain dataframe-owned.
+- Canonical workspaces share weighted nonblocking admission, leases and disk
+  quotas with document preparation. Configuration requires headroom for a
+  promotion, concurrent control work and a document lease. Private/base/stage
+  caches, disk-backed TEMP requests and row/field materialization are bounded.
+  These accounting limits are not whole-process capacity acceptance. Finished
+  native scratch databases are disposed under root admission and their file lease;
+  disposal failure releases permits, while crashed pins retain the existing
+  lease-aware retention backstop.
+- Cleanup uses durable keyset cursors and bounds both scanned addresses and
+  deleted rows. It retains pending/current committed versions and tombstones
+  that still dominate other versions. Acknowledged transfer journals and
+  obsolete attempts can drain while current attempt identity, headers, pins
+  and TTL anchors remain authoritative.
 
-## Executable checks
+The exact SQLite driver contract matters: native
+`PreparedStatement.executeUpdate()` preserves direct affected-row counts under
+capture; plain `Statement.executeUpdate(sql)` includes trigger work. Native
+cardinality checks retain prepared statements.
 
-The existing Failsafe suites retain their discovery/tags and add these checks:
+## Deterministic qualification
 
-- `privateJournalPreservesSameInstantRenewalThroughTypedPublication`: real import
-  planner/kernel, unchanged native row timestamps, persisted explicit renewal,
-  corrected native-writer oracle across all transported tables, fresh-UTC TTL and
-  receipt-only replay after deleting the input stage.
-- `privatePreparationBurnsReservationsOnlyInTheAuthoritativeDatabase`: injected
-  BEFORE_COMMIT failure rolls back private facts and journal, keeps authoritative
-  allocator gaps, and retries with fresh identities.
-- `ordinaryPerArtifactPublicationCompletesAndReplaysTheRealTypedConfirmationReceipt`:
-  the first native ordinary artifact records its real outcome transactionally;
-  the existing two-artifact receipt/publication oracle remains intact.
-- `privateMutationJournalFoldsRenewalsAndStreamsBoundedIndexedPagesWithPinnedIdentity`:
-  257 entries, a 256-entry page plus tail/end, folded renewal, unchanged pins,
-  rejected identity changes and invalid bounds.
-- `privateMutationJournalRollsBackEffectsAndRejectsCrossThreadResourceUse`: private
-  rollback, bounded worker termination and borrowed-connection ownership.
+The inherited import and lifecycle TCKs execute on the staged candidate.
+The lifecycle TCK checks one published time/deadline across a multi-row
+confirmation using a clock that advances on every read. Replay makes no new
+clock read. A requirement for exactly one preliminary read belonged to the
+former transaction implementation and contradicted the approved publication-UTC
+contract; suite discovery/tags, coverage floors and ratchets were preserved.
 
-Focused commands:
+The existing Failsafe suites cover:
 
-```bash
-make test-one MODULE=adapters/adapter-store-jdbc TEST=JdbcCanonicalImportWriterContractIT
-make test-one MODULE=adapters/adapter-store-jdbc TEST=SqlitePublicationExperimentIT
-```
+- corrected native-table equivalence for ordinary multi-artifact confirmation
+  and import fan-out, clears, COALESCE warnings, source provenance, aliases,
+  origins, revisions/generations, sparse slots and complete receipt fields;
+- hidden visibility, publication between pinned reads, receipt-only replay
+  without the input stage, native expiry/projection/history/receipt controls;
+- deadline-equality rebuild without resurrecting an expired lifecycle, burned
+  IDs after a hidden-chunk failure, id-less row/history ID non-reuse;
+- three successive epoch invalidations, cancellation and retry with retained
+  pins, and changed pins rejected before ownership without cancelling another
+  pending attempt;
+- weighted admission, pin-failure permit release, thread confinement, bounded
+  termination, oversized committed fields, interruption/quota rollback, SQL-
+  looking Unicode values and binary payloads through selective hydration;
+- unsafe UTC at publication cancels hidden work and releases logical ownership;
+  failure audit time is operational and never lifecycle confirmation authority;
+- empty ordered values without origins, rank-only advances, malformed sealed
+  metadata/carriers and stale export plans fail or complete with native evidence;
+- persisted cleanup cursor progress past a retained prefix, pending-state
+  retention, receipt cascade reclamation and surviving TTL anchors;
+- incomplete/ambiguous catalogs, configuration drift, populated initialization,
+  inactive lifecycle, stable-key requirements and bounded maintenance pages.
 
-The focused runs executed 28 import-contract and 30 physical-protocol tests,
-with zero failures/errors/skips. They retain the same suite universe.
+The JDBC integration cohort executes 419 tests with zero failures/errors and
+one explicitly opt-in lifecycle-load skip. Focused suites include 56 import/TCK
+tests and 45 physical-protocol tests with zero failures/errors/skips. Seven
+inherited lifecycle TCK tests also pass. The suite inventory is unchanged. Failed development runs remain in `.dev/c3-*.log`;
+fixture type/state errors, insufficient fixture headroom and obsolete clock-call
+assertions were corrected without automatic retries or weakened gates. A full
+reactor run exposed a race in the existing daemon E2E manual driver: stopping
+only its file poller did not stop durable journal dispatch. Each scenario now
+gets a fresh Spring context; manual scenarios close the bounded dispatcher,
+while the watched-inbox scenario retains the normal autonomous runtime. The
+three-scenario focused suite passes without retries.
 
-Full completion checks are `make verify`, `make pmd-analysis`,
-`make pmd-watchlist` and `make docs`; `make context` identifies exact-HEAD
-freshness. A passed journal slice is not acceptance of the complete C3 backend.
+The complete reactor at implementation reference `9b4aaa46` passed functional
+suites and test-report union integrity (222 fast and 78 Failsafe suite identities,
+including five external shells; 295 deterministic-offline identities). Its JDBC coverage scope
+passed the unchanged absolute ratchet: 446 missed branches against baseline 468.
+The complete coverage gate still rejected one `adapter-ingest` branch above its
+baseline after autonomous fixture isolation. A dedicated non-file regression now
+checks matching directories and vanished files without depending on a background
+poller; its four-test focused suite passes. The failed aggregate gate is retained,
+not relabelled as success.
 
-## Bounded cleanup and resource qualification slice
+Final repository completion requires `make verify`, `make pmd-analysis`,
+`make pmd-watchlist` and `make docs` after this documentation synchronization.
+`make context` and the generated local verification records identify the final
+HEAD, result and worktree freshness; focused checks never substitute for those
+gates. No test inventory, analyzer scope, floor or ratchet was relaxed.
 
-The candidate now bounds physical cleanup's scanned prefix as well as deletion
-count, with persisted family/attempt cursors. Pending versions are retained;
-latest tombstones remain until all other versions of their address disappear.
-Terminal transfer journals can drain in 256-row transactions while typed data,
-receipt recovery and header deadline anchors remain available. Header/pin
-compaction and maintenance scheduling are explicitly deferred to C6.
+The [exact SQL analyzer review](cap-7c-c3-sql-review.md) records 25 new SQL
+false positives and seven changed slot-registry anchors. All acceptances have
+exact raw identities, method-local presentation selectors and concrete review
+triggers. Neither detector scope nor coverage baseline was relaxed.
 
-Hydration performs SQLite byte-size checks before driver materialization.
-Native private/committed-base/stage caches and TEMP pages respect the shared
-workspace budget. Native duplicate validation no longer increases a stricter
-private TEMP limit. Candidate catalog checks precede ID initialization;
-reopening rejects policy/catalog drift.
+## Remaining promotion gates
 
-Both inherited import and lifecycle TCKs run on the staged backend. The lifecycle
-TCK now checks one published timestamp/deadline across a multi-row confirmation
-using a clock that ticks on each read, and no additional clock sampling on replay.
-Counting all preliminary reads as confirmations was specific to the former
-single-transaction implementation and contradicted the approved publication-UTC
-decision. Test suite inventory, tags, coverage floors and ratchets are unchanged.
-
-Resource/fault regressions cover weighted nonblocking admission, released permits
-after pin failure, thread confinement, pooled policy restoration, oversized base
-fields, three-epoch-invalidation exhaustion, cancellation/retry and rejecting
-changed pins before ownership without cancelling existing pending state.
-
-The module integration command completed 381 tests with one opt-in load-profile
-skip and no failures/errors before the final cleanup/cache refinements. Failed
-development runs remain in `.dev/c3-*.log`: clock-call assertions, insufficient
-concurrent fixture headroom, an incorrect exhaustion expectation and a fixture
-type error were resolved without retries or gate relaxation. Final complete
-verification and analyzer review are recorded below once executed.
-
-The second integration slice implements a persisted typed catalog, immutable
-versions and one committed visibility predicate. Two streaming passes over the
-same sealed native snapshot describe and transfer at most 256 rows / 1 MiB per
-physical chunk. Digest framing distinguishes SQL NULL, integer, text and binary
-values; no table-wide diff or timestamp-based renewal guess is introduced.
-
-`sharedTypedStorePublishesCapturedNativeFanOutAndRecoversWithoutInputStage`
-executes the actual import writer, transports fan-out changes and COALESCE
-warnings, proves hidden chunks and a pinned old reader, and compares every typed
-family with the corrected native writer at publication UTC. Receipt-only replay
-works after deleting the stage. This test qualifies typed transport; complete
-native port composition, control operations and cleanup still require their own
-port and resource checks recorded above.
-
-The physical protocol is now shared production-source code in
-`JdbcPublicationProtocol`; C2 tests execute that implementation instead of a
-second test-only transition engine. `JdbcPrivateChangeCapture` installs typed
-address capture on private native tables after hydration. Its triggers retain
-the initial committed value and the final native value/tombstone, including
-cascaded children and moved composite keys. `JdbcPrivateChanges` streams indexed
-256-address pages and omits reverted updates and transient insert/delete pairs.
-No whole-table copy or comparison is used by capture.
-
-Exact-driver checks distinguish SQLite JDBC update APIs: native kernel
-`PreparedStatement.executeUpdate()` preserves affected-row counts under capture;
-plain `Statement.executeUpdate(sql)` includes trigger work. Cardinality checks
-must keep using prepared statements. The deterministic tests cover UPSERT,
-constraint rejection, cascade deletion, NULL, key movement, rollback and final
-contribution folding. This is capture qualification, not complete C3 acceptance.
-
-1. Selectively hydrate the committed native base for affected rows/aliases,
-   origins, sources and slot scopes in a bounded private workspace. Keep the
-   same registered observation, source/rank/policy pins and authoritative
-   reservations through expiry/conflict rebuild. C2's whole-table fixture copy
-   or diff is forbidden on the runtime path.
-2. Stream actual typed row/child/tombstone effects from the private native
-   snapshot into immutable, fenced versions with bounded bytes and chunk
-   digests. The journal identifies confirmations and renewals; it does not yet
-   enumerate every changed alias, origin, source, slot or receipt address.
-3. Integrate durable logical owner, epochs, three-attempt rebuild budget and
-   fresh publication UTC with ordinary per-artifact and import cross-artifact
-   entry points. Deadline equality requires rebuilding with a new lifecycle;
-   stale private effects cannot renew an expired row.
-4. Connect matching, active/snapshot/projection/export reads, deadline queries,
-   expiry, slot reconciliation, history and receipt retention to the same
-   committed-version visibility and indexed access. Cleanup must respect
-   reader snapshots, active anchors and retained receipts.
-5. Run the corrected native semantic oracle and port/TCK tests over the complete
-   adapter. C4 owns the complete crash/concurrency matrix, C5 the paired
-   whole-service capacity qualification, and C6 migration/operations/activation.
+C4 owns the complete crash/cancel/conflict/process-restart matrix, including
+service-ledger wiring and recovery of abandoned ownership. C5 owns paired
+whole-service capacity comparison, sustainable invalidation/progress, physical
+writer occupancy, eligible waits, read amplification and total heap/RSS/WAL/disk
+cost. C6 owns drained migration/backup rollback, readiness/health, runtime
+composition, cleanup scheduling and conservative header/pin/anchor compaction.
+These outcomes are not inferred from deterministic C3 checks.
 
 The proposed [ADR 0041](../../../ADR/0041-sqlite-staged-publication-experiment.md)
-and [transaction design](cap-7c-transaction-design.md) remain the protocol owners.
-No installed service or operator configuration changes in this slice.
+and [transaction design](cap-7c-transaction-design.md) remain protocol owners.
+The published capability is [staged canonical publication](../../../dev/staged-canonical-publication.md).
+No installed service, operator configuration or existing dataframe was changed.

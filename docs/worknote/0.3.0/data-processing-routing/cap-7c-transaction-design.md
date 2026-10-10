@@ -1,9 +1,10 @@
 # CAP-7C SQLite transaction visibility
 
-Status: in progress, contract baseline and C1 proposed protocol implemented; SQLite is the required
-backend for release 0.3.0. The publication protocol is not yet qualified.
-No production transaction, schema, configuration or
-deployed state has changed. This is an execution design for
+Status: in progress, contract baseline and C1 proposed protocol implemented;
+SQLite is the required backend for release 0.3.0. The isolated native-port
+candidate is implemented and deterministically qualified; fault, whole-service capacity and operational promotion gates remain
+open. The default production transaction, schema, configuration and deployed
+state are unchanged. This is an execution design for
 [CAP-7C](data-processing-capacity-plan.md#cap-7--conditional-follow-on-architecture-decisions),
 not capacity acceptance. [ADR 0041](../../../ADR/0041-sqlite-staged-publication-experiment.md)
 records the proposed protocol and its integration gates; it is not accepted for
@@ -12,13 +13,16 @@ production activation.
 The [C2 physical experiment](cap-7c-c2-experiment.md) now implements fenced
 hidden chunks, contribution folding, publication and indexed visibility in
 test scope. It qualifies C2's finite real-kernel/canonical-port experiment.
-[C3 integration](cap-7c-c3-integration.md) has started with the transactional
-private mutation journal; complete runtime integration remains open; this does not authorize migration or activation.
+[C3 integration](cap-7c-c3-integration.md) composes ordinary/import publication,
+committed readers and controls around the native mutation kernel, with bounded
+private capture, transfer and reclamation. It is an explicitly composed adapter
+candidate; default-runtime composition, migration and activation remain C6 work.
 The owner resolved the lifecycle race on 2026-10-10: use fresh safe UTC at
 publication. A lifecycle that expires during preparation must be replaced by
 a new lifecycle; it cannot be restored or renewed. Proposed ADR 0041 records
-this explicit refinement to ADR 0020. The protocol still needs typed-kernel,
-clock and recovery qualification before production activation.
+this explicit refinement to ADR 0020. The candidate qualifies typed-kernel
+equivalence and publication-clock boundaries. Complete crash/restart recovery and resource/operational
+qualification are still required before production activation.
 
 ## Confirmed release boundary
 
@@ -197,7 +201,7 @@ back to the current oversized transaction silently.
 | C0 contract baseline | Current real SQLite pending visibility, matching, pinned snapshots and receipt-only replay | Existing suite plus new deterministic regression; implemented |
 | C1 SQLite protocol | Backend constraint confirmed; proposed ADR 0041 fixes the physical protocol | Proposed protocol recorded; publication UTC confirmed by owner; no production activation |
 | C2 persistence experiment | Implemented in isolated test scope, including real-kernel ordinary/populated-import ports and authoritative ranges | Typed table equivalence, receipt replay, safe clock, indexed 100,001-version deadline lookup and bounded durable ownership/rebuild checks pass; capacity acceptance remains C5 |
-| C3 complete integration | Started: native ordinary/import writers capture private mutation outcomes and renewal flags transactionally; versioned readers/writers and activation remain open | Same semantic oracle as corrected SQLite; no alternate runtime mutation engine |
+| C3 complete integration | Implemented isolated candidate: native ordinary/import preparation, committed readers/controls and bounded capture/transfer/reclamation | Native equivalence and inherited import/lifecycle TCKs; final repository gates apply; default-runtime activation remains C6 |
 | C4 faults/concurrency | Crash/cancel/conflict/restart matrix below | Pending never visible; no half delivery; rank/TTL/slot/recovery equivalence |
 | C5 capacity comparison | Corrected and versioned SQLite, identical workload/results/limits, complete-service metrics | Physical occupancy, eligible waits and total resources meet adopted limits; retain failed cells |
 | C6 migration/operations | Drained upgrade, rollback backup/restore, readiness/health, durable cleanup and deployment procedure | Full adapter/TCK and operational qualification; accepted ADR before activation |
