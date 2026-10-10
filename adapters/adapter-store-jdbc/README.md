@@ -126,6 +126,13 @@ runtime JDBC drivers.
   interruption cleanup, fenced workers, slot-control conflicts and pinned readers
   through real native ports and the service import ledger. Capacity acceptance
   and default-runtime activation remain separate gates.
+- `JdbcStagedCanonicalOperations` qualifies candidate-only drained format-12 to
+  format-13 conversion, an exclusive local process lease, bounded startup
+  cancellation/readiness, and durable rotating physical cleanup. It reuses typed
+  transport and internal ID authority. `StagedPublicationOperationsIT` checks
+  populated native equivalence, receipt replay without stage, failure rollback,
+  live-owner exclusion and coordinated stopped backup/restore. It is not a
+  registered production migration or an application configuration switch.
 - `JdbcLifecycleControlStore` uses one-way CAS and refuses `ACTIVE` until one
   set-based invariant scan proves that every configured active row has complete,
   ordered lifecycle metadata. Lifecycle/canonical-row ID ranges are reserved by

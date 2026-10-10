@@ -35,6 +35,11 @@ final class JdbcTypedPublicationChunk {
     int size() { return rows.size(); }
     boolean isEmpty() { return rows.isEmpty(); }
 
+    /** Drained migration copies literal facts, without confirmation, renewal or runtime transfer journals. */
+    void copyMigrationRows(Connection connection, JdbcPublicationProtocol.Attempt attempt) throws SQLException {
+        for (var row : rows) { insert(connection, attempt, row); }
+    }
+
     void append(Connection connection, JdbcPublicationProtocol protocol, JdbcPublicationProtocol.Attempt attempt,
                 String scope, int ordinal) throws SQLException {
         var digest = new JdbcPublicationChunkDigest();

@@ -22,3 +22,4 @@
 | [ioc-processing-routes.md](ioc-processing-routes.md) | — | Включение именованных IOC-планов для документа и processed import, проверка результата и восстановление |
 | [remote-storage-sync.md](remote-storage-sync.md) | [ru/remote-storage-sync.md](ru/remote-storage-sync.md) | Работа с удалённым хранилищем: как устроены fetch/publish и push-уведомления, справочник конфигурации с подбором значений, права/сбои/восстановление/мониторинг, настройка SMB-шары на Linux (Samba) и Windows Server, чек-листы |
 | [library-publication.md](library-publication.md) | — | Публикация и проверка independently consumable Maven libraries |
+| [staged-publication-rehearsal.md](staged-publication-rehearsal.md) | — | Изолированная проверка drained migration SQLite, ownership/recovery и coordinated backup/restore; production activation не включена |

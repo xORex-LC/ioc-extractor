@@ -83,7 +83,7 @@ final class StagedPublicationFixture implements AutoCloseable {
     final HikariDataSource service;
     final JdbcImportDeliveryLedger ledger;
     final JdbcStagedCanonicalBackend backend;
-    final List<DataframeArtifactSchema> schemas = List.of(schema("masks", "mask"), schema("hashes", "hash"));
+    final List<DataframeArtifactSchema> schemas;
     final List<ArtifactIdentityDefinition> identities = List.of(identity("masks", "mask"), identity("hashes", "hash"));
 
     StagedPublicationFixture(Path root, boolean fresh, JdbcPublicationObserver observer) {
@@ -97,7 +97,27 @@ final class StagedPublicationFixture implements AutoCloseable {
 
     StagedPublicationFixture(Path root, boolean fresh, JdbcPublicationObserver observer,
                              Map<String, ArtifactWritePolicy> policies, Clock wall) {
+        this(root, fresh, observer, policies, wall, false, false);
+    }
+
+    static StagedPublicationFixture nativeFixture(Path root) {
+        return nativeFixture(root, true);
+    }
+
+    static StagedPublicationFixture nativeFixture(Path root, boolean fresh) {
+        return new StagedPublicationFixture(root, fresh, JdbcPublicationObserver.NOOP, Map.of(), CLOCK, true, false);
+    }
+
+    static StagedPublicationFixture nativeIdlessFixture(Path root) {
+        return new StagedPublicationFixture(root, true, JdbcPublicationObserver.NOOP, Map.of(), CLOCK, true, true);
+    }
+
+    private StagedPublicationFixture(Path root, boolean fresh, JdbcPublicationObserver observer,
+                             Map<String, ArtifactWritePolicy> policies, Clock wall, boolean nativeOnly, boolean idless) {
         this.root = root;
+        schemas = List.of(schema("masks", "mask"), schema("hashes", "hash")).stream()
+                .map(s -> idless ? new DataframeArtifactSchema(s.artifactName(), s.columns().stream().filter(c -> !c.name().equals("id")).toList()) : s)
+                .toList();
         dataframe = database(root.resolve("dataframe.db"));
         try {
             service = database(root.resolve("service.db"));
@@ -118,12 +138,21 @@ final class StagedPublicationFixture implements AutoCloseable {
                         new DocumentPreparationLimits(8 * 1024 * 1024, 64, 4096, 2048, 16 * 1024 * 1024, 256 * 1024 * 1024, 256),
                         new CanonicalArtifactIdentityResolver(identities), "fault-test");
                 var configuration = new JdbcStagedCanonicalConfiguration(dataframe, schemas,
-                        schemas.stream().map(s -> new ArtifactIdAllocatorDefinition(s.artifactName(), ArtifactIdStrategy.ASCENDING, 1, 1)).toList(),
+                        schemas.stream().filter(s -> s.columns().stream().anyMatch(c -> c.name().equals("id")))
+                                .map(s -> new ArtifactIdAllocatorDefinition(s.artifactName(), ArtifactIdStrategy.ASCENDING, 1, 1)).toList(),
                         identities, new JdbcLifecycleClock(dataframe, wall,
                         new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30)), admission), wall,
                         new FixedRecordValidityPolicy(Duration.ofHours(12)), admission, workspaces, root.resolve("stage"), policies, Duration.ofDays(90));
-                backend = fresh ? JdbcStagedCanonicalBackend.createEmpty(configuration, observer)
-                        : JdbcStagedCanonicalBackend.reopen(configuration, observer);
+                if (nativeOnly) {
+                    JdbcStagedCanonicalBackend.initializeIds(configuration);
+                    try (var connection = dataframe.getConnection()) {
+                        backend = new JdbcStagedCanonicalBackend(configuration, new JdbcTypedPublicationStore(
+                                JdbcPublicationCatalog.inspectNative(connection, schemas), java.util.Set.of("masks", "hashes")), observer);
+                    } catch (SQLException failure) { throw new IllegalStateException("Cannot inspect native fixture", failure); }
+                } else {
+                    backend = fresh ? JdbcStagedCanonicalBackend.createEmpty(configuration, observer)
+                            : JdbcStagedCanonicalBackend.reopen(configuration, observer);
+                }
                 ledger = new JdbcImportDeliveryLedger(service);
             } catch (RuntimeException | Error failure) { service.close(); throw failure; }
         } catch (RuntimeException | Error failure) { dataframe.close(); throw failure; }

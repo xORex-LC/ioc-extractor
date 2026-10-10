@@ -21,12 +21,23 @@ final class JdbcTypedPublicationStore {
 
     static JdbcTypedPublicationStore initializeEmpty(Connection connection, List<DataframeArtifactSchema> schemas)
             throws SQLException {
+        return initialize(connection, schemas, false, 0);
+    }
+
+    /** Caller has stopped intake, drained coordination and owns the database lease and migration transaction. */
+    static JdbcTypedPublicationStore migrateNative(Connection connection, List<DataframeArtifactSchema> schemas,
+                                                   long migrationMillis) throws SQLException {
+        return initialize(connection, schemas, true, migrationMillis);
+    }
+
+    private static JdbcTypedPublicationStore initialize(Connection connection, List<DataframeArtifactSchema> schemas,
+                                                       boolean populated, long migrationMillis) throws SQLException {
         if (connection.getAutoCommit()) { throw new SQLException("Publication initialization requires an owned transaction"); }
         if (JdbcLifecycleTransactions.readActivationState(connection) != LifecycleActivationState.ACTIVE) {
             throw new SQLException("Staged publication requires active fixed lifecycle");
         }
         List<JdbcPublicationTable> tables = JdbcPublicationCatalog.inspectNative(connection, schemas);
-        JdbcPublicationCatalog.requireEmpty(connection, tables);
+        if (!populated) { JdbcPublicationCatalog.requireEmpty(connection, tables); }
         Set<String> artifacts = schemas.stream().map(DataframeArtifactSchema::artifactName)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
         new JdbcPublicationProtocol().initialize(connection);
@@ -34,6 +45,7 @@ final class JdbcTypedPublicationStore {
         JdbcPublicationCleanupCursor.initialize(connection);
         JdbcPublicationCatalog.persist(connection, tables);
         for (var table : tables) { JdbcTypedVersionTable.create(connection, table, artifacts.contains(table.name())); }
+        if (populated) { JdbcStagedCanonicalMigration.copy(connection, tables, artifacts, migrationMillis); }
         for (var table : tables.reversed()) { execute(connection, "DROP TABLE " + quote(table.name())); }
         for (var table : tables) { JdbcTypedVersionTable.createView(connection, table, artifacts.contains(table.name())); }
         return new JdbcTypedPublicationStore(tables, artifacts);

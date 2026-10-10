@@ -15,7 +15,7 @@ final class JdbcStagedCanonicalBackend {
     private final JdbcPrivateIdReservations internalIds;
     private final JdbcTypedPublicationStore store;
 
-    private JdbcStagedCanonicalBackend(JdbcStagedCanonicalConfiguration configuration, JdbcTypedPublicationStore store,
+    JdbcStagedCanonicalBackend(JdbcStagedCanonicalConfiguration configuration, JdbcTypedPublicationStore store,
                                        JdbcPublicationObserver observer) {
         this.configuration = configuration;
         this.store = store;
@@ -58,7 +58,7 @@ final class JdbcStagedCanonicalBackend {
         } catch (SQLException failure) { throw new IocExtractorException("Cannot reopen staged canonical backend", failure); }
     }
 
-    private static void initializeIds(JdbcStagedCanonicalConfiguration configuration) {
+    static void initializeIds(JdbcStagedCanonicalConfiguration configuration) {
         var publicIds = new JdbcArtifactIdAllocator(configuration.dataSource(), configuration.allocatorClock());
         configuration.publicIds().forEach(publicIds::ensureInitialized);
         var internal = new JdbcPrivateIdReservations(configuration.dataSource(), configuration.allocatorClock(), configuration.admission());

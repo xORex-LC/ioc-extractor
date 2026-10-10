@@ -39,9 +39,11 @@ The native ordinary/import writers also exercise their private transactional
 journal: same-instant renewal survives fresh-UTC publication, rollback removes
 private effects while authoritative reservations remain burned, and bounded
 journal paging, pinned identity and thread/resource ownership are checked.
-The reviewed source universe is 222 fast classes and 79 integration classes,
-including five external shells (296 deterministic classes). The C4 staged-publication
-fault suite adds owned child-JVM crash/reopen and native recovery coverage. The exact inventory
+The reviewed source universe is 222 fast classes and 80 integration classes,
+including five external shells (297 deterministic classes). The C4 staged-publication
+fault suite adds owned child-JVM crash/reopen and native recovery coverage.
+The C6 operational suite qualifies drained populated migration, coordinated
+stopped-state restore, exclusive ownership, startup recovery and durable cleanup. The exact inventory
 in `build-support/test-quality/test-lifecycle.properties` reflects this scope;
 discovery, report integrity and coverage/analyzer floors remain unchanged.
 

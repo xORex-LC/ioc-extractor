@@ -66,8 +66,9 @@ delivery and retry coordination. There is no new queue or mutation-policy engine
    lifecycle, including equality at its deadline, requires a rebuild with new
    non-reusable IDs. Rebuild preserves the admitted command, rank and policy;
    reserved ranges remain burned. Three attempts bound one execution.
-4. Immutable pins reject configuration or command drift. Initialization refuses
-   populated native tables; reopening requires the same configuration fingerprint.
+4. Immutable pins reject configuration or command drift. Empty initialization refuses
+   populated native tables; explicit drained migration adopts their literal facts.
+   Reopening requires the same configuration fingerprint.
    Native writers must never write into the candidate's read-only views.
 
 ## Failure and recovery
@@ -102,8 +103,56 @@ until every other version of its address is gone, including hidden versions.
 Terminal transfer facts/chunks/dependencies and obsolete attempt identities can
 be reclaimed independently. Committed typed facts, live attempts and current
 attempt identities remain authoritative. Headers/pins and deadline anchors are
-retained conservatively; their long-term compaction and scheduling belong to
-operational qualification. SQLite WAL snapshots protect readers across cleanup.
+retained conservatively. Operational cleanup rotates through sorted typed families,
+transfer journals and control headers using persisted progress. Each backstop call
+scans/deletes at most 256 rows per page. It reclaims an unreferenced terminal control
+header only after all versions, deadline references and transfer children are gone.
+Promotion identities/pins remain retained: deleting them requires durable terminal
+coordination acknowledgement, not an arbitrary age cutoff. SQLite WAL snapshots
+protect readers across cleanup.
+
+## Operational candidate and drained conversion
+
+`JdbcStagedCanonicalOperations` is an adapter-private owning scope, with no default
+Spring selector or production migration registration. It acquires an exclusive
+local file lease beside the dataframe database. Another operational candidate
+cannot open the same file while that lease is held. It supports local file-backed
+SQLite only. The lease coordinates cooperating candidate instances; it does not
+stop an old native application. Stop every native process before conversion.
+
+The explicit conversion entry point checks existing service ledgers for unfinished
+ingest/import, admission finalization, export and publish work. An empty inbox alone
+does not establish drain. In one offline dataframe transaction it checks native
+format 12, the exact identity catalog and public ID authority, seeds internal ID
+high-water marks through the existing allocator, copies native facts with the same
+bounded typed transport framing, replaces tables with committed views, pins the
+configuration and stamps isolated format 13. This is an offline conversion, not a
+short runtime writer unit. Failed conversion rolls back format, views, copied facts
+and allocator initialization together. Historical timestamps, deadlines, IDs,
+receipts, origins and slots stay literal. Conversion never renews an expired row.
+The normal format-12 migrator rejects format 13 before schema reconciliation.
+
+Opening an operational scope starts with readiness closed. A bounded recovery page
+first releases a committed abandoned owner or audits/releases an uncommitted owner,
+then cancels at most the requested number of pending units. Repeated pages continue
+after process loss. They do not finalize the service ledger or reapply a delivery;
+the existing receipt-first services retain that authority. The exclusive process
+lease, not a timeout or timestamp, establishes that the former operational owner
+has ended. Readiness opens only when this startup backlog is drained. Health checks
+SQLite integrity/settings, format, configuration pins, safe-clock status and the
+last maintenance outcome; hidden work during a healthy live invocation is normal.
+
+Work borrows the backend within `use` and must not retain ports beyond the scope.
+Shutdown refuses to release the lease while a borrowed invocation is running.
+The caller cancels and drains its owned workers first. The scope owns no extra
+executor, queue, database pool or retry engine. Startup and maintenance pages are
+hooks for the existing lifecycle/backstop composition; that composition is not
+enabled in the default application before resource qualification and ADR acceptance.
+
+Rollback restores a coordinated stopped backup of both databases, owned files,
+configuration and executable. Never lower `user_version`, copy only the dataframe
+file, or run the old binary over converted state. See the
+[operational rehearsal](../guides/staged-publication-rehearsal.md).
 
 ## Extension and executable sources
 

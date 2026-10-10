@@ -97,6 +97,7 @@ final class JdbcPublicationProtocol {
                     "CREATE INDEX publication_fact_lookup ON publication_fact(family,scope,fact_key,stamp DESC)",
                     "CREATE INDEX publication_fact_deadline ON publication_fact(deadline_anchor,family,scope)",
                     "CREATE INDEX publication_unit_deadline ON publication_unit(valid_until) WHERE state='COMMITTED'",
+                    "CREATE INDEX publication_unit_pending ON publication_unit(state,id) WHERE state IN ('PENDING','SEALED')",
                     """
                     CREATE TABLE publication_chunk (
                         unit_id INTEGER NOT NULL REFERENCES publication_unit(id), fence INTEGER NOT NULL,
