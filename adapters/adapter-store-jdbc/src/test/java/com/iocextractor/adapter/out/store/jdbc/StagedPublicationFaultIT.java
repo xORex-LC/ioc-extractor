@@ -58,6 +58,15 @@ class StagedPublicationFaultIT {
             assertThat(reopened.number("SELECT COUNT(*) FROM import_commit")).isEqualTo(committed ? 1 : 0);
             assertThat(reopened.ledger.find(StagedPublicationFixture.DELIVERY).orElseThrow().state()).isEqualTo(ImportDeliveryState.PROMOTING);
             var before = committed ? allFacts(reopened) : null;
+            if (!committed) {
+                try (var baseline = new StagedPublicationFixture(Files.createDirectory(temporary.resolve("seed-only")),
+                        true, JdbcPublicationObserver.NOOP)) {
+                    baseline.seed();
+                    var expected = allFacts(baseline); expected.remove("artifact_id_allocator");
+                    var actual = allFacts(reopened); actual.remove("artifact_id_allocator");
+                    assertThat(actual).as("every native family exposes only the prior committed seed").isEqualTo(expected);
+                }
+            }
             if (committed) {
                 var stage = new ImportWorkspaceLayout(root.resolve("stage")).paths(StagedPublicationFixture.DELIVERY).sealed();
                 Files.delete(stage);
