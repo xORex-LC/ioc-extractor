@@ -86,6 +86,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
     private final ConnectionTimeSource timeSource;
     private final RecordValidityPolicy validityPolicy;
     private final JdbcWriterAdmission writerAdmission;
+    private final JdbcWriterAdmission reservationAdmission;
     private final JdbcCanonicalImportObserver observer;
     private final Duration receiptRetention;
     private final Map<String, ArtifactWritePolicy> writePolicies;
@@ -153,6 +154,31 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
             JdbcCanonicalImportObserver observer,
             Duration receiptRetention,
             Map<String, ArtifactWritePolicy> writePolicies) {
+        this(dataSource, schemas, publicIdDefinitions, identityDefinitions, workspaceRoot,
+                timeSource, validityPolicy, allocatorClock, writerAdmission, observer,
+                receiptRetention, writePolicies, dataSource, writerAdmission);
+    }
+
+    /**
+     * Keeps independently committed reservations in their authoritative database
+     * when the same planner and mutation kernel prepare effects in a private database.
+     * Physical admission for that authority is supplied by the caller.
+     */
+    JdbcCanonicalImportWriter(
+            DataSource dataSource,
+            List<DataframeArtifactSchema> schemas,
+            List<ArtifactIdAllocatorDefinition> publicIdDefinitions,
+            List<ArtifactIdentityDefinition> identityDefinitions,
+            Path workspaceRoot,
+            ConnectionTimeSource timeSource,
+            RecordValidityPolicy validityPolicy,
+            Clock allocatorClock,
+            JdbcWriterAdmission writerAdmission,
+            JdbcCanonicalImportObserver observer,
+            Duration receiptRetention,
+            Map<String, ArtifactWritePolicy> writePolicies,
+            DataSource reservationDataSource,
+            JdbcWriterAdmission reservationAdmission) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
         List<ArtifactIdentityDefinition> identities = List.copyOf(
@@ -163,12 +189,15 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
         this.timeSource = Objects.requireNonNull(timeSource, "timeSource");
         this.validityPolicy = Objects.requireNonNull(validityPolicy, "validityPolicy");
         this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
+        this.reservationAdmission = Objects.requireNonNull(reservationAdmission, "reservationAdmission");
         this.observer = Objects.requireNonNull(observer, "observer");
         this.receiptRetention = requirePositive(receiptRetention, "receiptRetention");
         this.writePolicies = Map.copyOf(Objects.requireNonNull(writePolicies, "writePolicies"));
         Objects.requireNonNull(allocatorClock, "allocatorClock");
-        this.lifecycleIdAllocator = new JdbcLifecycleIdAllocator(dataSource, allocatorClock);
-        this.publicIdAllocators = initializePublicIdAllocators(publicIdDefinitions, allocatorClock);
+        Objects.requireNonNull(reservationDataSource, "reservationDataSource");
+        this.lifecycleIdAllocator = new JdbcLifecycleIdAllocator(reservationDataSource, allocatorClock);
+        this.publicIdAllocators = initializePublicIdAllocators(
+                publicIdDefinitions, allocatorClock, reservationDataSource);
     }
 
     @Override
@@ -179,7 +208,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
             return replayed(committed.orElseThrow());
         }
         VerifiedStage stage = verifyStage(command);
-        ReservedIds reservations = writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
+        ReservedIds reservations = reservationAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
                 () -> reserveWorstCase(stage));
         return writerAdmission.execute(() -> promoteAdmitted(command, stage, reservations));
     }
@@ -1300,10 +1329,11 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
 
     private Map<String, JdbcArtifactIdAllocator> initializePublicIdAllocators(
             List<ArtifactIdAllocatorDefinition> definitions,
-            Clock clock) {
+            Clock clock,
+            DataSource reservationDataSource) {
         Map<String, JdbcArtifactIdAllocator> allocators = new LinkedHashMap<>();
         for (ArtifactIdAllocatorDefinition definition : Objects.requireNonNull(definitions, "publicIdDefinitions")) {
-            JdbcArtifactIdAllocator allocator = new JdbcArtifactIdAllocator(dataSource, clock);
+            JdbcArtifactIdAllocator allocator = new JdbcArtifactIdAllocator(reservationDataSource, clock);
             allocator.ensureInitialized(definition);
             if (allocators.put(definition.artifact(), allocator) != null) {
                 throw new IllegalArgumentException(

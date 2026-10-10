@@ -338,3 +338,18 @@ whole-service measurement, a five-second writer qualification, a process-kill
 qualification, a service-ledger recovery test or a migration/rollback test.
 
 C3–C6 and G6 therefore remain open. Installed service state is unchanged.
+
+## Authoritative reservation seam (2026-10-10)
+
+The unchanged import merge planner and mutation kernel now accept a separate
+reservation datasource and physical admission internally. Runtime constructors
+continue to use the canonical datasource. The finite experiment can prepare in
+a private native database while committing row/lifecycle ranges in the owning
+dataframe database. A BEFORE_COMMIT failure burns both artifacts' row ranges and
+the lifecycle range there, rolls back all private effects, and creates no public
+row or receipt. Retrying uses fresh reserved identities. This removes the private
+allocator authority limitation; it does not yet qualify populated-base publication.
+
+Validation: `make test-one MODULE=adapters/adapter-store-jdbc
+TEST=JdbcCanonicalImportWriterContractIT#privatePreparationBurnsReservationsOnlyInTheAuthoritativeDatabase`
+passed. Full final-HEAD verification follows completion of this change set.

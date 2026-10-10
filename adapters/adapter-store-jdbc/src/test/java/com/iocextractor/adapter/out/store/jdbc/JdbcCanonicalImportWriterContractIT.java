@@ -312,6 +312,42 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
 
     @Test
     @Timeout(30)
+    void privatePreparationBurnsReservationsOnlyInTheAuthoritativeDatabase() {
+        Environment working = environment("private-reservations-working");
+        Environment authority = environment("private-reservations-authority");
+        var command = working.stage("private-reservations", ImportPromotionPolicy.defaults(),
+                List.of(row(2,
+                        branch(working, "masks", ImportArtifactRole.PRIMARY,
+                                values("mask", "reserved.example"), OptionalLong.empty()),
+                        branch(working, "hashes", ImportArtifactRole.RELATED,
+                                values("hash", "HASH-RESERVED"), OptionalLong.empty()))), List.of());
+        var admission = new JdbcWriterAdmission();
+        var failing = working.reservedWriter(phase -> {
+            if (phase == JdbcCanonicalImportObserver.Phase.BEFORE_COMMIT) {
+                throw new IocExtractorException("Discard private preparation");
+            }
+        }, authority, admission);
+
+        assertThatThrownBy(() -> failing.promote(command))
+                .isInstanceOf(IocExtractorException.class).hasMessage("Discard private preparation");
+        assertThat(working.count("masks")).isZero();
+        assertThat(authority.count("masks")).isZero();
+        assertThat(authority.queryLong("SELECT next_value FROM artifact_id_allocator WHERE artifact='masks'"))
+                .isEqualTo(2);
+        assertThat(authority.queryLong("SELECT next_value FROM lifecycle_id_allocator")).isEqualTo(3);
+        assertThat(working.count("artifact_id_allocator")).isZero();
+
+        working.reservedWriter(JdbcCanonicalImportObserver.NOOP, authority, admission).promote(command);
+        assertThat(working.queryLong("SELECT id FROM masks")).isEqualTo(2);
+        assertThat(working.queryLong("SELECT id FROM hashes")).isEqualTo(2);
+        assertThat(working.queryLong("SELECT MIN(_lifecycle_id) FROM masks")).isEqualTo(3);
+        assertThat(working.queryLong("SELECT MIN(_lifecycle_id) FROM hashes")).isEqualTo(4);
+        assertThat(authority.queryLong("SELECT next_value FROM lifecycle_id_allocator")).isEqualTo(5);
+        assertThat(authority.count("import_commit")).isZero();
+    }
+
+    @Test
+    @Timeout(30)
     void typedHiddenChunksPublishRealFanOutSlotsAndReceiptForStageFreeRecovery() throws Exception {
         Environment privateBase = environment("typed-import-private");
         Environment publicBase = environment("typed-import-public");
@@ -1154,6 +1190,17 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
 
         private JdbcCanonicalImportWriter writer(JdbcCanonicalImportObserver observer) {
             return writer(observer, NOW);
+        }
+
+        private JdbcCanonicalImportWriter reservedWriter(JdbcCanonicalImportObserver observer,
+                                                          Environment authority,
+                                                          JdbcWriterAdmission admission) {
+            return new JdbcCanonicalImportWriter(dataSource, schemas,
+                    List.of(new ArtifactIdAllocatorDefinition("masks", ArtifactIdStrategy.ASCENDING, 1, 1),
+                            new ArtifactIdAllocatorDefinition("hashes", ArtifactIdStrategy.ASCENDING, 1, 1)),
+                    identities, workspaceRoot, ignored -> EffectiveTime.at(NOW),
+                    new FixedRecordValidityPolicy(TTL), CLOCK, new JdbcWriterAdmission(),
+                    observer, Duration.ofDays(90), Map.of(), authority.dataSource, admission);
         }
 
         private JdbcCanonicalImportWriter writer(JdbcCanonicalImportObserver observer,
