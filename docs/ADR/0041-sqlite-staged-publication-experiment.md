@@ -70,8 +70,11 @@ all families and artifacts.
 
 ### Conflict and time
 
-Serialize promotions logically in the existing durable order, separately from
-physical writer admission. Physical chunk/publication transactions use
+Serialize ready promotions logically, separately from physical writer admission.
+Preserve the existing service-ledger import head and ready-promotion admission
+order; do not replace them with a global sort by observation registration.
+Registration remains the authority for mutable-field precedence under ADR 0030,
+not a new KEEP_FIRST winner order. Physical chunk/publication transactions use
 `JdbcWriterAdmission`; CONTROL, EXPIRY and EXPORT_SLOTS remain eligible between
 chunks. The integration must fence both the durable logical owner and each
 attempt; a process-local mutex alone does not authorize restart recovery.

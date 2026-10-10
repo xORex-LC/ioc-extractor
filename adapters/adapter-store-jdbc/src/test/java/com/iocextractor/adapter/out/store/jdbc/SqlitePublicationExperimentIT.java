@@ -379,6 +379,7 @@ class SqlitePublicationExperimentIT {
                 });
                 assertThat(firstChunk.await(5, TimeUnit.SECONDS)).isTrue();
                 fixture.write(OperationClass.CONTROL, c -> {
+                    fixture.probe.advanceEpoch(c, "control-only");
                     assertThat(fixture.probe.receipt(c, unit.unitId())).isEmpty(); return null;
                 });
                 assertThat(fixture.read("row", "masks", "key-0")).isEmpty();

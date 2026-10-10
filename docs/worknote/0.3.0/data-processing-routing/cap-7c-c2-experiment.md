@@ -93,7 +93,8 @@ The new Failsafe suite covers:
     the database permits idempotent header replay without preparation input.
 12. Empty outcome publication works; cancelled facts remain invisible.
 13. An owned worker streams 4,096 facts in sixteen chunks. A timed CONTROL
-    admission completes between the first and second chunks. Query-plan checks
+    transaction actually writes an unrelated control scope and commits between
+    the first and second chunks. Query-plan checks
     require indexed fact search with no full fact scan or ORDER BY sort.
 
 Run through the normal facade:
