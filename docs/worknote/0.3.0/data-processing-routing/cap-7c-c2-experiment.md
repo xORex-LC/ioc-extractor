@@ -108,6 +108,15 @@ reported 1.210 seconds for the suite. This is functional probe execution time,
 not a throughput or writer-occupancy result. Final repository evidence comes
 from `make verify`, `make pmd-analysis`, `make docs` and exact-HEAD `make context`.
 
+The first full verify at `6a240d89839f70662adb9ae6684c118d0bc3874d` passed
+functional/report-integrity checks but failed the ingest missed-branch ratchet
+(136 versus baseline 135). [Retained failure](qualification/capacity/cap-7c-c2-first-gate.json)
+records its identity and local log digest. The uncovered file-ledger transition
+was refusal to archive FAILED. Shared `IngestionLedgerContractTest` now directly
+asserts this refusal and preservation of the original failure, for both file
+and JDBC implementations. No production logic, floor or ratchet is changed;
+this is an explicit supported-state regression, not a retry of the failed gate.
+
 The suite has a containing timeout, timed latches/futures, unconditional worker
 release/cancellation and an asserted bounded shutdown. The same change reviews
 the source inventory: one additional deterministic integration class,

@@ -36,6 +36,26 @@ public abstract class IngestionLedgerContractTest {
     protected abstract IngestionLedger createLedger(Clock clock);
 
     @Test
+    void failedOccurrenceCannotBeArchivedOrLoseItsOriginalFailureEvidence() {
+        IngestionLedger ledger = createLedger(FIXED_CLOCK);
+        ObservationId occurrence = new ObservationId("failed-archive-occurrence");
+        SourceKey content = key("failed-archive-content");
+        SourceUnit source = new SourceUnit(occurrence, content,
+                path("inbox/failed.html"), path("processing/failed.html"), DETECTED_AT);
+        assertThat(ledger.markClaimed(source)).isEqualTo(IngestionLedgerTransition.APPLIED);
+        assertThat(ledger.markFailed(occurrence, content, "original failure"))
+                .isEqualTo(IngestionLedgerTransition.APPLIED);
+        var failed = ledger.find(occurrence).orElseThrow();
+
+        assertThat(ledger.markSourceArchived(occurrence, path("done/failed.html")))
+                .isEqualTo(IngestionLedgerTransition.CONFLICT);
+
+        assertThat(ledger.find(occurrence)).contains(failed);
+        assertThat(failed.status()).isEqualTo(IngestionStatus.FAILED);
+        assertThat(ledger.findIncomplete()).isEmpty();
+    }
+
+    @Test
     void returns_empty_for_missing_source_key() {
         IngestionLedger ledger = createLedger(FIXED_CLOCK);
 

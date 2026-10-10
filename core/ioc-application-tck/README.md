@@ -39,7 +39,8 @@ composed-аннотации `@IntegrationTest`, `@ContractTest`, `@EndToEndTest`
 
 - `com.iocextractor.application.tck.ingest.IngestionLedgerContractTest` — контракт
   `IngestionLedger` (переходы `CLAIMED -> SOURCE_ARCHIVED|FAILED`,
-  `findIncomplete`, require-existing, `markFailed` create-or-preserve).
+  `findIncomplete`, require-existing, `markFailed` create-or-preserve,
+  отклонение архивирования FAILED без потери исходного evidence).
 - `com.iocextractor.application.tck.export.ExportRunLedgerContractTest` — контракт
   export formation ledger: CAS/replay, global single-flight и атомарный terminal progress.
 - `com.iocextractor.application.tck.lifecycle.CanonicalRecordLifecycleContractTest`
