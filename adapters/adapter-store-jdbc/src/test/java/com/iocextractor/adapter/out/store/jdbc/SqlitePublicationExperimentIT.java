@@ -42,6 +42,96 @@ class SqlitePublicationExperimentIT {
     @TempDir Path directory;
 
     @Test
+    void typedChunkFramingPreservesSqlKindsNullAndFieldBoundariesAndRejectsOversizedPayloads() throws Exception {
+        var fingerprints = new java.util.HashSet<String>();
+        Object[] values = {null, "", "1", (byte) 1, (short) 2, 3, 4L, 1.0f, 2.0d, new byte[0], true, false};
+        for (Object value : values) {
+            var digest = new JdbcPublicationChunkDigest();
+            digest.row(); digest.field(value);
+            assertThat(fingerprints.add(digest.finish())).as("distinct SQL value %s", value).isTrue();
+        }
+        var combined = new JdbcPublicationChunkDigest();
+        combined.field("ab"); combined.field("c");
+        var split = new JdbcPublicationChunkDigest();
+        split.field("a"); split.field("bc");
+        assertThat(combined.finish()).isNotEqualTo(split.finish());
+        assertThatThrownBy(() -> new JdbcPublicationChunkDigest().field(new Object()))
+                .isInstanceOf(SQLException.class).hasMessageContaining("Unsupported typed");
+        assertThatThrownBy(() -> new JdbcPublicationChunkDigest().field(new byte[1024 * 1024 + 1]))
+                .isInstanceOf(SQLException.class).hasMessageContaining("byte bound");
+        assertThatThrownBy(() -> new JdbcPublicationChunkDigest().field("x".repeat(1024 * 1024 + 1)))
+                .isInstanceOf(SQLException.class).hasMessageContaining("byte bound");
+        assertThatThrownBy(() -> {
+            var digest = new JdbcPublicationChunkDigest();
+            digest.field("x".repeat(600_000)); digest.field("y".repeat(600_000));
+        }).isInstanceOf(SQLException.class).hasMessageContaining("byte bound");
+        assertThatThrownBy(() -> {
+            var digest = new JdbcPublicationChunkDigest();
+            for (int index = 0; index < 257; index++) { digest.row(); }
+        }).isInstanceOf(SQLException.class).hasMessageContaining("row bound");
+    }
+
+    @Test
+    void typedCaptureRefusesTablesWithoutStableKeysAndMissingNativeShapes() throws Exception {
+        assertThatThrownBy(() -> new JdbcPublicationTable("empty", List.of(), List.of("id"), "unused"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new JdbcPublicationTable("keyless", List.of("value"), List.of(), "unused"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new JdbcPublicationTable("foreign_key", List.of("value"), List.of("other"), "unused"))
+                .isInstanceOf(IllegalArgumentException.class);
+        try (var fixture = new Fixture(directory); var connection = fixture.dataSource.getConnection()) {
+            assertThatThrownBy(() -> JdbcPublicationTable.inspect(connection, "missing"))
+                    .isInstanceOf(SQLException.class).hasMessageContaining("Missing native");
+            JdbcPublicationTable.execute(connection, "CREATE TABLE keyless(value TEXT)");
+            assertThatThrownBy(() -> JdbcPublicationTable.inspect(connection, "keyless"))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("primary key");
+        }
+    }
+
+    @Test
+    void selectiveHydrationStreamsBoundValuesAndStopsOnInterruptionOrQuotaBeforeCommit() throws Exception {
+        var limits = new DocumentPreparationLimits(4 * 1024 * 1024, 64, 4096, 2048, 16 * 1024 * 1024, 256 * 1024 * 1024, 256);
+        try (var source = new Fixture(directory);
+             var target = new Fixture(java.nio.file.Files.createDirectory(directory.resolve("hydration-target")));
+             var base = source.dataSource.getConnection(); var working = target.dataSource.getConnection()) {
+            String ddl = "CREATE TABLE bounded_inputs(id INTEGER PRIMARY KEY,value TEXT,payload BLOB)";
+            JdbcPublicationTable.execute(base, ddl); JdbcPublicationTable.execute(working, ddl);
+            String input = "feed'; DROP TABLE bounded_inputs; -- Ω";
+            try (var insert = base.prepareStatement("INSERT INTO bounded_inputs VALUES(?,?,?)")) {
+                for (int index = 0; index < 257; index++) {
+                    insert.setInt(1, index); insert.setString(2, input); insert.setBytes(3, new byte[]{0, 1, -1}); insert.addBatch();
+                }
+                insert.executeBatch();
+            }
+            var quotas = new java.util.concurrent.atomic.AtomicInteger();
+            var hydrator = new JdbcPublicationHydrator(base, working, List.of(), quotas::incrementAndGet, limits);
+            assertThatThrownBy(() -> hydrator.copy("bounded_inputs", "value=?", List.of(input)))
+                    .isInstanceOf(SQLException.class).hasMessageContaining("owned source");
+            base.setAutoCommit(false);
+            assertThatThrownBy(() -> hydrator.copy("bounded_inputs", "value=?", List.of(input)))
+                    .isInstanceOf(SQLException.class).hasMessageContaining("owned source");
+            working.setAutoCommit(false);
+            Thread.currentThread().interrupt();
+            try {
+                assertThatThrownBy(() -> hydrator.copy("bounded_inputs", "value=?", List.of(input)))
+                        .isInstanceOf(SQLException.class).hasMessageContaining("interrupted");
+            } finally { Thread.interrupted(); }
+            assertThat(queryNumber(working, "SELECT COUNT(*) FROM bounded_inputs")).isZero();
+            assertThat(hydrator.copy("bounded_inputs", "value=?", List.of(input))).isEqualTo(257);
+            assertThat(quotas).hasValue(2);
+            assertThat(queryNumber(working, "SELECT COUNT(*) FROM bounded_inputs WHERE hex(payload)='0001FF'")).isEqualTo(257);
+            working.rollback();
+            var failing = new JdbcPublicationHydrator(base, working, List.of(), () -> { throw new IocExtractorException("quota exhausted"); }, limits);
+            assertThatThrownBy(() -> failing.copy("bounded_inputs", "value=?", List.of(input)))
+                    .isInstanceOf(IocExtractorException.class).hasMessage("quota exhausted");
+            working.rollback(); base.rollback();
+            assertThat(queryNumber(working, "SELECT COUNT(*) FROM bounded_inputs")).isZero();
+            assertThat(queryNumber(base, "SELECT COUNT(*) FROM bounded_inputs")).isEqualTo(257);
+            working.rollback(); base.rollback();
+        }
+    }
+
+    @Test
     void nativeDmlCapturePreservesCountsConstraintsCascadesAndOnlyFinalChangedAddresses() throws Exception {
         try (var fixture = new Fixture(directory)) {
             fixture.write(OperationClass.CONTROL, c -> {

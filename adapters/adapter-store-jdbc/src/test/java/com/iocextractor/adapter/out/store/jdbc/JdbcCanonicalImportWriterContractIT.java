@@ -98,6 +98,132 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
     private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
 
     @Test
+    void stagedConfigurationRejectsIncompleteOrAmbiguousCatalogsBeforeTouchingCanonicalTables() {
+        var canonical = environment("invalid-staged-catalog");
+        var configuration = stagedConfiguration(canonical, CLOCK);
+        assertThatThrownBy(() -> withCatalog(configuration, List.of(), configuration.publicIds(), configuration.identities(), Map.of(), Duration.ofDays(1)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("catalog or retention");
+        assertThatThrownBy(() -> withCatalog(configuration, java.util.Collections.nCopies(129, canonical.schemas.getFirst()),
+                configuration.publicIds(), configuration.identities(), Map.of(), Duration.ofDays(1)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("catalog or retention");
+        for (Duration retention : List.of(Duration.ZERO, Duration.ofSeconds(-1))) {
+            assertThatThrownBy(() -> withCatalog(configuration, canonical.schemas, configuration.publicIds(), canonical.identities, Map.of(), retention))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("catalog or retention");
+        }
+        assertThatThrownBy(() -> withCatalog(configuration, List.of(canonical.schemas.getFirst(), canonical.schemas.getFirst()),
+                configuration.publicIds(), canonical.identities, Map.of(), Duration.ofDays(1)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("catalogs disagree");
+        assertThatThrownBy(() -> withCatalog(configuration, canonical.schemas, configuration.publicIds(),
+                List.of(canonical.identities.getFirst()), Map.of(), Duration.ofDays(1)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("catalogs disagree");
+        assertThatThrownBy(() -> withCatalog(configuration, canonical.schemas, configuration.publicIds(), canonical.identities,
+                Map.of("unknown", ArtifactWritePolicy.keepFirst()), Duration.ofDays(1)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("catalogs disagree");
+        assertThatThrownBy(() -> withCatalog(configuration, canonical.schemas, List.of(), canonical.identities, Map.of(), Duration.ofDays(1)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("identity epoch");
+        var wrongIds = List.of(new ArtifactIdAllocatorDefinition("masks", ArtifactIdStrategy.ASCENDING, 1, 2), configuration.publicIds().get(1));
+        assertThatThrownBy(() -> withCatalog(configuration, canonical.schemas, wrongIds, canonical.identities, Map.of(), Duration.ofDays(1)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("identity epoch");
+        var extraIds = new ArrayList<>(configuration.publicIds());
+        extraIds.add(new ArtifactIdAllocatorDefinition("unknown", ArtifactIdStrategy.ASCENDING, 1, 1));
+        assertThatThrownBy(() -> withCatalog(configuration, canonical.schemas, extraIds, canonical.identities, Map.of(), Duration.ofDays(1)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("ID catalog differs");
+        for (var shape : List.of(new DataframeArtifactSchema("masks", List.of()),
+                new DataframeArtifactSchema("masks", List.of(new DataframeColumn("mask"), new DataframeColumn("mask"))))) {
+            assertThatThrownBy(() -> withCatalog(configuration, List.of(shape, canonical.schemas.get(1)), configuration.publicIds(),
+                    canonical.identities, Map.of(), Duration.ofDays(1)))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("native schema");
+        }
+        assertThatThrownBy(() -> withCatalog(configuration, List.of(schema("publication_reserved", "mask")), List.of(),
+                List.of(identity("publication_reserved", "mask")), Map.of(), Duration.ofDays(1)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("native schema");
+        assertThatThrownBy(() -> withCatalog(configuration, canonical.schemas, configuration.publicIds(),
+                List.of(identity("masks", "unavailable"), canonical.identities.get(1)), Map.of(), Duration.ofDays(1)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("unknown public fields");
+        assertThat(canonical.count("masks")).isZero();
+        assertThat(canonical.count("artifact_id_allocator")).isZero();
+    }
+
+    @Test
+    void stagedReopenRefusesChangedPolicyPinsOrMissingConfigurationBeforeReadingBusinessData() throws Exception {
+        var canonical = environment("staged-reopen-pins");
+        var configuration = stagedConfiguration(canonical, CLOCK);
+        JdbcStagedCanonicalBackend.createEmpty(configuration, JdbcPublicationObserver.NOOP);
+        var changed = withCatalog(configuration, configuration.schemas(), configuration.publicIds(), configuration.identities(),
+                Map.of("masks", ArtifactWritePolicy.keepFirst()), Duration.ofDays(90));
+        assertThatThrownBy(() -> JdbcStagedCanonicalBackend.reopen(changed, JdbcPublicationObserver.NOOP))
+                .hasRootCauseMessage("Staged canonical configuration changed; drained migration required");
+        try (var connection = canonical.dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.executeUpdate("DELETE FROM publication_configuration");
+        }
+        assertThatThrownBy(() -> JdbcStagedCanonicalBackend.reopen(configuration, JdbcPublicationObserver.NOOP))
+                .hasRootCauseMessage("Staged canonical configuration changed; drained migration required");
+        assertThat(canonical.count("masks")).isZero();
+    }
+
+    private static JdbcStagedCanonicalConfiguration withCatalog(JdbcStagedCanonicalConfiguration original,
+            List<DataframeArtifactSchema> schemas, List<ArtifactIdAllocatorDefinition> ids,
+            List<ArtifactIdentityDefinition> identities, Map<String, ArtifactWritePolicy> policies, Duration retention) {
+        return new JdbcStagedCanonicalConfiguration(original.dataSource(), schemas, ids, identities,
+                original.clock(), original.allocatorClock(), original.validity(), original.admission(), original.workspaces(),
+                original.importWorkspaceRoot(), policies, retention);
+    }
+
+    @Test
+    void stagedInitializationRefusesPopulatedDataOrUnownedTransactionAndReopenRefusesCatalogDrift() throws Exception {
+        var canonical = environment("staged-init-guards");
+        var configuration = stagedConfiguration(canonical, CLOCK);
+        var command = canonical.stage("existing-native", ImportPromotionPolicy.defaults(), List.of(row(2,
+                branch(canonical, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "retained.example", "source", "feed"), OptionalLong.empty()))), List.of());
+        canonical.writer(JdbcCanonicalImportObserver.NOOP).promote(command);
+        assertThatThrownBy(() -> JdbcStagedCanonicalBackend.createEmpty(configuration, JdbcPublicationObserver.NOOP))
+                .hasRootCauseMessage("Candidate initialization requires an empty native table: masks");
+        assertThat(canonical.queryString("SELECT mask FROM masks")).isEqualTo("retained.example");
+        var fresh = environment("staged-empty-guards");
+        try (var connection = fresh.dataSource.getConnection()) {
+            assertThatThrownBy(() -> JdbcTypedPublicationStore.initializeEmpty(connection, fresh.schemas))
+                    .isInstanceOf(SQLException.class).hasMessageContaining("owned transaction");
+            connection.setAutoCommit(false);
+            try (var update = connection.createStatement()) {
+                update.executeUpdate("UPDATE canonical_lifecycle_control SET state='ACTIVATING',activated_at_ms=NULL");
+            }
+            assertThatThrownBy(() -> JdbcTypedPublicationStore.initializeEmpty(connection, fresh.schemas))
+                    .isInstanceOf(SQLException.class).hasMessageContaining("active fixed lifecycle");
+            connection.rollback();
+        }
+        JdbcStagedCanonicalBackend.createEmpty(stagedConfiguration(fresh, CLOCK), JdbcPublicationObserver.NOOP);
+        try (var connection = fresh.dataSource.getConnection()) {
+            assertThatThrownBy(() -> JdbcTypedPublicationStore.reopen(connection, List.of(schema("unknown", "value"))))
+                    .isInstanceOf(SQLException.class).hasMessageContaining("catalog changed");
+            try (var update = connection.createStatement()) {
+                update.executeUpdate("DELETE FROM publication_native_schema");
+            }
+            assertThatThrownBy(() -> JdbcTypedPublicationStore.reopen(connection, fresh.schemas))
+                    .isInstanceOf(SQLException.class).hasMessageContaining("Missing staged-publication catalog");
+        }
+    }
+
+    @Test
+    void stagedMaintenanceRejectsUnboundedPagesAndUnknownArtifactsWithoutCreatingPublicationWork() {
+        var canonical = environment("staged-maintenance-bounds");
+        var backend = JdbcStagedCanonicalBackend.createEmpty(stagedConfiguration(canonical, CLOCK), JdbcPublicationObserver.NOOP);
+        var asOf = EffectiveTime.at(NOW);
+        assertThat(backend.expiry().nearestDeadline()).isEmpty();
+        for (int limit : List.of(0, Integer.MAX_VALUE)) {
+            assertThatThrownBy(() -> backend.expiry().expireDue("masks", asOf, limit))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("batch size");
+            assertThatThrownBy(() -> backend.history().purge("masks", asOf, limit))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("batch size");
+            assertThatThrownBy(() -> backend.receipts(Duration.ofDays(30)).purgeExpired(asOf, limit))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("batch size");
+        }
+        assertThatThrownBy(() -> backend.expiry().expireDue("unknown", asOf, 1)).isInstanceOf(IllegalArgumentException.class);
+        assertThat(canonical.count("publication_unit")).isZero();
+        assertThat(canonical.count("masks")).isZero();
+    }
+
+    @Test
     @Timeout(30)
     void stagedCleanupBoundsScannedPrefixesAndDrainsTransferJournalsWithoutLosingReceiptOrAnchors() throws Exception {
         Environment canonical = environment("bounded-cleanup");
@@ -270,6 +396,42 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
     }
 
     @Test
+    @Timeout(30)
+    void stagedIdlessArtifactsNeverReuseInternalRowOrHistoryIdsAcrossExpiry() {
+        var schema = new DataframeArtifactSchema("addresses", List.of(new DataframeColumn("value"), new DataframeColumn("source")));
+        var identity = identity("addresses", "value");
+        var canonical = environment("idless-publication", List.of(schema), List.of(identity));
+        var utc = new java.util.concurrent.atomic.AtomicReference<>(NOW);
+        Clock wall = new Clock() {
+            @Override public java.time.ZoneId getZone() { return ZoneOffset.UTC; }
+            @Override public Clock withZone(java.time.ZoneId zone) { return this; }
+            @Override public Instant instant() { return utc.get(); }
+        };
+        var backend = JdbcStagedCanonicalBackend.createEmpty(stagedConfiguration(canonical, wall), JdbcPublicationObserver.NOOP);
+        var fields = Map.of("value", "idless.example", "source", "feed");
+        var prepared = new PreparedArtifactRow(ArtifactRow.ordered(fields), Optional.empty());
+        var resolver = new CanonicalArtifactKeyResolver(canonical.identities);
+        var rowKey = new ArtifactRowKey(resolver.recordKeyOf("addresses", prepared.template()).orElseThrow().keyHash());
+        long previousId = 0;
+        for (int cycle = 0; cycle < 2; cycle++) {
+            var command = new CanonicalArtifactConfirmation(new ObservationId("idless-" + cycle), "idless-source",
+                    new ConfirmationReceiptContext(new ConfirmationReceiptId("idless-receipt-" + cycle), "idless-policy", 1, Duration.ofDays(30)),
+                    "addresses", List.of("value", "source"), List.of(new CanonicalRecordConfirmation(rowKey, prepared)));
+            backend.confirmations().confirm(command);
+            long id = canonical.queryLong("SELECT id FROM addresses");
+            assertThat(id).isGreaterThan(previousId); previousId = id;
+            var streamed = new ArrayList<ArtifactRow>();
+            backend.streamReader().stream("addresses", streamed::add);
+            assertThat(streamed).hasSize(1).allSatisfy(row -> assertThat(row.values()).doesNotContainKey("id"));
+            utc.set(utc.get().plus(TTL));
+            assertThat(backend.expiry().expireDue("addresses", EffectiveTime.at(utc.get()), 1).expired()).isOne();
+        }
+        assertThat(canonical.queryLong("SELECT COUNT(DISTINCT history_id) FROM addresses_history")).isEqualTo(2);
+        assertThat(canonical.count("addresses_history")).isEqualTo(2);
+        assertThat(canonical.count("addresses")).isZero();
+    }
+
+    @Test
     @Timeout(15)
     void selectiveHydrationRejectsOversizedCommittedFieldsAndRestoresBorrowedCachePolicy() throws Exception {
         Environment canonical = environment("hydration-bound");
@@ -353,8 +515,8 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                 new DocumentPreparationLimits(8 * 1024 * 1024, 64, 4096, 2048, 16 * 1024 * 1024, 256 * 1024 * 1024, 256),
                 new com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver(environment.identities), "staged-test");
         return new JdbcStagedCanonicalConfiguration(environment.dataSource, environment.schemas,
-                List.of(new ArtifactIdAllocatorDefinition("masks", ArtifactIdStrategy.ASCENDING, 1, 1),
-                        new ArtifactIdAllocatorDefinition("hashes", ArtifactIdStrategy.ASCENDING, 1, 1)),
+                environment.schemas.stream().filter(schema -> schema.columns().stream().anyMatch(column -> column.name().equals("id")))
+                        .map(schema -> new ArtifactIdAllocatorDefinition(schema.artifactName(), ArtifactIdStrategy.ASCENDING, 1, 1)).toList(),
                 environment.identities, new JdbcLifecycleClock(environment.dataSource, wall,
                 new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30)), admission), wall,
                 new FixedRecordValidityPolicy(TTL), admission, workspaces, environment.workspaceRoot, Map.of(), Duration.ofDays(90));
@@ -1883,15 +2045,16 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
     }
 
     private Environment environment(String name) {
+        return environment(name, List.of(schema("masks", "mask"), schema("hashes", "hash")),
+                List.of(identity("masks", "mask"), identity("hashes", "hash")));
+    }
+
+    private Environment environment(String name, List<DataframeArtifactSchema> schemas, List<ArtifactIdentityDefinition> identities) {
         Path database = tempDir.resolve(databases.incrementAndGet() + "-" + name + ".db");
         HikariDataSource dataSource = new SqliteDataSourceFactory(new SqlitePragmaPolicy()).create(
                 new SqliteDataSourceSettings(
                         "dataframe", "jdbc:sqlite:" + database, "low-memory", 4, 4));
         dataSources.add(dataSource);
-        List<DataframeArtifactSchema> schemas = List.of(
-                schema("masks", "mask"), schema("hashes", "hash"));
-        List<ArtifactIdentityDefinition> identities = List.of(
-                identity("masks", "mask"), identity("hashes", "hash"));
         new SqliteUserVersionSchemaMigrator(dataSource, DataframeFormatMigrations.sqlite()).migrate();
         new DataframeSchemaReconciler(dataSource).reconcile(schemas);
         new JdbcArtifactIdentityStore(dataSource, CLOCK).ensureAll(identities);
