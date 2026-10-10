@@ -428,6 +428,159 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
         assertThat(canonical.queryLong("SELECT next_value FROM artifact_id_allocator WHERE artifact='masks'")).isOne();
     }
 
+    @Test
+    @Timeout(30)
+    void stagedOrdinaryOrderedFieldsInitializeFromEmptyValuesAndAdvanceOriginForEqualValues() {
+        var canonical = environment("ordered-ordinary-empty");
+        var configuration = stagedConfiguration(canonical, CLOCK);
+        var backend = JdbcStagedCanonicalBackend.createEmpty(configuration, JdbcPublicationObserver.NOOP);
+        var registrations = new JdbcObservationRegistrationStore(canonical.dataSource, CLOCK);
+        var keys = new CanonicalArtifactKeyResolver(canonical.identities);
+        var blanks = java.util.Arrays.asList(null, "", " ");
+        for (int index = 0; index < blanks.size(); index++) {
+            String mask = "empty-origin-" + index + ".example";
+            var values = java.util.Arrays.asList(blanks.get(index), "latest", "latest");
+            for (int step = 0; step < values.size(); step++) {
+                var observation = new ObservationId("ordered-empty-" + index + "-" + step);
+                var registered = registrations.registerNew(observation, ObservationOrigin.DOCUMENT);
+                var fields = new LinkedHashMap<String, String>();
+                for (var column : canonical.schemas.getFirst().columns()) { fields.put(column.name(), null); }
+                fields.put("mask", mask); fields.put("source", values.get(step));
+                var template = ArtifactRow.ordered(fields);
+                var prepared = new PreparedArtifactRow(template, Optional.of("id"),
+                        Map.of("source", new com.iocextractor.application.observation.OccurrencePosition(1)));
+                var command = new CanonicalArtifactConfirmation(observation, "ordered-source-" + index + "-" + step,
+                        new ConfirmationReceiptContext(new ConfirmationReceiptId("ordered-receipt-" + index + "-" + step),
+                                "ordered-policy", 1, Duration.ofDays(30)), "masks", List.copyOf(fields.keySet()),
+                        List.of(new CanonicalRecordConfirmation(new ArtifactRowKey(keys.recordKeyOf("masks", template).orElseThrow().keyHash()), prepared)), registered);
+                backend.confirmations().confirm(command);
+                if (step == 0) { assertThat(canonical.count("canonical_lifecycle_field_origin")).isEqualTo(index); }
+            }
+        }
+        assertThat(canonical.count("masks")).isEqualTo(3);
+        assertThat(canonical.queryLong("SELECT COUNT(*) FROM masks WHERE source='latest'")).isEqualTo(3);
+        assertThat(canonical.count("canonical_lifecycle_field_origin")).isEqualTo(3);
+        assertThat(canonical.queryLong("SELECT COUNT(*) FROM canonical_lifecycle_field_origin WHERE occurrence_id LIKE '%-2'")).isEqualTo(3);
+    }
+
+    @Test
+    @Timeout(30)
+    void unsafePublicationClockCancelsHiddenWorkAndReleasesOwnershipBeforeAHealthyRetry() {
+        var canonical = environment("unsafe-publication-clock");
+        var utc = new java.util.concurrent.atomic.AtomicReference<>(NOW);
+        var clock = new Clock() {
+            public java.time.ZoneId getZone() { return ZoneOffset.UTC; }
+            public Clock withZone(java.time.ZoneId zone) { return this; }
+            public Instant instant() { return utc.get(); }
+        };
+        var rollBackClock = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var configuration = stagedConfiguration(canonical, clock);
+        var backend = JdbcStagedCanonicalBackend.createEmpty(configuration, (phase, attempt, chunk) -> {
+            if (phase == JdbcPublicationObserver.Phase.BEFORE_PUBLICATION && rollBackClock.getAndSet(false)) {
+                utc.set(NOW.minusSeconds(60));
+            }
+        });
+        var command = canonical.stage("unsafe-clock", ImportPromotionPolicy.defaults(), List.of(row(2,
+                branch(canonical, "masks", ImportArtifactRole.PRIMARY, values("mask", "clock.example"), OptionalLong.empty()))), List.of());
+        assertThatThrownBy(() -> backend.imports().promote(command)).hasMessageContaining("System UTC clock is behind");
+        assertThat(canonical.count("masks")).isZero();
+        assertThat(canonical.count("import_commit")).isZero();
+        assertThat(canonical.queryLong("SELECT COUNT(*) FROM publication_unit WHERE state='CANCELLED'")).isOne();
+        assertThat(canonical.queryString("SELECT unit FROM publication_logical_owner")).isNull();
+        assertThat(canonical.count("publication_owner_failure")).isOne();
+        assertThat(canonical.queryLong("SELECT safe_time_high_water_ms FROM canonical_lifecycle_control")).isEqualTo(NOW.toEpochMilli());
+        assertThat(canonical.queryLong("SELECT failed_at_ms FROM publication_owner_failure")).isEqualTo(NOW.minusSeconds(60).toEpochMilli());
+        utc.set(NOW);
+        assertThat(backend.imports().promote(command).outcome()).isEqualTo(ImportPromotionOutcome.COMMITTED);
+        assertThat(canonical.count("masks")).isOne();
+        assertThat(canonical.queryLong("SELECT id FROM masks")).isGreaterThan(1);
+        assertThat(configuration.workspaces().pressure().leasedWorkspaces()).isZero();
+    }
+
+    @Test
+    @Timeout(30)
+    void stagedPreflightRejectsUnsealedIncompatibleOrAmbiguousNativeMetadataBeforeOwnership() throws Exception {
+        var corruptions = List.of("DELETE FROM stage_meta", "UPDATE stage_meta SET schema_version=999",
+                "UPDATE stage_meta SET sealed_at_ms=NULL", "UPDATE stage_meta SET snapshot_size=snapshot_size+1",
+                "UPDATE stage_meta SET slot_profile='unpaired-profile'",
+                "ALTER TABLE stage_meta RENAME TO saved_meta; CREATE TABLE stage_meta AS SELECT * FROM saved_meta; INSERT INTO stage_meta SELECT * FROM saved_meta; DROP TABLE saved_meta");
+        for (int index = 0; index < corruptions.size(); index++) {
+            var canonical = environment("invalid-metadata-" + index);
+            var backend = JdbcStagedCanonicalBackend.createEmpty(stagedConfiguration(canonical, CLOCK), JdbcPublicationObserver.NOOP);
+            var command = canonical.stage("invalid-metadata-" + index, ImportPromotionPolicy.defaults(), List.of(row(2,
+                    branch(canonical, "masks", ImportArtifactRole.PRIMARY, values("mask", "metadata.example"), OptionalLong.empty()))), List.of());
+            var repinned = rewriteStage(canonical, command, corruptions.get(index));
+            String expected = index < 3 ? "Import stage metadata is missing or unsealed"
+                    : index < 5 ? "Import stage metadata does not match promotion evidence" : "Import stage contains duplicate metadata";
+            assertThatThrownBy(() -> backend.imports().promote(repinned)).hasMessage(expected);
+            assertThat(canonical.count("masks")).isZero();
+            assertThat(canonical.count("import_commit")).isZero();
+            assertThat(canonical.count("publication_unit")).isZero();
+            assertThat(canonical.queryLong("SELECT next_value FROM artifact_id_allocator WHERE artifact='masks'")).isOne();
+        }
+    }
+
+    @Test
+    @Timeout(30)
+    void stagedNativePlannerRejectsInvalidCarriersAndIdentityDriftWithCompleteReceiptEvidence() throws Exception {
+        var mutations = List.of("UPDATE stage_cell SET target_column='unknown_column' WHERE target_column='mask'",
+                "UPDATE stage_cell SET target_column='id' WHERE target_column='mask'",
+                "DELETE FROM stage_cell WHERE target_column='mask'",
+                "UPDATE stage_cell SET value='another.example' WHERE target_column='mask'");
+        var reasons = List.of("IMPORT.STAGE_COLUMN_INVALID", "IMPORT.STAGE_COLUMN_INVALID", "IMPORT.RECORD_KEY_MISSING", "IMPORT.STAGED_IDENTITY_MISMATCH");
+        for (int index = 0; index < mutations.size(); index++) {
+            var canonical = environment("invalid-carrier-" + index);
+            var backend = JdbcStagedCanonicalBackend.createEmpty(stagedConfiguration(canonical, CLOCK), JdbcPublicationObserver.NOOP);
+            var command = canonical.stage("invalid-carrier-" + index, ImportPromotionPolicy.defaults(), List.of(row(2,
+                    branch(canonical, "masks", ImportArtifactRole.PRIMARY, values("mask", "original.example"), OptionalLong.empty()))), List.of());
+            var repinned = rewriteStage(canonical, command, mutations.get(index));
+            var result = backend.imports().promote(repinned);
+            assertThat(result.acceptedRows()).isZero();
+            assertThat(result.rejectedRows()).isOne();
+            assertThat(result.publicMutations()).isZero();
+            assertThat(canonical.count("masks")).isZero();
+            String reason = reasons.get(index);
+            assertThat(backend.importEvidence().find(repinned.deliveryId())).hasValueSatisfying(receipt ->
+                    assertThat(receipt.issues()).extracting(ImportRowIssue::code).containsExactly(reason));
+            canonical.deleteStage(repinned);
+            assertThat(backend.imports().promote(repinned).outcome()).isEqualTo(ImportPromotionOutcome.ALREADY_COMMITTED);
+        }
+    }
+
+    private CanonicalImportCommand rewriteStage(Environment canonical, CanonicalImportCommand command, String sql) throws Exception {
+        Path path = canonical.stagePath(command);
+        try (var connection = java.sql.DriverManager.getConnection("jdbc:sqlite:" + path); var statement = connection.createStatement()) {
+            for (String change : sql.split(";")) { statement.execute(change); }
+        }
+        var stage = new ImportStage(command.stage().reference(), ImportFileDigests.sha256(path), command.stage().sourceRows(),
+                command.stage().acceptedRows(), command.stage().rejectedRows());
+        return new CanonicalImportCommand(command.deliveryId(), command.sequence(), command.sourceId(), command.snapshot(), command.contract(), stage);
+    }
+
+    @Test
+    @Timeout(30)
+    void stagedSnapshotRejectsStaleIdentityAndUnknownColumnsWithoutExportingCanonicalValues() {
+        var canonical = environment("snapshot-plan-guards");
+        var backend = JdbcStagedCanonicalBackend.createEmpty(stagedConfiguration(canonical, CLOCK), JdbcPublicationObserver.NOOP);
+        var command = canonical.stage("snapshot-seed", ImportPromotionPolicy.defaults(), List.of(row(2,
+                branch(canonical, "masks", ImportArtifactRole.PRIMARY, values("mask", "snapshot.example"), OptionalLong.empty()))), List.of());
+        backend.imports().promote(command);
+        var actual = canonical.identities.getFirst();
+        var wrongEpoch = new ArtifactIdentityDefinition("masks", actual.recordKey(), actual.matchKeys(), actual.epoch() + 1);
+        var wrongHash = identity("masks", "source");
+        for (var mismatched : List.of(wrongEpoch, wrongHash)) {
+            assertThatThrownBy(() -> snapshot(backend, canonical.schemas.getFirst(), mismatched, "invalid-plan"))
+                    .isInstanceOf(com.iocextractor.diagnostics.DiagnosticException.class);
+        }
+        var unknownColumn = new DataframeArtifactSchema("masks", List.of(new DataframeColumn("id"), new DataframeColumn("unknown")));
+        assertThatThrownBy(() -> snapshot(backend, unknownColumn, actual, "invalid-columns"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Unknown public columns");
+        assertThat(snapshot(backend, canonical.schemas.getFirst(), actual, "valid-plan"))
+                .singleElement().satisfies(row -> assertThat(row.value("mask")).isEqualTo("snapshot.example"));
+        assertThat(canonical.count("import_commit")).isOne();
+        assertThat(canonical.count("masks")).isOne();
+    }
+
     private static List<ArtifactRow> snapshot(JdbcStagedCanonicalBackend backend, DataframeArtifactSchema schema,
                                              ArtifactIdentityDefinition identity, String profile) {
         var rows = new ArrayList<ArtifactRow>();

@@ -74,6 +74,11 @@ delivery and retry coordination. There is no new queue or mutation-policy engine
 | Publication committed before delivery finalization | Recover from the canonical receipt without reading the input stage |
 | Receipt absent or incompatible pins | Fail closed; do not reinterpret the admitted delivery |
 
+Failure auditing uses operational wall-clock time, not safe lifecycle time.
+This lets cancellation and ownership release complete after unsafe UTC rejects
+publication. That audit timestamp neither confirms a lifecycle nor advances its
+safe-time high-water mark. A healthy retry must still pass safe UTC validation.
+
 Controls reuse native expiry, history, projection, receipt-retention and slot
 operations in private selective snapshots. Their epochs invalidate stale
 promotion work. Their fixed cycle time remains literal; promotion timestamps and

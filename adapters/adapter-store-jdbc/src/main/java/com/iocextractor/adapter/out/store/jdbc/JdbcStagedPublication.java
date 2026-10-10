@@ -108,7 +108,9 @@ final class JdbcStagedPublication {
             transactions.execute(JdbcWriterAdmission.OperationClass.CONTROL, c -> {
                 owners.require(c, owner);
                 cancelHidden(c, owner.unit());
-                owners.fail(c, owner, environment.clock().now(c).value().toEpochMilli(), "PUBLICATION.RETRYABLE_FAILURE");
+                // Operational failure time is not confirmation authority. Cleanup must
+                // remain available when the safe lifecycle clock itself rejected publication.
+                owners.fail(c, owner, environment.allocatorClock().millis(), "PUBLICATION.RETRYABLE_FAILURE");
                 return null;
             });
         } catch (SQLException | RuntimeException cleanup) { failure.addSuppressed(cleanup); }
