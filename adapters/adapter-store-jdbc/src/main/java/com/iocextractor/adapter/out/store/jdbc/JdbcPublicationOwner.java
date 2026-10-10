@@ -3,8 +3,8 @@ package com.iocextractor.adapter.out.store.jdbc;
 import java.sql.Connection;
 import java.sql.SQLException;
 
-/** Test-only durable logical ownership, independent of physical SQLite writer admission. */
-final class SqlitePublicationOwnershipExperiment {
+/** Durable logical ownership, independent of physical SQLite writer admission. */
+final class JdbcPublicationOwner {
     private static final int ATTEMPT_LIMIT = 3;
     record Owner(String unit, long fence) { }
 
@@ -13,6 +13,44 @@ final class SqlitePublicationOwnershipExperiment {
             s.execute("CREATE TABLE publication_logical_owner(singleton_id INTEGER PRIMARY KEY CHECK(singleton_id=1),"
                     + "unit TEXT,fence INTEGER NOT NULL,attempts INTEGER NOT NULL CHECK(attempts BETWEEN 0 AND 3))");
             s.executeUpdate("INSERT INTO publication_logical_owner VALUES(1,NULL,0,0)");
+            s.execute("CREATE TABLE publication_owner_failure(fence INTEGER PRIMARY KEY,unit TEXT NOT NULL,"
+                    + "failed_at_ms INTEGER NOT NULL,error_code TEXT NOT NULL)");
+        }
+    }
+
+    long fence(Connection c) throws SQLException {
+        try (var s = c.createStatement(); var rows = s.executeQuery(
+                "SELECT fence FROM publication_logical_owner WHERE singleton_id=1")) {
+            if (!rows.next()) { throw new SQLException("Missing logical publication ownership"); }
+            return rows.getLong(1);
+        }
+    }
+
+    void fail(Connection c, Owner owner, long asOf, String code) throws SQLException {
+        require(c, owner);
+        try (var s = c.prepareStatement("INSERT INTO publication_owner_failure VALUES(?,?,?,?) ON CONFLICT(fence) DO NOTHING")) {
+            s.setLong(1, owner.fence()); s.setString(2, owner.unit()); s.setLong(3, asOf); s.setString(4, code);
+            s.executeUpdate();
+        }
+        release(c, owner);
+    }
+
+    /** Records the abandoned eligible claim before its retry starts a fresh fenced budget. */
+    void recordReclaim(Connection c, String unit, long asOf) throws SQLException {
+        requireTransaction(c);
+        try (var statement = c.prepareStatement("INSERT INTO publication_owner_failure(fence,unit,failed_at_ms,error_code)"
+                + " SELECT fence,unit,?,'PUBLICATION.ABANDONED_CLAIM' FROM publication_logical_owner"
+                + " WHERE singleton_id=1 AND unit=? ON CONFLICT(fence) DO NOTHING")) {
+            statement.setLong(1, asOf); statement.setString(2, unit); statement.executeUpdate();
+        }
+    }
+
+    /** A receipt wins over an abandoned owner after commit; never release an uncommitted different unit. */
+    void releaseCommitted(Connection c) throws SQLException {
+        requireTransaction(c);
+        try (var s = c.prepareStatement("UPDATE publication_logical_owner SET unit=NULL,fence=fence+1"
+                + " WHERE singleton_id=1 AND unit IN(SELECT identity FROM publication_unit WHERE state='COMMITTED')")) {
+            s.executeUpdate();
         }
     }
 

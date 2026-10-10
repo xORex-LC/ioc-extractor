@@ -222,8 +222,8 @@ class SqlitePublicationExperimentIT {
 
     @Test
     void durableOwnershipFencesRestartAndBoundsConflictingPreparationWhileControlProgresses() throws Exception {
-        var ownership = new SqlitePublicationOwnershipExperiment();
-        SqlitePublicationOwnershipExperiment.Owner stale;
+        var ownership = new JdbcPublicationOwner();
+        JdbcPublicationOwner.Owner stale;
         Attempt last;
         try (var fixture = new Fixture(directory)) {
             fixture.write(OperationClass.CONTROL, c -> { ownership.initialize(c); return null; });
@@ -390,7 +390,7 @@ class SqlitePublicationExperimentIT {
                 }
                 c.commit();
             }
-            var reservations = new SqliteInternalIdReservationExperiment(canonical.dataSource,
+            var reservations = new JdbcPrivateIdReservations(canonical.dataSource,
                     java.time.Clock.fixed(time.value(), java.time.ZoneOffset.UTC), canonical.admission);
             reservations.initialize("blacklist", 1);
             var burned = reservations.reserve("blacklist", 3);
@@ -406,20 +406,20 @@ class SqlitePublicationExperimentIT {
             var privateKernel = new JdbcCanonicalMutationEngine(privateBase.dataSource, List.of(schema), List.of(identity));
             try (var c = privateBase.dataSource.getConnection()) {
                 c.setAutoCommit(false);
-                SqliteInternalIdReservationExperiment.seedPrivateSequence(c, "blacklist", reserved);
+                JdbcPrivateIdReservations.seedPrivateSequence(c, "blacklist", reserved);
                 var inserted = privateKernel.insertPlanned(c, schema, "feed", row, recordKey,
                         new com.iocextractor.application.artifact.lifecycle.LifecycleId(2), time, validity.decide(time));
                 assertThat(inserted.canonicalRowId()).isEqualTo(174);
                 c.commit();
             }
             // IDs are authoritative in the dataframe reservation store, not the private database.
-            var reopened = new SqliteInternalIdReservationExperiment(canonical.dataSource,
+            var reopened = new JdbcPrivateIdReservations(canonical.dataSource,
                     java.time.Clock.systemUTC(), canonical.admission);
             reopened.initialize("blacklist", 1);
             assertThat(reopened.reserve("blacklist", 1).idAt(0)).isEqualTo(175);
             try (var c = privateBase.dataSource.getConnection()) {
                 c.setAutoCommit(false);
-                assertThatThrownBy(() -> SqliteInternalIdReservationExperiment.seedPrivateSequence(c, "blacklist", burned))
+                assertThatThrownBy(() -> JdbcPrivateIdReservations.seedPrivateSequence(c, "blacklist", burned))
                         .isInstanceOf(SQLException.class).hasMessage("Private sequence exceeds reserved range");
                 c.rollback();
             }

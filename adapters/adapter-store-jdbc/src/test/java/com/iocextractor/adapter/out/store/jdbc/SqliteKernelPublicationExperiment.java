@@ -70,7 +70,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
     private final JdbcLifecycleClock safeClock;
     private final JdbcArtifactIdAllocator rowIds;
     private final JdbcLifecycleIdAllocator lifecycleIds;
-    private final SqliteInternalIdReservationExperiment historyIds;
+    private final JdbcPrivateIdReservations historyIds;
     private final Map<String, List<String>> columns = new LinkedHashMap<>();
 
     SqliteKernelPublicationExperiment(Path directory, Instant start) throws SQLException {
@@ -88,7 +88,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
             rowIds = new JdbcArtifactIdAllocator(published, wallClock);
             rowIds.ensureInitialized(new ArtifactIdAllocatorDefinition("masks", ArtifactIdStrategy.ASCENDING, 11, 1));
             lifecycleIds = new JdbcLifecycleIdAllocator(published, wallClock);
-            historyIds = new SqliteInternalIdReservationExperiment(published, wallClock, admission);
+            historyIds = new JdbcPrivateIdReservations(published, wallClock, admission);
             historyIds.initializeHistory("masks", 1);
             try (var c = published.getConnection()) {
                 probe.initialize(c);
@@ -173,7 +173,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
         try (var c = working.getConnection()) {
             c.setAutoCommit(false);
             try {
-                SqliteInternalIdReservationExperiment.seedPrivateSequence(c, "masks_history", historyRange);
+                JdbcPrivateIdReservations.seedPrivateSequence(c, "masks_history", historyRange);
                 c.commit();
             } catch (SQLException | RuntimeException | Error failure) {
                 rollback(c, failure);
@@ -286,7 +286,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
 
     private void appendTypedChunk(Attempt attempt, int ordinal, List<TypedRow> batch) {
         write(c -> {
-            var digest = new SqlitePublicationChunkDigest();
+            var digest = new JdbcPublicationChunkDigest();
             var facts = new ArrayList<Fact>(batch.size());
             var versions = new ArrayList<PendingTypedRow>(batch.size());
             for (int index = 0; index < batch.size(); index++) {
@@ -377,7 +377,7 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
             var manifest = new Manifest(1, 1, minimumDeadline, Map.of("masks", epoch));
             Attempt attempt = previous == null ? probe.begin(c, unit, PINS, manifest)
                     : probe.rebuild(c, previous, PINS, manifest);
-            var digest = new SqlitePublicationChunkDigest();
+            var digest = new JdbcPublicationChunkDigest();
             try (var source = working.getConnection()) {
                 source.setAutoCommit(false);
                 try {
@@ -513,12 +513,12 @@ final class SqliteKernelPublicationExperiment implements AutoCloseable {
     }
 
     private void copy(Connection source, Connection destination, String table, String predicate,
-                      String parameter, Attempt version, SqlitePublicationChunkDigest digest) throws SQLException {
+                      String parameter, Attempt version, JdbcPublicationChunkDigest digest) throws SQLException {
         copy(source, destination, table, predicate, parameter, version, digest, true);
     }
 
     private void copy(Connection source, Connection destination, String table, String predicate,
-                      String parameter, Attempt version, SqlitePublicationChunkDigest digest, boolean renewTtl) throws SQLException {
+                      String parameter, Attempt version, JdbcPublicationChunkDigest digest, boolean renewTtl) throws SQLException {
         List<String> names = columns.getOrDefault(table, List.of());
         if (names.isEmpty()) { throw new SQLException("Missing experiment column catalog"); }
         String projection = JdbcSql.joinedQuoted(names);

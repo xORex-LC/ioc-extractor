@@ -11,18 +11,18 @@ import java.time.Clock;
 import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.quote;
 
 /**
- * Test-only initialization of an id-less artifact's internal reservation space.
+ * Initialization of an id-less artifact's internal reservation space.
  * Reuses the real durable range allocator; no second allocation transition.
- * The experiment owns the namespace exclusively: mixing native AUTOINCREMENT
+ * The staged backend owns the namespace exclusively: mixing native AUTOINCREMENT
  * writers with independently reserved ranges is explicitly unsupported.
  */
-final class SqliteInternalIdReservationExperiment {
+final class JdbcPrivateIdReservations {
     private final DataSource canonical;
     private final Clock clock;
     private final JdbcWriterAdmission admission;
     private final JdbcArtifactIdAllocator ranges;
 
-    SqliteInternalIdReservationExperiment(DataSource canonical, Clock clock, JdbcWriterAdmission admission) {
+    JdbcPrivateIdReservations(DataSource canonical, Clock clock, JdbcWriterAdmission admission) {
         this.canonical = canonical;
         this.clock = clock;
         this.admission = admission;
@@ -93,7 +93,7 @@ final class SqliteInternalIdReservationExperiment {
                     throw failure;
                 }
             } catch (SQLException failure) {
-                throw new IocExtractorException("Internal reservation experiment failed", failure);
+                throw new IocExtractorException("Internal reservation authority failed", failure);
             }
             return null;
         });

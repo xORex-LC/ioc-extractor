@@ -96,6 +96,100 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
 
     private static final Instant NOW = Instant.parse("2026-08-24T12:00:00Z");
     private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
+    @Test
+    @Timeout(30)
+    void sharedTypedStorePublishesCapturedNativeFanOutAndRecoversWithoutInputStage() throws Exception {
+        Environment canonical = environment("shared-typed-publication");
+        Environment working = environment("shared-typed-private");
+        Environment oracle = environment("shared-typed-oracle");
+        var admission = new JdbcWriterAdmission();
+        var transactions = new JdbcPublicationTransactions(canonical.dataSource, admission);
+        var store = transactions.execute(JdbcWriterAdmission.OperationClass.CONTROL,
+                c -> JdbcTypedPublicationStore.initializeEmpty(c, canonical.schemas));
+        var rows = new ArrayList<ImportLogicalRow>();
+        for (int index = 0; index < 60; index++) {
+            rows.add(row(index + 2, branch(working, "masks", ImportArtifactRole.PRIMARY,
+                    values("mask", "captured-" + index + ".example", "source", "feed"), OptionalLong.empty()),
+                    branch(working, "hashes", ImportArtifactRole.RELATED,
+                            values("hash", "CAPTURED" + index, "source", "feed"), OptionalLong.empty())));
+        }
+        rows.add(row(100, branch(working, "masks", ImportArtifactRole.PRIMARY,
+                values("mask", "captured-0.example", "source", "feed"), OptionalLong.empty())));
+        CanonicalImportCommand command = working.stage("shared-captured", ImportPromotionPolicy.defaults(), rows,
+                List.of(new ImportRejectedLogicalRow(101, List.of(new ImportRowIssue(101, "masks", "IMPORT.INVALID_VALUE")))),
+                List.of(new ImportRowWarning(100, "masks", "PROCESSING.FALLBACK_ORIGINAL")));
+        try (var privateConnection = working.dataSource.getConnection()) {
+            privateConnection.setAutoCommit(false);
+            JdbcPrivateChangeCapture.install(privateConnection, store.tables());
+            privateConnection.commit();
+        }
+        working.preparingWriter(JdbcCanonicalImportObserver.NOOP, canonical, admission, command).promote(command);
+        var protocol = new JdbcPublicationProtocol();
+        var transfer = new JdbcPublicationTransfer(store);
+        try (var snapshot = working.dataSource.getConnection(); var pinned = canonical.dataSource.getConnection()) {
+            snapshot.setAutoCommit(false);
+            pinned.setAutoCommit(false);
+            assertThat(visibleCount(pinned, "masks")).isZero();
+            var description = transfer.describe(snapshot, true, NOW.toEpochMilli(), Long.MAX_VALUE);
+            assertThat(description.chunks()).isGreaterThan(1);
+            var attempt = transfer.stage(snapshot, command.deliveryId().value(), command.stage().digest().value(),
+                    Map.of("artifact:masks", 0L, "artifact:hashes", 0L), description, true,
+                    new JdbcPublicationTransfer.Writer() {
+                        public JdbcPublicationProtocol.Attempt begin(String identity, String pins, JdbcPublicationProtocol.Manifest manifest)
+                                throws SQLException {
+                            return transactions.execute(JdbcWriterAdmission.OperationClass.PROMOTION,
+                                    c -> protocol.begin(c, identity, pins, manifest));
+                        }
+                        public void append(JdbcPublicationProtocol.Attempt unit, String scope, int ordinal, JdbcTypedPublicationChunk chunk)
+                                throws SQLException {
+                            transactions.execute(JdbcWriterAdmission.OperationClass.PROMOTION, c -> {
+                                chunk.append(c, protocol, unit, scope, ordinal); return null;
+                            });
+                            assertThat(canonical.count("masks")).isZero();
+                            assertThat(canonical.count("canonical_match_alias")).isZero();
+                            assertThat(new JdbcImportCommitEvidenceStore(canonical.dataSource).find(command.deliveryId())).isEmpty();
+                            transactions.execute(JdbcWriterAdmission.OperationClass.CONTROL, c -> {
+                                assertThat(protocol.receipt(c, unit.unitId())).isEmpty(); return null;
+                            });
+                        }
+                        public void seal(JdbcPublicationProtocol.Attempt unit) throws SQLException {
+                            transactions.execute(JdbcWriterAdmission.OperationClass.PROMOTION, c -> { protocol.seal(c, unit); return null; });
+                        }
+                    });
+            var publicationUtc = NOW.plusSeconds(3);
+            transactions.execute(JdbcWriterAdmission.OperationClass.PROMOTION, c -> protocol.publish(c, attempt,
+                    publicationUtc.toEpochMilli(), command.stage().digest().value(), new FixedRecordValidityPolicy(TTL)));
+            assertThat(visibleCount(pinned, "masks")).isZero();
+            pinned.rollback();
+            snapshot.rollback();
+            new JdbcCanonicalImportWriter(oracle.dataSource, oracle.schemas,
+                    List.of(new ArtifactIdAllocatorDefinition("masks", ArtifactIdStrategy.ASCENDING, 1, 1),
+                            new ArtifactIdAllocatorDefinition("hashes", ArtifactIdStrategy.ASCENDING, 1, 1)),
+                    oracle.identities, working.workspaceRoot, ignored -> EffectiveTime.at(publicationUtc),
+                    new FixedRecordValidityPolicy(TTL), CLOCK, new JdbcWriterAdmission(),
+                    JdbcCanonicalImportObserver.NOOP, Duration.ofDays(90)).promote(command);
+            for (var table : store.tables()) {
+                assertThat(typedRows(canonical.dataSource, table.name())).as("captured native oracle: %s", table.name())
+                        .isEqualTo(typedRows(oracle.dataSource, table.name()));
+            }
+        }
+        try (var connection = canonical.dataSource.getConnection()) {
+            assertThat(JdbcTypedPublicationStore.reopen(connection, canonical.schemas).tables())
+                    .containsExactlyInAnyOrderElementsOf(store.tables());
+        }
+        working.deleteStage(command);
+        var replay = new JdbcCanonicalImportWriter(canonical.dataSource, canonical.schemas,
+                List.of(new ArtifactIdAllocatorDefinition("masks", ArtifactIdStrategy.ASCENDING, 1, 1),
+                        new ArtifactIdAllocatorDefinition("hashes", ArtifactIdStrategy.ASCENDING, 1, 1)),
+                canonical.identities, working.workspaceRoot, ignored -> EffectiveTime.at(NOW.plusSeconds(9)),
+                new FixedRecordValidityPolicy(TTL), CLOCK, admission, JdbcCanonicalImportObserver.NOOP,
+                Duration.ofDays(90)).promote(command);
+        assertThat(replay.outcome()).isEqualTo(ImportPromotionOutcome.ALREADY_COMMITTED);
+        assertThat(new JdbcImportCommitEvidenceStore(canonical.dataSource).find(command.deliveryId()).orElseThrow().warnings())
+                .containsExactly(new ImportRowWarning(100, "masks", "PROCESSING.FALLBACK_ORIGINAL"));
+        assertThat(canonical.count("masks_sources")).isEqualTo(60);
+        assertThat(admission.snapshot().get(JdbcWriterAdmission.OperationClass.CONTROL).completed()).isGreaterThan(2);
+    }
     private static final Duration TTL = Duration.ofHours(12);
     private static final String DIGEST = "a".repeat(64);
     private static final String FINGERPRINT = "b".repeat(64);

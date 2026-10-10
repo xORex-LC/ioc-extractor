@@ -6,7 +6,6 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.function.Consumer;
 
 import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.quote;
 
@@ -28,7 +27,7 @@ final class JdbcPrivateChanges {
     }
 
     /** Pages cannot materialize a table or fan-in in heap; the caller bounds payload bytes separately. */
-    static long read(Connection connection, JdbcPublicationTable table, long after, Consumer<Effect> consumer)
+    static long read(Connection connection, JdbcPublicationTable table, long after, EffectConsumer consumer)
             throws SQLException {
         if (connection.getAutoCommit() || after < 0) {
             throw new IllegalArgumentException("Private effects require a pinned transaction and valid cursor");
@@ -57,7 +56,7 @@ final class JdbcPrivateChanges {
         return last;
     }
 
-    private static void emit(JdbcPublicationTable table, ResultSet rows, Consumer<Effect> consumer)
+    private static void emit(JdbcPublicationTable table, ResultSet rows, EffectConsumer consumer)
             throws SQLException {
         int size = table.columns().size();
         List<Object> values = values(rows, 2, size);
@@ -82,4 +81,6 @@ final class JdbcPrivateChanges {
             return rows.next();
         }
     }
+
+    @FunctionalInterface interface EffectConsumer { void accept(Effect effect) throws SQLException; }
 }

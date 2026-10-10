@@ -142,7 +142,7 @@ final class JdbcPublicationProtocol {
         try (PreparedStatement statement = connection.prepareStatement("""
                 UPDATE publication_unit SET fence=fence+1,state='PENDING',next_chunk=0,contributions=0,needs_validity=0,
                     minimum_deadline=?,expected_chunks=?,expected_contributions=?
-                WHERE id=? AND fence=? AND pins=? AND state IN ('PENDING','SEALED') RETURNING fence
+                WHERE id=? AND fence=? AND pins=? AND state IN ('PENDING','SEALED','CANCELLED') RETURNING fence
                 """)) {
             statement.setLong(1, manifest.minimumDeadline());
             statement.setInt(2, manifest.chunks());
@@ -261,7 +261,7 @@ final class JdbcPublicationProtocol {
                 """)) {
             bindAttempt(statement, attempt);
             try (ResultSet result = statement.executeQuery()) {
-                if (result.next()) { throw new SQLException("Dependency changed; rebuild required"); }
+                if (result.next()) { throw new JdbcPublicationConflict("Dependency changed; rebuild required"); }
             }
         }
         long sequence;
@@ -283,7 +283,9 @@ final class JdbcPublicationProtocol {
             statement.setLong(5, attempt.unitId());
             statement.setLong(6, attempt.fence());
             statement.setLong(7, effectiveMillis);
-            requireOne(statement.executeUpdate());
+            if (statement.executeUpdate() != 1) {
+                throw new JdbcPublicationConflict("Incomplete, expired or stale publication attempt");
+            }
         }
         try (PreparedStatement statement = connection.prepareStatement("""
                 UPDATE publication_epoch SET version=version+1
@@ -426,7 +428,7 @@ final class JdbcPublicationProtocol {
                     epoch.setString(1, dependency.getKey());
                     try (ResultSet result = epoch.executeQuery()) {
                         if (!result.next() || result.getLong(1) != dependency.getValue()) {
-                            throw new SQLException("Stale dependency snapshot");
+                            throw new JdbcPublicationConflict("Stale dependency snapshot");
                         }
                     }
                 }

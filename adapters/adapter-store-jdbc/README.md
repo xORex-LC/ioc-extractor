@@ -109,6 +109,11 @@ runtime JDBC drivers.
   `Statement.executeUpdate(sql)` counts trigger work and must not be used for
   cardinality checks on captured tables. These internal candidate components
   are not selected by the default runtime or a schema migration.
+- `JdbcTypedPublicationStore` preserves native typed shapes behind committed
+  read views. `JdbcPublicationTransfer` streams actual changes in at most
+  256-row/1-MiB chunks; initial values, tombstones and explicit renewal flags
+  distinguish no-op, replacement and fresh-UTC confirmation. Initialization
+  refuses existing business rows; migration and runtime activation are separate.
 - `JdbcLifecycleControlStore` uses one-way CAS and refuses `ACTIVE` until one
   set-based invariant scan proves that every configured active row has complete,
   ordered lifecycle metadata. Lifecycle/canonical-row ID ranges are reserved by

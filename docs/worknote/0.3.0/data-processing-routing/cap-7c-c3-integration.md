@@ -70,6 +70,20 @@ freshness. A passed journal slice is not acceptance of the complete C3 backend.
 
 ## Remaining C3 work in dependency order
 
+The second integration slice implements a persisted typed catalog, immutable
+versions and one committed visibility predicate. Two streaming passes over the
+same sealed native snapshot describe and transfer at most 256 rows / 1 MiB per
+physical chunk. Digest framing distinguishes SQL NULL, integer, text and binary
+values; no table-wide diff or timestamp-based renewal guess is introduced.
+
+`sharedTypedStorePublishesCapturedNativeFanOutAndRecoversWithoutInputStage`
+executes the actual import writer, transports fan-out changes and COALESCE
+warnings, proves hidden chunks and a pinned old reader, and compares every typed
+family with the corrected native writer at publication UTC. Receipt-only replay
+works after deleting the stage. This test qualifies typed transport; complete
+native port composition, control operations and cleanup still require their own
+checks below.
+
 The physical protocol is now shared production-source code in
 `JdbcPublicationProtocol`; C2 tests execute that implementation instead of a
 second test-only transition engine. `JdbcPrivateChangeCapture` installs typed

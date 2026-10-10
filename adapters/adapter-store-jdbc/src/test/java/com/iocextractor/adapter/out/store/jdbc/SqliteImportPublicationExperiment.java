@@ -139,7 +139,7 @@ final class SqliteImportPublicationExperiment {
             while (rows.next()) {
                 var values = new ArrayList<Object>();
                 for (int i = 1; i <= columns.get(table).size(); i++) { values.add(rows.getObject(i)); }
-                var digest = new SqlitePublicationChunkDigest();
+                var digest = new JdbcPublicationChunkDigest();
                 for (String key : keys.get(table)) { digest.field(values.get(columns.get(table).indexOf(key))); }
                 if (result.put(digest.finish(), Collections.unmodifiableList(values)) != null) {
                     throw new SQLException("Duplicate typed address in " + table);
@@ -340,7 +340,7 @@ final class SqliteImportPublicationExperiment {
 
     private void append(Attempt attempt, int ordinal, List<TypedRow> batch) {
         write(c -> {
-            var digest = new SqlitePublicationChunkDigest();
+            var digest = new JdbcPublicationChunkDigest();
             for (var row : batch) {
                 digest.row();
                 digest.field(row.table());
