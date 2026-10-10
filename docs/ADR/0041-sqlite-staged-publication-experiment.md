@@ -43,17 +43,27 @@ children. The experiment may use opaque payloads to test visibility; production
 requires typed representations and selective indexes for the existing queries.
 Opaque payloads are not an admitted production canonical schema.
 
-Every version names its unit and attempt. Hidden chunk transactions store
-immutable facts and a digest-qualified ordered chunk journal. An acknowledged
-chunk can be retried exactly; a changed retry, gap, duplicate fact or stale
-attempt is rejected. Sealing is permitted only after the declared chunks and
-facts are complete. Sealing freezes the attempt; publication cannot append data.
+Every version names its unit and attempt. Hidden chunk transactions fold
+pending contributions and store an immutable digest-qualified ordered chunk
+journal. Multiple accepted inputs may update the same pending address (for
+example, one source summary); committed versions are immutable. An acknowledged
+chunk can be retried exactly without reapplying it, including after later chunks
+changed that address. A changed retry, gap or stale attempt is rejected. Sealing
+is permitted only after the declared chunks and contributions are complete.
+Sealing freezes the attempt; publication cannot append or change its facts.
 
 The final transaction allocates a publication sequence, stores effective UTC
 and the complete receipt header, and changes SEALED to COMMITTED. Sequence is
 allocated at publication, not at unit creation: unrelated control publications
 may overtake a pending promotion. Visibility selects the newest COMMITTED
-version for an address by publication sequence. A committed tombstone removes
+version for an address. Its index uses a separately allocated monotonic attempt
+stamp: dependency pins must equal current epochs when the stamp is allocated,
+and publication checks and advances every touched scope's epoch atomically.
+Two attempts affecting the same address therefore cannot publish in reverse
+stamp order; the older one must rebuild and receive a newer stamp. This permits
+an index-ordered lookup without sorting all historical versions by a joined
+publication sequence. Pins naming a future epoch must be rejected at creation,
+not merely compared at publication. A committed tombstone removes
 the logical fact; it must not reveal an older version. Pending or cancelled
 versions never participate. Readers retain one owned SQLite snapshot across
 all families and artifacts.
@@ -74,6 +84,8 @@ them. Negative matching and slot reservations require namespace pins as well as
 positive row dependencies. The final check is proportional to affected scopes,
 not input rows. This conservative first experiment may invalidate more work
 than a future dependency vector; it must measure that cost explicitly.
+Facts cannot name an undeclared scope. A rebuild keeps business pins but can
+declare a different chunk/contribution manifest after recomputing the mutation plan.
 
 Sample safe UTC through the existing dataframe clock in the final publication
 transaction. This is the proposed confirmation linearization point. Reject a

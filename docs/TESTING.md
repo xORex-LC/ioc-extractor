@@ -26,8 +26,13 @@ CAP-7B removes the obsolete reply-aggregation suite with the removed dispatch
 implementation. Its ordering/isolation contract now runs through concurrent
 64-branch native destinations in `CamelRoutingExecutionTest`; missing replies,
 failure and native view completion keep their existing runtime regressions.
-The reviewed source universe is 222 fast classes and 77 integration classes,
-including five external shells (294 deterministic classes). The exact inventory
+CAP-7C adds `SqlitePublicationExperimentIT`, an isolated exact-driver Failsafe
+probe for committed visibility, chunk replay, fencing, conflict/expiry rejection,
+rollback, publication order, tombstones, pinned snapshots and inter-chunk control
+admission. It uses a separate experimental database; it does not activate a
+production migration or assert canonical-port/capacity equivalence.
+The reviewed source universe is 222 fast classes and 78 integration classes,
+including five external shells (295 deterministic classes). The exact inventory
 in `build-support/test-quality/test-lifecycle.properties` reflects this scope;
 discovery, report integrity and coverage/analyzer floors remain unchanged.
 

@@ -180,3 +180,8 @@ complete-service promotion decision. It does not imply G6 acceptance.
 atomic-visibility regression, canonical ownership seams and staged/versioned
 SQLite protocol work. SQLite is mandatory for 0.3.0; PostgreSQL is deferred
 outside this release. Protocol implementation and capacity acceptance remain open.
+
+[CAP-7C C2 physical experiment](cap-7c-c2-experiment.md) records the fenced
+chunk/publication primitive, indexed visibility and deterministic checks in test
+scope. Typed kernel/port, safe-clock/deadline and finite-progress qualification
+remain open before production integration.
