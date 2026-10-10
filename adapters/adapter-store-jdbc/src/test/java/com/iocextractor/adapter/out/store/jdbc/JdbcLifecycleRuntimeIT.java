@@ -97,6 +97,44 @@ class JdbcLifecycleRuntimeIT {
     }
 
     @Test
+    void restartedClockUsesPersistedClampAgeBeforeItsNewLocalMonotonicSample() throws Exception {
+        initialize("restart-clamp.db");
+        MutableClock wall = new MutableClock(NOW);
+        var policy = new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30));
+        var first = new JdbcLifecycleClock(dataSource, wall, policy, () -> 0L);
+        first.now(); wall.set(NOW.minusSeconds(2)); first.now();
+        wall.set(NOW.minusSeconds(1));
+        var restarted = new JdbcLifecycleClock(dataSource, wall, policy, () -> 0L);
+        assertThat(restarted.inspect().clampAge()).isEqualTo(Duration.ofSeconds(1));
+        assertThat(restarted.now().value()).isEqualTo(NOW);
+        assertThat(restarted.inspect().clampAge()).isEqualTo(Duration.ofSeconds(1));
+        wall.set(NOW.minusSeconds(3));
+        assertThat(restarted.inspect().status()).isEqualTo(LifecycleClockStatus.UNSAFE);
+        assertThatThrownBy(restarted::now).isInstanceOf(LifecycleClockUnsafeException.class);
+        assertThat(queryLong("SELECT safe_time_high_water_ms FROM canonical_lifecycle_control")).isEqualTo(NOW.toEpochMilli());
+    }
+
+    @Test
+    void missingOrUnwritableSafeClockAuthorityFailsClosedWithoutInventingUtc() throws Exception {
+        initialize("missing-clock.db");
+        var clock = new JdbcLifecycleClock(dataSource, Clock.fixed(NOW, ZoneOffset.UTC),
+                new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30)));
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("CREATE TRIGGER suppress_clock BEFORE UPDATE ON canonical_lifecycle_control"
+                    + " WHEN NEW.safe_time_high_water_ms IS NOT OLD.safe_time_high_water_ms BEGIN SELECT RAISE(IGNORE); END");
+            assertThatThrownBy(clock::now).hasMessage("Lifecycle clock control row is missing");
+            assertThat(queryNullableLong("SELECT safe_time_high_water_ms FROM canonical_lifecycle_control")).isNull();
+            statement.execute("DROP TRIGGER suppress_clock");
+            statement.execute("DELETE FROM canonical_lifecycle_control");
+            assertThatThrownBy(clock::inspect).hasRootCauseMessage("Lifecycle clock control row is missing");
+            assertThatThrownBy(clock::now).hasMessage("Lifecycle clock control row is missing");
+            statement.execute("DROP TABLE canonical_lifecycle_control");
+            assertThatThrownBy(clock::now).hasMessage("Failed to establish safe lifecycle time").hasRootCauseInstanceOf(SQLException.class);
+            assertThatThrownBy(clock::inspect).hasMessage("Failed to inspect lifecycle clock").hasRootCauseInstanceOf(SQLException.class);
+        }
+    }
+
+    @Test
     @Timeout(15)
     void safe_clock_waits_for_shared_writer_admission() throws Exception {
         initialize("clock-admission.db");

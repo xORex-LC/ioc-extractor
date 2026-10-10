@@ -28,6 +28,7 @@ import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
@@ -415,6 +416,47 @@ class JdbcCanonicalMatchAndMutationIT {
                     .hasMessageContaining("record key must contain at least one value");
 
             connection.rollback();
+        }
+    }
+
+    @Test
+    void nativePreparationRejectsExpiredIdentityChangesAndAmbiguousOrdinaryMatchesBeforeMutation() throws Exception {
+        var engine = new JdbcCanonicalMutationEngine(dataSource, List.of(schema), List.of(identity));
+        var currentTime = EffectiveTime.at(START.plusMillis(300));
+        var validity = new FixedRecordValidityPolicy(Duration.ofHours(1)).decide(currentTime);
+        try (var connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try (var session = engine.openSession(connection, schema, currentTime, validity)) {
+                var prepared = new com.iocextractor.application.artifact.PreparedArtifactRow(row("one.example", "shared"), Optional.empty());
+                var key = engine.loadForImport(connection, schema, 11).rowKey();
+                var confirmation = new com.iocextractor.application.artifact.lifecycle.CanonicalRecordConfirmation(key, prepared);
+                assertThatThrownBy(() -> session.confirm("new-feed", confirmation, null,
+                        new com.iocextractor.application.artifact.lifecycle.LifecycleId(900), null))
+                        .hasMessageContaining("Multiple active canonical matches");
+                assertThatThrownBy(() -> session.mutateExisting(11, row("changed.example", "shared"), false, null))
+                        .hasMessageContaining("record-key mutation");
+                assertThatThrownBy(() -> session.mutateExistingOrdered(11, row("changed.example", "shared"),
+                        prepared, false, "new-feed", null)).hasMessageContaining("record-key mutation");
+                assertThatThrownBy(() -> session.insertPlanned("new-feed", row("one.example", "shared"), key,
+                        new com.iocextractor.application.artifact.lifecycle.LifecycleId(900)))
+                        .hasMessageContaining("Active canonical record-key collision");
+            }
+            connection.rollback();
+            var expiredAt = EffectiveTime.at(START.plusMillis(500));
+            try (var session = engine.openSession(connection, schema, expiredAt, validity)) {
+                var prepared = new com.iocextractor.application.artifact.PreparedArtifactRow(row("boundary.example", "changed"), Optional.empty());
+                assertThatThrownBy(() -> session.mutateExisting(13, prepared.template(), true, null))
+                        .hasMessageContaining("expired canonical lifecycle");
+                assertThatThrownBy(() -> session.mutateExistingOrdered(13, prepared.template(), prepared, true, "new-feed", null))
+                        .hasMessageContaining("expired canonical lifecycle");
+                var key = engine.loadForImport(connection, schema, 13).rowKey();
+                assertThat(session.insertPlanned("new-feed", prepared.template(), key,
+                        new com.iocextractor.application.artifact.lifecycle.LifecycleId(900)).kind())
+                        .isEqualTo(CanonicalRecordMutationKind.RESTARTED);
+            }
+            connection.rollback();
+            assertThat(queryLong(connection, "SELECT COUNT(*) FROM masks")).isEqualTo(3);
+            assertThat(queryLong(connection, "SELECT COUNT(*) FROM masks_history")).isZero();
         }
     }
 

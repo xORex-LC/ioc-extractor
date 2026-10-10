@@ -165,6 +165,110 @@ class SqlitePublicationExperimentIT {
     }
 
     @Test
+    void numericHydrationAcceptsExactByteLimitsAndRejectsOneByteExcess() throws Exception {
+        try (var source = java.sql.DriverManager.getConnection("jdbc:sqlite:" + directory.resolve("numeric-source.db"));
+             var working = java.sql.DriverManager.getConnection("jdbc:sqlite:" + directory.resolve("numeric-working.db"))) {
+            for (var connection : List.of(source, working)) {
+                JdbcPublicationTable.execute(connection, "CREATE TABLE numbers(a REAL PRIMARY KEY,b REAL)");
+                connection.setAutoCommit(false);
+            }
+            JdbcPublicationTable.execute(source, "INSERT INTO numbers VALUES(0.12345678901234567,0.12345678901234567)"); source.commit();
+            int sqlFieldBytes = Math.toIntExact(queryNumber(source, "SELECT 5+length(CAST(a AS BLOB)) FROM numbers"));
+            try (var select = source.createStatement(); var result = select.executeQuery("SELECT a FROM numbers")) {
+                assertThat(result.next()).isTrue();
+                assertThat(5 + result.getObject(1).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
+                        .isEqualTo(sqlFieldBytes);
+            }
+            var exact = new DocumentPreparationLimits(1024 * 1024, 64, 2 * sqlFieldBytes, sqlFieldBytes, 65536, 65536, 1);
+            assertThat(new JdbcPublicationHydrator(source, working, List.of(), () -> { }, exact).copy("numbers", "1=1", List.of())).isOne();
+            working.rollback(); source.rollback();
+            for (var limits : List.of(new DocumentPreparationLimits(1024 * 1024, 64, 2 * sqlFieldBytes, sqlFieldBytes - 1, 65536, 65536, 1),
+                    new DocumentPreparationLimits(1024 * 1024, 64, 2 * sqlFieldBytes - 1, sqlFieldBytes, 65536, 65536, 1))) {
+                var hydrator = new JdbcPublicationHydrator(source, working, List.of(), () -> { }, limits);
+                assertThatThrownBy(() -> hydrator.copy("numbers", "1=1", List.of()))
+                        .hasMessage("Committed native row exceeds canonical preparation limits");
+                working.rollback(); source.rollback();
+                assertThat(queryNumber(working, "SELECT COUNT(*) FROM numbers")).isZero();
+            }
+        }
+    }
+
+    @Test
+    void missingLogicalOwnershipAndIgnoredReleaseCannotAuthorizeAnotherPublication() throws Exception {
+        try (var fixture = new Fixture(directory)) {
+            var owners = new JdbcPublicationOwner();
+            fixture.write(OperationClass.CONTROL, c -> { owners.initialize(c); return null; });
+            var owner = fixture.write(OperationClass.CONTROL, c -> owners.acquire(c, "owned-unit", owners.fence(c)));
+            fixture.write(OperationClass.CONTROL, c -> {
+                JdbcPublicationTable.execute(c, "CREATE TRIGGER suppress_release BEFORE UPDATE ON publication_logical_owner"
+                        + " WHEN NEW.unit IS NULL BEGIN SELECT RAISE(IGNORE); END"); return null;
+            });
+            assertThatThrownBy(() -> fixture.write(OperationClass.CONTROL, c -> { owners.release(c, owner); return null; }))
+                    .hasRootCauseMessage("Logical promotion release failed");
+            assertThatThrownBy(() -> fixture.write(OperationClass.CONTROL, c -> owners.acquire(c, "different-unit", owner.fence())))
+                    .hasRootCauseMessage("Logical promotion ownership changed or occupied");
+            fixture.write(OperationClass.CONTROL, c -> { JdbcPublicationTable.execute(c, "DELETE FROM publication_logical_owner"); return null; });
+            assertThatThrownBy(() -> fixture.write(OperationClass.CONTROL, owners::fence))
+                    .hasRootCauseMessage("Missing logical publication ownership");
+        }
+    }
+
+    @Test
+    void transactionCleanupPreservesThePrimaryFailureAndReportsUnaccompaniedRestorationFailure() throws Exception {
+        try (var physical = java.sql.DriverManager.getConnection("jdbc:sqlite:" + directory.resolve("cleanup-failure.db"))) {
+            Connection failing = proxy(Connection.class, physical, (method, arguments) -> {
+                if (method.getName().equals("rollback") || method.getName().equals("setAutoCommit")) {
+                    throw new SQLException("cleanup " + method.getName());
+                }
+                return invoke(physical, method, arguments);
+            });
+            var primary = new IllegalStateException("native mutation refused");
+            JdbcLifecycleTransactions.rollback(failing, primary);
+            JdbcLifecycleTransactions.restoreAutoCommit(failing, true, primary);
+            assertThat(primary.getSuppressed()).extracting(Throwable::getMessage)
+                    .containsExactly("cleanup rollback", "cleanup setAutoCommit");
+            assertThatThrownBy(() -> JdbcLifecycleTransactions.restoreAutoCommit(failing, true, null))
+                    .isInstanceOf(SQLException.class).hasMessage("cleanup setAutoCommit");
+            assertThat(physical.isClosed()).isFalse();
+        }
+    }
+
+    @Test
+    void slotMembershipOverlayExcludesExpiredAndSelectedBaseRowsAndRetainsOnlyPrivateReplacements() throws Exception {
+        try (var base = java.sql.DriverManager.getConnection("jdbc:sqlite:" + directory.resolve("slot-base.db"));
+             var working = java.sql.DriverManager.getConnection("jdbc:sqlite:" + directory.resolve("slot-working.db"))) {
+            for (var c : List.of(base, working)) {
+                JdbcPublicationTable.execute(c, "CREATE TABLE masks(id INTEGER PRIMARY KEY,_lifecycle_id INTEGER,_valid_until_epoch_ms INTEGER)");
+                c.setAutoCommit(false);
+            }
+            try (var insert = base.prepareStatement("INSERT INTO masks VALUES(?,?,?)")) {
+                for (int row = 1; row <= 300; row++) {
+                    insert.setInt(1, row); insert.setInt(2, row); insert.setLong(3, NOW + 1000); insert.addBatch();
+                }
+                insert.executeBatch();
+            }
+            JdbcPublicationTable.execute(base, "INSERT INTO masks VALUES(999,999," + NOW + ")");
+            JdbcPublicationTable.execute(base, "CREATE TEMP TABLE publication_selected_row(artifact TEXT,row_id INTEGER)");
+            JdbcPublicationTable.execute(base, "INSERT INTO publication_selected_row VALUES('masks',7),('masks',8)");
+            base.commit();
+            var quotas = new java.util.concurrent.atomic.AtomicInteger();
+            var slots = new JdbcPublicationSlotBase(base, working, quotas::incrementAndGet);
+            Thread.currentThread().interrupt();
+            try { assertThatThrownBy(() -> slots.hydrate("masks", NOW)).hasMessage("Slot membership hydration interrupted"); }
+            finally { Thread.interrupted(); }
+            working.rollback();
+            JdbcPublicationTable.execute(working, "INSERT INTO masks VALUES(7,701," + (NOW + 5000) + "),(400,400," + (NOW + 5000) + ")");
+            slots.hydrate("masks", NOW); slots.hydrate("masks", NOW);
+            assertThat(quotas).hasValue(2);
+            assertThat(slots.minimumDeadline()).isEqualTo(NOW + 1000);
+            assertThat(queryNumber(working, "SELECT COUNT(*) FROM publication_slot_view_masks")).isEqualTo(300);
+            assertThat(queryNumber(working, "SELECT COUNT(*) FROM publication_slot_view_masks WHERE id IN(8,999)")).isZero();
+            assertThat(queryNumber(working, "SELECT _lifecycle_id FROM publication_slot_view_masks WHERE id=7")).isEqualTo(701);
+            working.rollback(); base.rollback();
+        }
+    }
+
+    @Test
     void protocolRejectsUnownedTransactionsOversizedUtf8AndStaleReadOverlays() throws Exception {
         try (var fixture = new Fixture(directory); var connection = fixture.dataSource.getConnection()) {
             var manifest = new Manifest(1, 1, Long.MAX_VALUE, Map.of("masks", 0L));
