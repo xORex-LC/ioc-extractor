@@ -233,7 +233,29 @@ class JdbcDocumentPreparationWorkspaceIT {
         assertThat(factory.pressure().leasedWorkspaces()).isZero();
         assertThatThrownBy(() -> factory.openCanonicalState("bad-pins", "x".repeat(32769)))
                 .hasRootCauseMessage("Canonical identity pin exceeds limit");
+        try (var retained = factory.openCanonicalState("after-failure", "pins")) { retained.checkQuota(); }
         try (var next = factory.openCanonicalState("after-failure", "pins")) { next.discard(); }
+        assertThat(factory.pressure().leasedWorkspaces()).isZero();
+    }
+
+    @Test
+    void totalBudgetRejectionDoesNotLeakAnOtherwiseAvailableControlReservation() throws Exception {
+        var limits = new DocumentPreparationLimits(64 * 1024 * 1024, 4096, 256 * 1024, 64 * 1024,
+                2L * 1024 * 1024 * 1024, 8L * 1024 * 1024 * 1024, 256);
+        var factory = factory(limits);
+        factory.requireCanonicalCapacity();
+        // Direct leases exercise memory admission independently of the single logical promotion owner.
+        try (var first = factory.openCanonicalState("first-direct", "pins", true);
+             var second = factory.openCanonicalState("second-direct", "pins", true);
+             var third = factory.openCanonicalState("third-direct", "pins", true)) {
+            assertThatThrownBy(() -> factory.openCanonicalState("control-at-budget", "pins"))
+                    .hasMessage("Canonical workspace admission exhausted");
+            third.discard();
+            try (var control = factory.openCanonicalState("control-after-release", "pins")) {
+                assertThat(factory.pressure().leasedWorkspaces()).isEqualTo(3);
+                control.discard();
+            }
+        }
         assertThat(factory.pressure().leasedWorkspaces()).isZero();
     }
 

@@ -93,3 +93,16 @@ and its collector failure; its partial staged observations are not throughput
 or before/after acceptance evidence. Preserve the raw failed/aborted report,
 thread dump and query plans alongside the completed native failure. New C5
 forks must use committed corrected sources without these extra diagnostics.
+
+## Development gates
+
+The first complete JDBC run exposed a legacy low-level capacity test that
+opened several canonical workspaces without distinguishing their roles. It now
+marks direct promotion leases explicitly while preserving total-budget and
+thread-confinement assertions. The repeated JDBC cohort passed 512 tests with
+one expected external skip.
+
+The first full verify retained a JDBC missed-branch ratchet failure (470 versus
+468). Add meaningful resource regressions for retaining-close release and total
+memory rejection after taking a control reservation. Floors, exclusions and
+reviewed baselines are unchanged. Final verification must cover these changes.
