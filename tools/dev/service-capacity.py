@@ -276,6 +276,41 @@ def jvm_sample(pid):
             'gc': {name: values[name] for name in ('YGC', 'FGC', 'GCT')}, 'sample_monotonic': time.monotonic()}
 
 
+def named_storage(root):
+    """Named files only: unlinked SQLite TEMP files are outside this measurement."""
+    sizes = {'wal_bytes': 0, 'workspace_bytes': 0, 'output_bytes': 0}
+    wals = {}
+    for directory in (root / 'var', root / 'dataframe'):
+        for path in directory.rglob('*'):
+            if path.is_symlink() or not path.is_file():
+                continue
+            try:
+                size = path.stat().st_size
+            except FileNotFoundError:
+                continue  # Owned scratch files can disappear after enumeration.
+            if path.name.endswith('-wal'):
+                relative = str(path.relative_to(root))
+                wals[relative] = size
+                if relative == 'var/db/ioc-dataframe.db-wal':
+                    category = 'canonical'
+                elif relative == 'var/db/ioc-service.db-wal':
+                    category = 'service'
+                elif path.name == 'native.db-wal' and 'document-preparation' in path.parts:
+                    category = 'canonical_private'
+                elif 'document-preparation' in path.parts:
+                    category = 'document_private'
+                else:
+                    category = 'other'
+                key = category + '_wal_bytes'
+                sizes[key] = sizes.get(key, 0) + size
+                sizes['wal_bytes'] += size
+            if any(name in path.parts for name in ('document-preparation', 'workspaces', 'staging')):
+                sizes['workspace_bytes'] += size
+            if path.suffix == '.csv':
+                sizes['output_bytes'] += size
+    return dict(wal_files=wals, **sizes)
+
+
 class ResourceSampler:
     """Fail-closed sampler of one JVM and its effective cgroup; bounded retained aggregate plus JSONL."""
     def __init__(self, pid, cgroup, root):
@@ -299,23 +334,7 @@ class ResourceSampler:
         hwm = int(re.search(r'^VmHWM:\s+(\d+)', status, re.M)[1]) * 1024
         memory = counters((self.cgroup / 'memory.stat').read_text())
         stat = Path(f'/proc/{self.pid}/stat').read_text().rsplit(')', 1)[1].split()
-        paths = [self.root / 'var', self.root / 'dataframe']
-        sizes = {'wal_bytes': 0, 'workspace_bytes': 0, 'output_bytes': 0}
-        for directory in paths:
-            for path in directory.rglob('*'):
-                if path.is_file() and not path.is_symlink():
-                    try:
-                        size = path.stat().st_size
-                    except FileNotFoundError:
-                        # Owned spool files may be removed between directory enumeration and stat.
-                        continue
-                    if path.name.endswith('-wal'):
-                        sizes['wal_bytes'] += size
-                    if any(name in path.parts for name in ('document-preparation', 'workspaces', 'staging')):
-                        sizes['workspace_bytes'] += size
-                    if path.suffix == '.csv':
-                        sizes['output_bytes'] += size
-        return dict(monotonic=time.monotonic(), rss_bytes=rss, hwm_bytes=hwm,
+        return dict(monotonic=time.monotonic(), utc_epoch_ns=time.time_ns(), rss_bytes=rss, hwm_bytes=hwm,
             process_cpu_seconds=(int(stat[11]) + int(stat[12])) / os.sysconf('SC_CLK_TCK'),
             anon_bytes=memory['anon'], file_bytes=memory['file'], kernel_bytes=memory['kernel'],
             non_file_bytes=memory['anon'] + memory['kernel'],
@@ -323,7 +342,7 @@ class ResourceSampler:
             swap_bytes=int((self.cgroup / 'memory.swap.current').read_text()),
             psi=pressure((self.cgroup / 'memory.pressure').read_text()),
             events=counters((self.cgroup / 'memory.events').read_text()),
-            cpu=counters((self.cgroup / 'cpu.stat').read_text()), **sizes, **self.jvm)
+            cpu=counters((self.cgroup / 'cpu.stat').read_text()), **named_storage(self.root), **self.jvm)
 
     def run(self):
         try:
@@ -358,6 +377,7 @@ class ResourceSampler:
                     'cpu_delta': difference(self.first['cpu'], last['cpu']),
                     'gc_delta': difference(self.first['gc'], last['gc']),
                     'jvm_sampling': 'jstat -gc; at most one snapshot/s; metaspace excludes code cache/native allocations',
+                    'storage_scope': 'Named files only; WAL paths in raw samples; unlinked SQLite TEMP excluded',
                     'memory_events_delta': difference(self.first['events'], last['events']),
                     'psi_microseconds_delta': psi, 'psi_full_fraction': psi['full'] / (wall * 1e6) if wall > 0 else None}
 

@@ -40,3 +40,19 @@ durable high-water by three seconds reproduce false unsafe status with no
 backward wall-clock movement. The fix samples after these blocking boundaries;
 it does not change skew/clamp policy. This establishes a code defect, not the
 exclusive cause of the previously retained load failures.
+
+## Collection corrections
+
+Raw resource samples now partition named WAL bytes into canonical, service,
+canonical-private, document-private and other categories and retain each path.
+Peaks retain category totals, not an unbounded history of workspace identities.
+These totals exclude unlinked SQLite TEMP files. UTC and monotonic timestamps
+are adjacent observations, not an assertion that host UTC never stepped.
+
+Qualification control/cleanup responses expose UTC before/after, monotonic
+timings and the actual safe-clock snapshot. HTTP failures retain bounded
+diagnostic context and reject the entire collection window. Collector-failed
+observations remain in raw reports but no longer count as completed windows or
+contribute to series medians; fully collected screen failures still retain
+their measured intervals. Offline contracts cover storage partitioning,
+symlink exclusion, HTTP failure propagation and failed-window accounting.

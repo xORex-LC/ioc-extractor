@@ -14,6 +14,7 @@ import tempfile
 import threading
 import time
 import urllib.request
+import urllib.error
 import zipfile
 
 sys.dont_write_bytecode = True
@@ -40,8 +41,16 @@ class QualificationWindow:
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         request = urllib.request.Request(f'http://127.0.0.1:{self.port}/qualification/' + path,
                                          data=b'', method='POST')
-        with opener.open(request, timeout=40) as response:
-            return json.load(response)
+        try:
+            with opener.open(request, timeout=40) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as failure:
+            # Preserve bounded test-only diagnostic context, never turn an HTTP failure into a sample.
+            with failure:
+                body = failure.read(65537)
+            if len(body) > 65536:
+                raise RuntimeError('Qualification HTTP diagnostic exceeds 64 KiB') from failure
+            raise RuntimeError(f'Qualification HTTP {failure.code}: {body.decode("utf-8", errors="replace")}') from failure
 
     def begin(self):
         self.request('window/start')
@@ -70,6 +79,9 @@ class QualificationWindow:
                     self.stop.wait(max(0, due - time.monotonic()))
         except BaseException as failure:
             self.failure = failure
+            with (self.root / 'controls.jsonl').open('a') as stream:
+                stream.write(json.dumps(dict(kind='failure', monotonic=time.monotonic(),
+                                             utc_epoch_ns=time.time_ns(), error=str(failure))) + '\n')
 
     def close(self):
         self.stop.set()
@@ -265,7 +277,7 @@ def series_screen(samples, rows, requested_pairs):
     for backend in ('native', 'staged'):
         members = [item for item in samples if item['backend'] == backend]
         values = [item['local_window_upper_seconds'] for item in members
-                  if item.get('local_window_upper_seconds') is not None]
+                  if item['status'] in ('SCREEN_PASS', 'FAIL') and item.get('local_window_upper_seconds') is not None]
         if len(members) != requested_pairs or any(item['status'] != 'SCREEN_PASS' for item in members):
             violations.append(backend + '_incomplete_or_failed_series')
         summaries[backend] = {'completed_windows': len(values), 'requested_pairs': requested_pairs,

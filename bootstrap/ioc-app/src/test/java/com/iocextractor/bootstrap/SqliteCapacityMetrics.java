@@ -162,15 +162,34 @@ public final class SqliteCapacityMetrics {
         }
         @PostMapping("/qualification/control") public Map<String, Object> control() {
             long eligible = System.nanoTime();
+            long rawBefore = System.currentTimeMillis();
             var value = writers.execute(JdbcWriterAdmission.OperationClass.CONTROL, clock::now);
-            return Map.of("eligibleToCompleteNanos", System.nanoTime() - eligible, "effectiveUTC", value.value().toString());
+            return Map.of("eligibleToCompleteNanos", System.nanoTime() - eligible, "effectiveUTC", value.value().toString(),
+                    "utcBeforeEpochMs", rawBefore, "utcAfterEpochMs", System.currentTimeMillis(),
+                    "eligibleMonotonicNanos", eligible, "completedMonotonicNanos", System.nanoTime(),
+                    "clockSnapshotAfter", clock.inspect());
         }
         @PostMapping("/qualification/maintenance") public Map<String, Object> cleanup() {
             long eligible = System.nanoTime();
+            long rawBefore = System.currentTimeMillis();
             var candidate = staged.getIfAvailable();
             retention.run();
             String page = candidate == null ? "native retained facts" : candidate.maintenance();
-            return Map.of("eligibleToCompleteNanos", System.nanoTime() - eligible, "versionPage", page);
+            return Map.of("eligibleToCompleteNanos", System.nanoTime() - eligible, "versionPage", page,
+                    "utcBeforeEpochMs", rawBefore, "utcAfterEpochMs", System.currentTimeMillis(),
+                    "eligibleMonotonicNanos", eligible, "completedMonotonicNanos", System.nanoTime(),
+                    "clockSnapshotAfter", clock.inspect());
+        }
+
+        /** Test-only failure context; the collector retains HTTP failure and rejects the entire window. */
+        @org.springframework.web.bind.annotation.ExceptionHandler(RuntimeException.class)
+        public org.springframework.http.ResponseEntity<Map<String, Object>> failure(RuntimeException failure) {
+            var context = new java.util.LinkedHashMap<String, Object>();
+            context.put("error", failure.getClass().getName()); context.put("message", failure.getMessage());
+            context.put("utcEpochMs", System.currentTimeMillis()); context.put("monotonicNanos", System.nanoTime());
+            try { context.put("clockSnapshotAfter", clock.inspect()); }
+            catch (RuntimeException inspection) { context.put("inspectionError", inspection.toString()); }
+            return org.springframework.http.ResponseEntity.internalServerError().body(context);
         }
     }
 }

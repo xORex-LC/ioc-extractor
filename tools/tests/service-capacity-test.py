@@ -36,6 +36,66 @@ def policy():
 
 
 class ServiceCapacityTest(unittest.TestCase):
+    def test_named_wal_files_partition_storage_without_counting_symlinks(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            files = {'var/db/ioc-dataframe.db-wal': 13, 'var/db/ioc-service.db-wal': 17,
+                     'var/document-preparation/a/native.db-wal': 19,
+                     'var/document-preparation/b/prepared.db-wal': 23,
+                     'var/workspaces/c/stage.db-wal': 29, 'dataframe/projected.csv': 31}
+            for name, size in files.items():
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'x' * size)
+            (root / 'var/alias-wal').symlink_to(root / 'var/db/ioc-dataframe.db-wal')
+
+            value = CAP.named_storage(root)
+
+            self.assertEqual(value['wal_bytes'], 101)
+            self.assertEqual(value['canonical_wal_bytes'], 13)
+            self.assertEqual(value['service_wal_bytes'], 17)
+            self.assertEqual(value['canonical_private_wal_bytes'], 19)
+            self.assertEqual(value['document_private_wal_bytes'], 23)
+            self.assertEqual(value['other_wal_bytes'], 29)
+            self.assertEqual(value['workspace_bytes'], 71)
+            self.assertEqual(value['output_bytes'], 31)
+            self.assertEqual(value['wal_files'], {name: size for name, size in files.items() if name.endswith('-wal')})
+            (root / 'var/document-preparation/a/native.db-wal').unlink()
+            self.assertEqual(CAP.named_storage(root)['wal_bytes'], 82)
+
+    def test_sqlite_http_error_retains_safe_clock_context_and_fails_collection(self):
+        import io
+        import urllib.error
+        from unittest.mock import MagicMock
+        body = b'{"utcEpochMs":42,"clockSnapshotAfter":{"status":"UNSAFE"}}'
+        error = urllib.error.HTTPError('http://127.0.0.1/control', 500, 'failed', {}, io.BytesIO(body))
+        opener = MagicMock()
+        opener.open.side_effect = error
+        with tempfile.TemporaryDirectory() as temporary:
+            window = C5.QualificationWindow(Path(temporary), 18207)
+            with patch.object(C5.urllib.request, 'build_opener', return_value=opener):
+                window.run()
+            with self.assertRaisesRegex(RuntimeError, 'control worker failed'):
+                window.finish()
+            self.assertIn('Qualification HTTP 500', str(window.failure))
+            self.assertIn('clockSnapshotAfter', str(window.failure))
+            recorded = json.loads((Path(temporary) / 'controls.jsonl').read_text())
+            self.assertEqual(recorded['kind'], 'failure')
+            self.assertIn('UNSAFE', recorded['error'])
+            self.assertIsNone(window.result)
+
+    def test_sqlite_collector_failed_interval_is_never_a_completed_window(self):
+        samples = [dict(backend='native', status='SCREEN_PASS', local_window_upper_seconds=10),
+                   dict(backend='staged', status='ERROR', local_window_upper_seconds=120)]
+
+        value = C5.series_screen(samples, 100000, 1)
+
+        self.assertEqual(value['violations'], ['staged_incomplete_or_failed_series'])
+        self.assertEqual(value['backends']['native']['median_upper_seconds'], 10)
+        self.assertEqual(value['backends']['staged']['completed_windows'], 0)
+        self.assertIsNone(value['backends']['staged']['median_upper_seconds'])
+        self.assertIsNone(value['backends']['staged']['range_upper_seconds'])
+
     def test_sqlite_asis_contracts_preserve_csv_source_without_processed_only_binding(self):
         for artifact in CAP.BASE.ARTIFACTS:
             config = policy()

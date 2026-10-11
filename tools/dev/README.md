@@ -32,6 +32,13 @@
 | `logs.sh …` | Читать и фильтровать ECS JSON по level/event/run/diagnostic |
 | `release-notes-context.sh …` | Собрать read-only Git/PR inventory для ручной подготовки release notes |
 
+В C5 сырые `resources.jsonl` сохраняют пути и размеры каждого именованного WAL,
+суммы по canonical/service/private-категориям и соседние UTC/monotonic показания.
+Неименованные SQLite TEMP-файлы в эти суммы не входят. Control/cleanup сохраняют
+UTC до и после работы и safe-clock snapshot; HTTP-ошибка сохраняет ограниченный
+диагностический ответ и делает окно неполным. Наблюдаемое время окна с ошибкой
+collector не входит в число завершённых окон и медиану серии.
+
 Перед runtime/smoke должен существовать bootable jar:
 
 ```bash
