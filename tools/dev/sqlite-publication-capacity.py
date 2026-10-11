@@ -138,8 +138,12 @@ def freeze_runtime(jar, target):
     """Freeze the packaged application plus only explicitly selected test-only helpers."""
     with zipfile.ZipFile(jar) as archive:
         for name in archive.namelist():
-            if name.startswith(('BOOT-INF/classes/', 'BOOT-INF/lib/')) and not name.endswith('/'):
-                relative = Path(name).relative_to('BOOT-INF')
+            application_metadata = name.startswith('META-INF/') and not name.startswith(
+                ('META-INF/services/', 'META-INF/BOOT.', 'META-INF/MANIFEST.'))
+            if (name.startswith(('BOOT-INF/classes/', 'BOOT-INF/lib/')) or application_metadata) and not name.endswith('/'):
+                # Boot lifts application META-INF (including preflight/environment factories)
+                # to the JAR root. Preserve those resources in the ordinary classpath.
+                relative = Path('classes') / name if application_metadata else Path(name).relative_to('BOOT-INF')
                 if '..' in relative.parts:
                     raise ValueError('Unsafe packaged runtime path')
                 path = target / relative

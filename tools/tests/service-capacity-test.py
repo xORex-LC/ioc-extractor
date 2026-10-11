@@ -36,6 +36,30 @@ def policy():
 
 
 class ServiceCapacityTest(unittest.TestCase):
+    def test_sqlite_frozen_runtime_preserves_packaged_application_factories(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            jar = root / 'packaged.jar'
+            with zipfile.ZipFile(jar, 'w') as archive:
+                archive.writestr('META-INF/spring.factories', 'strict.preflight=enabled')
+                archive.writestr('META-INF/services/java.nio.file.spi.FileSystemProvider', 'boot.loader.only')
+                archive.writestr('BOOT-INF/classes/application.yml', 'ioc: {}')
+                archive.writestr('BOOT-INF/lib/dependency.jar', b'library')
+            helpers = root / 'bootstrap/ioc-app/target/test-classes'
+            for package, name in [('com/iocextractor/bootstrap', 'SqliteCapacityApplication'),
+                                  ('com/iocextractor/bootstrap', 'SqliteCapacityMetrics'),
+                                  ('com/iocextractor/adapter/out/store/jdbc', 'StagedCapacityBundle')]:
+                path = helpers / package / (name + '.class')
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'compiled qualification helper')
+            (helpers / 'unrelated.class').write_bytes(b'excluded')
+            with patch.object(C5, 'REPO', root):
+                C5.freeze_runtime(jar, root / 'frozen')
+            self.assertEqual((root / 'frozen/classes/META-INF/spring.factories').read_text(), 'strict.preflight=enabled')
+            self.assertFalse((root / 'frozen/classes/META-INF/services/java.nio.file.spi.FileSystemProvider').exists())
+            self.assertFalse((root / 'frozen/classes/unrelated.class').exists())
+
     def test_sqlite_control_collector_failure_cannot_publish_successful_metrics(self):
         with tempfile.TemporaryDirectory() as temporary:
             window = C5.QualificationWindow(Path(temporary), 18207)

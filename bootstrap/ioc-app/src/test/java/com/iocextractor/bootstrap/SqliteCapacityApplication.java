@@ -92,6 +92,9 @@ public final class SqliteCapacityApplication {
                         "snapshotSliceReader", JdbcSnapshotSliceReader.class);
                 ports.forEach((name, type) -> {
                     if (!registry.containsBeanDefinition(name)) {
+                        if (name.equals("canonicalImportWriter") || name.equals("dataframeImportCommitEvidenceStore")) {
+                            return; // Import ports are absent when the normal import feature is disabled.
+                        }
                         throw new IllegalStateException("Native qualification port missing: " + name);
                     }
                     registry.removeBeanDefinition(name);
