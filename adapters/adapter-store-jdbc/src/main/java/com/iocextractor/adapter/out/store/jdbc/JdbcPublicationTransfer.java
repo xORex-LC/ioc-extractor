@@ -7,8 +7,10 @@ import java.util.Map;
 /** Two bounded passes over one sealed native snapshot; no materialized change list or table-wide diff. */
 final class JdbcPublicationTransfer {
     private final JdbcTypedPublicationStore store;
-    JdbcPublicationTransfer(JdbcTypedPublicationStore store) {
-        this.store = store;
+    private final int byteLimit;
+    JdbcPublicationTransfer(JdbcTypedPublicationStore store) { this(store, 1024 * 1024); }
+    JdbcPublicationTransfer(JdbcTypedPublicationStore store, int byteLimit) {
+        this.store = store; this.byteLimit = byteLimit;
     }
 
     record Description(int chunks, int rows, long minimumDeadline) { }
@@ -70,7 +72,7 @@ final class JdbcPublicationTransfer {
         private final boolean publicationTime;
         private final JdbcPrivateChanges.EffectConsumer observer;
         private final ChunkConsumer consumer;
-        private JdbcTypedPublicationChunk chunk = new JdbcTypedPublicationChunk(store.artifacts());
+        private JdbcTypedPublicationChunk chunk = new JdbcTypedPublicationChunk(store.artifacts(), byteLimit);
 
         Accumulator(boolean publicationTime, JdbcPrivateChanges.EffectConsumer observer, ChunkConsumer consumer) {
             this.publicationTime = publicationTime; this.observer = observer; this.consumer = consumer;
@@ -81,7 +83,7 @@ final class JdbcPublicationTransfer {
             observer.accept(effect);
             if (!chunk.add(effect, publicationTime)) {
                 consumer.accept(chunk);
-                chunk = new JdbcTypedPublicationChunk(store.artifacts());
+                chunk = new JdbcTypedPublicationChunk(store.artifacts(), byteLimit);
                 if (!chunk.add(effect, publicationTime)) { throw new SQLException("Empty chunk refused a bounded effect"); }
             }
         }

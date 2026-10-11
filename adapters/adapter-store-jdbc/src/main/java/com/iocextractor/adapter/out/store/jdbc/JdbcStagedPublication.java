@@ -152,7 +152,7 @@ final class JdbcStagedPublication {
             try (var source = privateState.dataSource().getConnection()) {
                 source.setAutoCommit(false);
                 try {
-                var transfer = new JdbcPublicationTransfer(environment.store());
+                var transfer = new JdbcPublicationTransfer(environment.store(), JdbcCanonicalWorkspaceLimits.chunkBytes(privateState.limits()));
                 var description = transfer.describe(source, unit.promotion(), preparedAt.value().toEpochMilli(), prepared.deadline());
                 var writer = new TransferWriter(unit, owner, number);
                 var attempt = transfer.stage(source, unit.identity(), unit.pins(), prepared.dependencies(), description, unit.promotion(), writer);

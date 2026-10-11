@@ -178,6 +178,30 @@ class JdbcDocumentPreparationWorkspaceIT {
     }
 
     @Test
+    void defaultAdmissionRetainsPublicLimitsAndReservesCanonicalHeadroom() throws Exception {
+        var limits = new DocumentPreparationLimits(64 * 1024 * 1024, 4096, 256 * 1024, 64 * 1024,
+                2L * 1024 * 1024 * 1024, 8L * 1024 * 1024 * 1024, 256);
+        var factory = factory(limits);
+        factory.requireCanonicalCapacity();
+        Path source = temporary.resolve("headroom.txt");
+        Files.writeString(source, "example.test");
+        try (var document = factory.open(new ExtractionCommand("headroom", source, false), POLICIES);
+             var promotion = JdbcPrivatePublicationWorkspace.create(factory, "promotion", "pins");
+             var control = JdbcPrivatePublicationWorkspace.create(factory, "control", "pins")) {
+            assertThat(factory.maximumConcurrentWorkspaces()).isOne();
+            assertThat(factory.pressure().leasedWorkspaces()).isEqualTo(3);
+            assertThat(promotion.limits().maximumRowBytes()).isEqualTo(limits.maximumRowBytes());
+            assertThat(control.limits().maximumFieldBytes()).isEqualTo(limits.maximumFieldBytes());
+            try (var connection = control.dataSource().getConnection(); var statement = connection.createStatement();
+                 var rows = statement.executeQuery("PRAGMA cache_size")) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getInt(1)).isEqualTo(-512);
+            }
+        }
+        assertThat(factory.pressure().leasedWorkspaces()).isZero();
+    }
+
+    @Test
     void corruptRowLengthsCountsNamesAndDuplicateFieldsAreRejectedBeforeAllocation() throws Exception {
         var codec = new DocumentRowCodec(4096, 2048);
         for (int fields : new int[]{-1, 129}) {

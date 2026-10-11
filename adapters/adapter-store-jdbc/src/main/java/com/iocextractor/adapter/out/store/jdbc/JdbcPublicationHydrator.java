@@ -43,6 +43,8 @@ final class JdbcPublicationHydrator {
         String insertSql = "INSERT OR IGNORE INTO " + quote(table.name()) + "(" + joinedQuoted(table.columns())
                 + ") VALUES(" + placeholders(table.columns().size()) + ")";
         long count = 0;
+        long batchBytes = 0;
+        int byteLimit = JdbcCanonicalWorkspaceLimits.chunkBytes(limits);
         try (var select = base.prepareStatement(selectSql); var insert = working.prepareStatement(insertSql)) {
             JdbcSql.bind(select, parameters);
             try (var rows = select.executeQuery()) {
@@ -50,6 +52,7 @@ final class JdbcPublicationHydrator {
                     if (Thread.currentThread().isInterrupted()) { throw new SQLException("Selective hydration interrupted"); }
                     if (rows.getInt(1) != 0) { throw new SQLException("Committed native row exceeds canonical preparation limits"); }
                     long bytes = 0;
+                    var values = new java.util.ArrayList<Object>(table.columns().size());
                     for (int column = 1; column <= table.columns().size(); column++) {
                         Object value = rows.getObject(column + 1);
                         long field = JdbcPublicationChunkDigest.framedBytes(value);
@@ -57,10 +60,17 @@ final class JdbcPublicationHydrator {
                         if (field > limits.maximumFieldBytes() || bytes > limits.maximumRowBytes()) {
                             throw new SQLException("Committed native row exceeds canonical preparation limits");
                         }
-                        insert.setObject(column, value);
+                        values.add(value);
                     }
+                    if (batchBytes > 0 && batchBytes + bytes > byteLimit) {
+                        insert.executeBatch(); insert.clearBatch(); quota.run(); batchBytes = 0;
+                    }
+                    JdbcSql.bind(insert, values);
                     insert.addBatch();
-                    if (++count % 256 == 0) { insert.executeBatch(); insert.clearBatch(); quota.run(); }
+                    batchBytes += bytes;
+                    if (++count % 256 == 0 || batchBytes >= byteLimit) {
+                        insert.executeBatch(); insert.clearBatch(); quota.run(); batchBytes = 0;
+                    }
                 }
             }
             insert.executeBatch();

@@ -33,8 +33,10 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
     private final String fingerprint;
     private final Duration retention;
     private final Semaphore leases;
+    private Semaphore documentLeases;
     private final Set<Path> active = new HashSet<>();
     private final int leaseLimit;
+    private int documentLeaseLimit;
     private volatile long lastCheckedDiskBytes;
     private volatile int activeWorkspaceCount;
 
@@ -52,11 +54,13 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
         this.retention = Objects.requireNonNull(retention, "retention");
         if (retention.isNegative() || retention.isZero()) { throw new IllegalArgumentException("Pin retention must be positive"); }
         leaseLimit = Math.toIntExact(Math.min(MAXIMUM_PINS, limits.memoryBytes() / limits.leaseBytes()));
+        documentLeaseLimit = leaseLimit;
         this.leases = new Semaphore(leaseLimit, true);
+        documentLeases = new Semaphore(leaseLimit, true);
     }
 
     @Override
-    public int maximumConcurrentWorkspaces() { return leaseLimit; }
+    public int maximumConcurrentWorkspaces() { return documentLeaseLimit; }
 
     /** Shares the existing memory/disk admission with a native canonical preparation attempt. */
     CanonicalLease openCanonicalState(String identity, String pins) {
@@ -89,7 +93,7 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
                     DocumentWorkspaceFiles.write(pin, value);
                     checkDisk(directory);
                     Lease owner = lease;
-                    return new CanonicalLease(directory, limits, () -> checkDisk(directory), () -> {
+                    return new CanonicalLease(directory, JdbcCanonicalWorkspaceLimits.privateLimits(limits), () -> checkDisk(directory), () -> {
                         try { release(directory, owner); }
                         finally { leases.release(permits - 1); }
                     }, () -> discardCanonical(directory, owner, permits));
@@ -104,19 +108,23 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
         }
     }
 
-    int canonicalReadCacheKiB() { return limits.cacheKiB(); }
+    int canonicalReadCacheKiB() { return JdbcCanonicalWorkspaceLimits.privateLimits(limits).cacheKiB(); }
 
-    /** Accounts both row images, one bounded chunk and six base/private/stage caches. */
+    /** Accounts byte-bounded row/chunk bindings and six base/private/stage caches. */
     private int canonicalLeasePermits() {
-        long rows = Math.multiplyExact(512L, limits.maximumRowBytes());
-        long bytes = Math.addExact(Math.max(rows, 2 * 1024 * 1024L), limits.cacheKiB() * 6144L + 65536);
+        long bytes = JdbcCanonicalWorkspaceLimits.memoryBytes(JdbcCanonicalWorkspaceLimits.privateLimits(limits));
         return Math.toIntExact(Math.ceilDiv(bytes, limits.leaseBytes()));
     }
 
-    void requireCanonicalCapacity() {
-        if (2L * canonicalLeasePermits() >= leaseLimit) {
+    synchronized void requireCanonicalCapacity() {
+        int available = leaseLimit - 2 * canonicalLeasePermits();
+        if (available < 1) {
             throw new IllegalArgumentException("Staged canonical capacity requires promotion, control and a separate document lease");
         }
+        if (documentLeaseLimit == available) { return; }
+        if (!active.isEmpty()) { throw new IllegalStateException("Canonical headroom must be configured before intake"); }
+        documentLeaseLimit = available;
+        documentLeases = new Semaphore(available, true);
     }
 
     static final class CanonicalLease implements AutoCloseable {
@@ -154,8 +162,11 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
 
     @Override
     public DocumentPreparationWorkspace open(ExtractionCommand command, Map<String, ArtifactWritePolicy> policies) {
-        try { leases.acquire(); }
+        Semaphore documents = documentLeases;
+        boolean documentAdmitted = false;
+        try { documents.acquire(); documentAdmitted = true; leases.acquire(); }
         catch (InterruptedException failure) {
+            if (documentAdmitted) { documents.release(); }
             Thread.currentThread().interrupt();
             throw new IocExtractorException("Document workspace admission interrupted", failure);
         }
@@ -181,13 +192,17 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
                     checkDisk(directory);
                     Lease owner = lease;
                     return new JdbcDocumentPreparationWorkspace(directory, snapshot, limits, identities, policies,
-                            () -> checkDisk(directory), () -> release(directory, owner));
+                            () -> checkDisk(directory), () -> {
+                                try { release(directory, owner); }
+                                finally { documents.release(); }
+                            });
                 }
             }
         } catch (IOException | RuntimeException | Error failure) {
             closeFailedLease(directory, lease, failure);
             if (admitted) { synchronized (this) { active.remove(directory); activeWorkspaceCount = active.size(); } }
             leases.release();
+            documents.release();
             if (failure instanceof Error fatal) { throw fatal; }
             throw new IocExtractorException("Cannot open private document workspace", failure);
         }

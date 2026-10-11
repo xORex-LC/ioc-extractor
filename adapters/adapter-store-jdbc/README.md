@@ -81,6 +81,10 @@ runtime JDBC drivers.
   source scratch is disposable and is removed before seal and on failure.
   One workspace/cache serves all artifacts; its global reducer compares complete
   identity material and preserves whole-row selection and first-key order.
+  Candidate canonical admission reserves byte-bounded hydration/transfer chunks,
+  both row images and separately bounded main/TEMP caches (512 KiB each).
+  Document intake leaves one promotion and one control lease available within
+  the existing aggregate budget; public row/field limits are not reduced.
   Sealed repeatable cursors feed canonical writers and typed receipts. Receipt
   cursors can borrow the writer connection; receipt batches flush at 128 rows
   or 1 MiB estimated bytes. An individually larger binding flushes alone;

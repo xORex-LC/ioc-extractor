@@ -15,9 +15,15 @@ final class JdbcTypedPublicationChunk {
     record Row(JdbcPrivateChanges.Effect effect, String address, String timeColumns, boolean artifact) { }
     private final List<Row> rows = new ArrayList<>();
     private final Set<String> artifacts;
+    private final int byteLimit;
     private long bytes;
 
-    JdbcTypedPublicationChunk(Set<String> artifacts) { this.artifacts = Set.copyOf(artifacts); }
+    JdbcTypedPublicationChunk(Set<String> artifacts) { this(artifacts, 1024 * 1024); }
+
+    JdbcTypedPublicationChunk(Set<String> artifacts, int byteLimit) {
+        if (byteLimit < 1 || byteLimit > 1024 * 1024) { throw new IllegalArgumentException("Invalid chunk byte limit"); }
+        this.artifacts = Set.copyOf(artifacts); this.byteLimit = byteLimit;
+    }
 
     /** Returns false before retaining a row that belongs in the next chunk. */
     boolean add(JdbcPrivateChanges.Effect effect, boolean publicationTime) throws SQLException {
@@ -26,8 +32,8 @@ final class JdbcTypedPublicationChunk {
         var row = new Row(effect, identity.finish(), publicationTime ? JdbcPublicationTimes.changed(effect) : "",
                 artifacts.contains(effect.table().name()));
         long size = framedBytes(row);
-        if (size > 1024 * 1024) { throw new SQLException("One typed publication row exceeds chunk byte limit"); }
-        if (rows.size() == 256 || bytes + size > 1024 * 1024) { return false; }
+        if (size > byteLimit) { throw new SQLException("One typed publication row exceeds chunk byte limit"); }
+        if (rows.size() == 256 || bytes + size > byteLimit) { return false; }
         rows.add(row); bytes += size;
         return true;
     }

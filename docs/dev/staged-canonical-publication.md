@@ -28,6 +28,15 @@ attached stage caches are bounded. Native duplicate validation preserves a
 stricter private TEMP cap. These are admission/accounting limits, not measured
 whole-process resource acceptance.
 
+Canonical leases reserve byte-bounded hydration/transfer chunks and both row
+images, rather than hundreds of maximum-size rows. Private canonical main/TEMP
+caches are capped at 512 KiB each; configured document caches and public row/field
+limits remain unchanged. The document lease limit leaves room for one promotion
+and one control working set. Defaults retain the 64 MiB aggregate budget and
+256 KiB row / 64 KiB field contract. A full budget rejects canonical admission
+instead of waiting while retaining another lease. These bounds do not establish measured
+whole-service RSS or throughput.
+
 Disk accounting uses the file walker's observed attributes. SQLite can remove
 its known WAL/SHM/journal sidecars between listing and attribute reads; their
 disappearance is tolerated. Present sidecars still count against quota. Missing
