@@ -42,7 +42,54 @@ class SqlitePublicationExperimentIT {
     @TempDir Path directory;
 
     @Test
-    void emptyCaptureRetainsOnlyRowReferencesAndFinalValuesAcrossNegativeIdsAndReinsertion() throws Exception {
+    void emptyCapturePagesSignedNativeIdsIncludingLongMinimumWithoutSkippingTheFirstPage() throws Exception {
+        try (var fixture = new Fixture(directory); var c = fixture.dataSource.getConnection()) {
+            JdbcPublicationTable.execute(c, "CREATE TABLE signed_capture(id INTEGER PRIMARY KEY,value TEXT)");
+            var table = JdbcPublicationTable.inspect(c, "signed_capture");
+            JdbcPrivateChangeCapture.install(c, List.of(table));
+            c.setAutoCommit(false);
+            try (var insert = c.prepareStatement("INSERT INTO signed_capture VALUES(?,?)")) {
+                for (int ordinal = 0; ordinal < 257; ordinal++) {
+                    insert.setLong(1, Long.MIN_VALUE + ordinal); insert.setString(2, "value-" + ordinal); insert.addBatch();
+                }
+                insert.executeBatch();
+            }
+            var values = new ArrayList<String>();
+            var first = JdbcPrivateChanges.read(c, table, JdbcPrivateChanges.Cursor.START, effect -> values.add((String) effect.value("value")));
+            assertThat(values).hasSize(256).startsWith("value-0").endsWith("value-255");
+            var tail = JdbcPrivateChanges.read(c, table, first, effect -> values.add((String) effect.value("value")));
+            assertThat(values).hasSize(257).endsWith("value-256");
+            assertThat(JdbcPrivateChanges.read(c, table, tail, effect -> { throw new AssertionError("no remaining address"); })).isEqualTo(tail);
+            c.rollback();
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"id,WITHOUT ROWID", "rowid,''"})
+    void captureFallsBackToTypedKeysWhenNativeRowReferencesAreUnavailable(String key, String suffix) throws Exception {
+        try (var fixture = new Fixture(directory); var c = fixture.dataSource.getConnection()) {
+            JdbcPublicationTable.execute(c, "CREATE TABLE fallback_capture(" + key + " INTEGER PRIMARY KEY,value BLOB) " + suffix);
+            var table = JdbcPublicationTable.inspect(c, "fallback_capture");
+            JdbcPrivateChangeCapture.install(c, List.of(table));
+            c.setAutoCommit(false);
+            try (var insert = c.prepareStatement("INSERT INTO fallback_capture VALUES(?,?)")) {
+                insert.setInt(1, -1); insert.setBytes(2, new byte[]{0, -1, 2}); assertThat(insert.executeUpdate()).isOne();
+            }
+            var effects = new ArrayList<JdbcPrivateChanges.Effect>();
+            JdbcPrivateChanges.read(c, table, JdbcPrivateChanges.Cursor.START, effects::add);
+            assertThat(effects).singleElement().satisfies(effect -> {
+                assertThat(effect.value(key)).isEqualTo(-1);
+                assertThat((byte[]) effect.value("value")).containsExactly((byte) 0, (byte) -1, (byte) 2);
+                assertThat(effect.previous()).isNull();
+            });
+            preparedUpdate(c, "DELETE FROM fallback_capture");
+            effects.clear(); JdbcPrivateChanges.read(c, table, JdbcPrivateChanges.Cursor.START, effects::add);
+            assertThat(effects).isEmpty(); c.rollback();
+        }
+    }
+
+    @Test
+    void emptyCaptureStreamsFinalValuesAcrossNegativeIdsAndReinsertion() throws Exception {
         try (var fixture = new Fixture(directory); var c = fixture.dataSource.getConnection()) {
             JdbcPublicationTable.execute(c, "CREATE TABLE compact_capture(id INTEGER PRIMARY KEY,value TEXT)");
             var table = JdbcPublicationTable.inspect(c, "compact_capture");
@@ -53,13 +100,13 @@ class SqlitePublicationExperimentIT {
             preparedUpdate(c, "DELETE FROM compact_capture WHERE id=3");
             preparedUpdate(c, "INSERT INTO compact_capture VALUES(3,NULL)");
             var effects = new ArrayList<JdbcPrivateChanges.Effect>();
-            long last = JdbcPrivateChanges.read(c, table, 0, effects::add);
+            var last = JdbcPrivateChanges.read(c, table, JdbcPrivateChanges.Cursor.START, effects::add);
             assertThat(effects).hasSize(2).allSatisfy(effect -> {
                 assertThat(effect.previous()).isNull(); assertThat(effect.deleted()).isFalse();
             });
             assertThat(effects).extracting(effect -> effect.value("value")).containsExactly("final", null);
             assertThat(queryNumber(c, "SELECT COUNT(*) FROM publication_before_compact_capture")).isZero();
-            assertThat(queryNumber(c, "SELECT COUNT(*) FROM pragma_table_info('publication_delta_compact_capture')")).isEqualTo(2);
+            assertThat(queryNumber(c, "SELECT COUNT(*) FROM pragma_table_info('publication_delta_compact_capture')")).isEqualTo(1);
             assertThat(JdbcPrivateChanges.read(c, table, last, effects::add)).isEqualTo(last);
             c.rollback();
         }
@@ -109,6 +156,42 @@ class SqlitePublicationExperimentIT {
             JdbcPublicationTable.execute(connection, "CREATE TABLE keyless(value TEXT)");
             assertThatThrownBy(() -> JdbcPublicationTable.inspect(connection, "keyless"))
                     .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("primary key");
+        }
+    }
+
+    @Test
+    void selectiveHydrationPreservesWideRowsAcrossMultipleByteBoundedBatches() throws Exception {
+        var limits = new DocumentPreparationLimits(4 * 1024 * 1024, 64, 4096, 2048, 16 * 1024 * 1024, 256 * 1024 * 1024, 256);
+        try (var source = new Fixture(directory);
+             var target = new Fixture(java.nio.file.Files.createDirectory(directory.resolve("wide-hydration")));
+             var base = source.dataSource.getConnection(); var working = target.dataSource.getConnection()) {
+            String ddl = "CREATE TABLE wide_inputs(id INTEGER PRIMARY KEY,value TEXT,payload BLOB)";
+            JdbcPublicationTable.execute(base, ddl); JdbcPublicationTable.execute(working, ddl);
+            String text = "Ω".repeat(500);
+            byte[] payload = new byte[1024]; java.util.Arrays.fill(payload, (byte) -1);
+            try (var insert = base.prepareStatement("INSERT INTO wide_inputs VALUES(?,?,?)")) {
+                for (int index = 0; index < 140; index++) {
+                    insert.setInt(1, index); insert.setString(2, text); insert.setBytes(3, payload); insert.addBatch();
+                }
+                insert.executeBatch();
+            }
+            base.setAutoCommit(false); working.setAutoCommit(false);
+            var checkpoints = new java.util.concurrent.atomic.AtomicInteger();
+            var hydrator = new JdbcPublicationHydrator(base, working, List.of(), checkpoints::incrementAndGet, limits);
+
+            assertThat(hydrator.copy("wide_inputs", "id>=?", List.of(0))).isEqualTo(140);
+
+            assertThat(checkpoints.get()).isGreaterThan(1);
+            try (var query = working.prepareStatement("SELECT id,value,payload FROM wide_inputs ORDER BY id");
+                 var rows = query.executeQuery()) {
+                for (int index = 0; index < 140; index++) {
+                    assertThat(rows.next()).isTrue(); assertThat(rows.getInt(1)).isEqualTo(index);
+                    assertThat(rows.getString(2)).isEqualTo(text); assertThat(rows.getBytes(3)).containsExactly(payload);
+                }
+                assertThat(rows.next()).isFalse();
+            }
+            working.rollback(); base.rollback();
+            assertThat(queryNumber(working, "SELECT COUNT(*) FROM wide_inputs")).isZero(); working.rollback();
         }
     }
 
@@ -467,7 +550,7 @@ class SqlitePublicationExperimentIT {
                             .isInstanceOf(SQLException.class);
                 }
                 var parents = new ArrayList<JdbcPrivateChanges.Effect>();
-                JdbcPrivateChanges.read(c, parent, 0, parents::add);
+                JdbcPrivateChanges.read(c, parent, JdbcPrivateChanges.Cursor.START, parents::add);
                 assertThat(parents).hasSize(2);
                 assertThat(parents).filteredOn(JdbcPrivateChanges.Effect::deleted).singleElement()
                         .satisfies(effect -> assertThat(effect.previous()).containsExactly(1, "old"));
@@ -477,7 +560,7 @@ class SqlitePublicationExperimentIT {
                             assertThat(effect.previous()).isNull();
                         });
                 var children = new ArrayList<JdbcPrivateChanges.Effect>();
-                JdbcPrivateChanges.read(c, child, 0, children::add);
+                JdbcPrivateChanges.read(c, child, JdbcPrivateChanges.Cursor.START, children::add);
                 assertThat(children).singleElement().satisfies(effect -> {
                     assertThat(effect.deleted()).isTrue();
                     assertThat(effect.previous()).containsExactly(1, "feed", 3);
@@ -498,12 +581,12 @@ class SqlitePublicationExperimentIT {
                 return shape;
             });
             try (var c = fixture.dataSource.getConnection()) {
-                assertThatThrownBy(() -> JdbcPrivateChanges.read(c, table, 0, ignored -> { }))
+                assertThatThrownBy(() -> JdbcPrivateChanges.read(c, table, JdbcPrivateChanges.Cursor.START, ignored -> { }))
                         .isInstanceOf(IllegalArgumentException.class);
                 c.setAutoCommit(false);
                 JdbcPublicationTable.execute(c, "UPDATE capture_keys SET b=2,value='new'");
                 var effects = new ArrayList<JdbcPrivateChanges.Effect>();
-                JdbcPrivateChanges.read(c, table, 0, effects::add);
+                JdbcPrivateChanges.read(c, table, JdbcPrivateChanges.Cursor.START, effects::add);
                 assertThat(effects).hasSize(2);
                 assertThat(effects).filteredOn(JdbcPrivateChanges.Effect::deleted).singleElement()
                         .satisfies(effect -> assertThat(effect.previous()).containsExactly("same", 1, "old"));
@@ -514,7 +597,7 @@ class SqlitePublicationExperimentIT {
                         });
                 c.rollback();
                 effects.clear();
-                JdbcPrivateChanges.read(c, table, 0, effects::add);
+                JdbcPrivateChanges.read(c, table, JdbcPrivateChanges.Cursor.START, effects::add);
                 assertThat(effects).isEmpty();
                 c.rollback();
             }
@@ -534,7 +617,7 @@ class SqlitePublicationExperimentIT {
                 JdbcPublicationTable.execute(c, "DELETE FROM sparse_keys WHERE a='old'");
                 JdbcPublicationTable.execute(c, "INSERT INTO sparse_keys VALUES('old',1,'replaced')");
                 var effects = new ArrayList<JdbcPrivateChanges.Effect>();
-                JdbcPrivateChanges.read(c, shape, 0, effects::add);
+                JdbcPrivateChanges.read(c, shape, JdbcPrivateChanges.Cursor.START, effects::add);
                 assertThat(effects).hasSize(2);
                 assertThat(effects).filteredOn(effect -> effect.value("a").equals("new")).singleElement()
                         .satisfies(effect -> {

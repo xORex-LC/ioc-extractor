@@ -130,7 +130,7 @@ runtime JDBC drivers.
   interruption cleanup, fenced workers, slot-control conflicts and pinned readers
   through real native ports and the service import ledger. Capacity acceptance
   and default-runtime activation remain separate gates.
-  Initially empty private families capture integer row references; other families
+  Initially empty private families stream their sealed native rows; other families
   preserve typed before-images and final deltas. Prior immutable receipt payloads
   remain canonical, with dependency-pinned actual counts validating completeness.
   Maintenance with no effects does not invalidate prepared promotion epochs.

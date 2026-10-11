@@ -178,6 +178,21 @@ class JdbcDocumentPreparationWorkspaceIT {
     }
 
     @Test
+    void canonicalHeadroomCannotBeReconfiguredAfterIntakeEvenWhenTheLastDocumentClosed() throws Exception {
+        var factory = factory(canonicalLimits());
+        try (var document = factory.open(command("already-started"), POLICIES)) {
+            assertThatThrownBy(factory::requireCanonicalCapacity).hasMessageContaining("before intake");
+        }
+        assertThat(factory.pressure().leasedWorkspaces()).isZero();
+        assertThatThrownBy(factory::requireCanonicalCapacity).hasMessageContaining("before intake");
+        var beforeIntake = factory(canonicalLimits());
+        try (var canonical = JdbcPrivatePublicationWorkspace.create(beforeIntake, "already-preparing", "pins")) {
+            assertThatThrownBy(beforeIntake::requireCanonicalCapacity).hasMessageContaining("before intake");
+        }
+        beforeIntake.requireCanonicalCapacity();
+    }
+
+    @Test
     void defaultAdmissionRetainsPublicLimitsAndReservesCanonicalHeadroom() throws Exception {
         var limits = new DocumentPreparationLimits(64 * 1024 * 1024, 4096, 256 * 1024, 64 * 1024,
                 2L * 1024 * 1024 * 1024, 8L * 1024 * 1024 * 1024, 256);

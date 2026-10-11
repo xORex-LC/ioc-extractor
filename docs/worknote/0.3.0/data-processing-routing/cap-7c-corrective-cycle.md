@@ -50,7 +50,7 @@ delta and absent-before copies occupied 1,188,724,736 bytes; dropping absent
 before-images alone left 792,489,984 bytes. This is a storage-shape diagnostic,
 not pinned-driver, durability or full-service timing evidence.
 
-Capture now keeps integer row references for initially empty rowid families;
+Capture now streams final native rows for initially empty rowid families;
 nonempty families retain sparse real before-images and final typed values.
 Key movement, reinsertion, transient deletion, cascades and negative native IDs
 retain their observable outcomes. Earlier artifact receipt payloads/positions
@@ -68,3 +68,65 @@ Regression tests cover backward UTC, reopened import state and document
 registration finalization after an interrupted terminal transition. Existing
 receipt-first recovery/crash contracts remain mandatory. ING-16 retains the
 unexplained host-clock cause and independent safe-clock boundary.
+
+## Boundary tests and analyzer review
+
+The final adapter integration cohort passed 505 cases without failures (one
+offline external skip). New regressions cover 130 positions per artifact across
+an incomplete/complete multi-artifact receipt, bounded batches with long opaque
+receipt identities, and receipt-only import finalization after stage deletion
+and backward UTC. Recovery advances the service ledger without changing canonical
+facts; new canonical work still rejects unsafe UTC.
+
+Capture cursor tests include a business column named `rowid`, typed BLOB values,
+`WITHOUT ROWID` fallback, and 257 signed native IDs starting at `Long.MIN_VALUE`.
+The physical `_rowid_` cursor has an explicit unstarted state, avoiding both
+business-column shadowing and loss of negative addresses. Admission configuration
+and intake share a monitor; reconfiguration after intake is rejected even after
+the first workspace closes.
+
+`CAP-7C-COR-SQL` reviews three new exact SpotBugs SQL identities: the quoted
+catalog existence probe, fixed empty-family marker DDL, and a pinned actual-count
+query with a bound receipt identity. Three prior SQL identities were refreshed
+for their changed bytecode/method anchors. Their trust boundary remains validated
+adapter identifiers and literal predicates; business data remains bound. The
+genuine admission synchronization findings were fixed rather than accepted.
+No analyzer scope, coverage floor, missed-branch budget or input quota was relaxed.
+The second full gate retained a two-branch missed-count regression and a new
+cursor naming signal. The cursor now uses `nativeAddress`; redundant null
+validation of its adapter-owned paging token was removed. A wide-row hydration
+regression checks exact Unicode/BLOB payloads, all keys and rollback across
+multiple byte-triggered flushes. Its focused suite passes; the earlier failed
+gate is not reported as successful verification.
+Earlier failed gate logs remain under the local corrective evidence directory;
+the final full gates and repeated C5 results are recorded below when complete.
+
+The third full gate failed two existing reducer invocations (cache 64/4096 KiB,
+seed `4204`) at their unchanged 20s timeout. The interruption reached seal-file
+I/O; host I/O PSI at diagnosis was 14.40% full over 60s. This identifies resource
+contention as a possible contributor, not a proven sole cause. Owner: CAP-7C;
+disposition: preserve `.dev/corrective-verify-3.log`, execute the complete gate
+under declared two-worker Maven parallelism (`MAVEN_OPTS=-XX:ActiveProcessorCount=2`),
+and retain this qualification limitation. No automatic retry, test-universe change,
+timeout increase or workload reduction is introduced.
+
+That bounded full build passed all gates: JDBC 506 cases (one external skip),
+aggregate line/branch coverage 92.32%/85.76%, SpotBugs 168 exact accepted identities
+and zero visible findings, CPD 24/24 groups. Subsequent PMD identified two new
+complexity findings. Query-shape construction and one-row byte validation were
+extracted from execution without adding payload encodings or changing flush order.
+The focused capture/hydration suite passes. The query helper changed the existing
+read SQL finding's observed priority/rank to 3/15; its exact selector was reviewed
+again against the same quoted-catalog/bound-value boundary. Final gates follow
+this last source refinement.
+
+The final source gate passes with two Maven workers: aggregate coverage
+92.32%/85.78%, SpotBugs 168 exact accepted/zero visible and CPD 24/24.
+PMD policy passes at its unchanged 20 findings. The changed-source policy signal
+is the existing 13-field `DocumentAdmission` constructor; its shape is unchanged.
+Watchlist execution passes and retains 80 report-only signals. Workspace-factory
+lease signals were reviewed against callback ownership on success and explicit
+failure closure/permit release; fatal-error rethrows preserve the original error,
+and wrapped exceptions preserve their cause. No suppression/count budget was added
+for these watchlist signals. Offline documentation links pass. C5 measurement
+starts only after these source changes are committed and Maven has stopped.

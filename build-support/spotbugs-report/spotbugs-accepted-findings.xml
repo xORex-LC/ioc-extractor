@@ -1536,7 +1536,7 @@
     <finding id="CAP-7C-C3-SB-002" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="6c43878af2232edeb4df74dad1c6a008" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPrivateChangeCapture" />
         <method name="install" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationTable;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPrivateChangeCapture.java" startLine="45" bytecode="295" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPrivateChangeCapture.java" startLine="46" bytecode="302" />
         <suppression>
             <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPrivateChangeCapture" />
@@ -1665,10 +1665,10 @@
         </suppression>
         <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
     </finding>
-    <finding id="CAP-7C-C3-SB-014" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="3e54d93621abe8d99226c3cc237125b9" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+    <finding id="CAP-7C-C3-SB-014" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="1ad4daf494b6d2180c021cb13f82a4f1" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-COR-SQL" review="staged-publication-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPrivateChanges" />
-        <method name="read" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationTable;JLcom/iocextractor/adapter/out/store/jdbc/JdbcPrivateChanges$EffectConsumer;)J" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPrivateChanges.java" startLine="45" bytecode="158" />
+        <method name="read" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationTable;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPrivateChanges$Cursor;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPrivateChanges$EffectConsumer;)Lcom/iocextractor/adapter/out/store/jdbc/JdbcPrivateChanges$Cursor;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPrivateChanges.java" startLine="45" bytecode="103" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPrivateChanges" />
@@ -1679,7 +1679,7 @@
     <finding id="CAP-7C-C3-SB-015" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="62cce6a75f7079bd147cce5019a3dc9f" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationHydrator" />
         <method name="copy" signature="(Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationTable;Ljava/lang/String;Ljava/util/List;)J" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationHydrator.java" startLine="46" bytecode="102" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationHydrator.java" startLine="49" bytecode="114" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationHydrator" />
@@ -1829,5 +1829,38 @@
             <Method name="references" />
         </suppression>
         <rationale>Version-family identifiers come from the validated catalog; other tables and column names are fixed adapter call-site literals. Both identifiers are validated and quoted. The unit identity is a bound numeric value. Operational cleanup tests preserve current facts, anchors and recovery pins while reclaiming obsolete control headers.</rationale>
+    </finding>
+    <finding id="CAP-7C-COR-SB-001" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="14aa5b63da2363fca1e020099c3dda33" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-COR-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPrivateChangeCapture" />
+        <method name="empty" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationTable;)Z" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPrivateChangeCapture.java" startLine="52" bytecode="20" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPrivateChangeCapture" />
+            <Method name="empty" />
+        </suppression>
+        <rationale>The existence probe uses a quoted native table identifier from the adapter catalog and a fixed SELECT/LIMIT template. It accepts no business value as SQL. Capture tests cover empty and populated families, key movement and the fallback shapes; the corrective-cycle worknote records this boundary review.</rationale>
+    </finding>
+    <finding id="CAP-7C-COR-SB-002" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="f4eeffafa765758797a619516b35cefd" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-COR-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPrivateChangeCapture" />
+        <method name="installEmptyFamily" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationTable;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPrivateChangeCapture.java" startLine="59" bytecode="13" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPrivateChangeCapture" />
+            <Method name="installEmptyFamily" />
+        </suppression>
+        <rationale>The marker table name derives exclusively from a quoted catalog identifier. Its single-column DDL is an adapter literal; no IOC, source or receipt value enters DDL. Sealed-family regression tests preserve typed payloads, deletion and signed keyset paging; the corrective-cycle worknote records this exact SQL review.</rationale>
+    </finding>
+    <finding id="CAP-7C-COR-SB-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="938153aa3760274aa5093dbde775213e" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-COR-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcSelectedCanonicalBase" />
+        <method name="ordinaryReceipt" signature="(Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)Lcom/iocextractor/adapter/out/store/jdbc/JdbcConfirmationReceiptBase;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcSelectedCanonicalBase.java" startLine="60" bytecode="148" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcSelectedCanonicalBase" />
+            <Method name="ordinaryReceipt" />
+        </suppression>
+        <rationale>The receipt table name derives from a validated artifact schema and passes identifier validation and quoting. Receipt identity is a bound parameter in a fixed COUNT/WHERE template. Multi-artifact receipt, exact field-position and receipt-only recovery regressions preserve completeness and immutable payload semantics; see the corrective-cycle SQL review.</rationale>
     </finding>
 </spotbugs-accepted-findings>

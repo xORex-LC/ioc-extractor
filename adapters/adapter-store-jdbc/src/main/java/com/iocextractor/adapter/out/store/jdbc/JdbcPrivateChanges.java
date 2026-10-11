@@ -26,46 +26,54 @@ final class JdbcPrivateChanges {
         }
     }
 
+    record Cursor(boolean started, long nativeAddress) {
+        static final Cursor START = new Cursor(false, 0);
+    }
+
     /** Pages cannot materialize a table or fan-in in heap; the caller bounds payload bytes separately. */
-    static long read(Connection connection, JdbcPublicationTable table, long after, EffectConsumer consumer)
+    static Cursor read(Connection connection, JdbcPublicationTable table, Cursor after, EffectConsumer consumer)
             throws SQLException {
-        if (connection.getAutoCommit() || after < 0) {
-            throw new IllegalArgumentException("Private effects require a pinned transaction and valid cursor");
+        if (connection.getAutoCommit()) {
+            throw new IllegalArgumentException("Private effects require a pinned transaction");
         }
         boolean emptyFamily = emptyFamily(connection, table);
         boolean journal = table.columns().contains("_lifecycle_id") && table.columns().contains("row_key")
                 && !table.name().endsWith("_history") && hasJournal(connection);
-        String renewal = journal ? "COALESCE(j.renew_validity,0)" : "0";
-        String valuesAlias = emptyFamily ? "v" : "d";
-        String journalJoin = journal ? " LEFT JOIN private_mutation_effect j ON j.artifact=?"
-                + " AND j.canonical_row_id=" + valuesAlias + ".id AND j.lifecycle_id=" + valuesAlias + "._lifecycle_id" : "";
-        String sql = emptyFamily ? "SELECT d.publication_sequence," + table.selectColumns("v") + ",0,"
-                + String.join(",", Collections.nCopies(table.columns().size(), "NULL"))
-                + ",0," + renewal + " FROM " + quote(table.delta()) + " d JOIN " + quote(table.name())
-                + " v ON v.rowid=d.publication_rowid" + journalJoin
-                + " WHERE d.publication_sequence>? ORDER BY d.publication_sequence LIMIT 256"
-                : "SELECT d.rowid," + table.selectColumns("d") + ",d.publication_deleted,"
-                + table.selectColumns("b") + ",b.publication_present," + renewal + " FROM "
-                + quote(table.delta()) + " d LEFT JOIN " + quote(table.before()) + " b ON "
-                + table.matchKeys("b", "d") + journalJoin + " WHERE d.rowid>? ORDER BY d.rowid LIMIT 256";
-        long last = after;
+        String sql = selectSql(table, emptyFamily, journal, after.started());
+        long last = 0;
+        boolean advanced = false;
         try (var statement = connection.prepareStatement(sql)) {
             int parameter = 1;
             if (journal) { statement.setString(parameter++, table.name()); }
-            statement.setLong(parameter, after);
+            if (after.started()) { statement.setLong(parameter, after.nativeAddress()); }
             try (var rows = statement.executeQuery()) {
                 while (rows.next()) {
-                    last = rows.getLong(1);
+                    last = rows.getLong(1); advanced = true;
                     emit(table, rows, consumer);
                 }
             }
         }
-        return last;
+        return advanced ? new Cursor(true, last) : after;
+    }
+
+    private static String selectSql(JdbcPublicationTable table, boolean emptyFamily, boolean journal, boolean started) {
+        String renewal = journal ? "COALESCE(j.renew_validity,0)" : "0";
+        String journalJoin = journal ? " LEFT JOIN private_mutation_effect j ON j.artifact=?"
+                + " AND j.canonical_row_id=d.id AND j.lifecycle_id=d._lifecycle_id" : "";
+        String payload = emptyFamily ? table.selectColumns("d") + ",0,"
+                + String.join(",", Collections.nCopies(table.columns().size(), "NULL")) + ",0," + renewal
+                : table.selectColumns("d") + ",d.publication_deleted," + table.selectColumns("b") + ",b.publication_present," + renewal;
+        String source = emptyFamily ? quote(table.name()) + " d" : quote(table.delta()) + " d LEFT JOIN "
+                + quote(table.before()) + " b ON " + table.matchKeys("b", "d");
+        // Business columns must begin with a letter; the native catalog reserves
+        // _rowid_, so a public column named rowid cannot shadow this cursor.
+        return "SELECT d._rowid_," + payload + " FROM " + source + journalJoin
+                + (started ? " WHERE d._rowid_>?" : "") + " ORDER BY d._rowid_ LIMIT 256";
     }
 
     private static boolean emptyFamily(Connection connection, JdbcPublicationTable table) throws SQLException {
-        try (var statement = connection.prepareStatement("SELECT COUNT(*) FROM pragma_table_info(?) HAVING COUNT(*)=2"
-                + " AND SUM(name IN('publication_sequence','publication_rowid'))=2")) {
+        try (var statement = connection.prepareStatement("SELECT COUNT(*) FROM pragma_table_info(?) HAVING COUNT(*)=1"
+                + " AND SUM(name='publication_empty')=1")) {
             statement.setString(1, table.delta());
             try (var rows = statement.executeQuery()) { return rows.next(); }
         }

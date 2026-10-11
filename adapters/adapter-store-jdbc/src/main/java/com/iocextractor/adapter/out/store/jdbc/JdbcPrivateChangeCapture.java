@@ -54,19 +54,9 @@ final class JdbcPrivateChangeCapture {
         }
     }
 
-    /** An empty pinned family has no before-images; references avoid a second copy of every inserted payload/key. */
+    /** All final rows in an initially empty pinned family are new; no payload/address copy is necessary. */
     private static void installEmptyFamily(Connection connection, JdbcPublicationTable table) throws SQLException {
-        execute(connection, "CREATE TABLE " + quote(table.delta())
-                + "(publication_sequence INTEGER PRIMARY KEY AUTOINCREMENT, publication_rowid INTEGER NOT NULL UNIQUE)");
-        for (String operation : List.of("INSERT", "UPDATE", "DELETE")) {
-            String remove = operation.equals("INSERT") ? "" : "DELETE FROM " + quote(table.delta())
-                    + " WHERE publication_rowid=OLD.rowid"
-                    + (operation.equals("UPDATE") ? " AND OLD.rowid<>NEW.rowid" : "") + "; ";
-            String retain = operation.equals("DELETE") ? "" : "INSERT INTO " + quote(table.delta())
-                    + "(publication_rowid) VALUES(NEW.rowid) ON CONFLICT(publication_rowid) DO NOTHING; ";
-            execute(connection, "CREATE TRIGGER " + quote("publication_capture_" + table.name() + "_" + operation)
-                    + " AFTER " + operation + " ON " + quote(table.name()) + " BEGIN " + remove + retain + "END");
-        }
+        execute(connection, "CREATE TABLE " + quote(table.delta()) + "(publication_empty INTEGER)");
     }
 
     private static String retainBefore(JdbcPublicationTable table) {

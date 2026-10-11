@@ -8,9 +8,6 @@ record JdbcConfirmationReceiptBase(String receipt, Map<String, Long> rows) {
 
     JdbcConfirmationReceiptBase {
         rows = Map.copyOf(rows);
-        if (rows.size() > 128 || rows.values().stream().anyMatch(count -> count < 0)) {
-            throw new IllegalArgumentException("Invalid committed receipt counts");
-        }
     }
 
     long count(String receiptId, String artifact) {

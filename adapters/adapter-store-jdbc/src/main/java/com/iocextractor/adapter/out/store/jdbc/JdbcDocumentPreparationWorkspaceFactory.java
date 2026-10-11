@@ -37,6 +37,7 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
     private final Set<Path> active = new HashSet<>();
     private final int leaseLimit;
     private int documentLeaseLimit;
+    private boolean intakeStarted;
     private volatile long lastCheckedDiskBytes;
     private volatile int activeWorkspaceCount;
 
@@ -60,7 +61,7 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
     }
 
     @Override
-    public int maximumConcurrentWorkspaces() { return documentLeaseLimit; }
+    public synchronized int maximumConcurrentWorkspaces() { return documentLeaseLimit; }
 
     /** Shares the existing memory/disk admission with a native canonical preparation attempt. */
     CanonicalLease openCanonicalState(String identity, String pins) {
@@ -122,7 +123,7 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
             throw new IllegalArgumentException("Staged canonical capacity requires promotion, control and a separate document lease");
         }
         if (documentLeaseLimit == available) { return; }
-        if (!active.isEmpty()) { throw new IllegalStateException("Canonical headroom must be configured before intake"); }
+        if (intakeStarted || !active.isEmpty()) { throw new IllegalStateException("Canonical headroom must be configured before intake"); }
         documentLeaseLimit = available;
         documentLeases = new Semaphore(available, true);
     }
@@ -162,7 +163,8 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
 
     @Override
     public DocumentPreparationWorkspace open(ExtractionCommand command, Map<String, ArtifactWritePolicy> policies) {
-        Semaphore documents = documentLeases;
+        Semaphore documents;
+        synchronized (this) { intakeStarted = true; documents = documentLeases; }
         boolean documentAdmitted = false;
         try { documents.acquire(); documentAdmitted = true; leases.acquire(); }
         catch (InterruptedException failure) {

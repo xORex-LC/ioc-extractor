@@ -58,10 +58,10 @@ final class JdbcPublicationTransfer {
                       ChunkConsumer consumer) throws SQLException {
         var accumulator = new Accumulator(publicationTime, observer, consumer);
         for (var table : store.tables()) {
-            long after = 0;
+            var after = JdbcPrivateChanges.Cursor.START;
             while (true) {
-                long next = JdbcPrivateChanges.read(working, table, after, accumulator::add);
-                if (next == after) { break; }
+                var next = JdbcPrivateChanges.read(working, table, after, accumulator::add);
+                if (next.equals(after)) { break; }
                 after = next;
             }
         }

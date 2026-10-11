@@ -54,8 +54,8 @@ final typed values, NULL and cascaded tombstones. An explicit mutation journal
 preserves renewals even when timestamps have not changed. Two passes over one
 sealed snapshot describe and transfer at most 256 effects / 1 MiB per chunk.
 
-An initially empty rowid family captures integer row references and reads final
-values from the sealed native table. Deleted transient rows contribute nothing;
+An initially empty rowid family streams final rows directly from the sealed
+native table, without a second payload or address representation. Deleted transient rows contribute nothing;
 key changes retain only their final address. Nonempty families retain one initial
 before-image per changed address and the final typed delta. This avoids copying
 every new receipt field-position payload and composite key twice. A native

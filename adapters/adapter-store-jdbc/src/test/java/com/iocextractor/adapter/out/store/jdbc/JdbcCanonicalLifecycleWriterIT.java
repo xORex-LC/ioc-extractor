@@ -31,6 +31,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
@@ -57,6 +58,38 @@ class JdbcCanonicalLifecycleWriterIT {
     private HikariDataSource dataSource;
     private List<DataframeArtifactSchema> schemas;
     private MutableTimeSource timeSource;
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {2048, 262144})
+    void opaqueReceiptIdentitiesPreservePositionsAcrossByteBoundedBatchFlushes(int identityLength) {
+        var id = "r".repeat(identityLength);
+        var context = receipt(id, 1);
+        var records = new ArrayList<CanonicalRecordConfirmation>();
+        int count = identityLength > 65536 ? 1 : 130;
+        for (int ordinal = 0; ordinal < count; ordinal++) {
+            var original = row("wide-" + ordinal, "wide-" + ordinal + ".example");
+            records.add(new CanonicalRecordConfirmation(original.rowKey(), new PreparedArtifactRow(
+                    original.preparedRow().template(), Optional.of("id"), Map.of("value", new OccurrencePosition(ordinal)))));
+        }
+
+        var registration = new JdbcObservationRegistrationStore(dataSource, ALLOCATOR_CLOCK)
+                .registerNew(new ObservationId("wide-receipt"), ObservationOrigin.DOCUMENT);
+        writer(JdbcLifecycleTransactionObserver.NOOP).confirm(new CanonicalArtifactConfirmation(registration.observationId(),
+                "source-key", context, "masks", List.of("id", "value", "source", "time_first_seen", "time_last_seen"),
+                records, registration));
+
+        var recovered = new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30))
+                .findComplete("source-key", "policy-v1", EffectiveTime.at(START)).orElseThrow();
+        assertThat(recovered.id().value()).isEqualTo(id);
+        try (var rows = recovered.artifacts().getFirst().records().open()) {
+            for (int ordinal = 0; ordinal < count; ordinal++) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.value().preparedRow().orderedFieldPositions()).containsEntry("value", new OccurrencePosition(ordinal));
+                assertThat(rows.value().preparedRow().template().value("value")).isEqualTo("wide-" + ordinal + ".example");
+            }
+            assertThat(rows.next()).isFalse();
+        }
+    }
 
     @Test
     void alteredSharedReceiptIdentityCannotCommitTheRemainingArtifact() throws Exception {

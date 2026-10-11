@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
@@ -51,17 +52,8 @@ final class JdbcPublicationHydrator {
                 while (rows.next()) {
                     if (Thread.currentThread().isInterrupted()) { throw new SQLException("Selective hydration interrupted"); }
                     if (rows.getInt(1) != 0) { throw new SQLException("Committed native row exceeds canonical preparation limits"); }
-                    long bytes = 0;
                     var values = new java.util.ArrayList<Object>(table.columns().size());
-                    for (int column = 1; column <= table.columns().size(); column++) {
-                        Object value = rows.getObject(column + 1);
-                        long field = JdbcPublicationChunkDigest.framedBytes(value);
-                        bytes = Math.addExact(bytes, field);
-                        if (field > limits.maximumFieldBytes() || bytes > limits.maximumRowBytes()) {
-                            throw new SQLException("Committed native row exceeds canonical preparation limits");
-                        }
-                        values.add(value);
-                    }
+                    long bytes = readValues(rows, table.columns().size(), values);
                     if (batchBytes > 0 && batchBytes + bytes > byteLimit) {
                         insert.executeBatch(); insert.clearBatch(); quota.run(); batchBytes = 0;
                     }
@@ -77,6 +69,21 @@ final class JdbcPublicationHydrator {
         }
         quota.run();
         return count;
+    }
+
+    /** Fills only the caller's current row, returning its size without encoding the payload twice. */
+    private long readValues(ResultSet rows, int columns, List<Object> values) throws SQLException {
+        long bytes = 0;
+        for (int column = 1; column <= columns; column++) {
+            Object value = rows.getObject(column + 1);
+            long field = JdbcPublicationChunkDigest.framedBytes(value);
+            bytes = Math.addExact(bytes, field);
+            if (field > limits.maximumFieldBytes() || bytes > limits.maximumRowBytes()) {
+                throw new SQLException("Committed native row exceeds canonical preparation limits");
+            }
+            values.add(value);
+        }
+        return bytes;
     }
 
     /** SQLite checks byte sizes before the driver materializes an oversized text/blob into the JVM. */

@@ -56,6 +56,31 @@ class StagedPublicationFaultIT {
     @TempDir Path temporary;
 
     @Test
+    void receiptOnlyRecoveryAdvancesServiceCoordinationEvenWhenFreshCanonicalUtcIsUnsafe() throws Exception {
+        Path root = Files.createDirectory(temporary.resolve("backward-receipt"));
+        var wall = new ControlledClock();
+        try (var fixture = new StagedPublicationFixture(root, true, JdbcPublicationObserver.NOOP, Map.of(), wall)) {
+            fixture.seed();
+            var command = fixture.stageAndRegister();
+            fixture.backend.imports().promote(command);
+            Files.delete(new ImportWorkspaceLayout(root.resolve("stage")).paths(StagedPublicationFixture.DELIVERY).sealed());
+            var before = allFacts(fixture);
+            wall.set(StagedPublicationFixture.NOW.minusSeconds(3));
+
+            assertThat(new com.iocextractor.application.dataframeimport.DataframeImportPromotionService(
+                    fixture.ledger, fixture.backend.imports(), wall).processNext().workPerformed()).isTrue();
+
+            var delivery = fixture.ledger.find(StagedPublicationFixture.DELIVERY).orElseThrow();
+            assertThat(delivery.state()).isEqualTo(ImportDeliveryState.CANONICAL_COMMITTED);
+            assertThat(delivery.updatedAt()).isEqualTo(StagedPublicationFixture.NOW);
+            assertThat(allFacts(fixture)).isEqualTo(before);
+            assertThatThrownBy(() -> fixture.backend.confirmations().confirm(
+                    fixture.document("unsafe-new", "unsafe.example", "feed")))
+                    .isInstanceOf(com.iocextractor.application.artifact.lifecycle.LifecycleClockUnsafeException.class);
+        }
+    }
+
+    @Test
     void laterArtifactCompletesAndRecoversReceiptWithEarlierRowsAndFieldOrigins() throws Exception {
         Path root = Files.createDirectory(temporary.resolve("receipt-artifacts"));
         try (var fixture = new StagedPublicationFixture(root, true, JdbcPublicationObserver.NOOP)) {
@@ -66,19 +91,19 @@ class StagedPublicationFaultIT {
                     "multi-policy", 2, Duration.ofDays(30));
             var commands = new ArrayList<CanonicalArtifactConfirmation>();
             for (var schema : fixture.schemas) {
-                var values = new LinkedHashMap<String, String>();
-                schema.columns().forEach(column -> values.put(column.name(), null));
-                values.put(schema.artifactName().equals("masks") ? "mask" : "hash", "multi-" + schema.artifactName());
-                values.put("source", "multi-source");
-                var positions = Map.of("source", new OccurrencePosition(17));
-                var row = new PreparedArtifactRow(
-                        ArtifactRow.ordered(values), Optional.of("id"), positions);
-                var key = new CanonicalArtifactKeyResolver(fixture.identities)
-                        .recordKeyOf(schema.artifactName(), row.template()).orElseThrow();
-                var command = new CanonicalArtifactConfirmation(
-                        registration.observationId(), "multi-source", receiptContext, schema.artifactName(),
-                        List.copyOf(values.keySet()), List.of(new CanonicalRecordConfirmation(
-                        new ArtifactRowKey(key.keyHash()), row)), registration);
+                var records = new ArrayList<CanonicalRecordConfirmation>();
+                for (int ordinal = 0; ordinal < 130; ordinal++) {
+                    var values = new LinkedHashMap<String, String>();
+                    schema.columns().forEach(column -> values.put(column.name(), null));
+                    values.put(schema.artifactName().equals("masks") ? "mask" : "hash", "multi-" + schema.artifactName() + ordinal);
+                    values.put("source", "multi-source");
+                    var row = new PreparedArtifactRow(ArtifactRow.ordered(values), Optional.of("id"),
+                            Map.of("source", new OccurrencePosition(ordinal)));
+                    var key = new CanonicalArtifactKeyResolver(fixture.identities).recordKeyOf(schema.artifactName(), row.template()).orElseThrow();
+                    records.add(new CanonicalRecordConfirmation(new ArtifactRowKey(key.keyHash()), row));
+                }
+                var command = new CanonicalArtifactConfirmation(registration.observationId(), "multi-source", receiptContext,
+                        schema.artifactName(), schema.columns().stream().map(DataframeColumn::name).toList(), records, registration);
                 commands.add(command);
                 fixture.backend.confirmations().confirm(command);
                 assertThat(fixture.backend.receipts(Duration.ofDays(30)).findComplete("multi-source", "multi-policy",
@@ -89,10 +114,11 @@ class StagedPublicationFaultIT {
             assertThat(snapshot.artifacts()).hasSize(2);
             for (var artifact : snapshot.artifacts()) {
                 try (var rows = artifact.records().open()) {
-                    assertThat(rows.next()).isTrue();
-                    assertThat(rows.value().preparedRow().orderedFieldPositions()).containsEntry("source",
-                            new OccurrencePosition(17));
-                    assertThat(rows.value().preparedRow().template().value("source")).isEqualTo("multi-source");
+                    for (int ordinal = 0; ordinal < 130; ordinal++) {
+                        assertThat(rows.next()).isTrue();
+                        assertThat(rows.value().preparedRow().orderedFieldPositions()).containsEntry("source", new OccurrencePosition(ordinal));
+                        assertThat(rows.value().preparedRow().template().value("source")).isEqualTo("multi-source");
+                    }
                     assertThat(rows.next()).isFalse();
                 }
             }
