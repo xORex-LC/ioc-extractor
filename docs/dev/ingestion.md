@@ -105,6 +105,12 @@ content key exists, exhausted failure uses the existing source rejection/dead-le
 lifecycle. Each failed attempt emits a typed diagnostic with its cause; terminal
 logging is observation only and cannot retry a successful canonical operation.
 
+Document admission progress timestamps never precede the record's durable
+`updatedAt`. A backward wall-clock step therefore cannot prevent claim, retry
+or receipt-driven terminal finalization. Retry-after remains an absolute UTC
+deadline. This coordination rule does not authorize canonical publication:
+the canonical safe clock still rejects unsafe UTC independently.
+
 An exhausted pre-hash failure has no trustworthy content key. Its admission stays
 blocked with the owned token (`retry_after_ms=Long.MAX_VALUE`), blocks later document
 promotion and makes capacity health DOWN. There is no automatic requeue/clear API;

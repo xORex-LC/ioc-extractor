@@ -212,3 +212,8 @@ recorded with a **NOT_ACCEPTED** decision: short physical writer occupancy does
 not offset default admission failure, large-workspace exhaustion, excessive
 total cost or incomplete/unsafe-clock cells. Failed/superseded raw identities and
 the remaining reference matrix are preserved; production activation remains open.
+
+[CAP-7C corrective cycle](cap-7c-corrective-cycle.md) records byte-bounded default
+admission, compact private receipt capture, effect-aware epoch invalidation and
+nondecreasing service-coordination timestamps. Repeated C5 resource evidence
+remains separate from deterministic correctness and default activation.

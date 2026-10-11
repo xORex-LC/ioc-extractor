@@ -80,6 +80,32 @@ class JdbcImportDeliveryLedgerContractIT extends ImportDeliveryLedgerContractTes
     }
 
     @Test
+    void retryAndTerminalRetentionUseDurableCoordinationTimeAfterBackwardUtc() throws Exception {
+        var ledger = createLedger();
+        var current = ledger.reserveClaim(new ImportClaimReservation(new ImportDeliveryId("backward-import"),
+                new ImportSourceId("source"), "backward-candidate", NOW));
+        var backward = NOW.minusSeconds(2);
+        var retryAfter = NOW.plusSeconds(5);
+        var retry = new com.iocextractor.application.dataframeimport.model.ImportRetrySchedule(
+                current.id(), current.state(), current.version(), retryAfter, "IMPORT.RETRY", true, backward);
+        assertThat(ledger.scheduleRetry(retry)).isEqualTo(ImportLedgerTransitionResult.APPLIED);
+        current = new JdbcImportDeliveryLedger(dataSource).find(current.id()).orElseThrow();
+        assertThat(current.updatedAt()).isEqualTo(NOW);
+        var terminal = new ImportDeliveryTransition(current.id(), current.state(), current.version(),
+                ImportDeliveryState.TERMINAL, Optional.of(ImportTerminalOutcome.REJECTED),
+                ImportDeliveryCheckpoint.none(), Optional.of("IMPORT.REJECTED"), backward);
+        assertThat(ledger.transition(terminal)).isEqualTo(ImportLedgerTransitionResult.APPLIED);
+        var restored = new JdbcImportDeliveryLedger(dataSource).find(current.id()).orElseThrow();
+        assertThat(restored.updatedAt()).isEqualTo(NOW);
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement();
+             var rows = statement.executeQuery("SELECT terminal_at_ms,purge_after_ms FROM import_delivery WHERE delivery_id='backward-import'")) {
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getLong(1)).isEqualTo(NOW.toEpochMilli());
+            assertThat(rows.getLong(2)).isEqualTo(NOW.plus(Duration.ofDays(90)).toEpochMilli());
+        }
+    }
+
+    @Test
     void reopeningAdapterRecoversEveryPersistedPrePromotionCheckpoint() {
         ImportDeliveryLedger ledger = createLedger();
         ImportDelivery current = ledger.reserveClaim(new ImportClaimReservation(

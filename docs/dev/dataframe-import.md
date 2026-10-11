@@ -46,6 +46,13 @@ that creates a new delivery, so recovery may allocate a missing rank only for a
 proved new reservation. A legacy unranked delivery fails closed instead of being
 re-ranked.
 
+Service-ledger transitions and their audit timestamps use the greater of supplied
+wall UTC and the delivery's durable `updated_at_ms`. Terminal retention starts
+from that same nondecreasing timestamp; a clock step cannot shorten its configured
+duration. Retry deadlines remain literal absolute UTC. Receipt-only finalization
+can advance coordination after commit even when new canonical publication would
+be rejected by the independent safe-clock policy.
+
 `as-is` mapping runs only transforms declared by the pinned contract and retains
 the `ABSENT`, explicit `NULL` and `VALUE` cell states. `processed` delegates the
 mapped logical row through the ordinary refang, extraction, classification and

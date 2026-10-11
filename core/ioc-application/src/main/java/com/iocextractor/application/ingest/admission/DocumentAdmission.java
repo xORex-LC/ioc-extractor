@@ -72,7 +72,7 @@ public record DocumentAdmission(ObservationId observationId,
     public DocumentAdmission execution(DocumentExecutionState state, Instant at) {
         return new DocumentAdmission(observationId, candidatePath, candidateEvidence, claimPath,
                 claimedEvidence, phase, version + 1, registration, sourceKey, terminalOutcome,
-                registrationFinalized, createdAt, at, state);
+                registrationFinalized, createdAt, coordinationTime(at), state);
     }
 
     public static DocumentAdmission reserved(DocumentAdmissionReservation reservation) {
@@ -128,7 +128,13 @@ public record DocumentAdmission(ObservationId observationId,
                                    Instant at) {
         return new DocumentAdmission(observationId, candidatePath, candidateEvidence, claimPath,
                 nextClaimedEvidence, next, version + 1, nextRegistration, nextSourceKey,
-                nextOutcome, finalized, createdAt, Objects.requireNonNull(at, "at"), execution);
+                nextOutcome, finalized, createdAt, coordinationTime(at), execution);
+    }
+
+    /** Operational progress stays ordered when wall UTC steps back; deadlines retain their own UTC authority. */
+    private Instant coordinationTime(Instant at) {
+        Objects.requireNonNull(at, "at");
+        return at.isBefore(updatedAt) ? updatedAt : at;
     }
 
     private void requirePhase(DocumentAdmissionPhase expected) {

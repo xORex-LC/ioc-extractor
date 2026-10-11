@@ -36,6 +36,33 @@ class ObservationAdmissionServiceTest {
     private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
 
     @Test
+    void documentFinalizationAndExecutionRemainRecoverableAfterBackwardUtc() {
+        var journal = new MemoryDocumentJournal();
+        var registrations = new MemoryRegistrationStore();
+        var forward = new DocumentAdmissionService(journal, registrations, CLOCK);
+        var reservation = reservation("backward-document");
+        var ordered = forward.admit(reservation);
+        var backward = new DocumentAdmissionService(journal, registrations,
+                Clock.fixed(NOW.minusSeconds(2), ZoneOffset.UTC));
+
+        var executing = backward.beginExecution(ordered.observationId());
+        assertThat(executing.updatedAt()).isEqualTo(NOW);
+        var retry = backward.retryExecution(ordered.observationId(), NOW.plusSeconds(5), "RETRY");
+        assertThat(retry.execution().retryAfter()).isEqualTo(NOW.plusSeconds(5));
+        backward.recordClaim(ordered.observationId(), reservation.candidateEvidence());
+        backward.link(ordered.observationId(), new SourceKey("digest"));
+        var linked = journal.values.get(ordered.observationId());
+        assertThat(journal.replace(linked, linked.terminal(DocumentTerminalOutcome.SUCCEEDED, NOW))).isTrue();
+        var terminal = backward.recover(10).getFirst();
+
+        assertThat(terminal.updatedAt()).isEqualTo(NOW);
+        assertThat(terminal.registrationFinalized()).isTrue();
+        assertThat(backward.recover(10)).isEmpty();
+        assertThat(backward.complete(ordered.observationId(), DocumentTerminalOutcome.SUCCEEDED)).isEqualTo(terminal);
+        assertThat(registrations.nextOrder).isEqualTo(2);
+    }
+
+    @Test
     void documentRecoveryPreservesOneOrderAcrossEveryJournalBoundary() {
         var journal = new MemoryDocumentJournal();
         var registrations = new MemoryRegistrationStore();

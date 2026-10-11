@@ -50,26 +50,20 @@ leases. Source-контракт квалифицирован, полная ре�
 Протокол полного сервиса: `service-capacity.py`; устройство чтения описано в
 [processing](dev/processing.md) и [ADR 0039](ADR/0039-streamed-document-source-processing.md).
 
-**ING-16 — шаг UTC назад прерывает координацию импорта и документов (открыт, M).**
-В квалификации 2026-10-09 один import fork после admission/staging завершился
-`SQLITE_CONSTRAINT_CHECK` при `scheduleRetry`: `updated_at_ms >= created_at_ms`.
-Журнал показывает обратный шаг UTC примерно на две секунды. Retry записывает
-текущий `Clock.instant()` и сам может отказать при времени раньше admission.
-Это операционный риск координационного ledger; успешные соседние samples не
-закрывают отказ. Требуются согласованная политика служебных timestamps,
-регрессия с управляемым обратным шагом часов и проверка последующего recovery.
-Нельзя подменять абсолютные UTC deadlines монотонным временем процесса.
-Квалификация 2026-10-11 также выявила отказ document admission с
-`Invalid document admission version or timestamps`: canonical commit и проекция
-закончились, а `ingest_run` остался `PROJECTION_COMPLETED` до конца наблюдения.
-Это не подтверждённая потеря канонических данных; последующее согласованное
-завершение без повторной экстракции требует отдельной проверки. В другом
-прогоне safe-clock отклонил control после обратного сдвига `PT2.061S`; защита
-остаётся включённой, такой прогон не является успешной ресурсной квалификацией.
-Причина обратного шага часов хоста по этим журналам не установлена.
-Владелец: service ledger / [managed import](dev/dataframe-import.md) и
-[ingestion](dev/ingestion.md); исправление
-не входит в изменение Router.
+**ING-16 — обратный шаг UTC: координация исправлена, причина на хосте открыта (M).**
+Квалификация 2026-10-09/11 выявила `SQLITE_CONSTRAINT_CHECK` в import retry и
+`Invalid document admission version or timestamps` после успешного document
+commit/projection. Служебные progress timestamps теперь не убывают относительно
+сохранённого `updated_at`: это применяется к document admission, import retry,
+terminalization и audit. Terminal retention отсчитывается от того же времени;
+retry-after остаётся абсолютным UTC deadline. Регрессии проверяют reopen,
+длительность retention и завершение регистрации при обратном шаге часов.
+Canonical safe-clock остаётся независимой защитой и по-прежнему отклоняет UTC
+вне допустимого skew/clamp. Исторический C5 отказ control при `PT2.061S` сохранён;
+причина обратного шага на хосте по журналам не установлена. Исправление ledger
+не разрешает новую canonical публикацию при небезопасном времени и не закрывает
+нагрузочную приёмку. Владельцы: service ledger / [managed import](dev/dataframe-import.md),
+[ingestion](dev/ingestion.md), эксплуатация часов хоста.
 
 ## 2. Обогащение вывода (`OUT`)
 
