@@ -41,6 +41,20 @@ UTC до и после работы и safe-clock snapshot; HTTP-ошибка с
 диагностический ответ и делает окно неполным. Наблюдаемое время окна с ошибкой
 collector не входит в число завершённых окон и медиану серии.
 
+Перед запуском C5 выполняется отдельная 90-секундная проверка UTC: чтения времени
+окружены монотонными измерениями, сырые samples и их SHA-256 сохраняются в
+`clock-preflight.jsonl`/`clock-preflight.json`. Обнаруженный шаг назад останавливает
+запуск со статусом `BLOCKED_CLOCK` до создания JVM. `--clock-preflight-only`
+позволяет проверить окружение отдельно. Проверка не заменяет runtime safe clock
+и не гарантирует стабильность часов после наблюдения.
+
+`make sqlite-typed-chunk-cost CHUNK_COST_ARGS='--jar … --output .dev/…'` запускает
+изолированную диагностику typed transport: 200 ограниченных chunks по 256 строк,
+реальный SQLite, journal и commit, NULL/BLOB oracle и receipt. Сохраняются
+монотонные времена сборки/append/commit и точные allocations вызывающего потока.
+Это не whole-service C5: hydration, output, конкурентная нагрузка и heap/RSS
+здесь не измеряются. Замена jar при неизменном probe позволяет сравнить механизм.
+
 Для ограниченного анализа native-пути у C5 есть режим `--native-cost-cycle`:
 фиксированное число native-only окон, те же физические ресурсы, control/cleanup
 и oracle. Завершённые окна с нарушенными screens сохраняются как `FAIL`,

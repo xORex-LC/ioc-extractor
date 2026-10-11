@@ -25,6 +25,46 @@ SPEC.loader.exec_module(CAP)
 REPO = CAP.REPO
 
 
+def clock_preflight(root, duration_seconds=90):
+    """Reject observed clock steps before starting a costly qualification JVM.
+
+    Bracket UTC reads with monotonic samples to exclude read latency from the
+    step estimate. This host diagnostic never replaces the runtime safe clock.
+    """
+    started = time.monotonic_ns()
+    deadline = started + int(duration_seconds * 1e9)
+    previous = None
+    count = 0
+    minimum_step = 0
+    result = {'status': 'OBSERVING', 'requested_seconds': duration_seconds,
+              'step_detection_ns': 100_000_000,
+              'scope': 'Host UTC/monotonic preflight only; runtime safe-clock policy remains authoritative'}
+    with (root / 'clock-preflight.jsonl').open('w') as stream:
+        while True:
+            before = time.monotonic_ns()
+            utc = time.time_ns()
+            after = time.monotonic_ns()
+            value = dict(monotonic_before_ns=before, utc_epoch_ns=utc, monotonic_after_ns=after)
+            step = 0 if previous is None else (utc - before) - (previous['utc_epoch_ns'] - previous['monotonic_after_ns'])
+            value['relative_step_upper_ns'] = step
+            minimum_step = min(minimum_step, step)
+            count += 1
+            stream.write(json.dumps(value) + '\n')
+            if step < -result['step_detection_ns']:
+                result['status'] = 'UNSTABLE'
+                break
+            if after >= deadline:
+                result['status'] = 'OBSERVED_STABLE'
+                break
+            previous = value
+            time.sleep(min(.1, (deadline - after) / 1e9))
+    result.update(samples=count, elapsed_seconds=(after - started) / 1e9,
+                  minimum_relative_step_upper_ns=minimum_step,
+                  raw_sha256=CAP.BASE.digest(root / 'clock-preflight.jsonl'))
+    CAP.save(root / 'clock-preflight.json', result)
+    return result
+
+
 class QualificationWindow:
     """Bounded control/cleanup load and fail-closed, exact admission/allocation measurement."""
     def __init__(self, root, port, maintenance_every=5):
@@ -351,6 +391,8 @@ def main():
     parser.add_argument('--import-artifact', choices=CAP.BASE.ARTIFACTS)
     parser.add_argument('--processed-import', action='store_true', help='Actual selected masks import with active host view and COALESCE')
     parser.add_argument('--diagnostic', action='store_true')
+    parser.add_argument('--clock-preflight-only', action='store_true',
+                        help='Record the 90-second host UTC check without launching a service')
     parser.add_argument('--native-cost-cycle', action='store_true',
                         help='Fixed native-only cost series; retain failed screens, stop incomplete collection; no acceptance')
     parser.add_argument('--timeout', type=int, default=900)
@@ -389,6 +431,15 @@ def main():
     args.gate_sample = gates
     args.canonical_evidence = native_cost_evidence if args.native_cost_cycle else canonical_evidence
     CAP.save(output / 'report.json', report)
+    report['clock_preflight'] = clock_preflight(output)
+    if report['clock_preflight']['status'] != 'OBSERVED_STABLE':
+        report.update(status='BLOCKED_CLOCK', failure='Host UTC stepped backwards; no qualification JVM started')
+        CAP.save(output / 'report.json', report)
+        raise SystemExit(1)
+    if args.clock_preflight_only:
+        report['status'] = 'PREFLIGHT_ONLY'
+        CAP.save(output / 'report.json', report)
+        return
     with tempfile.TemporaryDirectory(prefix='ioc-c5-runtime-', dir=REPO / '.dev') as temporary:
         runtime = Path(temporary)
         frozen = runtime / 'ioc-app.jar'

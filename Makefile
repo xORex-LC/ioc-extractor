@@ -282,6 +282,10 @@ service-capacity: ## CAP-6 private cgroup-limited whole-service screens; SERVICE
 sqlite-publication-capacity: ## C5 paired native/staged private service qualification; SQLITE_CAPACITY_ARGS selects the covering cell
 	@python3 tools/dev/sqlite-publication-capacity.py $(SQLITE_CAPACITY_ARGS)
 
+.PHONY: sqlite-typed-chunk-cost
+sqlite-typed-chunk-cost: ## Isolated staged typed chunk cost; CHUNK_COST_ARGS selects a frozen jar and private output
+	@python3 tools/dev/sqlite-typed-chunk-cost.py $(CHUNK_COST_ARGS)
+
 .PHONY: native-processing-profile
 native-processing-profile: ## Stream diagnostic JFR allocation/stack attribution; JFR selects the recording
 	@java tools/dev/ProcessingAllocationProfile.java "$(JFR)"

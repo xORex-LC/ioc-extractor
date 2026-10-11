@@ -39,6 +39,33 @@ def policy():
 
 
 class ServiceCapacityTest(unittest.TestCase):
+    def test_clock_preflight_rejects_backward_step_before_any_workload(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(C5.time, 'monotonic_ns', side_effect=[0, 0, 0, 100_000_000, 100_000_000]), \
+                 patch.object(C5.time, 'time_ns', side_effect=[10_000_000_000, 7_600_000_000]), \
+                 patch.object(C5.time, 'sleep'):
+                result = C5.clock_preflight(root)
+
+            self.assertEqual(result['status'], 'UNSTABLE')
+            self.assertEqual(result['samples'], 2)
+            self.assertEqual(result['minimum_relative_step_upper_ns'], -2_500_000_000)
+            self.assertEqual(json.loads((root / 'clock-preflight.json').read_text()), result)
+            self.assertEqual(len((root / 'clock-preflight.jsonl').read_text().splitlines()), 2)
+
+    def test_clock_preflight_requires_full_duration_and_brackets_delayed_utc_reads(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            # The first UTC read takes 400 ms; the next exact read is not a clock step.
+            with patch.object(C5.time, 'monotonic_ns', side_effect=[0, 0, 400_000_000, 500_000_000, 500_000_000]), \
+                 patch.object(C5.time, 'time_ns', side_effect=[10_400_000_000, 10_500_000_000]), \
+                 patch.object(C5.time, 'sleep') as sleep:
+                result = C5.clock_preflight(Path(temporary), duration_seconds=.5)
+
+            self.assertEqual(result['status'], 'OBSERVED_STABLE')
+            self.assertEqual(result['elapsed_seconds'], .5)
+            self.assertEqual(result['minimum_relative_step_upper_ns'], 0)
+            sleep.assert_called_once()
+
     def test_named_wal_files_partition_storage_without_counting_symlinks(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
