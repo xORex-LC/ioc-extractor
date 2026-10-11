@@ -703,19 +703,19 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
         var configuration = stagedConfiguration(canonical, CLOCK);
         var factory = configuration.workspaces();
         try (var first = JdbcPrivatePublicationWorkspace.create(factory, "first", "pins");
-             var second = JdbcPrivatePublicationWorkspace.create(factory, "second", "pins");
-             var third = JdbcPrivatePublicationWorkspace.create(factory, "third", "pins")) {
+             var second = JdbcPrivatePublicationWorkspace.create(factory, "second", "pins", true);
+             var third = JdbcPrivatePublicationWorkspace.create(factory, "third", "pins", true)) {
             second.checkQuota(); third.checkQuota();
             assertThat(factory.pressure().leasedWorkspaces()).isEqualTo(3);
             var additional = new ArrayList<JdbcPrivatePublicationWorkspace>();
             try {
                 for (int index = 0; index < factory.maximumConcurrentWorkspaces(); index++) {
-                    try { additional.add(JdbcPrivatePublicationWorkspace.create(factory, "additional-" + index, "pins")); }
+                    try { additional.add(JdbcPrivatePublicationWorkspace.create(factory, "additional-" + index, "pins", true)); }
                     catch (IocExtractorException exhausted) {
                         assertThat(exhausted).hasMessageContaining("admission exhausted"); break;
                     }
                 }
-                assertThatThrownBy(() -> JdbcPrivatePublicationWorkspace.create(factory, "exhausted", "pins"))
+                assertThatThrownBy(() -> JdbcPrivatePublicationWorkspace.create(factory, "exhausted", "pins", true))
                         .isInstanceOf(IocExtractorException.class).hasMessageContaining("admission exhausted");
             } finally { additional.reversed().forEach(JdbcPrivatePublicationWorkspace::close); }
             var executor = java.util.concurrent.Executors.newSingleThreadExecutor();

@@ -36,6 +36,7 @@ final class JdbcStagedPublication {
     private final JdbcPublicationProtocol protocol = new JdbcPublicationProtocol();
     private final JdbcPublicationOwner owners = new JdbcPublicationOwner();
     private final JdbcPublicationObserver observer;
+    private final java.util.concurrent.locks.ReentrantLock controlPreparation = new java.util.concurrent.locks.ReentrantLock(true);
 
     JdbcStagedPublication(Environment environment, JdbcPublicationObserver observer) {
         this.environment = environment;
@@ -44,6 +45,20 @@ final class JdbcStagedPublication {
     }
 
     boolean execute(Unit unit, NativeTask task) {
+        if (unit.promotion()) { return executeAdmitted(unit, task); }
+        if (controlPreparation.isHeldByCurrentThread() || environment.admission().ownedByCurrentThread()) {
+            throw new IocExtractorException("Control preparation cannot wait under canonical ownership or recurse");
+        }
+        try { controlPreparation.lockInterruptibly(); }
+        catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new IocExtractorException("Control preparation admission interrupted", failure);
+        }
+        try { return executeAdmitted(unit, task); }
+        finally { controlPreparation.unlock(); }
+    }
+
+    private boolean executeAdmitted(Unit unit, NativeTask task) {
         JdbcPublicationOwner.Owner owner = null;
         try {
             if (committed(unit)) { return false; }
@@ -140,7 +155,7 @@ final class JdbcStagedPublication {
     private void attempt(Unit unit, NativeTask task, JdbcPublicationOwner.Owner owner, int number) throws SQLException {
         EffectiveTime preparedAt = environment.clock().now();
         String workspace = unit.identity() + ":" + (owner == null ? java.util.UUID.randomUUID() : owner.fence()) + ":" + number;
-        try (var privateState = JdbcPrivatePublicationWorkspace.create(environment.workspaces(), workspace, unit.pins())) {
+        try (var privateState = JdbcPrivatePublicationWorkspace.create(environment.workspaces(), workspace, unit.pins(), unit.promotion())) {
             initializeNative(privateState);
             Prepared prepared = hydrate(unit, task, privateState, preparedAt);
             var authority = new JdbcCanonicalReservationAuthority(environment.canonical(), environment.allocatorClock(), environment.admission());

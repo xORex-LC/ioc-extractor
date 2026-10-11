@@ -33,6 +33,8 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
     private final String fingerprint;
     private final Duration retention;
     private final Semaphore leases;
+    private final Semaphore canonicalControls = new Semaphore(1, true);
+    private boolean canonicalHeadroom;
     private Semaphore documentLeases;
     private final Set<Path> active = new HashSet<>();
     private final int leaseLimit;
@@ -65,11 +67,24 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
 
     /** Shares the existing memory/disk admission with a native canonical preparation attempt. */
     CanonicalLease openCanonicalState(String identity, String pins) {
+        return openCanonicalState(identity, pins, false);
+    }
+
+    CanonicalLease openCanonicalState(String identity, String pins, boolean promotion) {
         Objects.requireNonNull(identity, "identity");
         Objects.requireNonNull(pins, "pins");
+        boolean controlReserved;
+        synchronized (this) { controlReserved = canonicalHeadroom && !promotion; }
+        // Two control/export workspaces must not borrow the working set reserved for promotion.
+        if (controlReserved && !canonicalControls.tryAcquire()) {
+            throw new IocExtractorException("Canonical control workspace admission exhausted");
+        }
         // A document may already own a lease: nested blocking acquisition can deadlock a full pool.
         int permits = canonicalLeasePermits();
-        if (!leases.tryAcquire(permits)) { throw new IocExtractorException("Canonical workspace admission exhausted"); }
+        if (!leases.tryAcquire(permits)) {
+            if (controlReserved) { canonicalControls.release(); }
+            throw new IocExtractorException("Canonical workspace admission exhausted");
+        }
         Path directory = root.resolve(ArtifactIdentityDefinition.sha256("canonical:" + identity));
         Lease lease = null;
         boolean admitted = false;
@@ -96,14 +111,18 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
                     Lease owner = lease;
                     return new CanonicalLease(directory, JdbcCanonicalWorkspaceLimits.privateLimits(limits), () -> checkDisk(directory), () -> {
                         try { release(directory, owner); }
-                        finally { leases.release(permits - 1); }
-                    }, () -> discardCanonical(directory, owner, permits));
+                        finally { leases.release(permits - 1); if (controlReserved) { canonicalControls.release(); } }
+                    }, () -> {
+                        try { discardCanonical(directory, owner, permits); }
+                        finally { if (controlReserved) { canonicalControls.release(); } }
+                    });
                 }
             }
         } catch (IOException | RuntimeException | Error failure) {
             closeFailedLease(directory, lease, failure);
             if (admitted) { synchronized (this) { active.remove(directory); activeWorkspaceCount = active.size(); } }
             leases.release(permits);
+            if (controlReserved) { canonicalControls.release(); }
             if (failure instanceof Error fatal) { throw fatal; }
             throw new IocExtractorException("Cannot open canonical preparation workspace", failure);
         }
@@ -126,6 +145,7 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
         if (intakeStarted || !active.isEmpty()) { throw new IllegalStateException("Canonical headroom must be configured before intake"); }
         documentLeaseLimit = available;
         documentLeases = new Semaphore(available, true);
+        canonicalHeadroom = true;
     }
 
     static final class CanonicalLease implements AutoCloseable {

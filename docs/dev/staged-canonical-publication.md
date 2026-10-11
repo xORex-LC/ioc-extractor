@@ -32,10 +32,24 @@ Canonical leases reserve byte-bounded hydration/transfer chunks and both row
 images, rather than hundreds of maximum-size rows. Private canonical main/TEMP
 caches are capped at 512 KiB each; configured document caches and public row/field
 limits remain unchanged. The document lease limit leaves room for one promotion
-and one control working set. Defaults retain the 64 MiB aggregate budget and
+and one control working set. Once canonical headroom is configured, at most one
+control/export workspace can occupy it; a second control cannot consume the
+promotion reservation. Publication serializes control preparation with a fair,
+interruptible lock before acquiring workspace leases or canonical writer
+ownership. Recursive controls and calls under writer ownership fail closed,
+rather than creating a nested wait. The factory's nonblocking control limit
+remains a safety check for direct or noncooperating callers.
+All close, failed-open and disposal paths release that reservation as well as
+weighted memory permits. Defaults retain the 64 MiB aggregate budget and
 256 KiB row / 64 KiB field contract. A full budget rejects canonical admission
 instead of waiting while retaining another lease. These bounds do not establish measured
 whole-service RSS or throughput.
+
+Export snapshot validation looks for the first active lifecycle without an
+assignment through a complete `(profile, artifact, lifecycle_id)` lookup. It
+uses the same read snapshot and committed views as row streaming. This avoids
+materializing the assignment view for a repeated nested scan; it neither skips
+slot completeness validation nor reads pending versions.
 
 Disk accounting uses the file walker's observed attributes. SQLite can remove
 its known WAL/SHM/journal sidecars between listing and attribute reads; their

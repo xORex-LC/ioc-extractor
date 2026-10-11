@@ -201,7 +201,7 @@ class JdbcDocumentPreparationWorkspaceIT {
         Path source = temporary.resolve("headroom.txt");
         Files.writeString(source, "example.test");
         try (var document = factory.open(new ExtractionCommand("headroom", source, false), POLICIES);
-             var promotion = JdbcPrivatePublicationWorkspace.create(factory, "promotion", "pins");
+             var promotion = JdbcPrivatePublicationWorkspace.create(factory, "promotion", "pins", true);
              var control = JdbcPrivatePublicationWorkspace.create(factory, "control", "pins")) {
             assertThat(factory.maximumConcurrentWorkspaces()).isOne();
             assertThat(factory.pressure().leasedWorkspaces()).isEqualTo(3);
@@ -213,6 +213,27 @@ class JdbcDocumentPreparationWorkspaceIT {
                 assertThat(rows.getInt(1)).isEqualTo(-512);
             }
         }
+        assertThat(factory.pressure().leasedWorkspaces()).isZero();
+    }
+
+    @Test
+    void competingControlsCannotConsumePromotionHeadroomAndFailedAdmissionReleasesItsReservation() throws Exception {
+        var limits = new DocumentPreparationLimits(64 * 1024 * 1024, 4096, 256 * 1024, 64 * 1024,
+                2L * 1024 * 1024 * 1024, 8L * 1024 * 1024 * 1024, 256);
+        var factory = factory(limits);
+        factory.requireCanonicalCapacity();
+        try (var document = factory.open(command("foreground"), POLICIES);
+             var control = JdbcPrivatePublicationWorkspace.create(factory, "first-control", "pins")) {
+            assertThatThrownBy(() -> factory.openCanonicalState("second-control", "pins"))
+                    .hasMessageContaining("control workspace admission exhausted");
+            try (var promotion = JdbcPrivatePublicationWorkspace.create(factory, "foreground", "pins", true)) {
+                assertThat(factory.pressure().leasedWorkspaces()).isEqualTo(3);
+            }
+        }
+        assertThat(factory.pressure().leasedWorkspaces()).isZero();
+        assertThatThrownBy(() -> factory.openCanonicalState("bad-pins", "x".repeat(32769)))
+                .hasRootCauseMessage("Canonical identity pin exceeds limit");
+        try (var next = factory.openCanonicalState("after-failure", "pins")) { next.discard(); }
         assertThat(factory.pressure().leasedWorkspaces()).isZero();
     }
 

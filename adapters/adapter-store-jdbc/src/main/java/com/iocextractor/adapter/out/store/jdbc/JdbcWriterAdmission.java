@@ -99,6 +99,7 @@ public final class JdbcWriterAdmission {
     }
 
     boolean fair() { return lock.isFair(); }
+    boolean ownedByCurrentThread() { return owner == Thread.currentThread(); }
     public int queuedWriters() {
         lock.lock();
         try { return waiting.size(); }

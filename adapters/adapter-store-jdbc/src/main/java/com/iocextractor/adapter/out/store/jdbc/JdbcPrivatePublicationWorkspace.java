@@ -25,7 +25,12 @@ final class JdbcPrivatePublicationWorkspace implements AutoCloseable {
 
     static JdbcPrivatePublicationWorkspace create(JdbcDocumentPreparationWorkspaceFactory factory,
                                                   String attempt, String pins) {
-        var lease = factory.openCanonicalState(attempt, pins);
+        return create(factory, attempt, pins, false);
+    }
+
+    static JdbcPrivatePublicationWorkspace create(JdbcDocumentPreparationWorkspaceFactory factory,
+                                                  String attempt, String pins, boolean promotion) {
+        var lease = factory.openCanonicalState(attempt, pins, promotion);
         HikariDataSource pool = null;
         try {
             var path = lease.directory().resolve("native.db");

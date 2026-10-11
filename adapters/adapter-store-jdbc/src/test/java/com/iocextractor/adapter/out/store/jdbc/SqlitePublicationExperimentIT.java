@@ -113,6 +113,39 @@ class SqlitePublicationExperimentIT {
     }
 
     @Test
+    void committedSlotCompletenessUsesLifecycleLookupAndRejectsMissingAssignments() throws Exception {
+        try (var fixture = new StagedPublicationFixture(directory, true, JdbcPublicationObserver.NOOP)) {
+            fixture.seed(); assertThat(fixture.snapshot()).hasSize(1);
+            var captured = new java.util.concurrent.atomic.AtomicReference<String>();
+            try (var connection = fixture.dataframe.getConnection()) {
+                var traced = proxy(Connection.class, connection, (method, arguments) -> {
+                    if (method.getName().equals("prepareStatement") && ((String) arguments[0]).contains("a.lifecycle_id")) {
+                        captured.set((String) arguments[0]);
+                    }
+                    return invoke(connection, method, arguments);
+                });
+                var registry = new JdbcExportSlotRegistry();
+                registry.requireCurrentSnapshot(traced, "fault-profile", "masks", StagedPublicationFixture.NOW);
+                assertThat(captured.get()).isNotNull();
+                var plan = new ArrayList<String>();
+                try (var explain = connection.prepareStatement("EXPLAIN QUERY PLAN " + captured.get())) {
+                    explain.setLong(1, StagedPublicationFixture.NOW.toEpochMilli());
+                    explain.setString(2, "fault-profile"); explain.setString(3, "masks");
+                    try (var rows = explain.executeQuery()) { while (rows.next()) { plan.add(rows.getString("detail")); } }
+                }
+                assertThat(plan).noneMatch(step -> step.contains("MATERIALIZE export_slot_assignment") || step.contains("SCAN a"))
+                        .anyMatch(step -> step.contains("profile=? AND artifact=? AND lifecycle_id=?"));
+
+                JdbcPublicationTable.execute(connection, "DELETE FROM publication_version_export_slot_assignment");
+                assertThatThrownBy(() -> registry.requireCurrentSnapshot(connection, "fault-profile", "masks", StagedPublicationFixture.NOW))
+                        .isInstanceOf(SQLException.class).hasMessage("Export-slot assignments are incomplete for fault-profile/masks");
+                // Expired membership does not require a slot in the active snapshot.
+                registry.requireCurrentSnapshot(connection, "fault-profile", "masks", StagedPublicationFixture.NOW.plusSeconds(43200));
+            }
+        }
+    }
+
+    @Test
     void typedChunkFramingPreservesSqlKindsNullAndFieldBoundariesAndRejectsOversizedPayloads() throws Exception {
         var fingerprints = new java.util.HashSet<String>();
         Object[] values = {null, "", "1", (byte) 1, (short) 2, 3, 4L, 1.0f, 2.0d, new byte[0], true, false};

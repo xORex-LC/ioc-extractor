@@ -514,6 +514,56 @@ class StagedPublicationFaultIT {
         }
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void controlPreparationQueuesOutsideWriterOwnershipAndCancellationReleasesAdmission(boolean cancel) throws Exception {
+        Path root = Files.createDirectory(temporary.resolve("control-admission"));
+        var paused = new CountDownLatch(1); var resume = new CountDownLatch(1);
+        var started = new CountDownLatch(1); var ended = new CountDownLatch(1);
+        var armed = new AtomicBoolean(); var interrupted = new AtomicBoolean();
+        try (var fixture = new StagedPublicationFixture(root, true, (phase, attempt, chunk) -> {
+            if (phase == JdbcPublicationObserver.Phase.PREPARED && armed.getAndSet(false)) {
+                paused.countDown(); await(resume);
+            }
+        }); var workers = Executors.newFixedThreadPool(2)) {
+            fixture.seed(); armed.set(true);
+            var first = workers.submit(() -> emptyControl(fixture));
+            try {
+                assertThat(paused.await(10, TimeUnit.SECONDS)).isTrue();
+                var second = workers.submit(() -> {
+                    started.countDown();
+                    try { return emptyControl(fixture); }
+                    finally { interrupted.set(Thread.currentThread().isInterrupted()); ended.countDown(); }
+                });
+                assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(second.isDone()).isFalse();
+
+                // A queued control holds no canonical writer or private workspace lease.
+                fixture.backend.confirmations().confirm(fixture.document("while-control-waits", "new.example", "feed"));
+                assertThat(fixture.number("SELECT COUNT(*) FROM masks")).isEqualTo(2);
+                if (cancel) {
+                    assertThat(second.cancel(true)).isTrue();
+                    assertThat(ended.await(5, TimeUnit.SECONDS)).isTrue();
+                    assertThat(interrupted).isTrue();
+                }
+                resume.countDown(); first.get(15, TimeUnit.SECONDS);
+                if (!cancel) { assertThat(second.get(15, TimeUnit.SECONDS)).isEqualTo("done"); }
+                assertThat(emptyControl(fixture)).isEqualTo("done");
+                assertThatThrownBy(() -> fixture.backend.configuration().admission().execute(() -> emptyControl(fixture)))
+                        .hasMessageContaining("cannot wait under canonical ownership");
+            } finally {
+                resume.countDown(); workers.shutdownNow();
+                assertThat(workers.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+            }
+        }
+    }
+
+    private static String emptyControl(StagedPublicationFixture fixture) {
+        return new JdbcStagedControl(fixture.backend).execute(java.util.Set.of("artifact:masks"),
+                JdbcWriterAdmission.OperationClass.CONTROL, (selection, base, slots) -> base.metadata("masks"),
+                (working, context, asOf) -> "done");
+    }
+
     private static void killAt(Path root, String phase, int chunk) throws Exception {
         Path log = root.resolve("child.log");
         var process = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),

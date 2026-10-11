@@ -56,3 +56,40 @@ observations remain in raw reports but no longer count as completed windows or
 contribute to series medians; fully collected screen failures still retain
 their measured intervals. Offline contracts cover storage partitioning,
 symlink exclusion, HTTP failure propagation and failed-window accounting.
+
+## Workspace isolation correction
+
+Configured canonical headroom previously limited document concurrency but let
+two control/export attempts occupy both canonical working sets. Promotion could
+then fail admission while its document already held a lease. The corrected
+factory permits only one control workspace after headroom configuration. The
+existing publication unit supplies the promotion/control distinction. A fair,
+interruptible control-preparation lock queues normal callers before workspace
+or writer ownership; the factory retains a nonblocking safety check. Recursive
+calls or calls already owning the canonical writer are rejected. No new
+orchestrator, blocking nested resource wait or larger budget is introduced. Deterministic
+regressions retain a document and control workspace, reject a second control,
+admit promotion, and verify that failed pins and normal disposal release the
+reservation. Existing bounded reconcile/recovery remains the control backstop.
+
+## Confirmed export reader amplification
+
+The clock-only diagnostic fork exposed control-workspace contention with a
+SAFE clock snapshot. Collection was already incomplete. Per-file samples also
+localized the large WAL to canonical storage, not the private native database.
+A single retained JVM thread dump places the export worker in
+`JdbcExportSlotRegistry.requireCompleteAssignments` while promotion appends
+hidden chunks. An actual-schema `EXPLAIN QUERY PLAN` reports assignment-view
+materialization followed by `SCAN a LEFT-JOIN` for each active row. The equivalent
+missing-assignment probe uses a full profile/artifact/lifecycle index lookup.
+
+Replace the count/outer join with `NOT EXISTS ... LIMIT 1` in the same snapshot.
+Slot-key uniqueness and committed visibility remain unchanged. This removes a
+confirmed repeated scan and shortens a reader capable of delaying checkpoint
+progress; it does not claim to eliminate every WAL or transfer bottleneck.
+
+The diagnostic fork was intentionally interrupted after establishing the seam
+and its collector failure; its partial staged observations are not throughput
+or before/after acceptance evidence. Preserve the raw failed/aborted report,
+thread dump and query plans alongside the completed native failure. New C5
+forks must use committed corrected sources without these extra diagnostics.

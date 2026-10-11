@@ -1099,25 +1099,24 @@ final class JdbcExportSlotRegistry {
                                             String artifact,
                                             Instant asOf) throws SQLException {
         String sql = """
-                SELECT COUNT(*) AS active_count,
-                       COUNT(a.lifecycle_id) AS assigned_count
+                SELECT 1
                 FROM ${artifact} t
-                LEFT JOIN export_slot_assignment a
-                  ON a.profile = ?
-                 AND a.artifact = ?
-                 AND a.lifecycle_id = t.${lifecycleId}
                 WHERE t.${validUntil} > ?
+                  AND NOT EXISTS(
+                    SELECT 1 FROM export_slot_assignment a
+                    WHERE a.profile = ? AND a.artifact = ?
+                      AND a.lifecycle_id = t.${lifecycleId})
+                LIMIT 1
                 """
                 .replace("${artifact}", activeTable(artifact))
                 .replace("${lifecycleId}", quote("_lifecycle_id"))
                 .replace("${validUntil}", quote("_valid_until_epoch_ms"));
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, profile);
-            statement.setString(2, artifact);
-            statement.setLong(3, asOf.toEpochMilli());
+            statement.setLong(1, asOf.toEpochMilli());
+            statement.setString(2, profile);
+            statement.setString(3, artifact);
             try (ResultSet resultSet = statement.executeQuery()) {
-                if (!resultSet.next()
-                        || resultSet.getLong("active_count") != resultSet.getLong("assigned_count")) {
+                if (resultSet.next()) {
                     throw new SQLException(
                             "Export-slot assignments are incomplete for " + profile + "/" + artifact);
                 }
