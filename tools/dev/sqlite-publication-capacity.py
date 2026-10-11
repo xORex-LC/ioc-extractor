@@ -321,7 +321,13 @@ def main():
                     break
                 args.launcher = ['-Dqualification.sqlite=' + backend, '-javaagent:' + str(agent), '-cp', cp,
                                  'com.iocextractor.bootstrap.SqliteCapacityApplication']
-                value = CAP.sample(args, frozen, report, len(report['samples']), output)
+                try:
+                    value = CAP.sample(args, frozen, report, len(report['samples']), output)
+                except KeyboardInterrupt:
+                    report.update(status='ABORTED', interruption='Caller interrupted; owned service state cleaned')
+                    report['samples'][-1].update(backend=backend, pair=ordinal)
+                    CAP.save(output / 'report.json', report)
+                    raise
                 value.update(backend=backend, pair=ordinal)
                 CAP.save(output / 'report.json', report)
             try:

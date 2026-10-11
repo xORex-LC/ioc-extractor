@@ -679,6 +679,7 @@ def diagnostics(unit):
 
 def sample(args, jar, report, index, evidence_root):
     unit, sampler, oracle, share, qualification = None, None, None, None, None
+    interrupted = False
     result = {'index': index, 'status': 'RUNNING', 'started_epoch_seconds': time.time()}
     report['samples'].append(result)
     # State cleanup is unconditional, including exceptions and collection failure.
@@ -766,6 +767,10 @@ def sample(args, jar, report, index, evidence_root):
         result['status'] = result['gates']['status']
         if args.diagnostic:
             result['diagnostics'] = diagnostics(unit)
+    except KeyboardInterrupt:
+        interrupted = True
+        result.update(status='ABORTED', failure='Caller interrupted the qualification',
+                      failure_kind='interruption', reference_started='handoff' in result)
     except Exception as failure:
         result.update(status='FAIL' if isinstance(failure, WorkloadFailure) else 'ERROR', failure=str(failure),
                       failure_kind='workload' if isinstance(failure, WorkloadFailure) else 'collection_or_execution')
@@ -837,6 +842,8 @@ def sample(args, jar, report, index, evidence_root):
     save(evidence_root / 'report.json', report)
     print(json.dumps({'sample': index, 'status': result['status'], 'seconds': result.get('local_window_upper_seconds'),
                       'failure': result.get('failure'), 'gates': result.get('gates'), 'state_removed': result['temporary_state_removed']}), flush=True)
+    if interrupted:
+        raise KeyboardInterrupt
     return result
 
 
