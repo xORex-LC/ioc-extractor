@@ -46,8 +46,9 @@ def main():
             frozen = root / 'ioc-app.jar'
             shutil.copyfile(args.jar, frozen)
             cp, _ = C5.freeze_runtime(frozen, root)
+            compiler_cp = str(root / 'classes') + ':' + ':'.join(str(path) for path in sorted((root / 'lib').glob('*.jar')))
             CAP.command(['java', '--add-modules', 'jdk.compiler', 'com.sun.tools.javac.Main',
-                         '-cp', cp, '-d', str(root / 'classes'), str(source)])
+                         '-cp', compiler_cp, '-d', str(root / 'classes'), str(source)])
             report['probe_classes_sha256'] = {path.name: CAP.BASE.digest(path) for path in
                 (root / 'classes/com/iocextractor/adapter/out/store/jdbc').glob('JdbcTypedChunkCostProbe*.class')}
             for ordinal in range(args.samples):
