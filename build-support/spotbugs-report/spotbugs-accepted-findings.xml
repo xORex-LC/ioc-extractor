@@ -1786,16 +1786,16 @@
         </suppression>
         <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
     </finding>
-    <finding id="CAP-7C-C3-SB-025" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="4f353b03082a972d6bc69b16e1c773a7" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+    <finding id="CAP-7C-C3-SB-025" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="56098a692b5788c1c178388724a18fb" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcTypedPublicationChunk" />
-        <method name="insert" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationProtocol$Attempt;Lcom/iocextractor/adapter/out/store/jdbc/JdbcTypedPublicationChunk$Row;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcTypedPublicationChunk.java" startLine="60" bytecode="47" />
+        <method name="insertRows" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationProtocol$Attempt;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcTypedPublicationChunk.java" startLine="77" bytecode="54" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcTypedPublicationChunk" />
-            <Method name="insert" />
+            <Method name="insertRows" />
         </suppression>
-        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations. Reviewed 2026-10-11: chunk-local JdbcStatementScope reuse moves SQL preparation from insert to insertRows; SQL identifiers, prepared value bindings and admission authority are unchanged. This replaces one exact prior identity without adding a selector or accepting another warning.</rationale>
     </finding>
     <finding id="CAP-7C-C6-SB-001" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="7dcbc6b3c401b43a12c275a898d2e5b7" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C6-SQL" review="staged-publication-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcStagedCanonicalMigration" />
