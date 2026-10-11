@@ -25,8 +25,9 @@ REPO = CAP.REPO
 
 class QualificationWindow:
     """Bounded control/cleanup load and fail-closed, exact admission/allocation measurement."""
-    def __init__(self, root, port):
+    def __init__(self, root, port, maintenance_every=5):
         self.root, self.port = root, port
+        self.maintenance_every = maintenance_every
         self.stop = threading.Event()
         self.thread = None
         self.failure = None
@@ -61,7 +62,7 @@ class QualificationWindow:
                     self.maximum_lateness_seconds = max(self.maximum_lateness_seconds, invoked - due)
                     stream.write(json.dumps(dict(kind='control', due_monotonic=due,
                                                  invoked_monotonic=invoked, completed_monotonic=completed, **value)) + '\n')
-                    if self.control_count % 5 == 0:
+                    if self.maintenance_every and self.control_count % self.maintenance_every == 0:
                         value = self.request('maintenance')
                         stream.write(json.dumps(dict(kind='maintenance', completed_monotonic=time.monotonic(), **value)) + '\n')
                     stream.flush()
@@ -271,13 +272,15 @@ def main():
     parser.add_argument('--diagnostic', action='store_true')
     parser.add_argument('--timeout', type=int, default=900)
     parser.add_argument('--port', type=int, default=18207)
+    parser.add_argument('--maintenance-every', type=int, default=5,
+                        help='Extra retention/version page every N control probes; 0 keeps only normal service cleanup cadence')
     parser.add_argument('--bounded-row-profile', action='store_true',
                         help='Explicit common 16 KiB row / 4 KiB field / 1 MiB cache profile; default-limit admission stays open')
     args = parser.parse_args()
     output = args.output.absolute()
     if not output.is_relative_to(REPO / '.dev') or output.exists() or output.resolve() != output:
         parser.error('Use a new private repo-local .dev directory without symlinks')
-    if min(args.rows, args.samples, args.timeout) < 1 or args.initial_rows < 0:
+    if min(args.rows, args.samples, args.timeout) < 1 or args.initial_rows < 0 or args.maintenance_every < 0:
         parser.error('Positive workload, sample and timeout values required')
     if args.processed_import and args.import_artifact != 'masks':
         parser.error('--processed-import requires --import-artifact masks')
@@ -288,6 +291,7 @@ def main():
     report = {'source_commit': head, 'jar_sha256': CAP.BASE.digest(args.jar), 'policy_sha256': CAP.BASE.digest(args.config),
               'driver_sha256': CAP.BASE.digest(__file__), 'service_driver_sha256': CAP.BASE.digest(CAP.__file__),
               'collector_schema': 2, 'admission_scope': 'canonical_bean_only',
+              'extra_maintenance_every_control_probes': args.maintenance_every,
               'java': CAP.command(['java', '--version']), 'rows': args.rows, 'shape': args.shape, 'format': args.format,
               'initial_rows': args.initial_rows, 'import_artifact': args.import_artifact,
               'processed_import': args.processed_import,
@@ -295,7 +299,8 @@ def main():
               'mode': 'diagnostic' if args.diagnostic else 'instrumented_primary', 'requested_pairs': args.samples,
               'acceptance': 'NOT_ACCEPTED; C5 qualification does not activate ADR0041 or close G6', 'samples': []}
     args.smb, args.environment, args.document = False, None, None
-    args.qualification, args.gate_sample, args.canonical_evidence = QualificationWindow, gates, canonical_evidence
+    args.qualification = lambda root, port: QualificationWindow(root, port, args.maintenance_every)
+    args.gate_sample, args.canonical_evidence = gates, canonical_evidence
     CAP.save(output / 'report.json', report)
     with tempfile.TemporaryDirectory(prefix='ioc-c5-runtime-', dir=REPO / '.dev') as temporary:
         runtime = Path(temporary)

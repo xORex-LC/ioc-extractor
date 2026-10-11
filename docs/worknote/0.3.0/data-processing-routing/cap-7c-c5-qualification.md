@@ -47,7 +47,9 @@ canonical caller. Agent/control overhead is included in both variants.
 
 A containing worker makes a real clock control request once per second after the
 preceding request completes and invokes actual history/version cleanup every
-fifth request. Reports separate scheduled lateness, eligible-to-complete control
+fifth request. `--maintenance-every 0` leaves cleanup at the unchanged service
+cadence and retains only the extra clock probes; it is a distinct covering cell,
+not a replacement for a failed cleanup-stress result. Reports separate scheduled lateness, eligible-to-complete control
 latency and exact admission queue wait. This is a declared closed-loop background
 load, not an unlimited arrival-rate or sustainable mixed-intake claim. A worker
 failure or incomplete shutdown prevents publication of successful metrics.
