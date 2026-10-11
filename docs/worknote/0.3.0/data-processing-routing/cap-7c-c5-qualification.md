@@ -194,3 +194,12 @@ application. All owned serialized-fork JVMs terminated and private DB/WAL/CSV an
 frozen runtimes were removed; raw logs/resource/control traces and separate JFR
 recordings remain local. Final repository verification is required at the final
 documentation/evidence commit; it does not turn resource failures into acceptance.
+
+## 2026-10-11 corrective repeat
+
+The [corrective implementation](cap-7c-corrective-cycle.md) and
+[standard-policy repeat](cap-7c-c5-corrective-qualification.md) supplement this
+retained first-failure evidence. Default startup admission now passes; large-unit
+cost, safe-clock control failures and native hold budgets keep C5 **NOT_ACCEPTED**.
+The original narrower-profile series is not a controlled before/after comparison
+with the standard-policy repeat. Failed/superseded samples above remain unchanged.

@@ -887,3 +887,22 @@ passing cells use an explicitly narrower common row profile. Cleanup-stress
 progress and full format/cardinality/import/populated-state acceptance remain
 open. The report preserves failed clocks, superseded collectors and early
 configuration errors; smaller functional/diagnostic passes do not replace them.
+
+### 2026-10-11 CAP-7C corrective repeat
+
+The [corrective implementation](cap-7c-corrective-cycle.md) bounds working sets
+without reducing accepted row/field sizes, removes redundant empty before-images,
+streams sealed initially empty native families, avoids no-effect epoch changes
+and preserves durable operational progress after backward UTC. The
+[repeated C5](cap-7c-c5-corrective-qualification.md) retains all 12 forks on one
+clean source HEAD, one frozen JAR and the standard input/resource policy.
+
+Standard startup admission now passes. Two staged 100k processed-import windows
+complete full semantic/receipt/provenance/export oracles within 21.70–21.90s,
+but the third fails its control collector. Native large-unit holds and staged
+DOCX/aggregate cost remain unacceptable or incompletely qualified. Three staged
+control windows reject safe-clock skew outside 2s; raw-UTC/high-water divergence
+is confirmed, its cause is not. The DOCX failure window also retains competing
+workspace admission and large aggregate WAL/swap pressure. C5 and G6 remain
+**NOT_ACCEPTED**; failed samples and collector termination errors are preserved,
+and neither default composition nor the proposed visibility ADR is activated.

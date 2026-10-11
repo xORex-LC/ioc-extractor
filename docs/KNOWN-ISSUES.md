@@ -50,7 +50,7 @@ leases. Source-контракт квалифицирован, полная ре�
 Протокол полного сервиса: `service-capacity.py`; устройство чтения описано в
 [processing](dev/processing.md) и [ADR 0039](ADR/0039-streamed-document-source-processing.md).
 
-**ING-16 — обратный шаг UTC: координация исправлена, причина на хосте открыта (M).**
+**ING-16 — расхождение UTC и high-water: координация исправлена, причина открыта (M).**
 Квалификация 2026-10-09/11 выявила `SQLITE_CONSTRAINT_CHECK` в import retry и
 `Invalid document admission version or timestamps` после успешного document
 commit/projection. Служебные progress timestamps теперь не убывают относительно
@@ -60,7 +60,9 @@ retry-after остаётся абсолютным UTC deadline. Регресси
 длительность retention и завершение регистрации при обратном шаге часов.
 Canonical safe-clock остаётся независимой защитой и по-прежнему отклоняет UTC
 вне допустимого skew/clamp. Исторический C5 отказ control при `PT2.061S` сохранён;
-причина обратного шага на хосте по журналам не установлена. Исправление ledger
+повторная квалификация сохранила три отказа при `PT2.073S`–`PT2.363S`. Причина
+расхождения raw UTC и durable high-water по журналам не установлена; они не
+доказывают перевод часов хоста. Исправление ledger
 не разрешает новую canonical публикацию при небезопасном времени и не закрывает
 нагрузочную приёмку. Владельцы: service ledger / [managed import](dev/dataframe-import.md),
 [ingestion](dev/ingestion.md), эксплуатация часов хоста.

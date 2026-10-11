@@ -560,7 +560,10 @@ recovery and cancellation/quota regressions. Final repository gates still apply.
 C6 now has an [isolated operational implementation](cap-7c-c6-operations.md) for
 drained conversion, ownership/recovery, readiness, bounded cleanup and stopped
 restore. [C5 whole-service comparison](cap-7c-c5-qualification.md) now records
-the implemented harness and negative first-failure screens. C5 acceptance and
+the implemented harness and negative first-failure screens. The
+[corrective repeat](cap-7c-c5-corrective-qualification.md) resolves default startup
+admission while retaining negative large-unit/control screens and all 12 forks.
+C5 remains NOT_ACCEPTED. C5 acceptance and
 C6 operational activation remain open,
 including default composition, complete deployment backup and safe promotion-pin
 compaction. The default native runtime and G6 NOT_ACCEPTED status are unchanged.

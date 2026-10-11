@@ -1,7 +1,9 @@
 # CAP-7C corrective cycle after C5
 
-Status: implementation in progress. Entry HEAD is `8f6152d6`; the original
-[C5 evidence](cap-7c-c5-qualification.md) remains an unsuccessful qualification.
+Status: corrective implementation and mandatory C5 repeat completed on
+2026-10-11. Entry HEAD was `8f6152d6`; measured source HEAD is `c01d116c`.
+Both the [original C5 evidence](cap-7c-c5-qualification.md) and
+[repeat qualification](cap-7c-c5-corrective-qualification.md) are **NOT_ACCEPTED**.
 SQLite, atomic publication, publication UTC, input limits and resource budgets
 remain unchanged. The isolated candidate remains outside default composition.
 
@@ -67,7 +69,8 @@ coordination timestamp. Retry deadlines and lifecycle safe UTC are unchanged.
 Regression tests cover backward UTC, reopened import state and document
 registration finalization after an interrupted terminal transition. Existing
 receipt-first recovery/crash contracts remain mandatory. ING-16 retains the
-unexplained host-clock cause and independent safe-clock boundary.
+unexplained raw-UTC/high-water divergence and independent safe-clock boundary;
+these traces do not establish a host clock adjustment.
 
 ## Boundary tests and analyzer review
 
@@ -129,4 +132,39 @@ lease signals were reviewed against callback ownership on success and explicit
 failure closure/permit release; fatal-error rethrows preserve the original error,
 and wrapped exceptions preserve their cause. No suppression/count budget was added
 for these watchlist signals. Offline documentation links pass. C5 measurement
-starts only after these source changes are committed and Maven has stopped.
+started only after these source changes were committed and Maven had stopped.
+
+## Commits and repeated resource gate
+
+Four logical source commits implement this correction:
+
+- `d5fc0532`: byte-bounded standard admission, cache/lease ownership and release;
+- `2ddb31ac`: sparse private receipts/capture and no-effect epoch validation;
+- `595020bd`: nondecreasing operational document/import progress timestamps;
+- `c01d116c`: streaming sealed initially empty families, signed paging and final
+  hydration/receipt/analyzer boundary regressions.
+
+The [repeat report](cap-7c-c5-corrective-qualification.md) and
+[complete versioned reports](qualification/capacity/cap-7c-c5-corrective.json)
+retain all 12 forks under the standard row/field limits, original budgets and
+concurrent control/cleanup policy. The 1k DOCX admission smoke passes for both
+variants. Two staged processed-import windows pass full fields, keys, provenance,
+COALESCE, receipt, projection and export-profile oracles at 21.70–21.90s; a third
+control-worker failure prevents full-series acceptance.
+
+C5 remains **NOT_ACCEPTED**. Native 100k DOCX/aggregate holds exceed the adopted
+five-second screen. Large staged DOCX/aggregate collection fails on safe-clock
+controls; their observed 638.89s/230.01s intervals are not qualified throughput.
+The DOCX failed window also retains transient competing-lease admission failures,
+approximately 19,631 MiB named aggregate WAL and 308 MiB swap. No `SQLITE_FULL`
+or invalid operational timestamp rejection was observed in these repeat logs,
+but that absence does not close the resource/progress gate.
+
+All owned JVMs, private state and frozen runtime were removed. Three retained
+`cleanup_errors` describe unsuccessful collector completion, not failed process
+or state removal. Cause attribution for safe-clock skew, per-file WAL/read-pin
+amplification and foreground/control/export capacity isolation remains follow-up
+work. Million-row/populated and wider service-matrix expansion did not follow
+failed mandatory screens. Default native runtime, proposed ADR 0041 and G6 status
+remain unchanged. Final repository gates must run at the documentation/evidence
+commit; they cannot convert this negative C5 outcome into acceptance.

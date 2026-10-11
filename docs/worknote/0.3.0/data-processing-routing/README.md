@@ -215,5 +215,8 @@ the remaining reference matrix are preserved; production activation remains open
 
 [CAP-7C corrective cycle](cap-7c-corrective-cycle.md) records byte-bounded default
 admission, compact private receipt capture, effect-aware epoch invalidation and
-nondecreasing service-coordination timestamps. Repeated C5 resource evidence
-remains separate from deterministic correctness and default activation.
+nondecreasing service-coordination timestamps. The
+[mandatory C5 repeat](cap-7c-c5-corrective-qualification.md) closes the standard
+startup-admission blocker but remains **NOT_ACCEPTED**: large-unit cost, control
+reliability and competing-lease progress remain open. All 12 forks and collector
+failures are retained separately from deterministic correctness and activation.
