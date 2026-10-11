@@ -29,6 +29,7 @@
 | `service-capacity.py …` | CAP-6: отдельный user-systemd, фактические cgroup limits, прогретый полный локальный цикл, дисковый oracle и очистка |
 | `sqlite-publication-capacity.py …` | C5: парные изолированные прогоны native/staged SQLite, точные writer wait/hold, allocations всего JVM, параллельные control/cleanup; `make sqlite-publication-capacity SQLITE_CAPACITY_ARGS='…'` |
 | `ProcessingAllocationProfile.java …` | Потоковый разбор диагностического JFR: сэмплированный вес allocations и стеки по ближайшему IOC-методу; `make native-processing-profile JFR=…` |
+| `native-cost-comparison.py …` | Сравнить завершённые primary-серии native на одинаковых физических inputs и policy: поля/ключи/ID/provenance/receipt, метрики и сохранённые отрицательные screens; `make native-cost-comparison COST_COMPARISON_ARGS='…'` |
 | `service-capacity-upgrade.py …` | CAP-6: приватный upgrade после drain, backup остановленных БД/файлов и проверка restore до запуска прежнего бинарника |
 | `logs.sh …` | Читать и фильтровать ECS JSON по level/event/run/diagnostic |
 | `release-notes-context.sh …` | Собрать read-only Git/PR inventory для ручной подготовки release notes |

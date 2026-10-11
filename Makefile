@@ -286,6 +286,10 @@ sqlite-publication-capacity: ## C5 paired native/staged private service qualific
 native-processing-profile: ## Stream diagnostic JFR allocation/stack attribution; JFR selects the recording
 	@java tools/dev/ProcessingAllocationProfile.java "$(JFR)"
 
+.PHONY: native-cost-comparison
+native-cost-comparison: ## Compare completed equal-semantics native cost series; COST_COMPARISON_ARGS selects reports
+	@python3 tools/dev/native-cost-comparison.py $(COST_COMPARISON_ARGS)
+
 .PHONY: service-capacity-upgrade
 service-capacity-upgrade: ## CAP-6 drained private upgrade/backup-restore rehearsal; UPGRADE_ARGS selects frozen executables and policy
 	@python3 tools/dev/service-capacity-upgrade.py $(UPGRADE_ARGS)

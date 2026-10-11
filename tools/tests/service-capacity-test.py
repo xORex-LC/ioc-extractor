@@ -19,6 +19,9 @@ UPGRADE_SPEC.loader.exec_module(UPGRADE)
 C5_SPEC = importlib.util.spec_from_file_location('sqlite_capacity', Path(__file__).resolve().parents[1] / 'dev/sqlite-publication-capacity.py')
 C5 = importlib.util.module_from_spec(C5_SPEC)
 C5_SPEC.loader.exec_module(C5)
+NATIVE_COST_SPEC = importlib.util.spec_from_file_location('native_cost_comparison', Path(__file__).resolve().parents[1] / 'dev/native-cost-comparison.py')
+NATIVE_COST = importlib.util.module_from_spec(NATIVE_COST_SPEC)
+NATIVE_COST_SPEC.loader.exec_module(NATIVE_COST)
 
 
 def policy():
@@ -254,6 +257,45 @@ class ServiceCapacityTest(unittest.TestCase):
                 after = C5.native_cost_evidence(root, config)['deterministic_fingerprints']
                 for name in ['masks_identities', 'field_origins', 'masks_receipt_payload']:
                     self.assertNotEqual(before[name], after[name])
+
+    def test_native_cost_comparison_requires_equal_semantics_and_preserves_negative_screens(self):
+        import copy
+        peaks = {name: 100 for name in ['heap_used_bytes', 'rss_bytes', 'non_file_bytes', 'workspace_bytes', 'canonical_wal_bytes']}
+        sample = dict(backend='native', status='FAIL', failure=None, cleanup_errors=[], temporary_state_removed=True,
+                      input={'sha256': 'physical-input'}, canonical_oracle={'rows': 10},
+                      canonical_evidence={'deterministic_fingerprints': {'identities': {'sha256': 'key/id/rank'}}},
+                      runtime={'effective_limits': {'cpu.max': '200000 100000'}, 'flags': ['-Xmx512m']},
+                      gates={'violations': ['writer_hold']}, local_window_upper_seconds=70,
+                      qualification={'admissionWindowMaximaExact': True, 'allocatedProcessBytes': 1000,
+                                     'writerOperations': {'PROMOTION': {'maximumHoldNanos': 13e9},
+                                                          'CONTROL': {'maximumWaitNanos': 12e9}}},
+                      resources={'process_cpu_seconds': 60, 'peaks': peaks})
+        before = dict(rows=100, format='docx', shape='unique', source_commit='before-source', jar_sha256='before-jar',
+                      policy_sha256='policy', driver_sha256='driver', service_driver_sha256='service-driver',
+                      helper_class_sha256={'helper': 'class-digest'}, java='21',
+                      native_cost_cycle=True, mode='instrumented_primary', status='COMPLETE',
+                      cost_series={'status': 'COMPLETE'}, requested_native_windows=1, samples=[sample])
+        after = copy.deepcopy(before)
+        after['samples'][0]['qualification']['allocatedProcessBytes'] = 700
+        result = NATIVE_COST.compare(before, after)
+        self.assertEqual(result['metrics']['allocated_process_bytes']['after_before_median_ratio'], 0.7)
+        self.assertEqual(result['screen_statuses']['after'], ['FAIL'])
+        self.assertEqual(result['screen_violations']['after'], [['writer_hold']])
+        self.assertTrue(result['acceptance'].startswith('NOT_ACCEPTED'))
+        for field, value in [('status', 'ERROR'), ('requested_native_windows', 2),
+                             ('mode', 'diagnostic'), ('policy_sha256', 'other-policy'),
+                             ('source_commit', None), ('samples', [])]:
+            changed = copy.deepcopy(after)
+            changed[field] = value
+            with self.assertRaises(ValueError):
+                NATIVE_COST.compare(before, changed)
+        for field, value in [('input', {'sha256': 'other-input'}),
+                             ('canonical_evidence', {'deterministic_fingerprints': {'identities': {'sha256': 'different-id'}}}),
+                             ('cleanup_errors', ['not stopped']), ('runtime', {'effective_limits': {}, 'flags': []})]:
+            changed = copy.deepcopy(after)
+            changed['samples'][0][field] = value
+            with self.assertRaises(ValueError):
+                NATIVE_COST.compare(before, changed)
 
     def test_upgrade_startup_failure_stops_unit_before_state_removal(self):
         from types import SimpleNamespace
