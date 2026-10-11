@@ -1,5 +1,11 @@
 # Data processing capacity and scheduling review
 
+**2026-10-11 follow-up:** the owner requested feasibility reassessment before
+another implementation cycle. The
+[SQLite feasibility review](capacity-feasibility-review.md) separates measured
+residual costs, unavoidable work and candidate optimizations. Previous evidence
+and negative acceptance decisions remain unchanged.
+
 Status: initial root-cause and architecture review recorded on 2026-10-04.
 Runtime correction, complete memory attribution and capacity qualification remain
 open. This report was updated during the investigation; confirmed observations

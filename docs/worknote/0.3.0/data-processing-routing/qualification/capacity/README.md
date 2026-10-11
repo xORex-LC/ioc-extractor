@@ -2,7 +2,7 @@
 
 Diagnostic evidence for the
 [capacity and scheduling review](../../data-processing-capacity-review.md).
-Recorded 2026-10-04–2026-10-09. The incident files describe the old deployed runtime;
+Recorded 2026-10-04–2026-10-11. The incident files describe the old deployed runtime;
 CAP-0/1 evidence additionally qualifies isolated corrected executables.
 
 ## Evidence files
@@ -21,6 +21,7 @@ CAP-0/1 evidence additionally qualifies isolated corrected executables.
 | [cap-7a-reference.json](cap-7a-reference.json) | CAP-7A source-only ordered oracles, HTML/DOCX 100k complete output screens and million-row reducer failures; frozen executable/tree identities, phase anchors and owned-state cleanup; G6 remains NOT_ACCEPTED |
 | [cap-7c-c5-reference.json](cap-7c-c5-reference.json) | C5 native/staged whole-service comparison: 42 serialized forks plus one explicitly missing interrupted warmup; canonical-scope metrics, 100k failed/complete cells, all-five AS_IS contract screens, separate populated diagnostics and unchanged NOT_ACCEPTED decision |
 | [cap-7c-c5-policy.yml](cap-7c-c5-policy.yml) | Credential-free actual private document policy; the C5 driver explicitly derives the common bounded-row override and selected import catalogs |
+| [cap-7c-feasibility-phase-analysis.json](cap-7c-feasibility-phase-analysis.json) | Derived retained-log phase durations, completed-window writer/resource metrics and public-row census; original log hashes verified; no new benchmark or acceptance |
 
 `artifact_revision.changed_at` is transaction effective time sampled before
 the mutation loop. It must not be used as commit completion wall time. The

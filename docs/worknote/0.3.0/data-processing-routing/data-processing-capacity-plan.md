@@ -1,5 +1,12 @@
 # Data processing capacity implementation plan
 
+**2026-10-11 feasibility reassessment:** the owner requested analysis before
+further corrective implementation. See the
+[SQLite feasibility review](capacity-feasibility-review.md) for current phase
+evidence and decision alternatives. Historical targets/results below are
+preserved; no replacement budget or staged activation is accepted. Review the
+supported workload and availability requirements before another acceptance cycle.
+
 Status: CAP-0–CAP-5 implemented and qualified within their stage scope; CAP-6
 qualification records G6 NOT_ACCEPTED; CAP-7A implementation and scoped source
 qualification are complete in its [execution report](cap-7a-execution.md).

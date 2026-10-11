@@ -1,0 +1,704 @@
+{
+  "schema_version": 1,
+  "scope": "Read-only reanalysis of retained completed C5 windows; no new workload execution or budget acceptance",
+  "analysis_head": "36c7b5c52ddc220fdcab155c00a6ea35494327a8",
+  "date": "2026-10-11",
+  "source_evidence": "docs/worknote/0.3.0/data-processing-routing/qualification/capacity/cap-7c-c5-second-corrective.json",
+  "source_evidence_sha256": "9810d8cb8cb6ac17e9c66b54af76926cf2e623a4a1d3a17517bdb819dfdd98cf",
+  "method": {
+    "stages": "Parse JSON daemon.log; event.action=stage_complete; ioc.source.path contains reference.docx; group by ioc.run.id; retain exact event.duration nanoseconds and sum sequential stages.",
+    "raw_integrity": "Each included daemon.log SHA-256 is checked against the retained C5 evidence before extraction.",
+    "metrics": "Copy completed-window local upper bound, writer counters, allocations, resource-window CPU/GC/peaks and committed-family census without changing their measurement scopes.",
+    "exclusions": "ERROR forks excluded; stage sums are not Tlocal; CPU/GC are resource-window totals; public-row counts include warmup; control waits overlap execution and must not be added to Tlocal."
+  },
+  "samples": [
+    {
+      "cell": "docx-1k",
+      "index": 0,
+      "backend": "native",
+      "qualification_status": "SCREEN_PASS",
+      "source_commit": "87fe7b0dca746a4c150bdaa18d104f5435f79680",
+      "jar_sha256": "99fa2227e61183dd85a7810f10ea032aa151f1b506017628ef1fe129b56e28bd",
+      "raw_log": ".dev/cap7c-cycle2-docx-1k/0/daemon.log",
+      "raw_log_sha256": "b57e394b9ac869593aa2dab68a768b5c4443871c09e56eb510e5210b4a5ca8b7",
+      "complete_local_upper_seconds": 3.368565722979838,
+      "stage_runs": [
+        {
+          "run_id": "4572a63b-0abb-4094-bece-9ae4284b3a10",
+          "source_path": "/opt/ioc-extractor/.dev/ioc-cap6-_94rtjq4/var/processing/MzgxMTg1ZDAtMzJiNy00ZWE1LTljYmUtODczZmY5ZjI1ZTZk__pending__reference.docx.sealed",
+          "duration_nanos": {
+            "READ_SOURCE": 179142792,
+            "REFANG": 26391672,
+            "EXTRACT": 63509215,
+            "ATTRIBUTE": 7168790,
+            "PREPARE_ARTIFACTS": 460145466,
+            "WRITE_ARTIFACTS": 305633521
+          },
+          "sum_duration_nanos": 1041991456
+        }
+      ],
+      "writer_operations": {
+        "EXPORT_SLOTS": {
+          "completed": 3,
+          "totalWaitNanos": 53405,
+          "maximumWaitNanos": 26891,
+          "totalHoldNanos": 4818840,
+          "maximumHoldNanos": 4664592
+        },
+        "MAINTENANCE": {
+          "completed": 6,
+          "totalWaitNanos": 67112,
+          "maximumWaitNanos": 21068,
+          "totalHoldNanos": 1057117,
+          "maximumHoldNanos": 258551
+        },
+        "PROMOTION": {
+          "completed": 5,
+          "totalWaitNanos": 81002,
+          "maximumWaitNanos": 24024,
+          "totalHoldNanos": 221322009,
+          "maximumHoldNanos": 89867345
+        },
+        "CONTROL": {
+          "completed": 34,
+          "totalWaitNanos": 1608865,
+          "maximumWaitNanos": 414550,
+          "totalHoldNanos": 13543672,
+          "maximumHoldNanos": 2361774
+        }
+      },
+      "allocated_process_bytes": 240040784,
+      "resource_window_wall_seconds": 5.431678099994315,
+      "process_cpu_seconds": 2.549999999999999,
+      "gc_delta": {
+        "YGC": 7.0,
+        "FGC": 0.0,
+        "GCT": 0.02999999999999997
+      },
+      "rss_peak_bytes": 353071104,
+      "heap_used_peak_bytes": 82231500,
+      "psi_full_fraction": 0.0,
+      "observed_public_rows_including_warmup": {
+        "masks": 177,
+        "ip_list": 177,
+        "hashes": 525,
+        "address_blacklist": 354,
+        "ioc_aggregate": 1054
+      },
+      "publication_phases": {}
+    },
+    {
+      "cell": "docx-1k",
+      "index": 1,
+      "backend": "staged",
+      "qualification_status": "SCREEN_PASS",
+      "source_commit": "87fe7b0dca746a4c150bdaa18d104f5435f79680",
+      "jar_sha256": "99fa2227e61183dd85a7810f10ea032aa151f1b506017628ef1fe129b56e28bd",
+      "raw_log": ".dev/cap7c-cycle2-docx-1k/1/daemon.log",
+      "raw_log_sha256": "36f88ec703beb643d7322493d6c8b4b8ed2bbda789edf2f134493081b7097ebe",
+      "complete_local_upper_seconds": 8.66279128700262,
+      "stage_runs": [
+        {
+          "run_id": "58a54d92-f1b2-447b-8e50-ebaf46a855e4",
+          "source_path": "/opt/ioc-extractor/.dev/ioc-cap6-99trc75o/var/processing/Nzc5MDE5OGEtYmY4YS00M2Q4LWEzNzktMjk5N2EzMjIwOWE3__pending__reference.docx.sealed",
+          "duration_nanos": {
+            "READ_SOURCE": 187060629,
+            "REFANG": 26272572,
+            "EXTRACT": 54402202,
+            "ATTRIBUTE": 8535355,
+            "PREPARE_ARTIFACTS": 445875007,
+            "WRITE_ARTIFACTS": 1637188548
+          },
+          "sum_duration_nanos": 2359334313
+        }
+      ],
+      "writer_operations": {
+        "CONTROL": {
+          "completed": 101,
+          "totalWaitNanos": 12890500,
+          "maximumWaitNanos": 11150885,
+          "totalHoldNanos": 43870474,
+          "maximumHoldNanos": 3300326
+        },
+        "PROMOTION": {
+          "completed": 59,
+          "totalWaitNanos": 945992,
+          "maximumWaitNanos": 38828,
+          "totalHoldNanos": 526988155,
+          "maximumHoldNanos": 24769547
+        },
+        "MAINTENANCE": {
+          "completed": 40,
+          "totalWaitNanos": 786800,
+          "maximumWaitNanos": 110104,
+          "totalHoldNanos": 41754943,
+          "maximumHoldNanos": 8711182
+        },
+        "EXPORT_SLOTS": {
+          "completed": 13,
+          "totalWaitNanos": 146512,
+          "maximumWaitNanos": 27261,
+          "totalHoldNanos": 42528183,
+          "maximumHoldNanos": 13283796
+        }
+      },
+      "allocated_process_bytes": 825430096,
+      "resource_window_wall_seconds": 10.685549023997737,
+      "process_cpu_seconds": 6.18,
+      "gc_delta": {
+        "YGC": 23.0,
+        "FGC": 0.0,
+        "GCT": 0.069
+      },
+      "rss_peak_bytes": 387502080,
+      "heap_used_peak_bytes": 93509939,
+      "psi_full_fraction": 0.0,
+      "observed_public_rows_including_warmup": {
+        "masks": 177,
+        "ip_list": 177,
+        "hashes": 525,
+        "address_blacklist": 354,
+        "ioc_aggregate": 1054
+      },
+      "publication_phases": {
+        "maximumAttempt": 1,
+        "SEALED": 26,
+        "PREPARED": 26,
+        "COMMITTED": 26,
+        "BEFORE_PUBLICATION": 26,
+        "PUBLICATION_STAGED": 26,
+        "HIDDEN_CHUNK": 54,
+        "BEFORE_HIDDEN_CHUNK": 54
+      }
+    },
+    {
+      "cell": "docx-100k",
+      "index": 0,
+      "backend": "native",
+      "qualification_status": "FAIL",
+      "source_commit": "87fe7b0dca746a4c150bdaa18d104f5435f79680",
+      "jar_sha256": "99fa2227e61183dd85a7810f10ea032aa151f1b506017628ef1fe129b56e28bd",
+      "raw_log": ".dev/cap7c-cycle2-docx-100k/0/daemon.log",
+      "raw_log_sha256": "c427ad2aa3f12acaac287957043dbe6cf8d7497ad8a25948ae65f1a926176d4e",
+      "complete_local_upper_seconds": 69.53756767199957,
+      "stage_runs": [
+        {
+          "run_id": "65240388-6a63-4304-b6ab-fa1f416ddc0d",
+          "source_path": "/opt/ioc-extractor/.dev/ioc-cap6-i5_kvbbg/var/processing/ODE5NGI4YTQtODM0Mi00MWRmLTgwZTEtNjU1M2I3ZjFmODZm__pending__reference.docx.sealed",
+          "duration_nanos": {
+            "READ_SOURCE": 804862906,
+            "REFANG": 1154140935,
+            "EXTRACT": 2732786973,
+            "ATTRIBUTE": 378840635,
+            "PREPARE_ARTIFACTS": 28682591185,
+            "WRITE_ARTIFACTS": 31089638296
+          },
+          "sum_duration_nanos": 64842860930
+        }
+      ],
+      "writer_operations": {
+        "PROMOTION": {
+          "completed": 5,
+          "totalWaitNanos": 94746,
+          "maximumWaitNanos": 31537,
+          "totalHoldNanos": 25630391062,
+          "maximumHoldNanos": 13332783462
+        },
+        "MAINTENANCE": {
+          "completed": 54,
+          "totalWaitNanos": 720894,
+          "maximumWaitNanos": 41167,
+          "totalHoldNanos": 12102765,
+          "maximumHoldNanos": 787954
+        },
+        "EXPORT_SLOTS": {
+          "completed": 4,
+          "totalWaitNanos": 507759,
+          "maximumWaitNanos": 456439,
+          "totalHoldNanos": 683152362,
+          "maximumHoldNanos": 413677951
+        },
+        "CONTROL": {
+          "completed": 85,
+          "totalWaitNanos": 23912991588,
+          "maximumWaitNanos": 12453391968,
+          "totalHoldNanos": 85926245,
+          "maximumHoldNanos": 17999838
+        }
+      },
+      "allocated_process_bytes": 15887950904,
+      "resource_window_wall_seconds": 71.53946722397814,
+      "process_cpu_seconds": 59.17,
+      "gc_delta": {
+        "YGC": 433.0,
+        "FGC": 0.0,
+        "GCT": 0.429
+      },
+      "rss_peak_bytes": 395776000,
+      "heap_used_peak_bytes": 96411648,
+      "psi_full_fraction": 0.0008451838173563315,
+      "observed_public_rows_including_warmup": {
+        "masks": 16677,
+        "ip_list": 16677,
+        "hashes": 50025,
+        "address_blacklist": 33354,
+        "ioc_aggregate": 100054
+      },
+      "publication_phases": {}
+    },
+    {
+      "cell": "processed-100k",
+      "index": 0,
+      "backend": "native",
+      "qualification_status": "SCREEN_PASS",
+      "source_commit": "87fe7b0dca746a4c150bdaa18d104f5435f79680",
+      "jar_sha256": "99fa2227e61183dd85a7810f10ea032aa151f1b506017628ef1fe129b56e28bd",
+      "raw_log": ".dev/cap7c-cycle2-processed-100k/0/daemon.log",
+      "raw_log_sha256": "10f76417eeabd00e1cc1ac236eddbedf749db5adfa11c39ccd8b9559b27bcfc1",
+      "complete_local_upper_seconds": 17.40111856799922,
+      "stage_runs": [],
+      "writer_operations": {
+        "EXPORT_SLOTS": {
+          "completed": 1,
+          "totalWaitNanos": 12251,
+          "maximumWaitNanos": 12251,
+          "totalHoldNanos": 1369022,
+          "maximumHoldNanos": 1369022
+        },
+        "MAINTENANCE": {
+          "completed": 18,
+          "totalWaitNanos": 220125,
+          "maximumWaitNanos": 30755,
+          "totalHoldNanos": 3454591,
+          "maximumHoldNanos": 547946
+        },
+        "PROMOTION": {
+          "completed": 1,
+          "totalWaitNanos": 25272,
+          "maximumWaitNanos": 25272,
+          "totalHoldNanos": 95011635,
+          "maximumHoldNanos": 95011635
+        },
+        "CONTROL": {
+          "completed": 27,
+          "totalWaitNanos": 750779,
+          "maximumWaitNanos": 44260,
+          "totalHoldNanos": 7289068,
+          "maximumHoldNanos": 1027260
+        }
+      },
+      "allocated_process_bytes": 3348652600,
+      "resource_window_wall_seconds": 17.49710562400287,
+      "process_cpu_seconds": 14.98,
+      "gc_delta": {
+        "YGC": 93.0,
+        "FGC": 0.0,
+        "GCT": 0.10499999999999998
+      },
+      "rss_peak_bytes": 360259584,
+      "heap_used_peak_bytes": 76717568,
+      "psi_full_fraction": 0.0,
+      "observed_public_rows_including_warmup": {
+        "masks": 30,
+        "ip_list": 10,
+        "hashes": 26,
+        "address_blacklist": 20,
+        "ioc_aggregate": 54
+      },
+      "publication_phases": {}
+    },
+    {
+      "cell": "processed-100k",
+      "index": 1,
+      "backend": "staged",
+      "qualification_status": "SCREEN_PASS",
+      "source_commit": "87fe7b0dca746a4c150bdaa18d104f5435f79680",
+      "jar_sha256": "99fa2227e61183dd85a7810f10ea032aa151f1b506017628ef1fe129b56e28bd",
+      "raw_log": ".dev/cap7c-cycle2-processed-100k/1/daemon.log",
+      "raw_log_sha256": "acab381ab631b9f2892be60e7559eca53b087e2aefb6a07e388898af98710ef8",
+      "complete_local_upper_seconds": 16.381508399994345,
+      "stage_runs": [],
+      "writer_operations": {
+        "PROMOTION": {
+          "completed": 4,
+          "totalWaitNanos": 60487,
+          "maximumWaitNanos": 31661,
+          "totalHoldNanos": 3380321,
+          "maximumHoldNanos": 2580738
+        },
+        "CONTROL": {
+          "completed": 53,
+          "totalWaitNanos": 1178239,
+          "maximumWaitNanos": 157527,
+          "totalHoldNanos": 13857018,
+          "maximumHoldNanos": 2850593
+        },
+        "EXPORT_SLOTS": {
+          "completed": 4,
+          "totalWaitNanos": 39261,
+          "maximumWaitNanos": 11425,
+          "totalHoldNanos": 3715641,
+          "maximumHoldNanos": 2358523
+        },
+        "MAINTENANCE": {
+          "completed": 60,
+          "totalWaitNanos": 1304440,
+          "maximumWaitNanos": 203521,
+          "totalHoldNanos": 118811445,
+          "maximumHoldNanos": 32065736
+        }
+      },
+      "allocated_process_bytes": 3532657256,
+      "resource_window_wall_seconds": 16.47395638099988,
+      "process_cpu_seconds": 17.630000000000003,
+      "gc_delta": {
+        "YGC": 99.0,
+        "FGC": 0.0,
+        "GCT": 0.126
+      },
+      "rss_peak_bytes": 389484544,
+      "heap_used_peak_bytes": 76732006,
+      "psi_full_fraction": 0.0,
+      "observed_public_rows_including_warmup": {
+        "masks": 30,
+        "ip_list": 10,
+        "hashes": 26,
+        "address_blacklist": 20,
+        "ioc_aggregate": 54
+      },
+      "publication_phases": {
+        "BEFORE_HIDDEN_CHUNK": 3,
+        "HIDDEN_CHUNK": 3,
+        "PUBLICATION_STAGED": 21,
+        "BEFORE_PUBLICATION": 21,
+        "COMMITTED": 21,
+        "PREPARED": 21,
+        "SEALED": 21,
+        "maximumAttempt": 1
+      }
+    },
+    {
+      "cell": "processed-100k",
+      "index": 2,
+      "backend": "staged",
+      "qualification_status": "SCREEN_PASS",
+      "source_commit": "87fe7b0dca746a4c150bdaa18d104f5435f79680",
+      "jar_sha256": "99fa2227e61183dd85a7810f10ea032aa151f1b506017628ef1fe129b56e28bd",
+      "raw_log": ".dev/cap7c-cycle2-processed-100k/2/daemon.log",
+      "raw_log_sha256": "915f1b167ac6cb7bb28cea0d2bbac2b92a3659659d1f9ac4a6b263364da7d2c9",
+      "complete_local_upper_seconds": 17.520977383013815,
+      "stage_runs": [],
+      "writer_operations": {
+        "PROMOTION": {
+          "completed": 4,
+          "totalWaitNanos": 63678,
+          "maximumWaitNanos": 23303,
+          "totalHoldNanos": 5040589,
+          "maximumHoldNanos": 3808489
+        },
+        "MAINTENANCE": {
+          "completed": 60,
+          "totalWaitNanos": 1149941,
+          "maximumWaitNanos": 94002,
+          "totalHoldNanos": 112956686,
+          "maximumHoldNanos": 30405346
+        },
+        "EXPORT_SLOTS": {
+          "completed": 4,
+          "totalWaitNanos": 27548,
+          "maximumWaitNanos": 11974,
+          "totalHoldNanos": 3668821,
+          "maximumHoldNanos": 2370448
+        },
+        "CONTROL": {
+          "completed": 54,
+          "totalWaitNanos": 1179501,
+          "maximumWaitNanos": 71015,
+          "totalHoldNanos": 14163640,
+          "maximumHoldNanos": 2396284
+        }
+      },
+      "allocated_process_bytes": 3555666808,
+      "resource_window_wall_seconds": 17.65158895897912,
+      "process_cpu_seconds": 18.459999999999997,
+      "gc_delta": {
+        "YGC": 100.0,
+        "FGC": 0.0,
+        "GCT": 0.14400000000000002
+      },
+      "rss_peak_bytes": 387940352,
+      "heap_used_peak_bytes": 90115072,
+      "psi_full_fraction": 0.0,
+      "observed_public_rows_including_warmup": {
+        "masks": 30,
+        "ip_list": 10,
+        "hashes": 26,
+        "address_blacklist": 20,
+        "ioc_aggregate": 54
+      },
+      "publication_phases": {
+        "PUBLICATION_STAGED": 21,
+        "HIDDEN_CHUNK": 3,
+        "BEFORE_HIDDEN_CHUNK": 3,
+        "maximumAttempt": 1,
+        "SEALED": 21,
+        "PREPARED": 21,
+        "COMMITTED": 21,
+        "BEFORE_PUBLICATION": 21
+      }
+    },
+    {
+      "cell": "processed-100k",
+      "index": 3,
+      "backend": "native",
+      "qualification_status": "SCREEN_PASS",
+      "source_commit": "87fe7b0dca746a4c150bdaa18d104f5435f79680",
+      "jar_sha256": "99fa2227e61183dd85a7810f10ea032aa151f1b506017628ef1fe129b56e28bd",
+      "raw_log": ".dev/cap7c-cycle2-processed-100k/3/daemon.log",
+      "raw_log_sha256": "0e84cbdc39cd80dab664d693e2b9e5c1c17b8b9764f3e1c6f1722bc78a39c745",
+      "complete_local_upper_seconds": 17.647926691017346,
+      "stage_runs": [],
+      "writer_operations": {
+        "CONTROL": {
+          "completed": 27,
+          "totalWaitNanos": 837079,
+          "maximumWaitNanos": 54949,
+          "totalHoldNanos": 7055209,
+          "maximumHoldNanos": 971214
+        },
+        "PROMOTION": {
+          "completed": 1,
+          "totalWaitNanos": 20698,
+          "maximumWaitNanos": 20698,
+          "totalHoldNanos": 99727693,
+          "maximumHoldNanos": 99727693
+        },
+        "MAINTENANCE": {
+          "completed": 18,
+          "totalWaitNanos": 190806,
+          "maximumWaitNanos": 18537,
+          "totalHoldNanos": 3653488,
+          "maximumHoldNanos": 547447
+        },
+        "EXPORT_SLOTS": {
+          "completed": 1,
+          "totalWaitNanos": 13838,
+          "maximumWaitNanos": 13838,
+          "totalHoldNanos": 1940947,
+          "maximumHoldNanos": 1940947
+        }
+      },
+      "allocated_process_bytes": 3341619632,
+      "resource_window_wall_seconds": 17.645003608980915,
+      "process_cpu_seconds": 15.409999999999998,
+      "gc_delta": {
+        "YGC": 93.0,
+        "FGC": 0.0,
+        "GCT": 0.11399999999999999
+      },
+      "rss_peak_bytes": 365948928,
+      "heap_used_peak_bytes": 80950169,
+      "psi_full_fraction": 0.0,
+      "observed_public_rows_including_warmup": {
+        "masks": 30,
+        "ip_list": 10,
+        "hashes": 26,
+        "address_blacklist": 20,
+        "ioc_aggregate": 54
+      },
+      "publication_phases": {}
+    },
+    {
+      "cell": "processed-100k",
+      "index": 4,
+      "backend": "native",
+      "qualification_status": "SCREEN_PASS",
+      "source_commit": "87fe7b0dca746a4c150bdaa18d104f5435f79680",
+      "jar_sha256": "99fa2227e61183dd85a7810f10ea032aa151f1b506017628ef1fe129b56e28bd",
+      "raw_log": ".dev/cap7c-cycle2-processed-100k/4/daemon.log",
+      "raw_log_sha256": "69f4086b7e9c5f470c6c4ac6349734cbaecd71673f01e56d4757802b8c37ab8e",
+      "complete_local_upper_seconds": 18.453996616008226,
+      "stage_runs": [],
+      "writer_operations": {
+        "CONTROL": {
+          "completed": 27,
+          "totalWaitNanos": 831451,
+          "maximumWaitNanos": 47089,
+          "totalHoldNanos": 8710102,
+          "maximumHoldNanos": 1132890
+        },
+        "PROMOTION": {
+          "completed": 1,
+          "totalWaitNanos": 19031,
+          "maximumWaitNanos": 19031,
+          "totalHoldNanos": 104565410,
+          "maximumHoldNanos": 104565410
+        },
+        "MAINTENANCE": {
+          "completed": 18,
+          "totalWaitNanos": 252577,
+          "maximumWaitNanos": 30326,
+          "totalHoldNanos": 4247916,
+          "maximumHoldNanos": 442130
+        },
+        "EXPORT_SLOTS": {
+          "completed": 1,
+          "totalWaitNanos": 19831,
+          "maximumWaitNanos": 19831,
+          "totalHoldNanos": 2179640,
+          "maximumHoldNanos": 2179640
+        }
+      },
+      "allocated_process_bytes": 3328002728,
+      "resource_window_wall_seconds": 18.453553952014772,
+      "process_cpu_seconds": 16.73,
+      "gc_delta": {
+        "YGC": 92.0,
+        "FGC": 0.0,
+        "GCT": 0.119
+      },
+      "rss_peak_bytes": 360886272,
+      "heap_used_peak_bytes": 89969971,
+      "psi_full_fraction": 0.0,
+      "observed_public_rows_including_warmup": {
+        "masks": 30,
+        "ip_list": 10,
+        "hashes": 26,
+        "address_blacklist": 20,
+        "ioc_aggregate": 54
+      },
+      "publication_phases": {}
+    },
+    {
+      "cell": "processed-100k",
+      "index": 5,
+      "backend": "staged",
+      "qualification_status": "SCREEN_PASS",
+      "source_commit": "87fe7b0dca746a4c150bdaa18d104f5435f79680",
+      "jar_sha256": "99fa2227e61183dd85a7810f10ea032aa151f1b506017628ef1fe129b56e28bd",
+      "raw_log": ".dev/cap7c-cycle2-processed-100k/5/daemon.log",
+      "raw_log_sha256": "bbbb6d81b85a7a7a6f4affa4c512d3358d6babb7fbab5534eeb08416c2960632",
+      "complete_local_upper_seconds": 17.260265805991367,
+      "stage_runs": [],
+      "writer_operations": {
+        "PROMOTION": {
+          "completed": 4,
+          "totalWaitNanos": 49554,
+          "maximumWaitNanos": 17219,
+          "totalHoldNanos": 4733863,
+          "maximumHoldNanos": 3852967
+        },
+        "MAINTENANCE": {
+          "completed": 60,
+          "totalWaitNanos": 3155577,
+          "maximumWaitNanos": 2206520,
+          "totalHoldNanos": 92142992,
+          "maximumHoldNanos": 27844136
+        },
+        "EXPORT_SLOTS": {
+          "completed": 4,
+          "totalWaitNanos": 65011,
+          "maximumWaitNanos": 36108,
+          "totalHoldNanos": 3801282,
+          "maximumHoldNanos": 2098526
+        },
+        "CONTROL": {
+          "completed": 53,
+          "totalWaitNanos": 1194374,
+          "maximumWaitNanos": 73125,
+          "totalHoldNanos": 15093943,
+          "maximumHoldNanos": 3246057
+        }
+      },
+      "allocated_process_bytes": 3485518448,
+      "resource_window_wall_seconds": 17.30688709000242,
+      "process_cpu_seconds": 18.990000000000002,
+      "gc_delta": {
+        "YGC": 97.0,
+        "FGC": 0.0,
+        "GCT": 0.13
+      },
+      "rss_peak_bytes": 387166208,
+      "heap_used_peak_bytes": 88609484,
+      "psi_full_fraction": 0.0,
+      "observed_public_rows_including_warmup": {
+        "masks": 30,
+        "ip_list": 10,
+        "hashes": 26,
+        "address_blacklist": 20,
+        "ioc_aggregate": 54
+      },
+      "publication_phases": {
+        "PUBLICATION_STAGED": 21,
+        "HIDDEN_CHUNK": 3,
+        "BEFORE_HIDDEN_CHUNK": 3,
+        "maximumAttempt": 1,
+        "SEALED": 21,
+        "PREPARED": 21,
+        "COMMITTED": 21,
+        "BEFORE_PUBLICATION": 21
+      }
+    },
+    {
+      "cell": "aggregate-100k",
+      "index": 0,
+      "backend": "native",
+      "qualification_status": "FAIL",
+      "source_commit": "87fe7b0dca746a4c150bdaa18d104f5435f79680",
+      "jar_sha256": "99fa2227e61183dd85a7810f10ea032aa151f1b506017628ef1fe129b56e28bd",
+      "raw_log": ".dev/cap7c-cycle2-aggregate-100k/0/daemon.log",
+      "raw_log_sha256": "41f4fec514f8caf8a9642da7fde8bd7f17a011123e570b110be52b8993bca151",
+      "complete_local_upper_seconds": 33.507078360999,
+      "stage_runs": [],
+      "writer_operations": {
+        "CONTROL": {
+          "completed": 27,
+          "totalWaitNanos": 15995213620,
+          "maximumWaitNanos": 15978974336,
+          "totalHoldNanos": 29293468,
+          "maximumHoldNanos": 18516680
+        },
+        "PROMOTION": {
+          "completed": 1,
+          "totalWaitNanos": 32394,
+          "maximumWaitNanos": 32394,
+          "totalHoldNanos": 16963484107,
+          "maximumHoldNanos": 16963484107
+        },
+        "MAINTENANCE": {
+          "completed": 18,
+          "totalWaitNanos": 226530,
+          "maximumWaitNanos": 32804,
+          "totalHoldNanos": 3699915,
+          "maximumHoldNanos": 570512
+        },
+        "EXPORT_SLOTS": {
+          "completed": 1,
+          "totalWaitNanos": 17179,
+          "maximumWaitNanos": 17179,
+          "totalHoldNanos": 58918,
+          "maximumHoldNanos": 58918
+        }
+      },
+      "allocated_process_bytes": 4549758696,
+      "resource_window_wall_seconds": 33.49861473898636,
+      "process_cpu_seconds": 26.71,
+      "gc_delta": {
+        "YGC": 118.0,
+        "FGC": 0.0,
+        "GCT": 0.13
+      },
+      "rss_peak_bytes": 375373824,
+      "heap_used_peak_bytes": 90539827,
+      "psi_full_fraction": 0.00016343959422381979,
+      "observed_public_rows_including_warmup": {
+        "masks": 10,
+        "ip_list": 10,
+        "hashes": 26,
+        "address_blacklist": 20,
+        "ioc_aggregate": 100054
+      },
+      "publication_phases": {}
+    }
+  ]
+}

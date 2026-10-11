@@ -139,6 +139,12 @@ optional dispatch and the required original-value production defaults.
 
 ## Stand capacity investigation
 
+[SQLite capacity feasibility review](capacity-feasibility-review.md) records the
+2026-10-11 owner-requested reassessment before another corrective cycle: remaining
+measured costs, required work, bounded optimization candidates and SQLite-only
+architecture choices. Numerical acceptance is under review; retained C5/G6
+failures and the native default remain unchanged.
+
 [Data processing capacity and scheduling review](data-processing-capacity-review.md)
 records the 2026-10-04 100k-occurrence publication delay, exact SQLite JDBC
 scaling evidence, memory/scheduling audit and proposed bounded processing model.
