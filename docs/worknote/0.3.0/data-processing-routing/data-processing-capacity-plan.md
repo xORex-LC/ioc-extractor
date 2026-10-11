@@ -563,6 +563,12 @@ restore. [C5 whole-service comparison](cap-7c-c5-qualification.md) now records
 the implemented harness and negative first-failure screens. The
 [corrective repeat](cap-7c-c5-corrective-qualification.md) resolves default startup
 admission while retaining negative large-unit/control screens and all 12 forks.
+The [second corrective repeat](cap-7c-c5-second-corrective-qualification.md)
+fixes early clock sampling, competing-control admission and a repeated export
+reader scan. All three processed-import pairs pass complete oracles, while
+native large-unit screens still fail and two staged collectors reject actual
+backward UTC steps confirmed by adjacent raw samples. All 12 forks are retained;
+stable qualification UTC and complete large-unit measurements remain required.
 C5 remains NOT_ACCEPTED. C5 acceptance and
 C6 operational activation remain open,
 including default composition, complete deployment backup and safe promotion-pin

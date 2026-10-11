@@ -220,3 +220,12 @@ nondecreasing service-coordination timestamps. The
 startup-admission blocker but remains **NOT_ACCEPTED**: large-unit cost, control
 reliability and competing-lease progress remain open. All 12 forks and collector
 failures are retained separately from deterministic correctness and activation.
+
+[CAP-7C second corrective cycle](cap-7c-second-corrective-cycle.md) fixes early
+safe-UTC sampling, isolates control preparation from promotion and replaces a
+repeated export-assignment scan with a full-key probe. Its
+[second C5 repeat](cap-7c-c5-second-corrective-qualification.md) passes all three
+standard processed-import pairs and retains 12 forks, including negative large
+native screens and two staged collector failures. Adjacent raw samples establish
+actual backward UTC steps in the qualification environment. **C5/G6 remain
+NOT_ACCEPTED**; stable UTC and complete large-unit qualification are still required.

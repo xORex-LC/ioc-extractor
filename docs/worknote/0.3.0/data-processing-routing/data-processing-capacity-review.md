@@ -906,3 +906,28 @@ is confirmed, its cause is not. The DOCX failure window also retains competing
 workspace admission and large aggregate WAL/swap pressure. C5 and G6 remain
 **NOT_ACCEPTED**; failed samples and collector termination errors are preserved,
 and neither default composition nor the proposed visibility ADR is activated.
+
+### 2026-10-11 CAP-7C second corrective repeat
+
+The [second corrective implementation](cap-7c-second-corrective-cycle.md) fixes
+UTC sampling before blocking ownership/snapshot acquisition, queues control
+preparation before private workspace/writer ownership and replaces the export
+completeness check's materialized repeated scan with a full-key anti-probe.
+Regressions cover resource release/cancellation, missing slots, expiry equality
+and actual production query plans. Limits and safe-clock policy are unchanged.
+
+The [second C5 repeat](cap-7c-c5-second-corrective-qualification.md) retains 12
+forks on one clean source HEAD/JAR/helper set. All three 100k processed-import
+pairs pass fields/keys/provenance/receipt/export oracles, with native/staged
+medians 17.65/17.26s and staged/native allocation ratios 1.047–1.064. Native
+large DOCX/aggregate still exceed writer/control budgets. Both large staged
+collectors fail safe-clock policy; adjacent UTC/monotonic samples establish
+actual approximately 2.48s backward UTC steps in this environment. This does not
+establish the exclusive cause of earlier failures without such instrumentation.
+
+Canonical WAL is now individually identified; failed-window observations no
+longer enter completed-window medians. Query-plan and admission corrections
+close confirmed defects, but incomplete windows cannot establish a controlled
+large-unit speedup or resource acceptance. Stabilize qualification UTC and
+repeat the failed cells before widening the matrix. C5/G6 remain
+**NOT_ACCEPTED** and production activation remains open.

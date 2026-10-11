@@ -1,7 +1,8 @@
 # CAP-7C second corrective cycle
 
-Status: implementation and qualification in progress. C5 and G6 remain
+Status: implementation and mandatory repeat completed on 2026-10-11. C5 and G6 remain
 NOT_ACCEPTED; the default native runtime and proposed ADR 0041 are unchanged.
+See the [second C5 corrective qualification](cap-7c-c5-second-corrective-qualification.md).
 
 ## Baseline and boundaries
 
@@ -120,3 +121,20 @@ The first PMD policy run also retained a new `CognitiveComplexity` finding in
 canonical workspace opening (21, threshold 16). Extract admission reservation
 and conditional release into cohesive resource helpers rather than expanding
 the advisory baseline. Re-run the resource regressions and all gates.
+
+## Completed qualification
+
+All primary forks use committed source `87fe7b0dca746a4c150bdaa18d104f5435f79680`
+and one frozen JAR/helper set. Eight SCREEN_PASS, two FAIL and two ERROR results
+are retained. Standard admission and all three processed-import pairs pass
+complete oracles. Native large DOCX/aggregate exceed writer/control budgets;
+both large staged collectors reject unsafe UTC. Adjacent raw observations now
+establish actual repeated UTC backsteps near 2.48 seconds in this environment.
+This is separate from the fixed early-sampling code defect; genuine clock
+rollback remains fail-closed. Preserve failed windows and stabilize the
+environment before attempting a complete comparative acceptance result.
+
+Source verify, PMD, ownership watchlist, tools contracts and docs pass. Coverage
+floors/baselines and the accepted SpotBugs registry remain unchanged; the one
+reviewed CPD reduction tightens its exact count to 23. The report records review
+dispositions and the remaining final committed-HEAD gate requirement.
