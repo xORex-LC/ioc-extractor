@@ -73,18 +73,8 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
     CanonicalLease openCanonicalState(String identity, String pins, boolean promotion) {
         Objects.requireNonNull(identity, "identity");
         Objects.requireNonNull(pins, "pins");
-        boolean controlReserved;
-        synchronized (this) { controlReserved = canonicalHeadroom && !promotion; }
-        // Two control/export workspaces must not borrow the working set reserved for promotion.
-        if (controlReserved && !canonicalControls.tryAcquire()) {
-            throw new IocExtractorException("Canonical control workspace admission exhausted");
-        }
-        // A document may already own a lease: nested blocking acquisition can deadlock a full pool.
         int permits = canonicalLeasePermits();
-        if (!leases.tryAcquire(permits)) {
-            if (controlReserved) { canonicalControls.release(); }
-            throw new IocExtractorException("Canonical workspace admission exhausted");
-        }
+        boolean controlReserved = reserveCanonicalAdmission(permits, promotion);
         Path directory = root.resolve(ArtifactIdentityDefinition.sha256("canonical:" + identity));
         Lease lease = null;
         boolean admitted = false;
@@ -111,10 +101,10 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
                     Lease owner = lease;
                     return new CanonicalLease(directory, JdbcCanonicalWorkspaceLimits.privateLimits(limits), () -> checkDisk(directory), () -> {
                         try { release(directory, owner); }
-                        finally { leases.release(permits - 1); if (controlReserved) { canonicalControls.release(); } }
+                        finally { leases.release(permits - 1); releaseCanonicalControl(controlReserved); }
                     }, () -> {
                         try { discardCanonical(directory, owner, permits); }
-                        finally { if (controlReserved) { canonicalControls.release(); } }
+                        finally { releaseCanonicalControl(controlReserved); }
                     });
                 }
             }
@@ -122,10 +112,29 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
             closeFailedLease(directory, lease, failure);
             if (admitted) { synchronized (this) { active.remove(directory); activeWorkspaceCount = active.size(); } }
             leases.release(permits);
-            if (controlReserved) { canonicalControls.release(); }
+            releaseCanonicalControl(controlReserved);
             if (failure instanceof Error fatal) { throw fatal; }
             throw new IocExtractorException("Cannot open canonical preparation workspace", failure);
         }
+    }
+
+    private boolean reserveCanonicalAdmission(int permits, boolean promotion) {
+        boolean controlReserved;
+        synchronized (this) { controlReserved = canonicalHeadroom && !promotion; }
+        // Two control/export workspaces must not borrow the working set reserved for promotion.
+        if (controlReserved && !canonicalControls.tryAcquire()) {
+            throw new IocExtractorException("Canonical control workspace admission exhausted");
+        }
+        // A document may already own a lease: nested blocking acquisition can deadlock a full pool.
+        if (!leases.tryAcquire(permits)) {
+            releaseCanonicalControl(controlReserved);
+            throw new IocExtractorException("Canonical workspace admission exhausted");
+        }
+        return controlReserved;
+    }
+
+    private void releaseCanonicalControl(boolean reserved) {
+        if (reserved) { canonicalControls.release(); }
     }
 
     int canonicalReadCacheKiB() { return JdbcCanonicalWorkspaceLimits.privateLimits(limits).cacheKiB(); }

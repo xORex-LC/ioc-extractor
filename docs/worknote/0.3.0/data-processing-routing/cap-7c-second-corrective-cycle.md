@@ -106,3 +106,17 @@ The first full verify retained a JDBC missed-branch ratchet failure (470 versus
 468). Add meaningful resource regressions for retaining-close release and total
 memory rejection after taking a control reservation. Floors, exclusions and
 reviewed baselines are unchanged. Final verification must cover these changes.
+
+The subsequent full verify passed coverage and retained a CPD decrease gate
+(24 expected, 23 actual). Re-running PMD CPD 7.17.0 at 75 tokens on the original
+source tree and comparing complete fragments confirmed exactly one removed
+group and no new groups: the two binding/result blocks in
+`JdbcExportSlotRegistry` at original lines 148 and 1111. The new missing-slot
+query binds `asOf` before the profile/artifact parameters and tests existence
+instead of reading a count. Tighten the reviewed CPD snapshot to 23; analyzer
+scope, threshold and exclusions are unchanged.
+
+The first PMD policy run also retained a new `CognitiveComplexity` finding in
+canonical workspace opening (21, threshold 16). Extract admission reservation
+and conditional release into cohesive resource helpers rather than expanding
+the advisory baseline. Re-run the resource regressions and all gates.
