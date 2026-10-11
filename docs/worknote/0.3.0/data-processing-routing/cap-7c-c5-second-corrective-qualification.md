@@ -45,8 +45,9 @@ import completes all three pairs, alternating their execution order.
 Times are conservative handoff-to-completed-slices intervals with the declared
 intake quiet time subtracted, not exact dispatch eligibility. An ERROR interval
 is an observation, not qualified throughput, allocations, result equivalence
-or an exact writer-admission maximum. Failed intervals are excluded from
-completed-window medians by the corrected collector.
+or an exact writer-admission maximum. Collector-failed intervals are excluded
+from completed-window medians; completed screen failures retain their measured
+intervals and negative decisions.
 
 | Cell | Native SQLite | Staged SQLite | Decision |
 |---|---|---|---|
