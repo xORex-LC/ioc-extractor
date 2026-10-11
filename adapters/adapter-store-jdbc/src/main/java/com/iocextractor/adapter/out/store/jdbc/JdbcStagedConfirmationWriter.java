@@ -45,6 +45,7 @@ final class JdbcStagedConfirmationWriter implements CanonicalArtifactWriter {
 
     private JdbcStagedPublication.NativeTask task(CanonicalArtifactConfirmation command) {
         return new JdbcStagedPublication.NativeTask() {
+            private JdbcConfirmationReceiptBase receiptBase = JdbcConfirmationReceiptBase.EMPTY;
             public void hydrate(JdbcPublicationSelection selection, JdbcSelectedCanonicalBase base, JdbcPublicationSlotBase slots, EffectiveTime asOf)
                     throws SQLException {
                 String artifact = command.artifactName();
@@ -60,11 +61,11 @@ final class JdbcStagedConfirmationWriter implements CanonicalArtifactWriter {
                 base.metadata(artifact);
                 base.registration(command.registration() == null ? null : command.registration().observationId().value());
                 base.rows(artifact);
-                base.ordinaryReceipt(command.observationId().value(), command.receipt().id().value(), backend.configuration().schemas());
+                receiptBase = base.ordinaryReceipt(command.observationId().value(), command.receipt().id().value(), backend.configuration().schemas());
             }
             public void prepare(DataSource working, JdbcCanonicalPreparationContext context, EffectiveTime asOf) throws SQLException {
                 backend.reservePrivateIds(working, Map.of(command.artifactName(), command.records().size()));
-                backend.nativeConfirmation(working, asOf, context).confirm(command);
+                backend.nativeConfirmation(working, asOf, context.withReceiptBase(receiptBase)).confirm(command);
             }
         };
     }

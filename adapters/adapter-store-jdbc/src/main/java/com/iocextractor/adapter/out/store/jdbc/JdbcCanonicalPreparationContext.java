@@ -6,12 +6,22 @@ import java.util.Objects;
 record JdbcCanonicalPreparationContext(JdbcCanonicalReservationAuthority reservations,
                                       JdbcMutationEffectSink.Factory effects,
                                       JdbcExportSlotRegistry exportSlots,
-                                      int readCacheKiB) {
+                                      int readCacheKiB, JdbcConfirmationReceiptBase receiptBase) {
     JdbcCanonicalPreparationContext {
         Objects.requireNonNull(reservations, "reservations");
         Objects.requireNonNull(effects, "effects");
         Objects.requireNonNull(exportSlots, "exportSlots");
+        Objects.requireNonNull(receiptBase, "receiptBase");
         if (readCacheKiB < 0) { throw new IllegalArgumentException("Invalid native stage read cache bound"); }
+    }
+
+    JdbcCanonicalPreparationContext(JdbcCanonicalReservationAuthority reservations, JdbcMutationEffectSink.Factory effects,
+                                    JdbcExportSlotRegistry exportSlots, int readCacheKiB) {
+        this(reservations, effects, exportSlots, readCacheKiB, JdbcConfirmationReceiptBase.EMPTY);
+    }
+
+    JdbcCanonicalPreparationContext withReceiptBase(JdbcConfirmationReceiptBase base) {
+        return new JdbcCanonicalPreparationContext(reservations, effects, exportSlots, readCacheKiB, base);
     }
 
     JdbcCanonicalPreparationContext(JdbcCanonicalReservationAuthority reservations, JdbcMutationEffectSink.Factory effects,

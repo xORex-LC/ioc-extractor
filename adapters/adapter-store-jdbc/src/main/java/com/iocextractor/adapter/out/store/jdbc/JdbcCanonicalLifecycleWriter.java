@@ -184,7 +184,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
         java.time.Clock allocatorClock = reservationAuthority.clock();
         this.lifecycleIdAllocator = new JdbcLifecycleIdAllocator(reservationAuthority.dataSource(), allocatorClock);
         this.mutationEngine = new JdbcCanonicalMutationEngine(dataSource, schemas, identityDefinitions);
-        this.receiptWriter = new JdbcConfirmationReceiptWriter(this.schemas);
+        this.receiptWriter = new JdbcConfirmationReceiptWriter(this.schemas, preparation.receiptBase());
         this.publicIdAllocators = initializePublicIdAllocators(publicIdDefinitions, allocatorClock, reservationAuthority.dataSource());
     }
 

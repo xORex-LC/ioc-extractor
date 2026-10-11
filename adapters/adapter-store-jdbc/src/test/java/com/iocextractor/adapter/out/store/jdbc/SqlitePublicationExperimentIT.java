@@ -42,6 +42,30 @@ class SqlitePublicationExperimentIT {
     @TempDir Path directory;
 
     @Test
+    void emptyCaptureRetainsOnlyRowReferencesAndFinalValuesAcrossNegativeIdsAndReinsertion() throws Exception {
+        try (var fixture = new Fixture(directory); var c = fixture.dataSource.getConnection()) {
+            JdbcPublicationTable.execute(c, "CREATE TABLE compact_capture(id INTEGER PRIMARY KEY,value TEXT)");
+            var table = JdbcPublicationTable.inspect(c, "compact_capture");
+            JdbcPrivateChangeCapture.install(c, List.of(table));
+            c.setAutoCommit(false);
+            preparedUpdate(c, "INSERT INTO compact_capture VALUES(-2,'initial'),(3,'transient')");
+            preparedUpdate(c, "UPDATE compact_capture SET id=-1,value='final' WHERE id=-2");
+            preparedUpdate(c, "DELETE FROM compact_capture WHERE id=3");
+            preparedUpdate(c, "INSERT INTO compact_capture VALUES(3,NULL)");
+            var effects = new ArrayList<JdbcPrivateChanges.Effect>();
+            long last = JdbcPrivateChanges.read(c, table, 0, effects::add);
+            assertThat(effects).hasSize(2).allSatisfy(effect -> {
+                assertThat(effect.previous()).isNull(); assertThat(effect.deleted()).isFalse();
+            });
+            assertThat(effects).extracting(effect -> effect.value("value")).containsExactly("final", null);
+            assertThat(queryNumber(c, "SELECT COUNT(*) FROM publication_before_compact_capture")).isZero();
+            assertThat(queryNumber(c, "SELECT COUNT(*) FROM pragma_table_info('publication_delta_compact_capture')")).isEqualTo(2);
+            assertThat(JdbcPrivateChanges.read(c, table, last, effects::add)).isEqualTo(last);
+            c.rollback();
+        }
+    }
+
+    @Test
     void typedChunkFramingPreservesSqlKindsNullAndFieldBoundariesAndRejectsOversizedPayloads() throws Exception {
         var fingerprints = new java.util.HashSet<String>();
         Object[] values = {null, "", "1", (byte) 1, (short) 2, 3, 4L, 1.0f, 2.0d, new byte[0], true, false};
@@ -494,6 +518,36 @@ class SqlitePublicationExperimentIT {
                 assertThat(effects).isEmpty();
                 c.rollback();
             }
+        }
+    }
+
+    @Test
+    void sparseBeforeImagesPreserveOriginalAbsenceAcrossKeyMovesAndReinsertion() throws Exception {
+        try (var fixture = new Fixture(directory)) {
+            fixture.write(OperationClass.CONTROL, c -> {
+                JdbcPublicationTable.execute(c, "CREATE TABLE sparse_keys(a TEXT,b INTEGER,value TEXT,PRIMARY KEY(a,b))");
+                JdbcPublicationTable.execute(c, "INSERT INTO sparse_keys VALUES('old',1,'original')");
+                var shape = JdbcPublicationTable.inspect(c, "sparse_keys");
+                JdbcPrivateChangeCapture.install(c, List.of(shape));
+                JdbcPublicationTable.execute(c, "INSERT INTO sparse_keys VALUES('new',2,'created')");
+                JdbcPublicationTable.execute(c, "UPDATE sparse_keys SET b=3,value='moved' WHERE a='new'");
+                JdbcPublicationTable.execute(c, "DELETE FROM sparse_keys WHERE a='old'");
+                JdbcPublicationTable.execute(c, "INSERT INTO sparse_keys VALUES('old',1,'replaced')");
+                var effects = new ArrayList<JdbcPrivateChanges.Effect>();
+                JdbcPrivateChanges.read(c, shape, 0, effects::add);
+                assertThat(effects).hasSize(2);
+                assertThat(effects).filteredOn(effect -> effect.value("a").equals("new")).singleElement()
+                        .satisfies(effect -> {
+                            assertThat(effect.values()).containsExactly("new", 3, "moved");
+                            assertThat(effect.previous()).isNull();
+                        });
+                assertThat(effects).filteredOn(effect -> effect.value("a").equals("old")).singleElement()
+                        .satisfies(effect -> {
+                            assertThat(effect.values()).containsExactly("old", 1, "replaced");
+                            assertThat(effect.previous()).containsExactly("old", 1, "original");
+                        });
+                return null;
+            });
         }
     }
 

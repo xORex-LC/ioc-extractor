@@ -54,6 +54,19 @@ final typed values, NULL and cascaded tombstones. An explicit mutation journal
 preserves renewals even when timestamps have not changed. Two passes over one
 sealed snapshot describe and transfer at most 256 effects / 1 MiB per chunk.
 
+An initially empty rowid family captures integer row references and reads final
+values from the sealed native table. Deleted transient rows contribute nothing;
+key changes retain only their final address. Nonempty families retain one initial
+before-image per changed address and the final typed delta. This avoids copying
+every new receipt field-position payload and composite key twice. A native
+`WITHOUT ROWID` table or shadowed `rowid` column retains full typed capture.
+Earlier artifacts' immutable receipt payloads stay in canonical storage.
+Preparation copies their header/markers and reads actual typed-row counts in the
+pinned committed snapshot, rather than recopying all payloads and positions.
+The receipt dependency epoch protects those counts; the native kernel still
+checks marker completeness and actual totals before publication. Receipt
+field-position writes flush bounded batches with the same 128-row/1-MiB ceiling.
+
 ## Boundaries
 
 All physical mechanics remain in `adapter-store-jdbc`. Application ports,
@@ -102,8 +115,9 @@ interruption to authorize publication. Physical publication and cleanup failures
 remain attached to the original error; a failed cleanup still requires recovery.
 
 Controls reuse native expiry, history, projection, receipt-retention and slot
-operations in private selective snapshots. Their epochs invalidate stale
-promotion work. Their fixed cycle time remains literal; promotion timestamps and
+operations in private selective snapshots. Controls with actual effects advance
+epochs and invalidate stale promotion work; an empty maintenance result validates
+its dependencies but leaves business epochs unchanged. Their fixed cycle time remains literal; promotion timestamps and
 renewal deadlines use publication UTC.
 
 Physical cleanup advances persisted keyset cursors, checking at most 256

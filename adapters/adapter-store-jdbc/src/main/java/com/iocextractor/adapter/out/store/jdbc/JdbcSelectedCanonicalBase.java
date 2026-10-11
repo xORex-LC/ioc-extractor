@@ -47,13 +47,23 @@ final class JdbcSelectedCanonicalBase {
         hydrator.copy("observation_order_control", "b.singleton_id=1", List.of());
     }
 
-    void ordinaryReceipt(String observation, String receipt, List<DataframeArtifactSchema> schemas) throws SQLException {
+    JdbcConfirmationReceiptBase ordinaryReceipt(String observation, String receipt, List<DataframeArtifactSchema> schemas) throws SQLException {
         hydrator.copy("canonical_observation", "b.observation_id=?", List.of(observation));
         hydrator.copy("canonical_observation_commit", "b.observation_id=?", List.of(observation));
-        for (String table : List.of("confirmation_receipt", "confirmation_receipt_artifact", "confirmation_receipt_field_position")) {
+        for (String table : List.of("confirmation_receipt", "confirmation_receipt_artifact")) {
             hydrator.copy(table, "b.receipt_id=?", List.of(receipt));
         }
-        for (var schema : schemas) { hydrator.copy(schema.artifactName() + "_receipt_rows", "b.receipt_id=?", List.of(receipt)); }
+        // Prior artifact payloads are immutable and never read by the native
+        // confirmation mutation. Validate their real counts in this pinned snapshot.
+        var counts = new java.util.LinkedHashMap<String, Long>();
+        for (var schema : schemas) {
+            try (var statement = base.prepareStatement("SELECT COUNT(*) FROM "
+                    + JdbcSql.quote(schema.artifactName() + "_receipt_rows") + " WHERE receipt_id=?")) {
+                statement.setString(1, receipt);
+                try (var rows = statement.executeQuery()) { rows.next(); counts.put(schema.artifactName(), rows.getLong(1)); }
+            }
+        }
+        return new JdbcConfirmationReceiptBase(receipt, counts);
     }
 
     void slotNamespace(String profile, String artifact) throws SQLException {

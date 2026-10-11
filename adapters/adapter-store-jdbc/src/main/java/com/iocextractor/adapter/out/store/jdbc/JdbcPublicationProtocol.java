@@ -291,8 +291,10 @@ final class JdbcPublicationProtocol {
         try (PreparedStatement statement = connection.prepareStatement("""
                 UPDATE publication_epoch SET version=version+1
                 WHERE scope IN (SELECT scope FROM publication_dependency WHERE unit_id=? AND fence=?)
+                  AND EXISTS(SELECT 1 FROM publication_unit WHERE id=? AND fence=? AND contributions>0)
                 """)) {
             bindAttempt(statement, attempt);
+            statement.setLong(3, attempt.unitId()); statement.setLong(4, attempt.fence());
             statement.executeUpdate();
         }
         return new Receipt(sequence, effectiveMillis, receipt);

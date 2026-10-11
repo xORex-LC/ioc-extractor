@@ -25,9 +25,10 @@ final class JdbcConfirmationReceiptWriter {
     private static final int PAYLOAD_VERSION = 2;
 
     private final Map<String, DataframeArtifactSchema> schemas;
+    private final JdbcConfirmationReceiptBase base;
 
-    JdbcConfirmationReceiptWriter(Map<String, DataframeArtifactSchema> schemas) {
-        this.schemas = schemas;
+    JdbcConfirmationReceiptWriter(Map<String, DataframeArtifactSchema> schemas, JdbcConfirmationReceiptBase base) {
+        this.schemas = schemas; this.base = base;
     }
 
     void stageAndPublishIfComplete(Connection connection,
@@ -122,18 +123,29 @@ final class JdbcConfirmationReceiptWriter {
                 """);
              var cursor = JdbcRowSources.onConnection(confirmation.records(), connection).open()) {
             int ordinal = 0;
+            int pending = 0;
+            long batchBytes = 0;
             while (cursor.next()) {
                 CanonicalRecordConfirmation record = cursor.value();
                 for (var field : record.preparedRow().orderedFieldPositions().entrySet()) {
+                    long bytes = 128L + 4L * (confirmation.receipt().id().value().length()
+                            + confirmation.artifactName().length() + field.getKey().length());
+                    if (pending > 0 && batchBytes + bytes > 1048576) {
+                        statement.executeBatch(); statement.clearBatch(); pending = 0; batchBytes = 0;
+                    }
                     statement.setString(1, confirmation.receipt().id().value());
                     statement.setString(2, confirmation.artifactName());
                     statement.setInt(3, ordinal);
                     statement.setString(4, field.getKey());
                     statement.setLong(5, field.getValue().value());
-                    statement.executeUpdate();
+                    statement.addBatch(); pending++; batchBytes += bytes;
+                    if (pending == 128 || batchBytes >= 1048576) {
+                        statement.executeBatch(); statement.clearBatch(); pending = 0; batchBytes = 0;
+                    }
                 }
                 ordinal++;
             }
+            if (pending > 0) { statement.executeBatch(); }
         }
     }
 
@@ -262,7 +274,7 @@ final class JdbcConfirmationReceiptWriter {
             statement.setString(1, receiptId);
             try (ResultSet resultSet = statement.executeQuery()) {
                 resultSet.next();
-                return resultSet.getLong(1);
+                return Math.addExact(resultSet.getLong(1), base.count(receiptId, artifact));
             }
         }
     }

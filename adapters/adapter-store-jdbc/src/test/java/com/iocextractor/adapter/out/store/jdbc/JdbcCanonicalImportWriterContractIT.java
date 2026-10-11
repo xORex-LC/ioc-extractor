@@ -661,19 +661,23 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
     void stagedEpochInvalidationStopsAfterThreeAttemptsAndLeavesRetryablePinnedWork() {
         Environment canonical = environment("bounded-rebuild");
         var holder = new java.util.concurrent.atomic.AtomicReference<JdbcStagedCanonicalBackend>();
-        var enabled = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var enabled = new java.util.concurrent.atomic.AtomicBoolean(false);
         var nested = new java.util.concurrent.atomic.AtomicBoolean();
         var rebuilds = new AtomicInteger();
         var backend = JdbcStagedCanonicalBackend.createEmpty(stagedConfiguration(canonical, CLOCK), (phase, attempt, chunk) -> {
             if (phase == JdbcPublicationObserver.Phase.REBUILD) { rebuilds.incrementAndGet(); }
             if (phase == JdbcPublicationObserver.Phase.BEFORE_PUBLICATION && enabled.get() && nested.compareAndSet(false, true)) {
                 try {
-                    holder.get().projections().recordFailure("masks",
-                            holder.get().projections().load("masks").requiredGeneration(), "PROJECTION.FAILED");
+                    assertThat(holder.get().projections().recordFailure("masks",
+                            holder.get().projections().load("masks").requiredGeneration(), "PROJECTION.FAILED." + attempt)).isTrue();
                 } finally { nested.set(false); }
             }
         });
         holder.set(backend);
+        backend.imports().promote(canonical.stage("epoch-seed", ImportPromotionPolicy.defaults(), List.of(row(2,
+                branch(canonical, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "seed.example", "source", "seed"), OptionalLong.empty()))), List.of()));
+        enabled.set(true);
         var command = canonical.stage("epoch-invalidated", ImportPromotionPolicy.defaults(), List.of(row(2,
                 branch(canonical, "masks", ImportArtifactRole.PRIMARY,
                         values("mask", "epoch.example", "source", "feed"), OptionalLong.empty()))), List.of());
@@ -683,13 +687,13 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                         assertThat(failure.getCause()).hasMessage("Publication rebuild budget exhausted"));
 
         assertThat(rebuilds).hasValue(3);
-        assertThat(canonical.count("masks")).isZero();
+        assertThat(canonical.count("masks")).isOne();
         assertThat(backend.importEvidence().find(command.deliveryId())).isEmpty();
         assertThat(canonical.count("publication_owner_failure")).isOne();
         enabled.set(false);
         assertThat(backend.imports().promote(command).outcome()).isEqualTo(ImportPromotionOutcome.COMMITTED);
-        assertThat(canonical.queryLong("SELECT id FROM masks")).isGreaterThan(3);
-        assertThat(canonical.count("masks_sources")).isOne();
+        assertThat(canonical.queryLong("SELECT id FROM masks WHERE mask='epoch.example'")).isGreaterThan(3);
+        assertThat(canonical.count("masks_sources")).isEqualTo(2);
     }
 
     @Test
@@ -703,8 +707,17 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
              var third = JdbcPrivatePublicationWorkspace.create(factory, "third", "pins")) {
             second.checkQuota(); third.checkQuota();
             assertThat(factory.pressure().leasedWorkspaces()).isEqualTo(3);
-            assertThatThrownBy(() -> JdbcPrivatePublicationWorkspace.create(factory, "exhausted", "pins"))
-                    .isInstanceOf(IocExtractorException.class).hasMessageContaining("admission exhausted");
+            var additional = new ArrayList<JdbcPrivatePublicationWorkspace>();
+            try {
+                for (int index = 0; index < factory.maximumConcurrentWorkspaces(); index++) {
+                    try { additional.add(JdbcPrivatePublicationWorkspace.create(factory, "additional-" + index, "pins")); }
+                    catch (IocExtractorException exhausted) {
+                        assertThat(exhausted).hasMessageContaining("admission exhausted"); break;
+                    }
+                }
+                assertThatThrownBy(() -> JdbcPrivatePublicationWorkspace.create(factory, "exhausted", "pins"))
+                        .isInstanceOf(IocExtractorException.class).hasMessageContaining("admission exhausted");
+            } finally { additional.reversed().forEach(JdbcPrivatePublicationWorkspace::close); }
             var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
             try {
                 var rejected = executor.submit(() -> assertThatThrownBy(() -> first.dataSource().getConnection())

@@ -1,5 +1,16 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
+import com.iocextractor.application.artifact.ArtifactRow;
+import com.iocextractor.application.artifact.ArtifactRowKey;
+import com.iocextractor.application.artifact.CanonicalArtifactKeyResolver;
+import com.iocextractor.application.artifact.PreparedArtifactRow;
+import com.iocextractor.application.artifact.lifecycle.CanonicalArtifactConfirmation;
+import com.iocextractor.application.artifact.lifecycle.CanonicalRecordConfirmation;
+import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptContext;
+import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptId;
+import com.iocextractor.application.observation.OccurrencePosition;
+import java.util.Optional;
+
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
@@ -43,6 +54,53 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Timeout(45)
 class StagedPublicationFaultIT {
     @TempDir Path temporary;
+
+    @Test
+    void laterArtifactCompletesAndRecoversReceiptWithEarlierRowsAndFieldOrigins() throws Exception {
+        Path root = Files.createDirectory(temporary.resolve("receipt-artifacts"));
+        try (var fixture = new StagedPublicationFixture(root, true, JdbcPublicationObserver.NOOP)) {
+            var registration = new JdbcObservationRegistrationStore(fixture.dataframe, StagedPublicationFixture.CLOCK)
+                    .registerNew(new ObservationId("multi-artifact"), ObservationOrigin.DOCUMENT);
+            var receiptContext = new ConfirmationReceiptContext(
+                    new ConfirmationReceiptId("multi-receipt"),
+                    "multi-policy", 2, Duration.ofDays(30));
+            var commands = new ArrayList<CanonicalArtifactConfirmation>();
+            for (var schema : fixture.schemas) {
+                var values = new LinkedHashMap<String, String>();
+                schema.columns().forEach(column -> values.put(column.name(), null));
+                values.put(schema.artifactName().equals("masks") ? "mask" : "hash", "multi-" + schema.artifactName());
+                values.put("source", "multi-source");
+                var positions = Map.of("source", new OccurrencePosition(17));
+                var row = new PreparedArtifactRow(
+                        ArtifactRow.ordered(values), Optional.of("id"), positions);
+                var key = new CanonicalArtifactKeyResolver(fixture.identities)
+                        .recordKeyOf(schema.artifactName(), row.template()).orElseThrow();
+                var command = new CanonicalArtifactConfirmation(
+                        registration.observationId(), "multi-source", receiptContext, schema.artifactName(),
+                        List.copyOf(values.keySet()), List.of(new CanonicalRecordConfirmation(
+                        new ArtifactRowKey(key.keyHash()), row)), registration);
+                commands.add(command);
+                fixture.backend.confirmations().confirm(command);
+                assertThat(fixture.backend.receipts(Duration.ofDays(30)).findComplete("multi-source", "multi-policy",
+                        EffectiveTime.at(StagedPublicationFixture.NOW)).isPresent()).isEqualTo(commands.size() == 2);
+            }
+            var snapshot = fixture.backend.receipts(Duration.ofDays(30)).findComplete("multi-source", "multi-policy",
+                    EffectiveTime.at(StagedPublicationFixture.NOW)).orElseThrow();
+            assertThat(snapshot.artifacts()).hasSize(2);
+            for (var artifact : snapshot.artifacts()) {
+                try (var rows = artifact.records().open()) {
+                    assertThat(rows.next()).isTrue();
+                    assertThat(rows.value().preparedRow().orderedFieldPositions()).containsEntry("source",
+                            new OccurrencePosition(17));
+                    assertThat(rows.value().preparedRow().template().value("source")).isEqualTo("multi-source");
+                    assertThat(rows.next()).isFalse();
+                }
+            }
+            var before = allFacts(fixture);
+            for (var command : commands) { assertThat(fixture.backend.confirmations().confirm(command).replayed()).isTrue(); }
+            assertThat(allFacts(fixture)).isEqualTo(before);
+        }
+    }
 
     @ParameterizedTest
     @CsvSource({"PREPARED,0", "BEFORE_HIDDEN_CHUNK,0", "HIDDEN_CHUNK,0", "BEFORE_HIDDEN_CHUNK,1",
@@ -229,6 +287,33 @@ class StagedPublicationFaultIT {
                 assertThat(fixture.number("SELECT MIN(slot) FROM export_slot_assignment WHERE artifact='masks' AND slot>1")).isEqualTo(2);
                 assertThat(fixture.number("SELECT COUNT(DISTINCT slot) FROM export_slot_assignment WHERE artifact='masks'"))
                         .isEqualTo(StagedPublicationFixture.ROWS + 1);
+            } finally { resume.countDown(); workers.shutdownNow(); assertThat(workers.awaitTermination(5, TimeUnit.SECONDS)).isTrue(); }
+        }
+    }
+
+    @Test
+    void unchangedRetentionAndVersionCleanupDoNotInvalidatePreparedImport() throws Exception {
+        Path root = Files.createDirectory(temporary.resolve("unchanged-cleanup"));
+        var paused = new CountDownLatch(1); var resume = new CountDownLatch(1);
+        var armed = new AtomicBoolean(); var rebuilds = new AtomicInteger();
+        try (var fixture = new StagedPublicationFixture(root, true, (phase, attempt, chunk) -> {
+            if (phase == JdbcPublicationObserver.Phase.REBUILD) { rebuilds.incrementAndGet(); }
+            if (phase == JdbcPublicationObserver.Phase.PREPARED && armed.getAndSet(false)) { paused.countDown(); await(resume); }
+        }); var workers = Executors.newSingleThreadExecutor()) {
+            fixture.seed(); fixture.stageAndRegister(); armed.set(true);
+            var importWork = workers.submit(fixture::promoteHead);
+            try {
+                assertThat(paused.await(10, TimeUnit.SECONDS)).isTrue();
+                long epochs = fixture.number("SELECT COALESCE(SUM(version),0) FROM publication_epoch");
+                for (int index = 0; index < 4; index++) {
+                    fixture.backend.history().purge("masks", EffectiveTime.at(StagedPublicationFixture.NOW), 128);
+                    fixture.backend.receipts(Duration.ofDays(1)).purgeExpired(EffectiveTime.at(StagedPublicationFixture.NOW), 128);
+                    fixture.backend.cleanup().scanVersions("masks", 128);
+                }
+                assertThat(fixture.number("SELECT COALESCE(SUM(version),0) FROM publication_epoch")).isEqualTo(epochs);
+                resume.countDown(); importWork.get(15, TimeUnit.SECONDS);
+                assertThat(rebuilds.get()).isZero();
+                assertThat(fixture.number("SELECT COUNT(*) FROM import_commit")).isOne();
             } finally { resume.countDown(); workers.shutdownNow(); assertThat(workers.awaitTermination(5, TimeUnit.SECONDS)).isTrue(); }
         }
     }

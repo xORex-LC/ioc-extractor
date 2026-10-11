@@ -32,12 +32,19 @@ final class JdbcPrivateChanges {
         if (connection.getAutoCommit() || after < 0) {
             throw new IllegalArgumentException("Private effects require a pinned transaction and valid cursor");
         }
+        boolean emptyFamily = emptyFamily(connection, table);
         boolean journal = table.columns().contains("_lifecycle_id") && table.columns().contains("row_key")
                 && !table.name().endsWith("_history") && hasJournal(connection);
         String renewal = journal ? "COALESCE(j.renew_validity,0)" : "0";
+        String valuesAlias = emptyFamily ? "v" : "d";
         String journalJoin = journal ? " LEFT JOIN private_mutation_effect j ON j.artifact=?"
-                + " AND j.canonical_row_id=d.id AND j.lifecycle_id=d._lifecycle_id" : "";
-        String sql = "SELECT d.rowid," + table.selectColumns("d") + ",d.publication_deleted,"
+                + " AND j.canonical_row_id=" + valuesAlias + ".id AND j.lifecycle_id=" + valuesAlias + "._lifecycle_id" : "";
+        String sql = emptyFamily ? "SELECT d.publication_sequence," + table.selectColumns("v") + ",0,"
+                + String.join(",", Collections.nCopies(table.columns().size(), "NULL"))
+                + ",0," + renewal + " FROM " + quote(table.delta()) + " d JOIN " + quote(table.name())
+                + " v ON v.rowid=d.publication_rowid" + journalJoin
+                + " WHERE d.publication_sequence>? ORDER BY d.publication_sequence LIMIT 256"
+                : "SELECT d.rowid," + table.selectColumns("d") + ",d.publication_deleted,"
                 + table.selectColumns("b") + ",b.publication_present," + renewal + " FROM "
                 + quote(table.delta()) + " d LEFT JOIN " + quote(table.before()) + " b ON "
                 + table.matchKeys("b", "d") + journalJoin + " WHERE d.rowid>? ORDER BY d.rowid LIMIT 256";
@@ -54,6 +61,14 @@ final class JdbcPrivateChanges {
             }
         }
         return last;
+    }
+
+    private static boolean emptyFamily(Connection connection, JdbcPublicationTable table) throws SQLException {
+        try (var statement = connection.prepareStatement("SELECT COUNT(*) FROM pragma_table_info(?) HAVING COUNT(*)=2"
+                + " AND SUM(name IN('publication_sequence','publication_rowid'))=2")) {
+            statement.setString(1, table.delta());
+            try (var rows = statement.executeQuery()) { return rows.next(); }
+        }
     }
 
     private static void emit(JdbcPublicationTable table, ResultSet rows, EffectConsumer consumer)
