@@ -7,6 +7,13 @@ evidence and decision alternatives. Historical targets/results below are
 preserved; no replacement budget or staged activation is accepted. Review the
 supported workload and availability requirements before another acceptance cycle.
 
+**Bounded cycle completed:** the owner-authorized
+[native-cost experiment](cap-7c-bounded-cycle.md) retains one measured field-codec
+optimization with about 22% less DOCX allocation. Equal-semantics checks pass;
+stable latency improvement and C5/G6 acceptance are not established. The fixed
+cycle ends without another redesign or staged activation. Workload/availability
+policy remains a separate decision, with historical failed targets preserved.
+
 Status: CAP-0–CAP-5 implemented and qualified within their stage scope; CAP-6
 qualification records G6 NOT_ACCEPTED; CAP-7A implementation and scoped source
 qualification are complete in its [execution report](cap-7a-execution.md).

@@ -146,7 +146,9 @@ architecture choices. Numerical acceptance is under review; retained C5/G6
 failures and the native default remain unchanged.
 
 [Bounded native-cost experiment](cap-7c-bounded-cycle.md) records the fixed-count
-before/after measurement contract and the single profiled decoding optimization.
+before/after results and the single profiled decoding optimization: about 22%
+less DOCX allocation, equal output/identity/receipt fingerprints, a fixed
+old-binary time-drift control and unchanged negative capacity disposition.
 
 [Data processing capacity and scheduling review](data-processing-capacity-review.md)
 records the 2026-10-04 100k-occurrence publication delay, exact SQLite JDBC

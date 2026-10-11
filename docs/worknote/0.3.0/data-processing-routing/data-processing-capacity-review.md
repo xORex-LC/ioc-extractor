@@ -937,3 +937,17 @@ close confirmed defects, but incomplete windows cannot establish a controlled
 large-unit speedup or resource acceptance. Stabilize qualification UTC and
 repeat the failed cells before widening the matrix. C5/G6 remain
 **NOT_ACCEPTED** and production activation remains open.
+
+### Bounded native-cost cycle after feasibility reassessment
+
+The [bounded execution](cap-7c-bounded-cycle.md) selects one profiled avoidable
+cost: temporary field arrays/decoder state in document workspace row decoding.
+Three before/after DOCX forks show about 22% lower exact whole-window allocations;
+all independent field/key/provenance and deterministic ID/receipt checks pass.
+RSS/live heap and atomic writer occupancy are essentially unchanged. A fixed
+late old-binary control also reproduces the global timing slowdown, so neither
+stable end-to-end speedup nor its exact environmental cause is established.
+Three before/after processed host/COALESCE import forks preserve semantics but
+do not show a material allocation improvement. Individual import screens pass;
+the candidate median still exceeds the historical series target. The cycle
+ends with native default retained, staged isolated and C5/G6 NOT_ACCEPTED.

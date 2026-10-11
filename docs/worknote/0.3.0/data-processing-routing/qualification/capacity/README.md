@@ -22,6 +22,7 @@ CAP-0/1 evidence additionally qualifies isolated corrected executables.
 | [cap-7c-c5-reference.json](cap-7c-c5-reference.json) | C5 native/staged whole-service comparison: 42 serialized forks plus one explicitly missing interrupted warmup; canonical-scope metrics, 100k failed/complete cells, all-five AS_IS contract screens, separate populated diagnostics and unchanged NOT_ACCEPTED decision |
 | [cap-7c-c5-policy.yml](cap-7c-c5-policy.yml) | Credential-free actual private document policy; the C5 driver explicitly derives the common bounded-row override and selected import catalogs |
 | [cap-7c-feasibility-phase-analysis.json](cap-7c-feasibility-phase-analysis.json) | Derived retained-log phase durations, completed-window writer/resource metrics and public-row census; original log hashes verified; no new benchmark or acceptance |
+| [cap-7c-bounded-native-cost.json](cap-7c-bounded-native-cost.json) | Bounded native experiment: 13 primary forks and two separate JFR diagnostics, exact allocation reduction, equal fields/keys/IDs/provenance/receipts, time-drift control and retained negative resource screens; no C5/G6 acceptance |
 
 `artifact_revision.changed_at` is transaction effective time sampled before
 the mutation loop. It must not be used as commit completion wall time. The
@@ -181,3 +182,17 @@ no DB, WAL, CSV, JAR or credential is versioned. The preserved policy permits
 reproduction with the committed driver. A three-pair processed import series
 passes data checks but fails staged's median screen; it is not a generalized
 speedup claim or full G6 acceptance.
+
+## Bounded native-cost cycle
+
+[Bounded execution and results](../../cap-7c-bounded-cycle.md) records the single
+field-decoding optimization and all fixed-count comparisons. Whole-window DOCX
+allocations fall about 22%; resident memory and writer occupancy are not
+materially improved. An additional fixed old-binary control reproduces the
+later cohort's global time drift; neither the early/later ratio nor the one
+control establishes a stable latency effect. The decoder is the only changed
+production class between the frozen executables. All semantic fingerprints and
+independent oracles pass, including processed host/COALESCE import. Failed time,
+writer/control and historical series-median screens remain negative; C5/G6 stay
+NOT_ACCEPTED. Raw logs, resources, controls and JFR are private with retained
+digests. All owned runtime and business state was removed.
