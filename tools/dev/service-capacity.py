@@ -408,7 +408,7 @@ class PrivateUnit:
         self.pid, self.cgroup = None, None
         self.log_offset, self.log_tail = 0, ''
 
-    def start(self, jar, config, environment=None, diagnostic=False):
+    def start(self, jar, config, environment=None, diagnostic=False, launcher=None):
         arguments = ['systemd-run', '--user', '--quiet', '--unit=' + self.name,
                      '-p', 'WorkingDirectory=' + str(self.root), '-p', 'CPUQuota=200%',
                      '-p', 'MemoryHigh=768M', '-p', 'MemoryMax=1G', '-p', 'TimeoutStopSec=40s',
@@ -420,7 +420,8 @@ class PrivateUnit:
                          '-XX:StartFlightRecording=filename=' + str(self.root / 'diagnostic.jfr') + ',settings=profile,dumponexit=true'] if diagnostic else [])
         command(arguments + [shutil.which('java'), *flags,
                 '-Dlogging.config=file:' + str(self.root / 'logback.xml'),
-                '-Dspring.config.additional-location=file:' + str(config), '-jar', str(jar),
+                '-Dspring.config.additional-location=file:' + str(config),
+                *(launcher if launcher is not None else ['-jar', str(jar)]),
                 '--ioc.runtime.mode=daemon'])
         for _ in range(100):
             properties = self.properties()
@@ -676,7 +677,7 @@ def diagnostics(unit):
 
 
 def sample(args, jar, report, index, evidence_root):
-    unit, sampler, oracle, share = None, None, None, None
+    unit, sampler, oracle, share, qualification = None, None, None, None, None
     result = {'index': index, 'status': 'RUNNING', 'started_epoch_seconds': time.time()}
     report['samples'].append(result)
     # State cleanup is unconditional, including exceptions and collection failure.
@@ -697,8 +698,10 @@ def sample(args, jar, report, index, evidence_root):
                                     'Private SMB namespace' if share else 'Sync disabled for local reference', 'Log phase observer enabled']
         oracle = DiskOracle(config, root / 'oracle.db')
         unit = PrivateUnit(root)
+        launch = {'launcher': args.launcher} if getattr(args, 'launcher', None) else {}
         result['runtime'] = unit.start(jar, root / 'application.yml',
-                                       environment=getattr(args, 'environment', None) if share else None, diagnostic=args.diagnostic)
+                                       environment=getattr(args, 'environment', None) if share else None,
+                                       diagnostic=args.diagnostic, **launch)
         result['startup'] = ready(unit, args.port)
         sampler = ResourceSampler(unit.pid, unit.cgroup, root)
         warmup = root / 'warmup.html'
@@ -717,7 +720,8 @@ def sample(args, jar, report, index, evidence_root):
         import_artifact = getattr(args, 'import_artifact', None)
         document = root / ('reference.csv' if import_artifact else 'reference.' + args.format)
         if import_artifact:
-            result['input'] = INPUTS.import_fixture(document, args.rows, import_artifact, config, oracle, BASE.digest)
+            generator = getattr(args, 'import_fixture', INPUTS.import_fixture)
+            result['input'] = generator(document, args.rows, import_artifact, config, oracle, BASE.digest)
         elif getattr(args, 'document', None):
             shutil.copyfile(args.document, document)
             result['input'] = {'sha256': BASE.digest(document), 'bytes': document.stat().st_size, 'physical_input': str(args.document)}
@@ -729,6 +733,9 @@ def sample(args, jar, report, index, evidence_root):
             feed_fixture(oracle, document)
         result['expected_final_rows'] = oracle.counts()
         result['health_before'] = health(args.port, 'dataProcessingCapacity')['details']
+        if getattr(args, 'qualification', None):
+            qualification = args.qualification(root, args.port)
+            qualification.begin()
         sampler.begin()
         handoff = share.handoff(document) if share else (INPUTS.import_handoff(document, root) if import_artifact else local_handoff(document, root))
         result['handoff'] = handoff
@@ -739,6 +746,8 @@ def sample(args, jar, report, index, evidence_root):
         result['configured_stability_seconds'] = quiet
         result['raw_local_handoff_to_slices_seconds'] = local['complete_monotonic'] - handoff['monotonic']
         result['timeline'] = {key: value for key, value in local.items() if key != 'profiles'}
+        if qualification:
+            result['qualification'] = qualification.finish()
         result['resources'] = sampler.summary()
         result['health'] = health(args.port, 'dataProcessingCapacity')['details']
         result['canonical_oracle'] = oracle.check_database(root / 'var/db/ioc-dataframe.db')
@@ -750,13 +759,20 @@ def sample(args, jar, report, index, evidence_root):
             result['publications'] = share.publications(unit, root, local, oracle, BASE, args.timeout)
             result['complete_smb_seconds'] = max(value['verified_monotonic'] for value in result['publications'].values()) - handoff['monotonic']
             result['smb_resource_window'] = sampler.summary()
-        result['gates'] = gate_sample(result, args.rows)
+        if getattr(args, 'canonical_evidence', None):
+            result['canonical_evidence'] = args.canonical_evidence(root, config)
+        result['gates'] = getattr(args, 'gate_sample', gate_sample)(result, args.rows)
         result['status'] = result['gates']['status']
         if args.diagnostic:
             result['diagnostics'] = diagnostics(unit)
     except Exception as failure:
         result.update(status='FAIL' if isinstance(failure, WorkloadFailure) else 'ERROR', failure=str(failure),
                       failure_kind='workload' if isinstance(failure, WorkloadFailure) else 'collection_or_execution')
+        if qualification:
+            try:
+                result['qualification_at_failure'] = qualification.failure_summary()
+            except Exception as collector_failure:
+                result['qualification_failure'] = str(collector_failure)
         if sampler:
             try:
                 result['resources_at_failure'] = sampler.summary()
@@ -769,6 +785,11 @@ def sample(args, jar, report, index, evidence_root):
                 result['diagnostic_failure'] = str(diagnostic_failure)
     finally:
         errors = []
+        if qualification:
+            try:
+                qualification.close()
+            except Exception as failure:
+                errors.append('Qualification collector: ' + str(failure))
         if sampler:
             try:
                 sampler.close()
@@ -793,7 +814,7 @@ def sample(args, jar, report, index, evidence_root):
         # Keep small evidence and separate diagnostic recording, no SQLite/CSV copies.
         folder = evidence_root / str(index)
         folder.mkdir()
-        for name in ('resources.jsonl', 'daemon.log', 'application.yml', 'diagnostic.jfr'):
+        for name in ('resources.jsonl', 'controls.jsonl', 'daemon.log', 'application.yml', 'diagnostic.jfr'):
             path = root / name
             if path.is_file():
                 try:

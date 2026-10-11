@@ -278,6 +278,10 @@ document-workspace-capacity: ## CAP-4 incremental disk-reducer/writer/receipt di
 service-capacity: ## CAP-6 private cgroup-limited whole-service screens; SERVICE_CAPACITY_ARGS selects jar, policy and covering cell
 	@python3 tools/dev/service-capacity.py $(SERVICE_CAPACITY_ARGS)
 
+.PHONY: sqlite-publication-capacity
+sqlite-publication-capacity: ## C5 paired native/staged private service qualification; SQLITE_CAPACITY_ARGS selects the covering cell
+	@python3 tools/dev/sqlite-publication-capacity.py $(SQLITE_CAPACITY_ARGS)
+
 .PHONY: service-capacity-upgrade
 service-capacity-upgrade: ## CAP-6 drained private upgrade/backup-restore rehearsal; UPGRADE_ARGS selects frozen executables and policy
 	@python3 tools/dev/service-capacity-upgrade.py $(UPGRADE_ARGS)

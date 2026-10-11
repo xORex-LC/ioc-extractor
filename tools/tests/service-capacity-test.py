@@ -16,6 +16,9 @@ SPEC.loader.exec_module(CAP)
 UPGRADE_SPEC = importlib.util.spec_from_file_location('capacity_upgrade', Path(__file__).resolve().parents[1] / 'dev/service-capacity-upgrade.py')
 UPGRADE = importlib.util.module_from_spec(UPGRADE_SPEC)
 UPGRADE_SPEC.loader.exec_module(UPGRADE)
+C5_SPEC = importlib.util.spec_from_file_location('sqlite_capacity', Path(__file__).resolve().parents[1] / 'dev/sqlite-publication-capacity.py')
+C5 = importlib.util.module_from_spec(C5_SPEC)
+C5_SPEC.loader.exec_module(C5)
 
 
 def policy():
@@ -33,6 +36,38 @@ def policy():
 
 
 class ServiceCapacityTest(unittest.TestCase):
+    def test_sqlite_control_collector_failure_cannot_publish_successful_metrics(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            window = C5.QualificationWindow(Path(temporary), 18207)
+            with patch.object(window, 'request', side_effect=OSError('loopback failed')) as request:
+                window.run()
+                with self.assertRaisesRegex(RuntimeError, 'control worker failed'):
+                    window.finish()
+                self.assertEqual(window.failure_summary()['status'], 'INCOMPLETE')
+                self.assertIsNone(window.result)
+                self.assertEqual([call.args[0] for call in request.call_args_list], ['control'])
+
+    def test_sqlite_failed_pairs_preserve_semantic_comparison_and_both_failures(self):
+        def sample(backend, status, seconds):
+            return dict(pair=0, backend=backend, status=status, input={'sha256': 'same-input'},
+                        canonical_oracle={'rows': 10}, local_window_upper_seconds=seconds,
+                        qualification={'allocatedProcessBytes': 100})
+        native, staged = sample('native', 'FAIL', 100), sample('staged', 'FAIL', 120)
+        result = C5.compare([native, staged])[0]
+        self.assertEqual((result['native_status'], result['staged_status']), ('FAIL', 'FAIL'))
+        self.assertEqual(result['staged_native_time_ratio'], 1.2)
+        staged['input']['sha256'] = 'different'
+        with self.assertRaisesRegex(RuntimeError, 'inputs or independent canonical'):
+            C5.compare([native, staged])
+
+    def test_sqlite_window_replaces_only_cumulative_admission_bounds(self):
+        native = {'violations': ['rss_bytes', 'writer_hold_unresolved'], 'status': 'FAIL'}
+        sample = {'qualification': {'writerOperations': {'CONTROL': {'maximumHoldNanos': 1, 'maximumWaitNanos': 11e9}}}}
+        with patch.object(C5.CAP, 'gate_sample', return_value=native):
+            value = C5.gates(sample, 100000)
+        self.assertEqual(value['violations'], ['rss_bytes', 'control_wait'])
+        self.assertTrue(value['admission_window_maxima_exact'])
+
     def test_upgrade_startup_failure_stops_unit_before_state_removal(self):
         from types import SimpleNamespace
         from unittest.mock import MagicMock

@@ -204,3 +204,8 @@ populated conversion, format/catalog guards, exclusive process ownership, bounde
 startup recovery/readiness, durable cleanup and coordinated stopped restore.
 It preserves the open C5 resource gate and C6 activation/backup/retention boundaries;
 the default application remains native.
+
+[CAP-7C C5 service comparison](cap-7c-c5-qualification.md) defines the paired
+private Spring composition, exact admission-window measurements, concurrent
+controls/cleanup and independent output oracles. Qualification is in progress;
+resource acceptance and production activation remain open.

@@ -28,6 +28,51 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ProcessingRouteComparisonTest {
 
     @Test
+    void capacityAdmissionWindowUsesTheSameExactWaitAndHoldAsTheRealGuard() throws Exception {
+        String prefix = "com.iocextractor.adapter.out.store.jdbc.JdbcWriterAdmission";
+        var loader = new ClassLoader(getClass().getClassLoader()) {
+            @Override protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+                if (!name.startsWith(prefix)) { return super.loadClass(name, resolve); }
+                Class<?> loaded = findLoadedClass(name);
+                if (loaded == null) {
+                    try (var input = getParent().getResourceAsStream(name.replace('.', '/') + ".class")) {
+                        byte[] bytes = java.util.Objects.requireNonNull(input).readAllBytes();
+                        if (name.equals(prefix)) { bytes = SqliteCapacityMetrics.instrument(bytes); }
+                        loaded = defineClass(name, bytes, 0, bytes.length);
+                    } catch (java.io.IOException failure) { throw new ClassNotFoundException(name, failure); }
+                }
+                if (resolve) { resolveClass(loaded); }
+                return loaded;
+            }
+        };
+        Class<?> admissionType = loader.loadClass(prefix);
+        Object admission = admissionType.getConstructor().newInstance();
+        SqliteCapacityMetrics.begin();
+        java.util.Map<String, Object> measured;
+        try {
+            assertThat(admissionType.getMethod("execute", java.util.function.Supplier.class)
+                    .invoke(admission, (java.util.function.Supplier<String>) () -> "committed"))
+                    .isEqualTo("committed");
+        } finally { measured = SqliteCapacityMetrics.end(); }
+        var measuredOperations = (java.util.Map<?, ?>) measured.get("writerOperations");
+        var guardOperations = (java.util.Map<?, ?>) admissionType.getMethod("snapshot").invoke(admission);
+        assertThat(measuredOperations).hasSize(1);
+        for (var entry : guardOperations.entrySet()) {
+            Object metric = entry.getValue();
+            long completed = (long) metric.getClass().getMethod("completed").invoke(metric);
+            if (completed == 0) { continue; }
+            Object observed = measuredOperations.get(entry.getKey().toString());
+            for (String field : List.of("completed", "totalWaitNanos", "maximumWaitNanos", "totalHoldNanos", "maximumHoldNanos")) {
+                assertThat(observed.getClass().getMethod(field).invoke(observed))
+                        .as("Exact guard field %s", field).isEqualTo(metric.getClass().getMethod(field).invoke(metric));
+            }
+        }
+        assertThat((long) measured.get("allocatedProcessBytes")).isPositive();
+        SqliteCapacityMetrics.begin();
+        assertThat((java.util.Map<?, ?>) SqliteCapacityMetrics.end().get("writerOperations")).isEmpty();
+    }
+
+    @Test
     void validationCommitDoesNotCompleteAnUnstartedCanonicalOwnershipTimer() throws Exception {
         String fixture = ValidationCommitFixture.class.getName().replace('.', '/');
         byte[] bytes;
