@@ -49,6 +49,78 @@ class JdbcLifecycleRuntimeIT {
     }
 
     @Test
+    void safeClockSamplesAfterWriteOwnershipEvenWhenUtcAdvancesDuringAcquisition() throws Exception {
+        initialize("ownership-clock.db");
+        MutableClock wall = new MutableClock(NOW);
+        var policy = new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30));
+        var clock = new JdbcLifecycleClock(dataSource, wall, policy);
+        clock.now();
+        try (var connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            var acquired = new java.util.concurrent.atomic.AtomicBoolean();
+            Connection delayed = jdbcProxy(Connection.class, (method, arguments) -> {
+                Object result = invokeJdbc(connection, method, arguments);
+                if (method.getName().equals("prepareStatement") && ((String) arguments[0]).contains(
+                        "SET safe_time_high_water_ms = safe_time_high_water_ms")) {
+                    var statement = (java.sql.PreparedStatement) result;
+                    return jdbcProxy(java.sql.PreparedStatement.class, (call, values) -> {
+                        if (call.getName().equals("executeUpdate") && acquired.compareAndSet(false, true)) {
+                            wall.set(NOW.plusSeconds(3));
+                            // Another writer advanced the durable authority before this writer obtained ownership.
+                            try (var advance = connection.createStatement()) {
+                                advance.executeUpdate("UPDATE canonical_lifecycle_control SET safe_time_high_water_ms="
+                                        + NOW.plusSeconds(3).toEpochMilli());
+                            }
+                        }
+                        return invokeJdbc(statement, call, values);
+                    });
+                }
+                return result;
+            });
+
+            assertThat(clock.now(delayed).value()).isEqualTo(NOW.plusSeconds(3));
+            connection.commit();
+        }
+        assertThat(clock.inspect().status()).isEqualTo(LifecycleClockStatus.SAFE);
+        assertThat(queryNullableLong("SELECT clamp_started_at_ms FROM canonical_lifecycle_control")).isNull();
+    }
+
+    @Test
+    void readOnlyClockInspectionSamplesAfterAcquiringItsHighWaterSnapshot() throws Exception {
+        initialize("inspect-clock.db");
+        MutableClock wall = new MutableClock(NOW);
+        var policy = new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30));
+        new JdbcLifecycleClock(dataSource, wall, policy).now();
+        var delayed = new org.springframework.jdbc.datasource.DelegatingDataSource(dataSource) {
+            @Override public Connection getConnection() throws SQLException {
+                wall.set(NOW.plusSeconds(3));
+                execute("UPDATE canonical_lifecycle_control SET safe_time_high_water_ms=" + wall.millis());
+                return super.getConnection();
+            }
+        };
+
+        var inspected = new JdbcLifecycleClock(delayed, wall, policy).inspect();
+
+        assertThat(inspected.status()).isEqualTo(LifecycleClockStatus.SAFE);
+        assertThat(inspected.rawTime()).isEqualTo(NOW.plusSeconds(3));
+        assertThat(queryNullableLong("SELECT clamp_started_at_ms FROM canonical_lifecycle_control")).isNull();
+    }
+
+    private static <T> T jdbcProxy(Class<T> type, JdbcInvocation invocation) {
+        return type.cast(java.lang.reflect.Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type},
+                (proxy, method, arguments) -> invocation.call(method, arguments)));
+    }
+
+    private static Object invokeJdbc(Object delegate, java.lang.reflect.Method method, Object[] arguments) throws Throwable {
+        try { return method.invoke(delegate, arguments); }
+        catch (java.lang.reflect.InvocationTargetException failure) { throw failure.getCause(); }
+    }
+
+    @FunctionalInterface private interface JdbcInvocation {
+        Object call(java.lang.reflect.Method method, Object[] arguments) throws Throwable;
+    }
+
+    @Test
     void safe_clock_advances_high_water_clamps_small_rollback_and_recovers() throws Exception {
         initialize("clock.db");
         MutableClock wall = new MutableClock(NOW);

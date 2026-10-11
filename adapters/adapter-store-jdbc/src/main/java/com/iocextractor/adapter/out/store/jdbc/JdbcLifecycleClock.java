@@ -107,10 +107,11 @@ public final class JdbcLifecycleClock implements LifecycleTimeSource, LifecycleC
      */
     EffectiveTime now(Connection connection) throws SQLException {
         Objects.requireNonNull(connection, "connection");
-        Instant raw = wallClock.instant();
-        long rawMillis = raw.toEpochMilli();
         acquireWriteOwnership(connection);
         ClockRow row = readRow(connection);
+        // Ownership and the durable snapshot must precede sampling: either can wait for another writer.
+        Instant raw = wallClock.instant();
+        long rawMillis = raw.toEpochMilli();
         if (row.highWaterMillis() == null || rawMillis >= row.highWaterMillis()) {
             updateClockState(connection, rawMillis, null);
             clearLocalClamp();
@@ -135,9 +136,9 @@ public final class JdbcLifecycleClock implements LifecycleTimeSource, LifecycleC
 
     @Override
     public LifecycleClockSnapshot inspect() {
-        Instant raw = wallClock.instant();
         try (Connection connection = dataSource.getConnection()) {
             ClockRow row = readRow(connection);
+            Instant raw = wallClock.instant();
             if (row.highWaterMillis() == null || raw.toEpochMilli() >= row.highWaterMillis()) {
                 return snapshot(LifecycleClockStatus.SAFE, raw, raw, row, Duration.ZERO, Duration.ZERO);
             }

@@ -101,6 +101,12 @@ service database continues to hold ingestion/export/sync coordination only.
 
 ## Failure and recovery
 
+Safe UTC is sampled after acquiring write ownership and reading the durable
+high-water snapshot. Read-only inspection likewise reads its snapshot before
+sampling UTC. Pool or ownership waits must not make an older sample appear to
+be a clock rollback. Actual backward skew and prolonged clamping still fail
+closed under the unchanged configured limits.
+
 | Situation | Behavior | Correctness source |
 |---|---|---|
 | Crash during expiry | Interrupted checkpoint is failed on admission and due rows are reconciled again | active row plus reconcile state |
