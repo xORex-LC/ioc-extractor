@@ -47,12 +47,17 @@ class ProcessingRouteComparisonTest {
         };
         Class<?> admissionType = loader.loadClass(prefix);
         Object admission = admissionType.getConstructor().newInstance();
+        Object privateWorkspaceAdmission = admissionType.getConstructor().newInstance();
+        SqliteCapacityMetrics.observeAdmission(admission);
         SqliteCapacityMetrics.begin();
         java.util.Map<String, Object> measured;
         try {
             assertThat(admissionType.getMethod("execute", java.util.function.Supplier.class)
                     .invoke(admission, (java.util.function.Supplier<String>) () -> "committed"))
                     .isEqualTo("committed");
+            assertThat(admissionType.getMethod("execute", java.util.function.Supplier.class)
+                    .invoke(privateWorkspaceAdmission, (java.util.function.Supplier<String>) () -> "private"))
+                    .isEqualTo("private");
         } finally { measured = SqliteCapacityMetrics.end(); }
         var measuredOperations = (java.util.Map<?, ?>) measured.get("writerOperations");
         var guardOperations = (java.util.Map<?, ?>) admissionType.getMethod("snapshot").invoke(admission);

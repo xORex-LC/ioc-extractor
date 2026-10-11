@@ -109,7 +109,8 @@ class ServiceCapacityTest(unittest.TestCase):
 
     def test_sqlite_window_replaces_only_cumulative_admission_bounds(self):
         native = {'violations': ['rss_bytes', 'writer_hold_unresolved'], 'status': 'FAIL'}
-        sample = {'qualification': {'writerOperations': {'CONTROL': {'maximumHoldNanos': 1, 'maximumWaitNanos': 11e9}}}}
+        sample = {'qualification': {'admissionScope': 'canonical_bean_only',
+                  'writerOperations': {'CONTROL': {'maximumHoldNanos': 1, 'maximumWaitNanos': 11e9}}}}
         with patch.object(C5.CAP, 'gate_sample', return_value=native):
             value = C5.gates(sample, 100000)
         self.assertEqual(value['violations'], ['rss_bytes', 'control_wait'])

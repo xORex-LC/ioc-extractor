@@ -3,6 +3,8 @@ package com.iocextractor.adapter.out.store.jdbc;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
 import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
+import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import javax.sql.DataSource;
 import java.time.Clock;
 import java.time.Duration;
@@ -17,7 +19,8 @@ public final class StagedCapacityBundle implements AutoCloseable {
             List<ArtifactIdAllocatorDefinition> ids, List<ArtifactIdentityDefinition> identities,
             JdbcLifecycleClock lifecycleClock, Clock clock, Duration ttl, JdbcWriterAdmission writers,
             JdbcDocumentPreparationWorkspaceFactory workspaces, Path imports,
-            Map<String, ArtifactWritePolicy> policies, Duration receiptRetention) { }
+            Map<String, ArtifactWritePolicy> policies, Duration receiptRetention,
+            DiagnosticSink diagnostics, int snapshotReaders) { }
 
     private final JdbcStagedCanonicalBackend backend;
     private final JdbcStagedDatabaseLease lease;
@@ -35,7 +38,9 @@ public final class StagedCapacityBundle implements AutoCloseable {
                     inputs.dataSource(), inputs.schemas(), inputs.ids(), inputs.identities(), inputs.lifecycleClock(),
                     inputs.clock(), new FixedRecordValidityPolicy(inputs.ttl()), inputs.writers(), inputs.workspaces(),
                     inputs.imports(), inputs.policies(), inputs.receiptRetention()), this::observe);
-            snapshots = backend.snapshots();
+            snapshots = new JdbcSnapshotSliceReader(inputs.dataSource(), inputs.schemas(), inputs.clock(),
+                    inputs.lifecycleClock(), inputs.diagnostics(), new DiagnosticFactory(inputs.clock()), inputs.writers(),
+                    inputs.snapshotReaders(), new JdbcStagedSlotReconciliation(backend));
             lease = acquired;
             receiptRetention = inputs.receiptRetention();
         } catch (Exception | Error failure) {

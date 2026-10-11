@@ -33,6 +33,7 @@ public final class SqliteCapacityMetrics {
     private static final ThreadMXBean THREADS = (ThreadMXBean) ManagementFactory.getThreadMXBean();
     private static volatile boolean installed;
     private static volatile boolean active;
+    private static volatile Object canonicalAdmission;
     private static long started;
     private static long allocatedBefore;
 
@@ -65,13 +66,14 @@ public final class SqliteCapacityMetrics {
                 return new MethodVisitor(Opcodes.ASM9, next) {
                     @Override public void visitInsn(int opcode) {
                         if (opcode == Opcodes.RETURN) {
+                            visitVarInsn(Opcodes.ALOAD, 0);
                             visitVarInsn(Opcodes.ALOAD, 1);
                             visitMethodInsn(Opcodes.INVOKEVIRTUAL, ADMISSION + "$Request", "operation",
                                     "()L" + ADMISSION + "$OperationClass;", false);
                             visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Enum", "name", "()Ljava/lang/String;", false);
                             visitVarInsn(Opcodes.LLOAD, 6); // existing wait local
                             visitVarInsn(Opcodes.LLOAD, 4); // existing hold local
-                            visitMethodInsn(Opcodes.INVOKESTATIC, HOOK, "completed", "(Ljava/lang/String;JJ)V", false);
+                            visitMethodInsn(Opcodes.INVOKESTATIC, HOOK, "completed", "(Ljava/lang/Object;Ljava/lang/String;JJ)V", false);
                         }
                         super.visitInsn(opcode);
                     }
@@ -82,8 +84,8 @@ public final class SqliteCapacityMetrics {
     }
 
     /** Admission callbacks own no payload and never throw into a completed business operation. */
-    public static synchronized void completed(String operation, long wait, long hold) {
-        if (!active) { return; }
+    public static synchronized void completed(Object admission, String operation, long wait, long hold) {
+        if (!active || admission != canonicalAdmission) { return; }
         if (wait < 0 || hold < 0) {
             FAILURE.compareAndSet(null, new IllegalStateException("Invalid admission timing locals"));
             return;
@@ -92,6 +94,11 @@ public final class SqliteCapacityMetrics {
         OPERATIONS.put(operation, new JdbcWriterAdmission.Metrics(previous.completed() + 1,
                 previous.totalWaitNanos() + wait, Math.max(previous.maximumWaitNanos(), wait),
                 previous.totalHoldNanos() + hold, Math.max(previous.maximumHoldNanos(), hold)));
+    }
+
+    static synchronized void observeAdmission(Object admission) {
+        if (active) { throw new IllegalStateException("Cannot change admission identity inside a window"); }
+        canonicalAdmission = java.util.Objects.requireNonNull(admission, "admission");
     }
 
     static synchronized Map<String, Object> begin() {
@@ -111,6 +118,7 @@ public final class SqliteCapacityMetrics {
         return Map.of("active", active, "elapsedNanos", System.nanoTime() - started,
                 "allocatedProcessBytes", THREADS.getTotalThreadAllocatedBytes() - allocatedBefore,
                 "writerOperations", Map.copyOf(OPERATIONS), "admissionWindowMaximaExact", true,
+                "admissionScope", "canonical_bean_only",
                 "heapUsedBytes", ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed());
     }
 
@@ -121,7 +129,7 @@ public final class SqliteCapacityMetrics {
     }
 
     private static void requireValid() {
-        if (!installed || FAILURE.get() != null) {
+        if (!installed || canonicalAdmission == null || FAILURE.get() != null) {
             throw new IllegalStateException("Admission instrumentation absent or failed", FAILURE.get());
         }
     }
@@ -138,6 +146,7 @@ public final class SqliteCapacityMetrics {
         public Endpoints(JdbcWriterAdmission writers, JdbcLifecycleClock clock,
                 RunLifecycleHistoryRetentionUseCase retention, ObjectProvider<StagedCapacityBundle> staged) {
             this.writers = writers; this.clock = clock; this.retention = retention; this.staged = staged;
+            observeAdmission(writers);
         }
         @PostMapping("/qualification/window/start") public Map<String, Object> start() {
             var candidate = staged.getIfAvailable();

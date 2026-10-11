@@ -102,6 +102,8 @@ def gates(sample, size):
     value = CAP.gate_sample(sample, size)
     # Replace the cumulative-health upper bound only with a successful exact window.
     exact = sample['qualification']['writerOperations']
+    if sample['qualification'].get('admissionScope') != 'canonical_bean_only':
+        raise RuntimeError('Missing or incompatible canonical admission scope')
     violations = [item for item in value['violations'] if not item.startswith(('writer_hold', 'control_wait'))]
     if not exact:
         raise RuntimeError('No measured writer admissions')
@@ -285,6 +287,7 @@ def main():
     output.mkdir(parents=True)
     report = {'source_commit': head, 'jar_sha256': CAP.BASE.digest(args.jar), 'policy_sha256': CAP.BASE.digest(args.config),
               'driver_sha256': CAP.BASE.digest(__file__), 'service_driver_sha256': CAP.BASE.digest(CAP.__file__),
+              'collector_schema': 2, 'admission_scope': 'canonical_bean_only',
               'java': CAP.command(['java', '--version']), 'rows': args.rows, 'shape': args.shape, 'format': args.format,
               'initial_rows': args.initial_rows, 'import_artifact': args.import_artifact,
               'processed_import': args.processed_import,

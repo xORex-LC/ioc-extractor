@@ -74,7 +74,7 @@ public final class SqliteCapacityApplication {
                     config.artifactIdAllocatorDefinitions(props, baseline), identities, time, clock,
                     props.lifecycle().validity().fixedTtl(), writers, workspaces,
                     Path.of(props.dataframeImport().runtime().dirs().staging()), ArtifactPolicyCatalog.compile(props),
-                    props.lifecycle().receiptRetention()));
+                    props.lifecycle().receiptRetention(), diagnostics, props.storage().dataframe().pool().readMax()));
         }
 
         @Bean

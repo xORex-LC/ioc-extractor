@@ -35,6 +35,10 @@ Each fork runs in its own user-systemd unit with 2 CPU, `-Xms128m -Xmx512m`,
 bytes, helpers, policy, source commit, fixture hash, mode and cleanup are retained.
 The same bounded Java agent in both primary variants observes already computed
 writer wait/hold values at admission exit, including unsuccessful transactions.
+Only the actual canonical `JdbcWriterAdmission` bean's identity is admitted;
+private preparation-database guards are excluded. A development run before this
+filter included private guards: its staged writer maxima are not canonical
+occupancy evidence and are retained solely as superseded collector diagnostics.
 A regression compares these values with the real guard's native metrics. Unlike
 cumulative health maxima, the resulting maxima belong to the measured window.
 The agent also reads cumulative JVM allocation accounting across all threads;
