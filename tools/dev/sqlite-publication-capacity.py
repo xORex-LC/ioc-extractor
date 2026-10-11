@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """C5 paired private whole-service SQLite qualification; never changes the production selector."""
 import argparse
+import csv
 from contextlib import closing
 import importlib.util
 import json
@@ -134,6 +135,66 @@ def canonical_evidence(root, config):
                 'scope': 'Committed-family census; independent fields/keys/provenance and public slots checked separately'}
 
 
+def import_policy(policy, artifact, processed=False):
+    """Declare one real local contract using the existing schema/identity/export catalogs."""
+    ioc = policy['ioc']
+    identity = next(item for item in ioc['artifact-identity']['artifacts'] if item['name'] == artifact)
+    schema = next(item for item in ioc['sink']['artifacts'] if item['name'] == artifact)
+    columns = [item['name'] for item in schema['columns'] if item['name'] != 'id']
+    has_id = any(item['name'] == 'id' for item in schema['columns'])
+    contract_id = 'capacity-' + artifact + '-v1'
+    mapping = {'name': artifact, 'role': 'primary', 'record-key': identity['record-key'],
+               'match-keys': [item['name'] for item in identity['match-keys']],
+               'columns': [{'target': name, 'source': name} for name in columns]}
+    if 'source' in columns:
+        mapping['source-label-target'] = 'source'
+    contract = {'id': contract_id, 'version': 1, 'charset': 'UTF-8',
+                'dialect': {'delimiter': ';', 'quote': '"', 'record-separator': 'crlf-or-lf',
+                            'header-required': True, 'null-literals': ['NULL']},
+                'recognition': {'required-columns': (['id'] if has_id else []) + columns},
+                'mode': 'as-is', 'routing': 'target-only', 'row-failure-policy': 'accept-valid',
+                'duplicate-policy': 'keep-first', 'renew-unchanged': True, 'formula-policy': 'reject',
+                'merge-default': 'fill-missing', 'artifacts': [mapping]}
+    if has_id:
+        profile = next(item['name'] for item in ioc['export']['profiles'] if artifact in item['artifacts'])
+        contract['requested-slot'] = {'source-column': 'id', 'profile': profile, 'existing-record-policy': 'preserve-existing'}
+    if processed:
+        if artifact != 'masks':
+            raise ValueError('Processed host-collapse fixture requires masks')
+        template = CAP.yaml.safe_load((REPO / 'bootstrap/ioc-app/src/test/resources/application-selected-import-production.yml').read_text())
+        contract = template['ioc']['dataframe-import']['contracts'][0]
+        contract['id'] = contract_id
+        contract['processed-route']['plan'] = 'capacity-import-hosts'
+        plan = template['ioc']['processing']['plans'][0]
+        plan['name'] = 'capacity-import-hosts'
+        ioc['processing']['plans'] = [item for item in ioc['processing']['plans'] if item['name'] != plan['name']] + [plan]
+    ioc['dataframe-import'].update(enabled=True,
+        sources=[{'id': 'trusted-local', 'transport': 'local', 'location': './var/import/inbox',
+                  'contracts': [contract_id], 'authority': 'capacity-local'}],
+        **{'authority-profiles': [{'id': 'capacity-local', 'artifacts': [artifact], 'maximum-merge-policy': 'fill-missing'}],
+           'contracts': [contract]})
+
+
+def processed_fixture(path, count, artifact, config, oracle, digest, shape):
+    """Independent mass URL-to-domain oracle, with compatible COALESCE contributors."""
+    keys = min(20, count) if shape == 'collapse' else count
+    source = 'dataframe-import:trusted-local'
+    with path.open('w', newline='') as stream:
+        writer = csv.writer(stream, delimiter=';', lineterminator='\n')
+        writer.writerow(['ioc', 'source'])
+        for number in range(count):
+            host = f'import-host-{number % keys}.example.test'
+            value = f'https://{host}:9090/path/{number}?sample={number}'
+            writer.writerow([value, 'Imported Source'])
+            oracle.add('masks', {'mask': host, 'url_match': 'u:hAS', 'host_match': 'h:dAS',
+                                 'source': 'Imported Source'}, source_key=source)
+    oracle.db.commit()
+    return {'artifact': artifact, 'accepted_rows': keys, 'duplicate_rows': count - keys, 'source_rows': count,
+            'has_slots': False, 'sha256': digest(path), 'bytes': path.stat().st_size,
+            'contract_id': 'capacity-masks-v1', 'source_key': source, 'mode': 'processed',
+            'expected_final_hosts': keys, 'host_derivation': True}
+
+
 def freeze_runtime(jar, target):
     """Freeze the packaged application plus only explicitly selected test-only helpers."""
     with zipfile.ZipFile(jar) as archive:
@@ -204,6 +265,7 @@ def main():
     parser.add_argument('--format', choices=['html', 'docx'], default='html')
     parser.add_argument('--shape', choices=['mostly-unique', 'unique', 'collapse'], default='mostly-unique')
     parser.add_argument('--import-artifact', choices=CAP.BASE.ARTIFACTS)
+    parser.add_argument('--processed-import', action='store_true', help='Actual selected masks import with active host view and COALESCE')
     parser.add_argument('--diagnostic', action='store_true')
     parser.add_argument('--timeout', type=int, default=900)
     parser.add_argument('--port', type=int, default=18207)
@@ -215,6 +277,8 @@ def main():
         parser.error('Use a new private repo-local .dev directory without symlinks')
     if min(args.rows, args.samples, args.timeout) < 1 or args.initial_rows < 0:
         parser.error('Positive workload, sample and timeout values required')
+    if args.processed_import and args.import_artifact != 'masks':
+        parser.error('--processed-import requires --import-artifact masks')
     if CAP.command(['git', 'status', '--porcelain']):
         parser.error('Commit the harness and policy before measurement')
     head = CAP.command(['git', 'rev-parse', 'HEAD'])
@@ -223,6 +287,7 @@ def main():
               'driver_sha256': CAP.BASE.digest(__file__), 'service_driver_sha256': CAP.BASE.digest(CAP.__file__),
               'java': CAP.command(['java', '--version']), 'rows': args.rows, 'shape': args.shape, 'format': args.format,
               'initial_rows': args.initial_rows, 'import_artifact': args.import_artifact,
+              'processed_import': args.processed_import,
               'bounded_row_profile': args.bounded_row_profile,
               'mode': 'diagnostic' if args.diagnostic else 'instrumented_primary', 'requested_pairs': args.samples,
               'acceptance': 'NOT_ACCEPTED; C5 qualification does not activate ADR0041 or close G6', 'samples': []}
@@ -233,13 +298,18 @@ def main():
         runtime = Path(temporary)
         frozen = runtime / 'ioc-app.jar'
         shutil.copyfile(args.jar, frozen)
-        if args.bounded_row_profile:
+        if args.bounded_row_profile or args.import_artifact:
             policy = CAP.yaml.safe_load(args.config.read_text())
-            policy['ioc'].setdefault('processing', {}).setdefault('workspace', {}).update(
-                **{'maximum-row-bytes': 16384, 'maximum-field-bytes': 4096, 'cache-kib': 1024})
-            args.config = runtime / 'bounded-policy.yml'
+            if args.bounded_row_profile:
+                policy['ioc'].setdefault('processing', {}).setdefault('workspace', {}).update(
+                    **{'maximum-row-bytes': 16384, 'maximum-field-bytes': 4096, 'cache-kib': 1024})
+            if args.import_artifact:
+                import_policy(policy, args.import_artifact, args.processed_import)
+            args.config = runtime / 'common-policy.yml'
             args.config.write_text(CAP.yaml.safe_dump(policy, sort_keys=False, allow_unicode=True))
             report['common_effective_policy_sha256'] = CAP.BASE.digest(args.config)
+        if args.processed_import:
+            args.import_fixture = lambda *values: processed_fixture(*values, args.shape)
         cp, agent = freeze_runtime(frozen, runtime)
         report['helper_class_sha256'] = {str(path.relative_to(runtime)): CAP.BASE.digest(path)
                                          for path in sorted((runtime / 'classes').rglob('*Capacity*.class'))}
@@ -254,13 +324,19 @@ def main():
                 value = CAP.sample(args, frozen, report, len(report['samples']), output)
                 value.update(backend=backend, pair=ordinal)
                 CAP.save(output / 'report.json', report)
-            report['comparison'] = compare(report['samples'])
+            try:
+                report['comparison'] = compare(report['samples'])
+            except Exception as failure:
+                report['comparison_failure'] = str(failure)
+                break
             if len(report['samples']) != 2 * (ordinal + 1) or any(item['status'] != 'SCREEN_PASS' for item in report['samples'][-2:]):
                 report['stopped_after_failed_pair'] = True
                 break
     report['temporary_runtime_removed'] = not runtime.exists()
     report['status'] = 'SCREEN_PASS' if len(report['samples']) == args.samples * 2 and all(
         item['status'] == 'SCREEN_PASS' for item in report['samples']) else 'FAIL'
+    if report.get('comparison_failure'):
+        report['status'] = 'ERROR'
     if report['status'] == 'SCREEN_PASS':
         report['medians'] = {backend: statistics.median(item['local_window_upper_seconds'] for item in report['samples']
                                                         if item['backend'] == backend) for backend in ('native', 'staged')}

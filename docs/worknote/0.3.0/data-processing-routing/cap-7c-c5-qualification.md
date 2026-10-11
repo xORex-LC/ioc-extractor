@@ -63,6 +63,18 @@ growth and checks source-summary references. Pending visibility, crash recovery,
 TTL boundary semantics and deterministic conflict exhaustion remain established
 by the C4 contracts; a family census does not substitute for those oracles.
 
+`--import-artifact` derives one AS_IS contract from the unchanged schema,
+identity and export catalogs; imported public IDs request sparse external slots.
+`--import-artifact masks --processed-import` instead uses the existing production
+selected-import fixture's host view, classifiers and COALESCE contract. The
+unique fixture has one host per URL; `--shape collapse` sends distinct paths,
+ports and query values into 20 hosts with identical admitted source cells. Its
+independent oracle checks clean masks and reclassified match codes, while the
+real delivery ledger and canonical receipt must report the coalesced key count.
+This specific import fixture does not claim arbitrary source-cell conflicts or
+full related-artifact routing. DOCX ZIP metadata is fixed so paired forks have
+identical bytes and document source identities.
+
 ## Failure and acceptance policy
 
 Both members of a pair execute even if one fails a resource screen. Further

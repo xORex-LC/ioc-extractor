@@ -36,6 +36,29 @@ def policy():
 
 
 class ServiceCapacityTest(unittest.TestCase):
+    def test_sqlite_docx_pair_has_stable_bytes_and_source_identity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            first, second = Path(temporary) / 'first.docx', Path(temporary) / 'second.docx'
+            CAP.fixture(first, 61)
+            CAP.fixture(second, 61)
+            self.assertEqual(first.read_bytes(), second.read_bytes())
+
+    def test_sqlite_processed_fixture_coalesces_distinct_urls_to_independent_host_keys(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = policy()
+            oracle = CAP.DiskOracle(config, root / 'oracle.db')
+            try:
+                result = C5.processed_fixture(root / 'import.csv', 100, 'masks', config, oracle, CAP.BASE.digest, 'collapse')
+                self.assertEqual((result['source_rows'], result['accepted_rows'], result['duplicate_rows']), (100, 20, 80))
+                self.assertEqual(oracle.counts()['masks'], 20)
+                values = [json.loads(row[0]) for row in oracle.db.execute('SELECT fields FROM expected')]
+                self.assertTrue(all(value['url_match'] == 'u:hAS' and value['host_match'] == 'h:dAS' for value in values))
+                self.assertTrue(all('://' not in value['mask'] and '?' not in value['mask'] for value in values))
+                self.assertEqual(oracle.db.execute('SELECT count(*) FROM origins').fetchone()[0], 20)
+            finally:
+                oracle.close()
+
     def test_sqlite_frozen_runtime_preserves_packaged_application_factories(self):
         import zipfile
         with tempfile.TemporaryDirectory() as temporary:
