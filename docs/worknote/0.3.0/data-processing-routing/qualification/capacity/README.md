@@ -196,3 +196,25 @@ independent oracles pass, including processed host/COALESCE import. Failed time,
 writer/control and historical series-median screens remain negative; C5/G6 stay
 NOT_ACCEPTED. Raw logs, resources, controls and JFR are private with retained
 digests. All owned runtime and business state was removed.
+
+## Bounded staged-transport cycle
+
+[Staged transport optimization and C5 repeat](../../cap-7c-staged-transport-cost.md)
+retains nine typed-chunk diagnostic forks and ten complete service windows in
+[the evidence bundle](cap-7c-staged-transport-cost.json). Only the typed-chunk
+production compilation unit changes. The old executable identity is separate
+from its later harness HEAD; all bytecode, probe, raw-file and policy identities
+are preserved. Caller allocations fall about 65% in the mechanism diagnostic,
+whose scope excludes whole-service resources.
+
+Four observed clock preflights and all new service windows complete without
+backward UTC steps or collector errors after the user's guest-NTP stop. Large
+staged DOCX/aggregate now have complete semantic and cost evidence: short
+physical holds at substantially greater elapsed/allocation/storage cost.
+Processed host/COALESCE passes three complete pairs and terminal receipt checks.
+Four large-cell screen failures, limited repetitions, maintenance/cadence and
+swap observations remain negative or bounded evidence; C5/G6 stay NOT_ACCEPTED.
+Historical clock-error intervals are not valid before-times. All owned JVMs,
+private business state and frozen runtime copies are removed. Raw logs and
+resource/control/clock files remain private with hashes; no DB/WAL/CSV/JAR is
+versioned.

@@ -268,9 +268,11 @@ There are concrete transport costs:
   units under the same fenced publication protocol. Never clone canonical data
   blindly or bypass catalog/format checks.
 - [Typed chunks](../../../../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcTypedPublicationChunk.java)
-  prepare and close an INSERT for each version row. Reuse one statement per
-  touched table within the owning chunk transaction, keeping effect order,
-  checksum, idempotency and bounded cleanup. Do not create a cross-thread cache.
+  prepared and closed an INSERT for each version row at the reviewed baseline.
+  The later [bounded staged cycle](cap-7c-staged-transport-cost.md) implements
+  reuse through the existing statement owner within each chunk transaction,
+  preserving effect order, checksum, idempotency and bounded cleanup. Its
+  isolated allocation benefit does not remove full staged publication cost.
 - [Transfer](../../../../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcPublicationTransfer.java)
   walks the sealed effects twice: description and transfer. A sealed compact
   chunk manifest could avoid repeated framing, if it proves the same counts,
@@ -392,6 +394,25 @@ planned matrix remains open until its disposition is explicitly agreed; this
 analysis does not silently waive it or authorize stand deployment.
 
 ## Analysis validation
+
+### Subsequent bounded staged execution
+
+The owner-authorized [staged transport cycle](cap-7c-staged-transport-cost.md)
+retains chunk-local statement reuse with about 65% lower diagnostic caller
+allocations. After the user stopped guest time synchronization,
+four observed preflights and ten complete C5 windows have no detected backward
+UTC step or collector error. Both formerly incomplete large staged cells pass
+output/provenance/receipt checks. They cost about 4.8–4.9 times native elapsed
+time in their single pairs while substantially reducing maximum writer hold
+and eligible control wait. Processed URL-to-host/COALESCE passes three pairs
+with essentially equal elapsed time and 5–8% more staged allocations.
+
+This validates a concrete availability/total-cost tradeoff, not a new universal
+time promise. Staged maintenance/cadence delay, swap pressure, one unattributed
+protocol rebuild, broader matrix and C6 activation remain explicit limits.
+The finite cycle is complete; historical C5/G6 NOT_ACCEPTED and the native
+default remain unchanged. Original analysis validation below describes the
+read-only review, not the subsequent implementation or capacity acceptance.
 
 This review reads current code, retained evidence and primary external sources.
 It makes no production changes and runs no new load windows. Derived evidence

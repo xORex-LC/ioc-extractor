@@ -14,6 +14,15 @@ stable latency improvement and C5/G6 acceptance are not established. The fixed
 cycle ends without another redesign or staged activation. Workload/availability
 policy remains a separate decision, with historical failed targets preserved.
 
+**Bounded staged cycle completed:** the owner-authorized
+[transport optimization and C5 repeat](cap-7c-staged-transport-cost.md) reduces
+isolated typed-chunk caller allocations by about 65%. After observed UTC
+stabilization, ten service forks complete data/receipt/export oracles. Large
+staged DOCX and aggregate now have complete cost windows: short writer holds,
+but about 4.8–4.9 times native elapsed time in those single pairs. Processed
+host/COALESCE import passes all three pairs. C5/G6 remain NOT_ACCEPTED; native
+default and the separate workload/availability decision are unchanged.
+
 Status: CAP-0–CAP-5 implemented and qualified within their stage scope; CAP-6
 qualification records G6 NOT_ACCEPTED; CAP-7A implementation and scoped source
 qualification are complete in its [execution report](cap-7a-execution.md).
@@ -582,7 +591,14 @@ fixes early clock sampling, competing-control admission and a repeated export
 reader scan. All three processed-import pairs pass complete oracles, while
 native large-unit screens still fail and two staged collectors reject actual
 backward UTC steps confirmed by adjacent raw samples. All 12 forks are retained;
-stable qualification UTC and complete large-unit measurements remain required.
+that repeat required stable qualification UTC and complete large-unit measurements.
+The subsequent [bounded staged repeat](cap-7c-staged-transport-cost.md) closes
+those two incomplete 100k cells after observed clock stabilization. All ten new
+forks complete independent oracles without collector errors. Native large-unit
+holds still fail their screens; staged shortens holds but fails large-cell local
+time, with higher allocations/storage and observed maintenance/cadence pressure.
+Large cells retain one pair each after failed screens; the broader planned
+matrix and acceptance envelope remain open. Historical failures are preserved.
 C5 remains NOT_ACCEPTED. C5 acceptance and
 C6 operational activation remain open,
 including default composition, complete deployment backup and safe promotion-pin

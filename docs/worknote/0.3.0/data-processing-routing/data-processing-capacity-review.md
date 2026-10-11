@@ -951,3 +951,26 @@ Three before/after processed host/COALESCE import forks preserve semantics but
 do not show a material allocation improvement. Individual import screens pass;
 the candidate median still exceeds the historical series target. The cycle
 ends with native default retained, staged isolated and C5/G6 NOT_ACCEPTED.
+
+### Bounded staged-transport cycle and stable-clock C5 repeat
+
+The [bounded staged cycle](cap-7c-staged-transport-cost.md) reuses the existing
+statement owner within typed publication chunks, preserving ordering, replay,
+fencing, deadlines and atomic visibility. Nine isolated old/new/late-old forks
+pass exact NULL/BLOB/value and receipt checks; candidate caller allocations
+fall about 65%. This mechanism result excludes full-service hydration/output.
+
+After the user stopped guest `systemd-timesyncd`, four observed 90-second
+preflights detect no backward step, and all ten new service windows complete
+collection and independent canonical/provenance/projection/export oracles.
+DOCX 100k unique costs 68.13/334.57 s native/staged, with maximum writer holds
+13.08/0.95 s. AS_IS aggregate 100k costs 28.09/135.35 s, with holds 16.61/0.20 s.
+The previously clock-failed large staged windows are now completely measured;
+their historical error durations remain excluded from before/after claims.
+
+Processed URL-to-host/COALESCE completes all three pairs with medians
+16.67/16.70 s; receipts are COMMITTED and deliveries TERMINAL/SUCCEEDED.
+Short staged physical holds do not eliminate maintenance/cadence delay, swap,
+version/journal CPU/storage cost or the need for a declared operating envelope.
+Large pairs retain their failed time screens and are not three-fork medians.
+The bounded cycle ends with native default retained and C5/G6 NOT_ACCEPTED.

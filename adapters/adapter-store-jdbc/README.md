@@ -122,7 +122,10 @@ runtime JDBC drivers.
 - `JdbcTypedPublicationStore` preserves native typed shapes behind committed
   read views. `JdbcPublicationTransfer` streams actual changes in at most
   256-row/1-MiB chunks; initial values, tombstones and explicit renewal flags
-  distinguish no-op, replacement and fresh-UTC confirmation. Initialization
+  distinguish no-op, replacement and fresh-UTC confirmation. Each chunk reuses
+  the existing thread-confined, bounded `JdbcStatementScope` for typed INSERTs
+  on its caller-owned connection, closes it before commit and preserves effect
+  order and exact replay. Initialization
   refuses existing business rows; migration and runtime activation are separate.
 - `JdbcStagedCanonicalBackend` is an explicitly composed isolated candidate.
   Its native ordinary/import writers and control operations share committed

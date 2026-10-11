@@ -239,4 +239,15 @@ repeated export-assignment scan with a full-key probe. Its
 standard processed-import pairs and retains 12 forks, including negative large
 native screens and two staged collector failures. Adjacent raw samples establish
 actual backward UTC steps in the qualification environment. **C5/G6 remain
-NOT_ACCEPTED**; stable UTC and complete large-unit qualification are still required.
+NOT_ACCEPTED**; that repeat still lacked stable UTC and complete large-unit
+qualification.
+
+[Bounded staged-transport optimization and C5 repeat](cap-7c-staged-transport-cost.md)
+reuses the existing statement owner per typed chunk and reduces isolated caller
+allocations about 65%. After observed UTC stabilization, ten service windows
+complete all output/provenance/receipt checks, including both formerly
+incomplete large staged cells. Large unique staged results shorten writer holds
+but cost about 4.8–4.9 times native elapsed time in those single pairs; processed
+host/COALESCE passes three pairs at essentially equal time. Maintenance/cadence,
+swap, repetition and broader matrix limits are explicit. **The bounded cycle is
+complete; C5/G6 stay NOT_ACCEPTED and native remains the default.**
