@@ -145,6 +145,9 @@ measured costs, required work, bounded optimization candidates and SQLite-only
 architecture choices. Numerical acceptance is under review; retained C5/G6
 failures and the native default remain unchanged.
 
+[Bounded native-cost experiment](cap-7c-bounded-cycle.md) records the fixed-count
+before/after measurement contract and the single profiled decoding optimization.
+
 [Data processing capacity and scheduling review](data-processing-capacity-review.md)
 records the 2026-10-04 100k-occurrence publication delay, exact SQLite JDBC
 scaling evidence, memory/scheduling audit and proposed bounded processing model.

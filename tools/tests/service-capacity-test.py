@@ -206,6 +206,55 @@ class ServiceCapacityTest(unittest.TestCase):
         samples[1].update(status='FAIL', local_window_upper_seconds=None)
         self.assertEqual(C5.series_screen(samples, 100000, 1)['violations'], ['staged_incomplete_or_failed_series'])
 
+    def test_native_cost_series_preserves_failed_screens_without_accepting_capacity(self):
+        sample = dict(backend='native', status='FAIL', local_window_upper_seconds=70,
+                      qualification={'admissionWindowMaximaExact': True, 'admissionScope': 'canonical_bean_only'},
+                      canonical_oracle={'rows': 10}, canonical_evidence={'family_rows': {}},
+                      temporary_state_removed=True, cleanup_errors=[])
+        result = C5.native_cost_series([sample], 1)
+        self.assertEqual(result['status'], 'COMPLETE')
+        self.assertEqual(result['screen_statuses'], ['FAIL'])
+        self.assertTrue(result['acceptance'].startswith('NOT_ACCEPTED'))
+        self.assertEqual(C5.native_cost_series([sample], 3)['status'], 'INCOMPLETE')
+        for change in ({'status': 'ERROR'}, {'qualification': {}}, {'canonical_oracle': None},
+                       {'canonical_evidence': None}, {'cleanup_errors': ['cannot stop']},
+                       {'temporary_state_removed': False}, {'backend': 'staged'}):
+            self.assertEqual(C5.native_cost_series([dict(sample, **change)], 1)['status'], 'INCOMPLETE')
+
+    def test_native_cost_fingerprints_detect_identity_rank_and_receipt_changes(self):
+        import sqlite3
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            database = root / 'var/db/ioc-dataframe.db'
+            database.parent.mkdir(parents=True)
+            with sqlite3.connect(database) as db:
+                db.executescript('''
+                    CREATE TABLE masks(row_key TEXT, id INTEGER, _lifecycle_id INTEGER);
+                    CREATE TABLE masks_sources(row_id INTEGER);
+                    CREATE TABLE masks_receipt_rows(ordinal INTEGER,row_key TEXT,mask TEXT);
+                    CREATE TABLE canonical_match_alias(artifact,definition_id,key_hash,key_canonical,lifecycle_id,canonical_row_id);
+                    CREATE TABLE canonical_lifecycle_field_origin(artifact,lifecycle_id,field_name,admission_order,occurrence_position,occurrence_id);
+                    CREATE TABLE confirmation_receipt(state,expected_artifacts,row_count,payload_version);
+                    CREATE TABLE confirmation_receipt_field_position(artifact,ordinal,field_name,occurrence_position);
+                    CREATE TABLE registered_observation(admission_order,origin_kind,occurrence_id);
+                    INSERT INTO masks VALUES('key',1,1);
+                    INSERT INTO masks_receipt_rows VALUES(0,'key','example.org');
+                    INSERT INTO canonical_lifecycle_field_origin VALUES('masks',1,'mask',1,4,'private');
+                ''')
+            config = {'ioc': {'sink': {'artifacts': [{'name': 'masks', 'columns': [{'name': 'mask'}]}]}}}
+            with patch.object(C5.CAP.BASE, 'ARTIFACTS', ['masks']):
+                before = C5.native_cost_evidence(root, config)['deterministic_fingerprints']
+                with sqlite3.connect(database) as db:
+                    db.execute("UPDATE canonical_lifecycle_field_origin SET occurrence_id='other-private'")
+                self.assertEqual(C5.native_cost_evidence(root, config)['deterministic_fingerprints'], before)
+                with sqlite3.connect(database) as db:
+                    db.execute('UPDATE masks SET id=2')
+                    db.execute('UPDATE canonical_lifecycle_field_origin SET occurrence_position=5')
+                    db.execute("UPDATE masks_receipt_rows SET mask='changed.org'")
+                after = C5.native_cost_evidence(root, config)['deterministic_fingerprints']
+                for name in ['masks_identities', 'field_origins', 'masks_receipt_payload']:
+                    self.assertNotEqual(before[name], after[name])
+
     def test_upgrade_startup_failure_stops_unit_before_state_removal(self):
         from types import SimpleNamespace
         from unittest.mock import MagicMock

@@ -2,6 +2,7 @@
 """C5 paired private whole-service SQLite qualification; never changes the production selector."""
 import argparse
 import csv
+import hashlib
 from contextlib import closing
 import importlib.util
 import json
@@ -152,6 +153,39 @@ def canonical_evidence(root, config):
                 'scope': 'Committed-family census; independent fields/keys/provenance and public slots checked separately'}
 
 
+def native_cost_evidence(root, config):
+    """Compare deterministic identities and receipt payloads; exclude UTC and private occurrence IDs."""
+    result = canonical_evidence(root, config)
+    queries = {
+        'aliases': 'SELECT artifact,definition_id,key_hash,key_canonical,lifecycle_id,canonical_row_id FROM canonical_match_alias',
+        'field_origins': 'SELECT artifact,lifecycle_id,field_name,admission_order,occurrence_position FROM canonical_lifecycle_field_origin',
+        'receipt_headers': 'SELECT state,expected_artifacts,row_count,payload_version FROM confirmation_receipt',
+        'receipt_positions': 'SELECT artifact,ordinal,field_name,occurrence_position FROM confirmation_receipt_field_position',
+        'observation_order': 'SELECT admission_order,origin_kind FROM registered_observation',
+    }
+    for artifact in CAP.BASE.ARTIFACTS:
+        queries[artifact + '_identities'] = f'SELECT row_key,id,_lifecycle_id FROM {artifact}'
+        schema = next(item for item in config['ioc']['sink']['artifacts'] if item['name'] == artifact)
+        columns = ','.join('"' + column['name'].replace('"', '""') + '"'
+                           for column in schema['columns'] if column['name'] != 'id')
+        queries[artifact + '_receipt_payload'] = f'SELECT ordinal,row_key,{columns} FROM {artifact}_receipt_rows'
+    fingerprints = {}
+    with closing(sqlite3.connect(f'file:{root / "var/db/ioc-dataframe.db"}?mode=ro', uri=True)) as db:
+        db.execute('BEGIN')
+        for name, sql in queries.items():
+            cursor = db.execute(sql + ' LIMIT 0')
+            order = ','.join(str(index + 1) for index in range(len(cursor.description)))
+            digest = hashlib.sha256()
+            count = 0
+            for row in db.execute(sql + ' ORDER BY ' + order):
+                digest.update(json.dumps(row, ensure_ascii=False, separators=(',', ':')).encode() + b'\n')
+                count += 1
+            fingerprints[name] = {'rows': count, 'sha256': digest.hexdigest()}
+    result['deterministic_fingerprints'] = fingerprints
+    result['fingerprint_scope'] = 'Final key/ID/lifecycle assignments, aliases, field rank, receipt payload/order; excludes UTC and private occurrence IDs'
+    return result
+
+
 def import_policy(policy, artifact, processed=False):
     """Declare one real local contract using the existing schema/identity/export catalogs."""
     ioc = policy['ioc']
@@ -289,6 +323,21 @@ def series_screen(samples, rows, requested_pairs):
             'violations': violations, 'backends': summaries}
 
 
+def native_cost_series(samples, requested):
+    """A fixed diagnostic series can complete with failed screens; it never accepts capacity."""
+    complete = [item for item in samples if item.get('backend') == 'native'
+                and item.get('status') in ('SCREEN_PASS', 'FAIL')
+                and item.get('qualification', {}).get('admissionWindowMaximaExact') is True
+                and item.get('qualification', {}).get('admissionScope') == 'canonical_bean_only'
+                and item.get('canonical_oracle') and item.get('canonical_evidence')
+                and item.get('local_window_upper_seconds') is not None
+                and not item.get('cleanup_errors') and item.get('temporary_state_removed')]
+    return {'status': 'COMPLETE' if len(complete) == len(samples) == requested else 'INCOMPLETE',
+            'completed_windows': len(complete), 'requested_windows': requested,
+            'screen_statuses': [item['status'] for item in samples],
+            'acceptance': 'NOT_ACCEPTED; completed cost measurements do not pass C5/G6'}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--jar', type=Path, required=True)
@@ -302,6 +351,8 @@ def main():
     parser.add_argument('--import-artifact', choices=CAP.BASE.ARTIFACTS)
     parser.add_argument('--processed-import', action='store_true', help='Actual selected masks import with active host view and COALESCE')
     parser.add_argument('--diagnostic', action='store_true')
+    parser.add_argument('--native-cost-cycle', action='store_true',
+                        help='Fixed native-only cost series; retain failed screens, stop incomplete collection; no acceptance')
     parser.add_argument('--timeout', type=int, default=900)
     parser.add_argument('--port', type=int, default=18207)
     parser.add_argument('--maintenance-every', type=int, default=5,
@@ -327,12 +378,16 @@ def main():
               'java': CAP.command(['java', '--version']), 'rows': args.rows, 'shape': args.shape, 'format': args.format,
               'initial_rows': args.initial_rows, 'import_artifact': args.import_artifact,
               'processed_import': args.processed_import,
+              'native_cost_cycle': args.native_cost_cycle,
               'bounded_row_profile': args.bounded_row_profile,
-              'mode': 'diagnostic' if args.diagnostic else 'instrumented_primary', 'requested_pairs': args.samples,
+              'mode': 'diagnostic' if args.diagnostic else 'instrumented_primary',
+              'requested_pairs': 0 if args.native_cost_cycle else args.samples,
+              'requested_native_windows': args.samples if args.native_cost_cycle else None,
               'acceptance': 'NOT_ACCEPTED; C5 qualification does not activate ADR0041 or close G6', 'samples': []}
     args.smb, args.environment, args.document = False, None, None
     args.qualification = lambda root, port: QualificationWindow(root, port, args.maintenance_every)
-    args.gate_sample, args.canonical_evidence = gates, canonical_evidence
+    args.gate_sample = gates
+    args.canonical_evidence = native_cost_evidence if args.native_cost_cycle else canonical_evidence
     CAP.save(output / 'report.json', report)
     with tempfile.TemporaryDirectory(prefix='ioc-c5-runtime-', dir=REPO / '.dev') as temporary:
         runtime = Path(temporary)
@@ -355,7 +410,9 @@ def main():
                                          for path in sorted((runtime / 'classes').rglob('*Capacity*.class'))}
         for ordinal in range(args.samples):
             # Alternate paired fork order; both variants run even when one fails its screen.
-            for backend in (('native', 'staged') if ordinal % 2 == 0 else ('staged', 'native')):
+            backends = ('native',) if args.native_cost_cycle else (
+                ('native', 'staged') if ordinal % 2 == 0 else ('staged', 'native'))
+            for backend in backends:
                 if shutil.disk_usage(REPO / '.dev').free < 5 * 1024**3:
                     report['failure'] = 'Less than 5 GiB free; no new JVM started'
                     break
@@ -370,6 +427,11 @@ def main():
                     raise
                 value.update(backend=backend, pair=ordinal)
                 CAP.save(output / 'report.json', report)
+            if args.native_cost_cycle:
+                if native_cost_series(report['samples'], ordinal + 1)['status'] != 'COMPLETE':
+                    report['stopped_after_incomplete_window'] = True
+                    break
+                continue
             try:
                 report['comparison'] = compare(report['samples'])
             except Exception as failure:
@@ -379,14 +441,18 @@ def main():
                 report['stopped_after_failed_pair'] = True
                 break
     report['temporary_runtime_removed'] = not runtime.exists()
-    report['series_screen'] = series_screen(report['samples'], args.rows, args.samples)
-    report['status'] = report['series_screen']['status']
+    if args.native_cost_cycle:
+        report['cost_series'] = native_cost_series(report['samples'], args.samples)
+        report['status'] = report['cost_series']['status']
+    else:
+        report['series_screen'] = series_screen(report['samples'], args.rows, args.samples)
+        report['status'] = report['series_screen']['status']
     if report.get('comparison_failure'):
         report['status'] = 'ERROR'
     if CAP.command(['git', 'rev-parse', 'HEAD']) != head or CAP.command(['git', 'status', '--porcelain']):
         report.update(status='ERROR', identity_failure='HEAD/worktree changed during qualification')
     CAP.save(output / 'report.json', report)
-    if report['status'] != 'SCREEN_PASS':
+    if report['status'] not in ('SCREEN_PASS', 'COMPLETE'):
         raise SystemExit(1)
 
 

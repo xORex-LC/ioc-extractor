@@ -282,6 +282,10 @@ service-capacity: ## CAP-6 private cgroup-limited whole-service screens; SERVICE
 sqlite-publication-capacity: ## C5 paired native/staged private service qualification; SQLITE_CAPACITY_ARGS selects the covering cell
 	@python3 tools/dev/sqlite-publication-capacity.py $(SQLITE_CAPACITY_ARGS)
 
+.PHONY: native-processing-profile
+native-processing-profile: ## Stream diagnostic JFR allocation/stack attribution; JFR selects the recording
+	@java tools/dev/ProcessingAllocationProfile.java "$(JFR)"
+
 .PHONY: service-capacity-upgrade
 service-capacity-upgrade: ## CAP-6 drained private upgrade/backup-restore rehearsal; UPGRADE_ARGS selects frozen executables and policy
 	@python3 tools/dev/service-capacity-upgrade.py $(UPGRADE_ARGS)

@@ -28,6 +28,7 @@
 | `document-workspace-capacity.py …` | Диагностика CAP-4: инкрементальный дисковый reducer, canonical writer и receipts; удалить все временные базы даже при отказе |
 | `service-capacity.py …` | CAP-6: отдельный user-systemd, фактические cgroup limits, прогретый полный локальный цикл, дисковый oracle и очистка |
 | `sqlite-publication-capacity.py …` | C5: парные изолированные прогоны native/staged SQLite, точные writer wait/hold, allocations всего JVM, параллельные control/cleanup; `make sqlite-publication-capacity SQLITE_CAPACITY_ARGS='…'` |
+| `ProcessingAllocationProfile.java …` | Потоковый разбор диагностического JFR: сэмплированный вес allocations и стеки по ближайшему IOC-методу; `make native-processing-profile JFR=…` |
 | `service-capacity-upgrade.py …` | CAP-6: приватный upgrade после drain, backup остановленных БД/файлов и проверка restore до запуска прежнего бинарника |
 | `logs.sh …` | Читать и фильтровать ECS JSON по level/event/run/diagnostic |
 | `release-notes-context.sh …` | Собрать read-only Git/PR inventory для ручной подготовки release notes |
@@ -38,6 +39,17 @@
 UTC до и после работы и safe-clock snapshot; HTTP-ошибка сохраняет ограниченный
 диагностический ответ и делает окно неполным. Наблюдаемое время окна с ошибкой
 collector не входит в число завершённых окон и медиану серии.
+
+Для ограниченного анализа native-пути у C5 есть режим `--native-cost-cycle`:
+фиксированное число native-only окон, те же физические ресурсы, control/cleanup
+и oracle. Завершённые окна с нарушенными screens сохраняются как `FAIL`,
+но сами по себе не останавливают заранее заданную серию. Ошибка collector,
+oracle или очистки останавливает серию. `COMPLETE` означает только полноту
+измерений; acceptance остаётся `NOT_ACCEPTED`. Дополнительные fingerprints
+сравнивают конечные ключи/ID, aliases, field rank и payload/order receipt,
+исключая меняющиеся UTC и приватные occurrence IDs. Разбор JFR выполняется
+отдельно: sampling weights и число стеков не являются точными allocations,
+CPU-временем или длительностью методов.
 
 Перед runtime/smoke должен существовать bootable jar:
 
