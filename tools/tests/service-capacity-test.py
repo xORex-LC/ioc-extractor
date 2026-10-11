@@ -90,7 +90,10 @@ class ServiceCapacityTest(unittest.TestCase):
                 window.run()
                 with self.assertRaisesRegex(RuntimeError, 'control worker failed'):
                     window.finish()
-                self.assertEqual(window.failure_summary()['status'], 'INCOMPLETE')
+                incomplete = window.failure_summary()
+                self.assertEqual(incomplete['status'], 'INCOMPLETE')
+                self.assertEqual(incomplete['worker_failure_type'], 'OSError')
+                self.assertEqual(incomplete['worker_failure'], 'loopback failed')
                 self.assertIsNone(window.result)
                 self.assertEqual([call.args[0] for call in request.call_args_list], ['control'])
 

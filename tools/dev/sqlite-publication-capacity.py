@@ -95,7 +95,9 @@ class QualificationWindow:
         try:
             value = self.finish()
         except Exception as failure:
-            return {'status': 'INCOMPLETE', 'failure': str(failure), 'control_probes': self.control_count}
+            return {'status': 'INCOMPLETE', 'failure': str(failure), 'control_probes': self.control_count,
+                    'worker_failure_type': type(self.failure).__name__ if self.failure else None,
+                    'worker_failure': str(self.failure) if self.failure else None}
         return dict(status='INCOMPLETE_WORKLOAD', **value)
 
 
