@@ -39,6 +39,12 @@ DOCX — через SAX. Превышение лимитов parser region, IOC 
 Состояния, pins и recovery:
 [ADR 0036](../ADR/0036-sealed-document-preparation-workspace.md).
 
+Повторное чтение sealed row сохраняет формат payload версии 1. Декодер читает
+проверенные срезы общего bounded payload: ASCII не создаёт декодер и временные
+буферы для каждого поля; Unicode проходит строгий UTF-8 decoder, принадлежащий
+одному вызову чтения строки. `ABSENT`, явный `NULL`, порядок/позиции полей и
+проверки повреждённых данных сохраняются; decoded строки владеют своими bytes.
+
 Document plan открывает отдельную `DocumentProcessingSession` на
 подготовку документа; stage закрывает её до checkpoint и при исключениях.
 Чистый `IndicatorProcessingSession` из `ioc-processing` переиспользует только

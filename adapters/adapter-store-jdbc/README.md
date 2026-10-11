@@ -85,8 +85,12 @@ runtime JDBC drivers.
   both row images and separately bounded main/TEMP caches (512 KiB each).
   Document intake leaves one promotion and one control lease available within
   the existing aggregate budget; public row/field limits are not reduced.
-  Sealed repeatable cursors feed canonical writers and typed receipts. Receipt
-  cursors can borrow the writer connection; receipt batches flush at 128 rows
+  Sealed repeatable cursors feed canonical writers and typed receipts.
+  Version-1 row decoding reads validated slices of the same bounded payload:
+  ASCII strings avoid per-field decoder/buffer copies; non-ASCII uses one strict
+  UTF-8 decoder per row invocation. Decoded strings own their bytes; missing/null
+  cells, field ranks, corrupt-input rejection and sealed replay stay unchanged.
+  Receipt cursors can borrow the writer connection; receipt batches flush at 128 rows
   or 1 MiB estimated bytes. An individually larger binding flushes alone;
   document rows have an independent configured encoded-size limit. No
   document-wide winner/receipt list is retained.

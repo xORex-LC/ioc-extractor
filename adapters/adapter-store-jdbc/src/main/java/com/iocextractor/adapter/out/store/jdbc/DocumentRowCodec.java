@@ -12,10 +12,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.ByteBuffer;
 import java.nio.charset.CodingErrorAction;
+import java.nio.charset.CharsetDecoder;
 import java.util.LinkedHashMap;
 import java.util.Optional;
 
-/** Versioned bounded row encoding; preserves absent columns, explicit nulls and field rank. */
+/** Versioned bounded row encoding; strict slice decoding preserves absent columns, nulls and field rank. */
 final class DocumentRowCodec {
     private final int maximumRowBytes;
     private final int maximumFieldBytes;
@@ -55,18 +56,21 @@ final class DocumentRowCodec {
         requireSize(bytes.length);
         try (var input = new DataInputStream(new ByteArrayInputStream(bytes))) {
             if (input.readInt() != 1) { throw new IOException("Unsupported document row version"); }
-            String id = text(input);
+            // The convenience decode operation resets this invocation-owned decoder for each slice.
+            var decoder = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT);
+            String id = text(input, bytes, decoder);
             var values = new LinkedHashMap<String, String>();
             int fields = count(input);
             for (int index = 0; index < fields; index++) {
-                String field = field(input);
+                String field = field(input, bytes, decoder);
                 if (values.containsKey(field)) { throw new IOException("Duplicate document field"); }
-                values.put(field, text(input));
+                values.put(field, text(input, bytes, decoder));
             }
             var positions = new LinkedHashMap<String, OccurrencePosition>();
             int ordered = count(input);
             for (int index = 0; index < ordered; index++) {
-                String field = field(input);
+                String field = field(input, bytes, decoder);
                 if (positions.containsKey(field)) { throw new IOException("Duplicate ordered document field"); }
                 positions.put(field, new OccurrencePosition(input.readLong()));
             }
@@ -92,18 +96,25 @@ final class DocumentRowCodec {
         output.write(bytes);
     }
 
-    private String text(DataInputStream input) throws IOException {
+    private String text(DataInputStream input, byte[] payload, CharsetDecoder decoder) throws IOException {
         int size = input.readInt();
         if (size == -1) { return null; }
         if (size < 0 || size > maximumFieldBytes || size > input.available()) {
             throw new IOException("Invalid document field size");
         }
-        return StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(input.readNBytes(size))).toString();
+        int offset = payload.length - input.available();
+        input.skipNBytes(size);
+        for (int index = offset; index < offset + size; index++) {
+            if (payload[index] < 0) {
+                return decoder.decode(ByteBuffer.wrap(payload, offset, size)).toString();
+            }
+        }
+        // All bytes have been checked: ASCII is valid UTF-8. String still owns its copied value.
+        return new String(payload, offset, size, StandardCharsets.US_ASCII);
     }
 
-    private String field(DataInputStream input) throws IOException {
-        String field = text(input);
+    private String field(DataInputStream input, byte[] payload, CharsetDecoder decoder) throws IOException {
+        String field = text(input, payload, decoder);
         if (field == null || field.isBlank()) { throw new IOException("Invalid document field name"); }
         return field;
     }

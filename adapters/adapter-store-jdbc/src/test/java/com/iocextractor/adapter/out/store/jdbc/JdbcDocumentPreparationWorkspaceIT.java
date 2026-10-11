@@ -577,6 +577,58 @@ class JdbcDocumentPreparationWorkspaceIT {
     }
 
     @Test
+    void rowCodecReadsIndependentMixedUtf8SlicesAndOwnsDecodedStrings() throws Exception {
+        byte[] payload = encoded(data -> {
+            data.writeInt(1); text(data, "id"); data.writeInt(5);
+            text(data, "mask"); text(data, "a".repeat(256));
+            text(data, "source"); text(data, "БИБ — 東京 🌐");
+            text(data, "名"); text(data, "é\u0000z");
+            text(data, "empty"); text(data, "");
+            text(data, "null"); text(data, null);
+            data.writeInt(2);
+            text(data, "source"); data.writeLong(7);
+            text(data, "名"); data.writeLong(19);
+        });
+        var values = new LinkedHashMap<String, String>();
+        values.put("mask", "a".repeat(256)); values.put("source", "БИБ — 東京 🌐");
+        values.put("名", "é\u0000z"); values.put("empty", ""); values.put("null", null);
+        var expected = new PreparedArtifactRow(ArtifactRow.ordered(values), Optional.of("id"),
+                Map.of("source", new OccurrencePosition(7), "名", new OccurrencePosition(19)));
+        var codec = new DocumentRowCodec(4096, 256);
+
+        var decoded = codec.decode(payload);
+
+        assertThat(codec.encode(expected)).containsExactly(payload);
+        java.util.Arrays.fill(payload, (byte) 0);
+        assertThat(decoded).isEqualTo(expected);
+        assertThat(decoded.template().values().keySet()).containsExactly("mask", "source", "名", "empty", "null");
+        assertThat(decoded.template().values()).doesNotContainKey("absent");
+        assertThat(codec.decode(codec.encode(expected))).isEqualTo(expected);
+    }
+
+    @Test
+    void rowCodecRejectsOverlongSurrogateTruncatedAndOutOfRangeUtf8AndTruncatedRows() throws Exception {
+        var codec = new DocumentRowCodec(4096, 256);
+        for (byte[] malformed : new byte[][]{
+                {(byte) 0x80}, {(byte) 0xc0, (byte) 0xaf},
+                {(byte) 0xed, (byte) 0xa0, (byte) 0x80},
+                {(byte) 0xf4, (byte) 0x90, (byte) 0x80, (byte) 0x80},
+                {(byte) 0xe2, (byte) 0x82}, {'a', (byte) 0x80}}) {
+            byte[] payload = encoded(data -> {
+                data.writeInt(1); text(data, "id"); data.writeInt(1); text(data, "name");
+                data.writeInt(malformed.length); data.write(malformed); data.writeInt(0);
+            });
+            assertThatThrownBy(() -> codec.decode(payload)).hasMessage("Corrupt document preparation row");
+        }
+        byte[] valid = codec.encode(row("key", "БИБ 🌐", "source", 1));
+        for (int length = 0; length < valid.length; length++) {
+            byte[] truncated = java.util.Arrays.copyOf(valid, length);
+            assertThatThrownBy(() -> codec.decode(truncated)).hasMessage("Corrupt document preparation row");
+        }
+        assertThat(codec.decode(valid)).isEqualTo(row("key", "БИБ 🌐", "source", 1));
+    }
+
+    @Test
     void pinCopyRejectsGrowingInputBeforeWritingBeyondByteLimit() throws Exception {
         Path input = temporary.resolve("large-source");
         Files.write(input, new byte[20000]);

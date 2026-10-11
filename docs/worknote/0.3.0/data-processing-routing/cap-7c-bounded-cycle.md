@@ -46,7 +46,7 @@ UTF-8 decoder and allocates byte/character buffers on every field of every
 prepared-row pass.
 
 The single selected mechanism is field decoding. The proposed implementation
-reads the unchanged version-1 payload through a bounded byte-buffer view,
+reads the unchanged version-1 payload through validated slices of the bounded input,
 constructs ASCII strings directly from their validated slice and uses a strict
 UTF-8 decoder for non-ASCII slices. All state belongs to one decode invocation;
 there is no global cache or shared mutable decoder. It must preserve missing
@@ -58,6 +58,19 @@ mutation and receipt durability remain mandatory.
 
 The native-only measurement mode and deterministic fingerprints have tools
 regressions for incomplete collection, retained screen failures and changes to
-identity/rank/receipt payload. Baseline primary measurements precede the
-production change. Candidate semantic, performance and full quality results
-will be recorded here after execution; no improvement is claimed yet.
+identity/rank/receipt payload. At harness source `076ca6b3`, three primary native
+DOCX forks completed before the production change: 70.138, 70.988 and 118.532 s.
+The long third window remains in the series. All three retained the unchanged
+time/writer/control screen failures and identical deterministic fingerprints.
+Three selected host/COALESCE import forks completed in 18.280, 18.568 and
+17.620 s and passed their individual unchanged screens. This does not close the
+complete capacity matrix.
+
+Slice decoding is implemented without changing encoding or version 1. The
+workspace integration suite covers sealed replay and resource ownership. Added
+regressions use an independently encoded mixed ASCII/Unicode fixture (including
+supplementary characters and NUL), exact field-byte boundaries, byte-for-byte
+encoding, missing/null/empty cells, order/rank, independent string ownership,
+overlong/surrogate/out-of-range/truncated UTF-8 and every truncated prefix of a
+valid row. Candidate performance and final quality results remain pending; no
+improvement is claimed from the prototype alone.
