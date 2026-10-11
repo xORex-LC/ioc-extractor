@@ -36,6 +36,21 @@ def policy():
 
 
 class ServiceCapacityTest(unittest.TestCase):
+    def test_sqlite_asis_contracts_preserve_csv_source_without_processed_only_binding(self):
+        for artifact in CAP.BASE.ARTIFACTS:
+            config = policy()
+            for identity in config['ioc']['artifact-identity']['artifacts']:
+                identity.update(**{'record-key': identity['name'] + '-row-v1', 'match-keys': []})
+            config['ioc'].update(**{'dataframe-import': {}, 'export': {'profiles': [{'name': 'p', 'artifacts': CAP.BASE.ARTIFACTS}]}})
+            C5.import_policy(config, artifact)
+            contract = config['ioc']['dataframe-import']['contracts'][0]
+            mapping = contract['artifacts'][0]
+            self.assertEqual(contract['mode'], 'as-is')
+            self.assertNotIn('source-label-target', mapping)
+            if any(column['name'] == 'source' for column in next(
+                    item for item in config['ioc']['sink']['artifacts'] if item['name'] == artifact)['columns']):
+                self.assertIn({'target': 'source', 'source': 'source'}, mapping['columns'])
+
     def test_sqlite_docx_pair_has_stable_bytes_and_source_identity(self):
         with tempfile.TemporaryDirectory() as temporary:
             first, second = Path(temporary) / 'first.docx', Path(temporary) / 'second.docx'

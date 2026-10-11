@@ -151,8 +151,6 @@ def import_policy(policy, artifact, processed=False):
     mapping = {'name': artifact, 'role': 'primary', 'record-key': identity['record-key'],
                'match-keys': [item['name'] for item in identity['match-keys']],
                'columns': [{'target': name, 'source': name} for name in columns]}
-    if 'source' in columns:
-        mapping['source-label-target'] = 'source'
     contract = {'id': contract_id, 'version': 1, 'charset': 'UTF-8',
                 'dialect': {'delimiter': ';', 'quote': '"', 'record-separator': 'crlf-or-lf',
                             'header-required': True, 'null-literals': ['NULL']},
