@@ -207,5 +207,8 @@ the default application remains native.
 
 [CAP-7C C5 service comparison](cap-7c-c5-qualification.md) defines the paired
 private Spring composition, exact admission-window measurements, concurrent
-controls/cleanup and independent output oracles. Qualification is in progress;
-resource acceptance and production activation remain open.
+controls/cleanup and independent output oracles. Its first-failure comparison is
+recorded with a **NOT_ACCEPTED** decision: short physical writer occupancy does
+not offset default admission failure, large-workspace exhaustion, excessive
+total cost or incomplete/unsafe-clock cells. Failed/superseded raw identities and
+the remaining reference matrix are preserved; production activation remains open.

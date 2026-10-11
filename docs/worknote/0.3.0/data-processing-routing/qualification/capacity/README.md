@@ -19,6 +19,8 @@ CAP-0/1 evidence additionally qualifies isolated corrected executables.
 | [cap-5-writer.json](cap-5-writer.json) | CAP-5 writer-occupancy diagnostic: 100k/1m incremental rows per artifact, real atomic lifecycle writer and receipts, operation wait/hold counters, full-row oracle and mandatory private-state cleanup; no whole-service or mixed-load acceptance |
 | [cap-6-reference.json](cap-6-reference.json) | CAP-6 whole-service first-failure screens, all five AS_IS imports, private diagnostic/SMB attempts and drained upgrade/restore; explicit metric corrections and NOT_RUN cells; G6 remains NOT_ACCEPTED |
 | [cap-7a-reference.json](cap-7a-reference.json) | CAP-7A source-only ordered oracles, HTML/DOCX 100k complete output screens and million-row reducer failures; frozen executable/tree identities, phase anchors and owned-state cleanup; G6 remains NOT_ACCEPTED |
+| [cap-7c-c5-reference.json](cap-7c-c5-reference.json) | C5 native/staged whole-service comparison: 42 serialized forks plus one explicitly missing interrupted warmup; canonical-scope metrics, 100k failed/complete cells, all-five AS_IS contract screens, separate populated diagnostics and unchanged NOT_ACCEPTED decision |
+| [cap-7c-c5-policy.yml](cap-7c-c5-policy.yml) | Credential-free actual private document policy; the C5 driver explicitly derives the common bounded-row override and selected import catalogs |
 
 `artifact_revision.changed_at` is transaction effective time sampled before
 the mutation loop. It must not be used as commit completion wall time. The
@@ -163,3 +165,18 @@ statuses and unchanged writer/local-time limits are retained. Prototype ratios
 are separate from [final packaged compiler-cleanup qualification](cap-7b-production.json),
 whose single sample passes data checks and retains the unchanged G6 budget failure. No private
 DB, WAL, runtime snapshot or replayable transport state is versioned.
+
+## CAP-7C C5 comparison
+
+[C5 qualification](../../cap-7c-c5-qualification.md) records a negative promotion
+decision. Schema-2 measurements filter the actual canonical admission bean;
+earlier all-guard staged maxima remain superseded diagnostics. Original sample
+and source identities are retained, including preflight failures, unsafe-clock
+errors, workspace exhaustion and incomplete series. Only completed independent
+oracles establish field/key/provenance and projection/slot correctness. All
+serialized owned JVMs and business/runtime state were stopped and removed.
+Raw resource/control/log/JFR files remain local and are referenced by digest;
+no DB, WAL, CSV, JAR or credential is versioned. The preserved policy permits
+reproduction with the committed driver. A three-pair processed import series
+passes data checks but fails staged's median screen; it is not a generalized
+speedup claim or full G6 acceptance.

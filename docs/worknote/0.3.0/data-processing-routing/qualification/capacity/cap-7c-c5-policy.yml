@@ -1,0 +1,693 @@
+spring:
+  profiles:
+    active: daemon
+logging:
+  level:
+    root: WARN
+server:
+  address: 127.0.0.1
+  port: 18207
+  tomcat:
+    threads:
+      max: 8
+      min-spare: 1
+    accept-count: 10
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      status:
+        order: down,out-of-service,degraded,unknown,up
+        http-mapping:
+          degraded: 200
+      show-details: always
+ioc:
+  runtime:
+    mode: daemon
+  observability:
+    mode: daemon
+    per-item-trace-enabled: false
+  pipeline:
+    deduplicate: true
+    failure-policy: collect-and-continue
+    max-diagnostics-per-run: 10000
+  storage:
+    service:
+      type: jdbc
+      url: jdbc:sqlite:./var/db/ioc-service.db
+      sqlite:
+        tuning: low-memory
+      pool:
+        write-max: 1
+        read-max: 2
+    dataframe:
+      type: jdbc
+      url: jdbc:sqlite:./var/db/ioc-dataframe.db
+      sqlite:
+        tuning: low-memory
+      pool:
+        write-max: 1
+        read-max: 2
+  source:
+    type: auto
+    charset: auto
+    section-markers:
+    - БИБ-\d+
+    - Письмо ФСТЭК России[^№]*№\s*[\d/]+
+  refang:
+    rules:
+    - from: hxxps
+      to: https
+    - from: hxxp
+      to: http
+    - from: '[.]'
+      to: .
+    - from: '[:]'
+      to: ':'
+    - from: (dot)
+      to: .
+    - from: '[at]'
+      to: '@'
+  engine: re2j
+  patterns:
+    SHA256: \b[0-9a-fA-F]{64}\b
+    SHA1: \b[0-9a-fA-F]{40}\b
+    MD5: \b[0-9a-fA-F]{32}\b
+    URL: https?://[^\s;,<>"']+
+    IPV4: \b(?:\d{1,3}\.){3}\d{1,3}(?:[:/?#][^\s;,<>"']*)?
+    DOMAIN: \b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(?:[:/?#][^\s;,<>"']*)?
+  classify:
+    rules:
+    - when:
+      - has-query
+      url-match: u:hAS,pEX
+      host-match: null
+    - when:
+      - has-path-or-port
+      url-match: u:hEX,dEX
+      host-match: null
+    - when:
+      - is-subdomain
+      url-match: u:hEX
+      host-match: h:dEX
+    - when: []
+      url-match: u:hAS
+      host-match: h:dAS
+  sink:
+    csv:
+      delimiter: ;
+      quote: '"'
+      null-literal: 'NULL'
+      charset: UTF-8
+    artifacts:
+    - name: masks
+      enabled: true
+      path: ./dataframe/repListMasksManual.csv
+      accepts:
+      - IPV4
+      - DOMAIN
+      - URL
+      exclude:
+      - is-bare-ip
+      id:
+        strategy: ascending
+        start: auto
+      columns:
+      - name: id
+        from: id
+      - name: mask
+        from: value
+        transform:
+        - lower-host
+      - name: url_match
+        from: match.url
+      - name: host_match
+        from: match.host
+      - name: score
+        from: const
+        type: INTEGER
+      - name: time_last_seen
+        from: const
+      - name: time_first_seen
+        from: const
+      - name: threat_type
+        from: const
+      - name: source
+        from: source.label
+      - name: description
+        from: const
+    - name: ip_list
+      enabled: true
+      path: ./dataframe/repListIPsManual.csv
+      accepts:
+      - IPV4
+      include:
+      - is-bare-ip
+      id:
+        strategy: ascending
+        start: auto
+      columns:
+      - name: id
+        from: id
+      - name: ip
+        from: value
+      - name: score
+        from: const
+        type: INTEGER
+      - name: time_last_seen
+        from: const
+      - name: time_first_seen
+        from: const
+      - name: threat_type
+        from: const
+      - name: source
+        from: source.label
+        transform:
+        - 'strip-prefix:Письмо '
+      - name: description
+        from: const
+    - name: address_blacklist
+      enabled: true
+      path: ./dataframe/address_blacklist_generated.csv
+      accepts:
+      - IPV4
+      - DOMAIN
+      - URL
+      columns:
+      - name: forbidden_url
+        from: address.url
+        transform:
+        - lower-host
+      - name: forbidden_ip
+        from: address.ip
+        transform:
+        - lower-host
+    - name: hashes
+      enabled: true
+      path: ./dataframe/repListHashesManual.csv
+      accepts:
+      - MD5
+      - SHA1
+      - SHA256
+      id:
+        strategy: ascending
+        start: auto
+      columns:
+      - name: id
+        from: id
+      - name: hash_md5
+        from: value
+        when-types:
+        - MD5
+        transform:
+        - upper
+      - name: hash_sha256
+        from: value
+        when-type: SHA256
+        transform:
+        - upper
+      - name: hash_sha1
+        from: value
+        when-type: SHA1
+        transform:
+        - upper
+      - name: score
+        from: const
+        type: INTEGER
+      - name: time_last_seen
+        from: const
+      - name: time_first_seen
+        from: const
+      - name: threat_type
+        from: const
+      - name: source
+        from: source.label
+        transform:
+        - 'strip-prefix:Письмо '
+      - name: description
+        from: const
+    - name: ioc_aggregate
+      enabled: true
+      path: ./dataframe/GDI_IOC.csv
+      accepts:
+      - IPV4
+      - DOMAIN
+      - URL
+      - MD5
+      - SHA1
+      - SHA256
+      columns:
+      - name: name
+        from: source.label
+      - name: ip_address
+        from: value
+        when-type: IPV4
+        when:
+        - is-bare-ip
+      - name: url_match
+        from: value
+        when-types:
+        - IPV4
+        - DOMAIN
+        - URL
+        when:
+        - is-address-with-detail
+        transform:
+        - lower-host
+      - name: host_match
+        from: value
+        when-type: DOMAIN
+        when:
+        - is-clean-host
+        transform:
+        - lower-host
+      - name: hash
+        from: value
+        when-types:
+        - MD5
+        - SHA1
+        - SHA256
+        transform:
+        - upper
+      write-policy:
+        duplicate-selection: last-nonempty
+        selection-column: name
+        fields:
+        - name: name
+          update: latest-registered
+          empty: keep-existing
+  artifact-identity:
+    artifacts:
+    - name: masks
+      key-columns:
+      - mask
+      key-mode: composite
+      record-key: mask-row-v1
+      match-keys:
+      - name: mask-v1
+        key-columns:
+        - mask
+    - name: ip_list
+      key-columns:
+      - ip
+      key-mode: composite
+      record-key: ip-row-v1
+      match-keys:
+      - name: ip-v1
+        key-columns:
+        - ip
+    - name: address_blacklist
+      key-columns:
+      - forbidden_url
+      - forbidden_ip
+      key-mode: composite
+      record-key: address-row-v2
+      epoch: 2
+      match-keys:
+      - name: forbidden-url-v1
+        key-columns:
+        - forbidden_url
+      - name: forbidden-ip-v1
+        key-columns:
+        - forbidden_ip
+    - name: hashes
+      key-columns:
+      - hash_md5
+      - hash_sha1
+      - hash_sha256
+      key-mode: composite
+      record-key: hash-row-v2
+      epoch: 2
+      match-keys:
+      - name: hash-md5-v1
+        key-columns:
+        - hash_md5
+      - name: hash-sha1-v1
+        key-columns:
+        - hash_sha1
+      - name: hash-sha256-v1
+        key-columns:
+        - hash_sha256
+    - name: ioc_aggregate
+      key-columns:
+      - ip_address
+      - url_match
+      - host_match
+      - hash
+      key-mode: composite
+      record-key: ioc-aggregate-row-v1
+      match-keys:
+      - name: ioc-aggregate-v1
+        key-columns:
+        - ip_address
+        - url_match
+        - host_match
+        - hash
+  dataframe-import:
+    enabled: false
+    sources: []
+    authority-profiles:
+    - id: ioc-aggregate-feed
+      artifacts:
+      - ioc_aggregate
+      maximum-merge-policy: replace-non-null
+      allow-related-routing: false
+      allow-machine-only-formula-preserve: false
+    contracts:
+    - id: ioc-aggregate-v1
+      version: 1
+      charset: UTF-8
+      dialect:
+        delimiter: ;
+        quote: '"'
+        record-separator: crlf-or-lf
+        header-required: true
+        null-literals:
+        - 'NULL'
+      recognition:
+        required-columns:
+        - name
+        - ip_address
+        - url_match
+        - host_match
+        - hash
+        optional-columns: []
+        ignored-columns: []
+        aliases: {}
+      mode: processed
+      routing: target-only
+      row-failure-policy: reject-delivery
+      duplicate-policy: last-nonempty
+      duplicate-selection-column: name
+      renew-unchanged: true
+      formula-policy: reject
+      merge-default: keep-existing
+      artifacts:
+      - name: ioc_aggregate
+        role: primary
+        record-key: ioc-aggregate-row-v1
+        match-keys:
+        - ioc-aggregate-v1
+        source-label-target: name
+        exactly-one-nonempty:
+        - ip_address
+        - url_match
+        - host_match
+        - hash
+        columns:
+        - target: name
+          source: name
+          transforms: []
+          merge-policy: replace-non-null
+        - target: ip_address
+          source: ip_address
+          transforms: []
+          merge-policy: keep-existing
+          validation: bare-ip
+        - target: url_match
+          source: url_match
+          transforms:
+          - lower-host
+          merge-policy: keep-existing
+          validation: url-address
+        - target: host_match
+          source: host_match
+          transforms:
+          - lower-host
+          merge-policy: keep-existing
+          validation: clean-domain
+        - target: hash
+          source: hash
+          transforms:
+          - upper
+          merge-policy: keep-existing
+          validation: hash
+      processed-route:
+        plan: original-aggregate-import
+        inputs:
+        - artifact: ioc_aggregate
+          target: ip_address
+        - artifact: ioc_aggregate
+          target: url_match
+        - artifact: ioc_aggregate
+          target: host_match
+        - artifact: ioc_aggregate
+          target: hash
+        outputs:
+        - artifact: ioc_aggregate
+          targets:
+          - ip_address
+          - url_match
+          - host_match
+          - hash
+    runtime:
+      dirs:
+        processing: ./var/import/processing
+        snapshots: ./var/import/snapshots
+        staging: ./var/import/staging
+        terminal: ./var/import/terminal
+        quarantine: ./var/import/quarantine
+      detect:
+        use-watch-service: false
+        use-change-notifications: true
+        reconcile-interval: 2s
+      stability:
+        quiet-period: 2s
+      retry:
+        delay: 2s
+      limits:
+        maximum-snapshot-bytes: 268435456
+        recovery-batch-size: 100
+      retention:
+        successful:
+          max-age: 30d
+          max-count: 0
+          action: delete
+        unsuccessful:
+          max-age: 90d
+          max-count: 0
+          action: delete
+        interval: 1h
+        batch-size: 100
+      shutdown-timeout: 30s
+  export:
+    enabled: true
+    root: ./var/export
+    trigger:
+      type: quiet-period
+      interval: 10s
+      quiet-period: 1s
+      max-cap: 30s
+    profiles:
+    - name: reputation-lists
+      output-mode: complete
+      artifacts:
+      - masks
+      - ip_list
+      - hashes
+    - name: address-blacklist
+      output-mode: complete
+      artifacts:
+      - address_blacklist
+    - name: ioc-aggregate
+      output-mode: complete
+      artifacts:
+      - ioc_aggregate
+    retention:
+      max-age: 7d
+      max-count: 3
+  ingestion:
+    dirs:
+      inbox: ./var/inbox
+      processing: ./var/processing
+      done: ./var/done
+      failed: ./var/failed
+    patterns:
+      include:
+      - '*.htm'
+      - '*.html'
+      - '*.docx'
+      exclude:
+      - '*.tmp'
+      - '*.part'
+      - .*
+    detect:
+      use-watch-service: false
+      reconcile-interval: 5s
+      max-messages-per-poll: 50
+    stability:
+      quiet-period: 2s
+    retry:
+      max-attempts: 3
+      backoff: 5s
+    ledger:
+      type: file
+      path: ./var/ledger
+    concurrency: 1
+  lifecycle:
+    validity:
+      mode: fixed
+      fixed-ttl: 12h
+      existing-records: reject
+    history-retention: 30d
+    history-cleanup-interval: 1h
+    receipt-retention: 30d
+    reconcile:
+      backstop-interval: 5s
+      batch-size: 1000
+    clock:
+      max-backward-skew: 2s
+      max-clamp-duration: 30s
+  maintenance:
+    retention:
+      enabled: false
+      interval: 1h
+      initial-delay: 5m
+      targets:
+      - name: done
+        dir: ./var/retention/0
+        max-age: 30d
+        max-count: 0
+        action: delete
+      - name: failed
+        dir: ./var/retention/1
+        max-age: 90d
+        max-count: 0
+        action: delete
+  sync:
+    enabled: false
+    retry:
+      max-attempts: 3
+      backoff: 1s
+      multiplier: 2.0
+      max-backoff: 30s
+      jitter: true
+    endpoints: []
+    fetch:
+      enabled: false
+      interval: 10s
+      sources: []
+    publish:
+      enabled: false
+      interval: 10s
+      targets: []
+  processing:
+    document-plan: stand-hosts-document
+    plans:
+    - name: stand-hosts-document
+      observation-selection: final-key
+      views:
+      - name: host
+        operation: network.host
+        input: original
+      classifications:
+      - view: original
+        policy: configured
+      - view: host
+        policy: configured
+      routing:
+        mode: all
+        on-unmatched:
+          action: skip
+        branches:
+        - id: masks-host
+          artifact: masks
+          default-view: host
+          eligibility:
+            'on': original
+            predicate: type-in
+            arguments:
+              types: &id001
+              - IPV4
+              - DOMAIN
+              - URL
+        - id: ip-host
+          artifact: ip_list
+          default-view: host
+          eligibility:
+            'on': original
+            predicate: type-in
+            arguments:
+              types: *id001
+        - id: blacklist-host
+          artifact: address_blacklist
+          default-view: host
+          eligibility:
+            'on': original
+            predicate: type-in
+            arguments:
+              types: *id001
+        - id: hashes-original
+          artifact: hashes
+          default-view: original
+          eligibility:
+            'on': original
+            predicate: type-in
+            arguments:
+              types: &id002
+              - MD5
+              - SHA1
+              - SHA256
+        - id: aggregate-network
+          artifact: ioc_aggregate
+          default-view: original
+          eligibility:
+            'on': original
+            predicate: type-in
+            arguments:
+              types: *id001
+          field-views:
+            ip_address: host
+            host_match: host
+        - id: aggregate-hash
+          artifact: ioc_aggregate
+          default-view: original
+          eligibility:
+            'on': original
+            predicate: type-in
+            arguments:
+              types: *id002
+    - name: original-document
+      observation-selection: retained-observations
+      views: []
+      classifications:
+      - view: original
+        policy: configured
+      routing:
+        mode: all
+        on-unmatched:
+          action: skip
+        branches:
+        - id: masks-original
+          artifact: masks
+          default-view: original
+        - id: ip-original
+          artifact: ip_list
+          default-view: original
+        - id: blacklist-original
+          artifact: address_blacklist
+          default-view: original
+        - id: hashes-original
+          artifact: hashes
+          default-view: original
+        - id: aggregate-original
+          artifact: ioc_aggregate
+          default-view: original
+    - name: original-aggregate-import
+      views: []
+      classifications:
+      - view: original
+        policy: configured
+      routing:
+        mode: all
+        on-unmatched:
+          action: skip
+        branches:
+        - id: aggregate-original
+          artifact: ioc_aggregate
+          default-view: original
+    workspace:
+      directory: ./var/document-preparation

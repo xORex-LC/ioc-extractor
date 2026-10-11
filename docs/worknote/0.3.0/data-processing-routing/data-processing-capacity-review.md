@@ -868,3 +868,22 @@ default port/backstop composition, complete deployment backup and promotion-pin
 retention remain explicit promotion boundaries. Database-only deployment backups
 are insufficient for this conversion. The operational candidate and stopped
 restore fixture do not qualify live deployment or change G6 `NOT_ACCEPTED`.
+
+### 2026-10-11 C5 comparative capacity follow-up
+
+[C5 comparison](cap-7c-c5-qualification.md) now runs the complete private Spring
+application with either the corrected native ports or the complete staged
+mutable-port bundle. Exact canonical-bean admission counters exclude private
+preparation guards. Paired physical documents/imports retain independent final
+fields/keys/provenance, projection/slot and receipt checks under equal resources.
+
+The decision remains **NOT_ACCEPTED**. Native's unique 100k DOCX and aggregate
+import exceed the physical writer/control budgets. Staged shortens measured
+physical transactions, but the unique DOCX exhausts its private SQLite quota;
+processed 100k URL→20-host imports fail the 30s median limit. A separate large
+AS_IS import rejects unsafe UTC and cannot publish successful measurements.
+Default row/cache settings cannot admit the staged workspace pair inside 64 MiB;
+passing cells use an explicitly narrower common row profile. Cleanup-stress
+progress and full format/cardinality/import/populated-state acceptance remain
+open. The report preserves failed clocks, superseded collectors and early
+configuration errors; smaller functional/diagnostic passes do not replace them.
