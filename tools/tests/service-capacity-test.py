@@ -116,6 +116,18 @@ class ServiceCapacityTest(unittest.TestCase):
         self.assertEqual(value['violations'], ['rss_bytes', 'control_wait'])
         self.assertTrue(value['admission_window_maxima_exact'])
 
+    def test_sqlite_series_cannot_pass_from_individually_fast_or_incomplete_samples(self):
+        samples = [dict(backend=backend, status='SCREEN_PASS', local_window_upper_seconds=seconds)
+                   for backend, seconds in [('native', 10), ('staged', 31)]]
+        value = C5.series_screen(samples, 100000, 1)
+        self.assertEqual(value['violations'], ['staged_median_local_window'])
+        self.assertEqual(value['status'], 'FAIL')
+        self.assertEqual(C5.series_screen(samples, 1000000, 1)['status'], 'SCREEN_PASS')
+        value = C5.series_screen(samples, 100000, 3)
+        self.assertEqual(value['violations'], ['native_incomplete_or_failed_series', 'staged_incomplete_or_failed_series'])
+        samples[1].update(status='FAIL', local_window_upper_seconds=None)
+        self.assertEqual(C5.series_screen(samples, 100000, 1)['violations'], ['staged_incomplete_or_failed_series'])
+
     def test_upgrade_startup_failure_stops_unit_before_state_removal(self):
         from types import SimpleNamespace
         from unittest.mock import MagicMock
@@ -308,6 +320,15 @@ class ServiceCapacityTest(unittest.TestCase):
                     path.write_text(value)
                     with self.assertRaisesRegex(RuntimeError, error):
                         oracle.check_csv('ip_list', path, root / 'actual.db', 'p')
+                path.write_text(valid)
+                with sqlite3.connect(root / 'actual.db') as actual:
+                    actual.execute('DELETE FROM export_slot_assignment')
+                with self.assertRaisesRegex(RuntimeError, 'slot/registry'):
+                    oracle.check_csv('ip_list', path, root / 'actual.db', 'p')
+                with sqlite3.connect(root / 'actual.db') as actual:
+                    actual.executemany("INSERT INTO export_slot_assignment VALUES('p','ip_list',1,?)", [(60,), (61,)])
+                with self.assertRaisesRegex(RuntimeError, 'Duplicate canonical'):
+                    oracle.check_csv('ip_list', path, root / 'actual.db', 'p')
             finally:
                 oracle.close()
 

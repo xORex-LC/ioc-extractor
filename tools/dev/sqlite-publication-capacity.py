@@ -257,6 +257,26 @@ def compare(samples):
     return pairs
 
 
+def series_screen(samples, rows, requested_pairs):
+    """Keep incomplete/failed series negative and enforce the unchanged median budget."""
+    summaries = {}
+    violations = []
+    budget = 180 if rows >= 1000000 else 30
+    for backend in ('native', 'staged'):
+        members = [item for item in samples if item['backend'] == backend]
+        values = [item['local_window_upper_seconds'] for item in members
+                  if item.get('local_window_upper_seconds') is not None]
+        if len(members) != requested_pairs or any(item['status'] != 'SCREEN_PASS' for item in members):
+            violations.append(backend + '_incomplete_or_failed_series')
+        summaries[backend] = {'completed_windows': len(values), 'requested_pairs': requested_pairs,
+                              'median_upper_seconds': statistics.median(values) if values else None,
+                              'range_upper_seconds': [min(values), max(values)] if values else None}
+        if len(values) == requested_pairs and statistics.median(values) > budget:
+            violations.append(backend + '_median_local_window')
+    return {'status': 'FAIL' if violations else 'SCREEN_PASS', 'median_budget_seconds': budget,
+            'violations': violations, 'backends': summaries}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--jar', type=Path, required=True)
@@ -347,13 +367,10 @@ def main():
                 report['stopped_after_failed_pair'] = True
                 break
     report['temporary_runtime_removed'] = not runtime.exists()
-    report['status'] = 'SCREEN_PASS' if len(report['samples']) == args.samples * 2 and all(
-        item['status'] == 'SCREEN_PASS' for item in report['samples']) else 'FAIL'
+    report['series_screen'] = series_screen(report['samples'], args.rows, args.samples)
+    report['status'] = report['series_screen']['status']
     if report.get('comparison_failure'):
         report['status'] = 'ERROR'
-    if report['status'] == 'SCREEN_PASS':
-        report['medians'] = {backend: statistics.median(item['local_window_upper_seconds'] for item in report['samples']
-                                                        if item['backend'] == backend) for backend in ('native', 'staged')}
     if CAP.command(['git', 'rev-parse', 'HEAD']) != head or CAP.command(['git', 'status', '--porcelain']):
         report.update(status='ERROR', identity_failure='HEAD/worktree changed during qualification')
     CAP.save(output / 'report.json', report)

@@ -64,6 +64,9 @@ It is not an exact export-ready-to-dispatch measurement.
 The independent disk oracle checks complete final fields, canonical keys,
 positive canonical/lifecycle IDs, source summaries, mutable IDs and immutable
 slots. The comparison rejects different input hashes or final oracle results.
+CSV slot validation streams one committed registry snapshot into the disk-backed
+oracle before indexed local checks. It does not repeat a full versioned-view
+lookup for every CSV row. This readback runs after the measured service window.
 An additional committed-family census retains receipt, history, version and slot
 growth and checks source-summary references. Pending visibility, crash recovery,
 TTL boundary semantics and deterministic conflict exhaustion remain established
@@ -89,8 +92,11 @@ Raw evidence stays in the private `.dev` output. Business databases, CSV copies
 and frozen runtimes are removed only after bounded service termination.
 
 The adopted time, RSS, PSI, five-second physical writer and ten-second control
-queue limits remain unchanged. Passing a covering cell is a screen result, not
-completion of the whole C5/G6 matrix. Exact profile dispatch eligibility,
+queue limits remain unchanged. Complete series also enforce the 30s/180s median
+budget; an incomplete series or individually passing forks with an excessive
+median cannot pass.
+Passing a covering cell is a screen result, not completion of the whole C5/G6
+matrix. Exact profile dispatch eligibility,
 sustainable invalidation/intake, the complete artifact/import matrix, populated
 conversion, cleanup backlog and diagnostic live-state limits must retain their
 own evidence or remain explicitly open. No native-transaction fallback, smaller

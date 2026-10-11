@@ -76,6 +76,7 @@ class DiskOracle(BASE.FixtureOracle):
         self.db.execute('CREATE TABLE expected(artifact TEXT,key TEXT,fields TEXT,PRIMARY KEY(artifact,key)) WITHOUT ROWID')
         self.db.execute('CREATE TABLE origins(artifact TEXT,key TEXT,source TEXT,PRIMARY KEY(artifact,key,source)) WITHOUT ROWID')
         self.db.execute('CREATE TABLE seen(key TEXT PRIMARY KEY,slot INTEGER UNIQUE) WITHOUT ROWID')
+        self.db.execute('CREATE TABLE assignments(key TEXT PRIMARY KEY,slot INTEGER UNIQUE) WITHOUT ROWID')
         self.source_key = None
         self.headers = {item['name']: [column['name'] for column in item['columns']]
                         for item in config['ioc']['sink']['artifacts']}
@@ -134,6 +135,7 @@ class DiskOracle(BASE.FixtureOracle):
 
     def check_csv(self, artifact, path, database, profile):
         self.db.execute('DELETE FROM seen')
+        self.db.execute('DELETE FROM assignments')
         count = 0
         with path.open(newline='') as contents, closing(sqlite3.connect(f'file:{database}?mode=ro', uri=True)) as canonical:
             reader = csv.DictReader(contents, delimiter=';')
@@ -141,15 +143,24 @@ class DiskOracle(BASE.FixtureOracle):
             has_id = 'id' in self.headers[artifact]
             if reader.fieldnames != self.headers[artifact]:
                 raise RuntimeError(f'CSV schema mismatch: {artifact}')
+            canonical.execute('BEGIN')
+            if has_id:
+                # Stream one committed snapshot into the bounded disk oracle. Per-row
+                # canonical lookups can scan the entire versioned slot view repeatedly.
+                assignments = canonical.execute(f'SELECT row_key,id FROM {artifact}') if profile is None else canonical.execute(
+                    f'SELECT c.row_key,a.slot FROM export_slot_assignment a JOIN {artifact} c '
+                    'ON c._lifecycle_id=a.lifecycle_id WHERE a.profile=? AND a.artifact=?', (profile, artifact))
+                try:
+                    self.db.executemany('INSERT INTO assignments VALUES(?,?)', assignments)
+                except sqlite3.IntegrityError as failure:
+                    raise RuntimeError(f'Duplicate canonical public row/slot: {artifact}') from failure
             for row in reader:
                 values = normalize({name: row[name] for name in names})
                 key = self.key(artifact, values)
                 self.wanted(artifact, key, values)
                 slot = int(row['id']) if has_id else None
                 if has_id:
-                    assignment = canonical.execute(f'SELECT id FROM {artifact} WHERE row_key=?', (key,)).fetchone() if profile is None else canonical.execute(f'SELECT a.slot FROM export_slot_assignment a JOIN {artifact} c '
-                        'ON c._lifecycle_id=a.lifecycle_id WHERE a.profile=? AND a.artifact=? AND c.row_key=?',
-                        (profile, artifact, key)).fetchone()
+                    assignment = self.db.execute('SELECT slot FROM assignments WHERE key=?', (key,)).fetchone()
                     if slot <= 0 or assignment != (slot,):
                         raise RuntimeError(f'Public slot/registry mismatch: {artifact}')
                 try:
