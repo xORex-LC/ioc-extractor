@@ -67,6 +67,12 @@ Capture triggers run only on private native tables. They preserve initial and
 final typed values, NULL and cascaded tombstones. An explicit mutation journal
 preserves renewals even when timestamps have not changed. Two passes over one
 sealed snapshot describe and transfer at most 256 effects / 1 MiB per chunk.
+Typed INSERTs reuse the existing bounded `JdbcStatementScope` within that chunk's
+connection/transaction. Contiguous table effects share one SQL shape and lease;
+effect order, NULL/BLOB bindings, deadline anchors and journal replay remain
+unchanged. Every statement closes on success or failure before the chunk returns.
+Drained migration uses the same transport ownership. There is no additional
+cross-transaction cache, executor or JDBC batch buffer.
 
 An initially empty rowid family streams final rows directly from the sealed
 native table, without a second payload or address representation. Deleted transient rows contribute nothing;

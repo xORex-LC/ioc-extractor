@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit;
 import static com.iocextractor.adapter.out.store.jdbc.JdbcWriterAdmission.OperationClass;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 /** Physical publication qualification only; does not implement or replace canonical ports. */
 @IntegrationTest
@@ -269,6 +270,114 @@ class SqlitePublicationExperimentIT {
             assertThat(queryNumber(base, "SELECT COUNT(*) FROM bounded_inputs")).isEqualTo(257);
             working.rollback(); base.rollback();
         }
+    }
+
+    @Test
+    void typedChunkStatementReusePreservesMixedFamiliesNullBlobTombstonesAndDeadlineAnchors() throws Exception {
+        try (var fixture = new Fixture(directory)) {
+            var first = typedCostTable(fixture, "typed_first");
+            var second = typedCostTable(fixture, "typed_second");
+            var chunk = new JdbcTypedPublicationChunk(java.util.Set.of(first.name(), second.name()));
+            assertThat(chunk.add(new JdbcPrivateChanges.Effect(first,
+                    List.of(1, new byte[]{0, -1}, NOW + 1000), null, false, false), true)).isTrue();
+            assertThat(chunk.add(new JdbcPrivateChanges.Effect(first,
+                    java.util.Arrays.asList(2, null, null), null, true, false), true)).isTrue();
+            assertThat(chunk.add(new JdbcPrivateChanges.Effect(second,
+                    List.of(3, new byte[]{1, 2}, NOW + 2000), null, false, false), false)).isTrue();
+            assertThat(chunk.add(new JdbcPrivateChanges.Effect(first,
+                    List.of(4, new byte[]{3}, NOW + 3000), null, false, false), false)).isTrue();
+            var attempt = fixture.begin("typed-bindings", 1, 4, Long.MAX_VALUE, Map.of("payload", 0L));
+            var prepared = new ArrayList<java.sql.PreparedStatement>();
+            fixture.write(OperationClass.PROMOTION, connection -> {
+                var traced = proxy(Connection.class, connection, (method, arguments) -> {
+                    Object value = invoke(connection, method, arguments);
+                    if (method.getName().equals("prepareStatement") && ((String) arguments[0]).startsWith("INSERT INTO \"publication_version_")) {
+                        prepared.add((java.sql.PreparedStatement) value);
+                    }
+                    return value;
+                });
+                chunk.append(traced, fixture.probe, attempt, "payload", 0);
+                assertThat(prepared).hasSize(2);
+                for (var statement : prepared) { assertThat(statement.isClosed()).isTrue(); }
+                // Acknowledged replay does not reopen statements or append physical versions.
+                chunk.append(traced, fixture.probe, attempt, "payload", 0);
+                assertThat(prepared).hasSize(2);
+                return null;
+            });
+            try (var connection = fixture.dataSource.getConnection(); var statement = connection.prepareStatement(
+                    "SELECT id,value,deleted,absolute_deadline,deadline_anchor FROM publication_version_typed_first ORDER BY id");
+                 var rows = statement.executeQuery()) {
+                assertThat(rows.next()).isTrue(); assertThat(rows.getInt(1)).isEqualTo(1);
+                assertThat(rows.getBytes(2)).containsExactly((byte) 0, (byte) -1);
+                assertThat(rows.getObject(4)).isNull(); assertThat(rows.getLong(5)).isEqualTo(attempt.unitId());
+                assertThat(rows.next()).isTrue(); assertThat(rows.getInt(1)).isEqualTo(2);
+                assertThat(rows.getObject(2)).isNull(); assertThat(rows.getInt(3)).isOne();
+                assertThat(rows.getObject(4)).isNull(); assertThat(rows.getObject(5)).isNull();
+                assertThat(rows.next()).isTrue(); assertThat(rows.getInt(1)).isEqualTo(4);
+                assertThat(rows.getBytes(2)).containsExactly((byte) 3);
+                assertThat(rows.getLong(4)).isEqualTo(NOW + 3000); assertThat(rows.getObject(5)).isNull();
+                assertThat(rows.next()).isFalse();
+                assertThat(queryNumber(connection, "SELECT COUNT(*) FROM typed_first")).isZero();
+                assertThat(queryNumber(connection, "SELECT absolute_deadline FROM publication_version_typed_second")).isEqualTo(NOW + 2000);
+            }
+            fixture.seal(attempt); fixture.publishWithValidity(attempt, NOW, "bindings-receipt", Duration.ofHours(1));
+            try (var connection = fixture.dataSource.getConnection()) {
+                assertThat(queryNumber(connection, "SELECT COUNT(*) FROM typed_first")).isEqualTo(2);
+                assertThat(queryNumber(connection, "SELECT COUNT(*) FROM typed_second")).isOne();
+            }
+        }
+    }
+
+    @Test
+    void typedChunkFailureClosesStatementsAndRollsBackJournalAndVersionsWithoutHidingTheCause() throws Exception {
+        try (var fixture = new Fixture(directory)) {
+            var table = typedCostTable(fixture, "typed_failure");
+            var chunk = new JdbcTypedPublicationChunk(java.util.Set.of());
+            for (int id = 1; id <= 2; id++) {
+                assertThat(chunk.add(new JdbcPrivateChanges.Effect(table,
+                        java.util.Arrays.asList(id, null, null), null, false, false), false)).isTrue();
+            }
+            var attempt = fixture.begin("typed-failure", 1, 2, Long.MAX_VALUE, Map.of("payload", 0L));
+            var prepared = new ArrayList<java.sql.PreparedStatement>();
+            int[] executions = {0};
+            var failure = catchThrowable(() -> fixture.write(OperationClass.PROMOTION, connection -> {
+                var traced = proxy(Connection.class, connection, (method, arguments) -> {
+                    Object value = invoke(connection, method, arguments);
+                    if (!method.getName().equals("prepareStatement") || !((String) arguments[0]).startsWith("INSERT INTO \"publication_version_")) { return value; }
+                    var statement = (java.sql.PreparedStatement) value;
+                    prepared.add(statement);
+                    return proxy(java.sql.PreparedStatement.class, statement, (operation, parameters) -> {
+                        if (operation.getName().equals("executeUpdate") && ++executions[0] == 2) { throw new SQLException("typed write fixture"); }
+                        Object result = invoke(statement, operation, parameters);
+                        if (operation.getName().equals("close")) { throw new SQLException("typed close fixture"); }
+                        return result;
+                    });
+                });
+                chunk.append(traced, fixture.probe, attempt, "payload", 0);
+                return null;
+            }));
+            assertThat(failure).isInstanceOf(IocExtractorException.class).hasRootCauseMessage("typed write fixture");
+            assertThat(failure.getCause().getSuppressed()).singleElement()
+                    .satisfies(suppressed -> assertThat(suppressed).hasMessage("typed close fixture"));
+            assertThat(prepared).hasSize(1);
+            assertThat(prepared.getFirst().isClosed()).isTrue();
+            try (var connection = fixture.dataSource.getConnection()) {
+                assertThat(queryNumber(connection, "SELECT COUNT(*) FROM publication_version_typed_failure")).isZero();
+                assertThat(queryNumber(connection, "SELECT COUNT(*) FROM publication_chunk")).isZero();
+                assertThat(queryNumber(connection, "SELECT COUNT(*) FROM publication_fact")).isZero();
+            }
+        }
+    }
+
+    private static JdbcPublicationTable typedCostTable(Fixture fixture, String name) {
+        return fixture.write(OperationClass.CONTROL, connection -> {
+            JdbcPublicationTable.execute(connection, "CREATE TABLE " + name + "(id INTEGER PRIMARY KEY,value BLOB,_valid_until_epoch_ms INTEGER)");
+            var table = JdbcPublicationTable.inspect(connection, name);
+            JdbcTypedVersionTable.create(connection, table, true);
+            JdbcPublicationTable.execute(connection, "DROP TABLE " + name);
+            JdbcTypedVersionTable.createView(connection, table, true);
+            return table;
+        });
     }
 
     @Test

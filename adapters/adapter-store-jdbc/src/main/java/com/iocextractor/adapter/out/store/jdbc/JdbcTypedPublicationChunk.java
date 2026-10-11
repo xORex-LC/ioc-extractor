@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,7 +44,7 @@ final class JdbcTypedPublicationChunk {
 
     /** Drained migration copies literal facts, without confirmation, renewal or runtime transfer journals. */
     void copyMigrationRows(Connection connection, JdbcPublicationProtocol.Attempt attempt) throws SQLException {
-        for (var row : rows) { insert(connection, attempt, row); }
+        insertRows(connection, attempt);
     }
 
     void append(Connection connection, JdbcPublicationProtocol protocol, JdbcPublicationProtocol.Attempt attempt,
@@ -62,25 +63,41 @@ final class JdbcTypedPublicationChunk {
                 row.effect().table().name() + ":" + row.address(), checksum,
                 anchored(row) ? attempt.unitId() : null)).toList();
         if (protocol.append(connection, attempt, ordinal, pointers)) {
-            for (var row : rows) { insert(connection, attempt, row); }
+            insertRows(connection, attempt);
         }
     }
 
-    private void insert(Connection connection, JdbcPublicationProtocol.Attempt attempt, Row row) throws SQLException {
-        JdbcPublicationTable table = row.effect().table();
-        try (var statement = connection.prepareStatement("INSERT INTO " + quote(table.versions()) + "("
-                + joinedQuoted(table.columns())
-                + ",unit_id,fence,stamp,address,deleted,publication_columns,absolute_deadline,deadline_anchor) VALUES("
-                + placeholders(table.columns().size() + 8) + ")")) {
-            int index = 1;
-            for (Object value : row.effect().values()) { statement.setObject(index++, value); }
-            statement.setLong(index++, attempt.unitId()); statement.setLong(index++, attempt.fence());
-            statement.setLong(index++, attempt.stamp()); statement.setString(index++, row.address());
-            statement.setInt(index++, row.effect().deleted() ? 1 : 0); statement.setString(index++, row.timeColumns());
-            statement.setObject(index++, row.artifact() && !anchored(row) ? row.effect().value("_valid_until_epoch_ms") : null);
-            statement.setObject(index, anchored(row) ? attempt.unitId() : null);
-            statement.executeUpdate();
+    private void insertRows(Connection connection, JdbcPublicationProtocol.Attempt attempt) throws SQLException {
+        // Reuse the existing bounded, thread-confined owner only within this chunk transaction.
+        // Contiguous families share SQL construction/binding ownership without reordering effects.
+        try (var statements = new JdbcStatementScope(connection)) {
+            int index = 0;
+            while (index < rows.size()) {
+                var table = rows.get(index).effect().table();
+                try (var lease = statements.borrow(insertSql(table))) {
+                    do { insert(lease.statement(), attempt, rows.get(index++)); }
+                    while (index < rows.size() && rows.get(index).effect().table().equals(table));
+                }
+            }
         }
+    }
+
+    private static String insertSql(JdbcPublicationTable table) {
+        return "INSERT INTO " + quote(table.versions()) + "(" + joinedQuoted(table.columns())
+                + ",unit_id,fence,stamp,address,deleted,publication_columns,absolute_deadline,deadline_anchor) VALUES("
+                + placeholders(table.columns().size() + 8) + ")";
+    }
+
+    private static void insert(PreparedStatement statement, JdbcPublicationProtocol.Attempt attempt, Row row)
+            throws SQLException {
+        int index = 1;
+        for (Object value : row.effect().values()) { statement.setObject(index++, value); }
+        statement.setLong(index++, attempt.unitId()); statement.setLong(index++, attempt.fence());
+        statement.setLong(index++, attempt.stamp()); statement.setString(index++, row.address());
+        statement.setInt(index++, row.effect().deleted() ? 1 : 0); statement.setString(index++, row.timeColumns());
+        statement.setObject(index++, row.artifact() && !anchored(row) ? row.effect().value("_valid_until_epoch_ms") : null);
+        statement.setObject(index, anchored(row) ? attempt.unitId() : null);
+        statement.executeUpdate();
     }
 
     private static boolean anchored(Row row) {
