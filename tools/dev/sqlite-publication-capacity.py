@@ -207,6 +207,8 @@ def main():
     parser.add_argument('--diagnostic', action='store_true')
     parser.add_argument('--timeout', type=int, default=900)
     parser.add_argument('--port', type=int, default=18207)
+    parser.add_argument('--bounded-row-profile', action='store_true',
+                        help='Explicit common 16 KiB row / 4 KiB field / 1 MiB cache profile; default-limit admission stays open')
     args = parser.parse_args()
     output = args.output.absolute()
     if not output.is_relative_to(REPO / '.dev') or output.exists() or output.resolve() != output:
@@ -221,6 +223,7 @@ def main():
               'driver_sha256': CAP.BASE.digest(__file__), 'service_driver_sha256': CAP.BASE.digest(CAP.__file__),
               'java': CAP.command(['java', '--version']), 'rows': args.rows, 'shape': args.shape, 'format': args.format,
               'initial_rows': args.initial_rows, 'import_artifact': args.import_artifact,
+              'bounded_row_profile': args.bounded_row_profile,
               'mode': 'diagnostic' if args.diagnostic else 'instrumented_primary', 'requested_pairs': args.samples,
               'acceptance': 'NOT_ACCEPTED; C5 qualification does not activate ADR0041 or close G6', 'samples': []}
     args.smb, args.environment, args.document = False, None, None
@@ -230,6 +233,13 @@ def main():
         runtime = Path(temporary)
         frozen = runtime / 'ioc-app.jar'
         shutil.copyfile(args.jar, frozen)
+        if args.bounded_row_profile:
+            policy = CAP.yaml.safe_load(args.config.read_text())
+            policy['ioc'].setdefault('processing', {}).setdefault('workspace', {}).update(
+                **{'maximum-row-bytes': 16384, 'maximum-field-bytes': 4096, 'cache-kib': 1024})
+            args.config = runtime / 'bounded-policy.yml'
+            args.config.write_text(CAP.yaml.safe_dump(policy, sort_keys=False, allow_unicode=True))
+            report['common_effective_policy_sha256'] = CAP.BASE.digest(args.config)
         cp, agent = freeze_runtime(frozen, runtime)
         report['helper_class_sha256'] = {str(path.relative_to(runtime)): CAP.BASE.digest(path)
                                          for path in sorted((runtime / 'classes').rglob('*Capacity*.class'))}

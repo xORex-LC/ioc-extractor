@@ -2,6 +2,16 @@
 
 Status: harness implementation; capacity qualification and activation are open.
 
+The first default-policy smoke fork exposed a candidate admission blocker:
+256 KiB maximum rows, 4 MiB caches and a 64 MiB aggregate preparation budget
+cannot reserve two canonical workspaces plus a document lease. The staged
+configuration rejects startup. This is a failed default-configuration result,
+not a resource pass. Comparative covering cells may explicitly use
+`--bounded-row-profile` (16 KiB rows, 4 KiB fields and 1 MiB caches in **both**
+variants, with the same 64 MiB aggregate budget). Those results cannot qualify
+the larger default row/field contract. Fixing the candidate's worst-case chunk
+reservation without weakening accepted input limits remains separate work.
+
 The comparison keeps the corrected native SQLite implementation as the baseline.
 The candidate is the private staged SQLite backend from C3/C4/C6. Neither fork
 changes the packaged application, deployed service or production selector.
