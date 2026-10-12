@@ -179,6 +179,9 @@ in this snapshot.
 | Native | 100,000 distinct IOC / 1 DOCX / SMB | 65.56 | 11.72 | 243.92 / 691.64 | 1,644.82 | 4 / 4 |
 | Native | 1,000,000 distinct IOC / 1 DOCX / SMB | 705.29 | 116.87 | 207.96 / 868.16 | 5,120.20 | 5 / 5 |
 | Native | 1,000,000 IOC / 100 DOCX / SMB; workers/window 2/4 | 640.05 | 385.31 | 266.07 / 820.97 | 5,120.12 | 3 / 3 |
+| Staged hybrid | 100,000 detailed URL import rows → 20 hosts | 16.63 | 3.30 | 166.42 / 543.35 | 1,071.17 | 1 / 0; local export |
+| Staged hybrid | 1,000,000 detailed URL import rows → 20 hosts | 118.89 | 32.79 | 196.80 / 589.02 | 2,787.01 | 1 / 0; local export |
+| Staged hybrid | 100,000 distinct IOC / 1 DOCX / SMB | 151.49 | 27.29 | 227.93 / 693.17 | 2,602.68 | 5 / 5 |
 
 SMB time starts with producer upload and ends with successful durable publication
 of all required final profiles; local import time starts with handoff and ends
@@ -231,6 +234,34 @@ Existing final-export cadence coalesces remote publications; it does not
 eliminate per-document mapping, promotion or mutable-projection work. Those
 costs remain part of the measured service rather than another optimization
 cycle launched without a failed complete-cycle requirement.
+
+The staged 100k document passed its independent checks in 151.49 seconds.
+Maximum writer hold/control wait were 62.45/41.50 ms, and complete receipt
+replay took 1.67 seconds. Its post-cleanup dataframe DB occupied 848.77 MiB
+with a 64-MiB named WAL. The 96 additional maintenance calls took 87.59 seconds:
+eligible physical debt fell from 66,692 to 65,981 rows, while 1,151,740 protected
+rows remained. Protected retained facts are not garbage, but the remaining
+eligible debt also must not be reported as caught up or as sustainable GC.
+
+Bulk staged phase counters attribute 75.50 seconds to transfer, 52.92 seconds
+to commit, 33.64 seconds to native private preparation and 16.31 seconds to
+hydration, with 4,781 hidden chunks and one rebuild. These are overlapping
+unit-level counters: commit is part of transfer, and they are not additive
+wall-clock stages. The declared 256-effect/byte chunk ceiling trades many
+FULL-durable commits for short writer ownership. That ceiling is a policy of
+this candidate, not an immutable SQLite throughput law. Changing it would
+require a new pinned experiment and control-delay contract; it is not necessary
+merely to optimize a percentage after a simpler production model meets the
+complete-cycle requirement. Extra materialization and retained versions remain
+costs of the selected staged representation. Actual final publications also
+differ between the giant-document cells, so their timings are whole-service
+observations rather than an isolated SQL-kernel speedup.
+
+The staged million-row processed import also passed: 118.89 seconds, with a
+10.85-ms maximum writer hold and a 0.04-ms maximum control wait. This profile
+reduces to twenty hosts; its short durable changes do not establish the same
+cost for a million distinct canonical records. Its 96 extra maintenance calls
+took 50.62 seconds, measured after service completion.
 
 The independent post-service full-row/CSV/receipt/fingerprint verification adds
 several minutes to the qualification job. It does not represent additional
