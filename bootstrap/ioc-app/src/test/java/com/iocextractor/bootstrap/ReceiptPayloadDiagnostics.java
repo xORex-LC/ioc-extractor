@@ -65,6 +65,7 @@ final class ReceiptPayloadDiagnostics {
         try (var connection = data.getConnection()) {
             connection.setAutoCommit(false);
             try {
+                var pagesByTable = physicalPages(connection);
                 var families = new ArrayList<Map<String, Object>>();
                 try (var catalog = connection.createStatement(); var names = catalog.executeQuery(
                         "SELECT name FROM publication_native_schema ORDER BY name")) {
@@ -79,15 +80,7 @@ final class ReceiptPayloadDiagnostics {
                                 "SELECT COUNT(*) FROM \"" + physical.replace("\"", "\"\"") + "\"")) {
                             rows.next(); item.put("physicalRows", rows.getLong(1));
                         }
-                        try (var stats = connection.prepareStatement("SELECT name,SUM(pgsize),SUM(payload) FROM dbstat"
-                                + " WHERE name=? OR name IN(SELECT name FROM sqlite_schema WHERE type='index' AND tbl_name=?) GROUP BY name")) {
-                            stats.setString(1, physical); stats.setString(2, physical);
-                            var pages = new LinkedHashMap<String, List<Long>>();
-                            try (var rows = stats.executeQuery()) {
-                                while (rows.next()) { pages.put(rows.getString(1), List.of(rows.getLong(2), rows.getLong(3))); }
-                            }
-                            item.put("pageAndPayloadBytes", pages);
-                        }
+                        item.put("pageAndPayloadBytes", pagesByTable.getOrDefault(physical, Map.of()));
                         families.add(item);
                     }
                 }
@@ -109,5 +102,27 @@ final class ReceiptPayloadDiagnostics {
                 throw failure;
             }
         }
+    }
+
+    /** Inventory each btree once, avoiding a full virtual-table traversal for every family. */
+    private static Map<String, Map<String, List<Long>>> physicalPages(java.sql.Connection connection) throws SQLException {
+        var tablesByObject = new LinkedHashMap<String, String>();
+        try (var statement = connection.createStatement(); var rows = statement.executeQuery(
+                "SELECT name,tbl_name FROM sqlite_schema WHERE type IN('table','index')")) {
+            while (rows.next()) { tablesByObject.put(rows.getString(1), rows.getString(2)); }
+        }
+        var pagesByTable = new LinkedHashMap<String, Map<String, List<Long>>>();
+        try (var statement = connection.createStatement(); var rows = statement.executeQuery(
+                "SELECT name,pgsize,payload FROM dbstat WHERE aggregate=TRUE ORDER BY name")) {
+            while (rows.next()) {
+                String name = rows.getString(1);
+                String table = tablesByObject.get(name);
+                if (table != null) {
+                    pagesByTable.computeIfAbsent(table, ignored -> new LinkedHashMap<>())
+                            .put(name, List.of(rows.getLong(2), rows.getLong(3)));
+                }
+            }
+        }
+        return pagesByTable;
     }
 }

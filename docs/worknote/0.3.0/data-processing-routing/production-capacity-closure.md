@@ -67,18 +67,35 @@ cap using the existing cadence mechanism; actual slice/publication counts remain
 evidence, not an assumed one-final-publication guarantee. Mutable projections
 can still be rebuilt repeatedly: cadence alone does not eliminate that cost.
 
+The reference retains the existing concurrent combined projection-error/ACK
+probe and requests one extra maintenance page after every five completed probes.
+The probe schedules its next command one second after completion; it does not
+create an unbounded queue during a native writer hold. Actual command counts,
+applied/no-op results and waits are recorded. This adds deliberate control and
+maintenance pressure to the service; it is not a quiet production-only baseline
+or proof of equal numbers of applied controls across the two backends. Ordinary
+input parsing is successful; synthetic projection probes are a separate load.
+The service boundary excludes the further 96 post-completion maintenance calls.
+
 `ioc.ingestion.concurrency=1` serializes detection, not all document execution.
 The original v3 corpus cases inherit two preparation workers and a window of
 four documents from the pinned classpath configuration. One giant document
 still has only one bulk document active, but the 100-document v3 profile can
 overlap preparation. Its results are labeled as the configured production
-pipeline rather than strict single-document evidence. An additional finite
-paired batch under `.dev/hybrid-release-single-document/` uses the existing
+pipeline rather than strict single-document evidence. A final native batch
+under `.dev/hybrid-release-single-native/` uses the existing
 `execution.preparation-workers=1` and `execution.window=1` through
-`--single-document-execution`. It waits for the v3 controller to dispose all its
-applications, then runs once for each model, with no retries. This closes the
+`--single-document-execution`. It waits for the current staged giant case to
+finish and dispose its application, then runs once, with no retries. This closes the
 owner's explicit single-document workload condition without silently rewriting
-the earlier measurements. No further measurement grid is queued.
+the earlier measurements. The initially queued paired batch under
+`.dev/hybrid-release-single-document/` was stopped before admission. After the
+staged giant service interval was observed at 1,934.65 seconds, the two additional
+staged batch cells were deferred under the finish-first choice: native already
+meets the complete-cycle band and remains the production model. The current
+staged case still completes its independent checks. Deferred cells are not
+passed, failed workloads or a whole-matrix completion claim. No further
+measurement grid is queued.
 
 ## Finite measurement sequence
 
@@ -140,8 +157,10 @@ qualification harness. The new timing boundary separates durable SMB completion
 from independent readback. Both actual SMB smoke cases and the native import
 cases and native single-document 100k/1m cases and the configured native
 100-document case have passed their independent correctness checks. The strict
-single-document batch, large staged cases and final production choice are
-pending. Quality gates remain deferred by the owner during optimization;
+native single-document batch is the remaining case. The staged million-DOCX
+collector failed in its post-service census, and later staged batches are
+deferred under the finite finish rule. Native remains the production choice,
+subject to the final explicit execution-window check. Quality gates remain deferred by the owner during optimization;
 no deployment, schema activation or completed acceptance is claimed.
 
 The first reference smoke attempts failed before application intake because the
@@ -167,8 +186,9 @@ Sequence: `.dev/hybrid-release-reference-v3/`. Frozen application JAR SHA-256:
 Each report also records its helper classes, driver hashes, corpus and effective
 limits. These are single-fork diagnostic observations, not production percentiles.
 The native single-million-document case and configured 100-document batch are
-complete; the strict single-document batch and large staged cases remain pending
-in this snapshot.
+complete; the strict native single-document batch remains pending in this
+snapshot. The staged million-DOCX service interval is retained with its failed
+post-publication collection status, rather than promoted to qualification.
 
 | Model | Input | Complete service seconds | Cumulative allocations GiB | Bulk heap / RSS MiB | Shared slice peak MiB | New completed slices / successful SMB publications |
 |---|---|---:|---:|---|---:|---|
@@ -182,6 +202,7 @@ in this snapshot.
 | Staged hybrid | 100,000 detailed URL import rows → 20 hosts | 16.63 | 3.30 | 166.42 / 543.35 | 1,071.17 | 1 / 0; local export |
 | Staged hybrid | 1,000,000 detailed URL import rows → 20 hosts | 118.89 | 32.79 | 196.80 / 589.02 | 2,787.01 | 1 / 0; local export |
 | Staged hybrid | 100,000 distinct IOC / 1 DOCX / SMB | 151.49 | 27.29 | 227.93 / 693.17 | 2,602.68 | 5 / 5 |
+| Staged hybrid | 1,000,000 distinct IOC / 1 DOCX / SMB; diagnostic ERROR | 1,934.65 observed | 265.44 | 286.40 / 955.20 | 5,120.31 | 5 / 5 |
 
 SMB time starts with producer upload and ends with successful durable publication
 of all required final profiles; local import time starts with handoff and ends
@@ -221,10 +242,13 @@ the overall maximum writer hold was 5.032 seconds in export-slot allocation,
 with a 5.029-second maximum observed control wait. Complete receipt replay read
 102 receipts / 2,167,020 rows in 12.13 seconds; the post-cleanup dataframe DB was
 3,721.76 MiB with a 64-MiB named WAL. Cumulative allocations reached 385.31 GiB,
-but sampled bulk heap/RSS were 266.07/820.97 MiB, GC took 3.92 seconds, and there
+but sampled bulk heap/RSS were 266.07/820.97 MiB, and there
 were no OOM events or swap. This is allocation churn, not hundreds of GiB of
-required RAM. The reference slice recorded 6,554 high events and about 906 CPU
-seconds over the bulk interval, with only 0.153 seconds of CPU throttling.
+required RAM. At durable SMB completion the reference slice had recorded 4,381
+high events; application CPU consumption was 894.51 CPU seconds and GC took
+3.74 seconds, with only 0.153 seconds of CPU throttling. The later post-diagnostic
+snapshot records 6,554 high events / 906.38 CPU seconds / 3.92 GC seconds; it is
+not the bulk-only resource counter.
 
 The batch uses the existing two preparation workers / four-document window.
 Its corpus and cadence also differ from the one-giant-document case, so the
@@ -262,6 +286,44 @@ The staged million-row processed import also passed: 118.89 seconds, with a
 reduces to twenty hosts; its short durable changes do not establish the same
 cost for a million distinct canonical records. Its 96 extra maintenance calls
 took 50.62 seconds, measured after service completion.
+
+The staged million-DOCX service completed and durably published in 32 minutes
+14.65 seconds. The collector then failed with a 900-second timeout in the
+post-service `receiptFamilies` diagnostic. Its retained status is **ERROR /
+INCOMPLETE_POST_PUBLICATION**, not CORRECTNESS_PASS or production acceptance.
+The later independent canonical/provenance/CSV/remote-readback oracles did not
+run. Before that failure the complete 2,166,987-row real-port receipt replay
+finished in 36.75 seconds and matched the native payload/ordered-position
+checksum. This proves that receipt observation, not the omitted canonical oracles.
+All private application and remote state was disposed after the failure.
+
+Its successful exact bulk counters record 41,868 promotion admissions, maximum
+promotion ownership of 1.716 seconds, maximum overall writer ownership of
+5.835 seconds in CONTROL, and maximum CONTROL wait of 284.30 ms. The 96 extra
+maintenance calls took 740.85 seconds, excluded from the service interval. The
+post-cleanup dataframe DB was 8,024.54 MiB with a 64-MiB named WAL. At durable
+service completion application CPU use was 2,479.81 CPU seconds and GC took
+3.204 seconds; the shared slice recorded 112,904 high events without hard-limit,
+OOM or swap events. These costs must not be replaced by post-diagnostic counters.
+
+Overlapping bulk phase counters record 1,035.26 seconds in transfer (including
+650.82 seconds in commit), 698.07 seconds in hydration, 487.22 seconds in native
+private preparation and three rebuilds. They explain where this composition
+spends work, not an additive wall-clock partition. It buys much shorter promotion
+ownership than native at substantial total physical cost. The giant-document
+observation is above the preferred/provisional complete-cycle band and is
+incomplete qualification; no further candidate corrective loop is inferred.
+
+The diagnostic defect was a repeated `dbstat` inventory query inside the logical
+family loop. Its OR/subquery filter caused a whole virtual-table traversal for
+each family, making a large post-publication census expensive. The source helper
+now inventories btrees once with the documented [DBSTAT aggregate mode](https://www.sqlite.org/dbstat.html),
+then associates table/index page totals from `sqlite_schema`. A focused exact
+SQLite regression passed: populated tables, a secondary index and an empty table
+retain the independent page/payload totals while only one dbstat query runs.
+The running old frozen helper was not replaced; its failed observation remains
+unchanged. The repair changes measurement tooling, not production elapsed time
+or data publication. No million-input candidate rerun is queued.
 
 The independent post-service full-row/CSV/receipt/fingerprint verification adds
 several minutes to the qualification job. It does not represent additional
