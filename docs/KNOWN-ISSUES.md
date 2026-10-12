@@ -83,7 +83,10 @@ Staged. Обычное завершение документа и reconciliation
 несовместимых outcome / source / registration. Семь новых регрессий включают
 принудительную перестановку обоих terminal writes и гонку completion/recovery;
 три падают на исходной версии. На исправленной версии прошли все 24 проверки
-admission/registration; полный повтор и release gates ещё не завершены.
+admission/registration. Полный повтор 1 млн IOC / 100 DOCX при workers/window
+1/1 завершился за 909,48 с до успешной SMB-публикации: все admissions/runs
+завершены, 2 167 020 строк и receipt/CSV/provenance проверены, ошибок CAS — 0.
+Release gates отложены владельцем; до их выполнения статус остаётся частичным.
 Это отдельный дефект корректности, а не основание для нового цикла оптимизации
 SQLite. До закрытия проверить согласованность admission / registration / ingest-run.
 Владельцы: [ingestion](dev/ingestion.md), document admission / reconciliation.

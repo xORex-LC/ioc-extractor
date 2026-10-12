@@ -44,7 +44,7 @@ that all eight intermediate measurements have completed.
 | 5. Index/statistics/physical layout | Implemented; frozen binary | Deferred terminal comparison |
 | 6. Cleanup debt and useful service | Implemented; frozen binary | Deferred terminal comparison |
 | 7. Retained publication evidence | Implemented; frozen binary | Deferred terminal comparison |
-| 8. Complete lifecycle comparison | Probe and final composition frozen | Reference-envelope qualification next |
+| 8. Complete lifecycle comparison | Probe and final composition frozen | Native giant/batch/import and corrected strict batch passed; Staged giant post-diagnostic ERROR; finite comparison finished |
 
 ## Measurement boundaries
 
@@ -172,3 +172,18 @@ an old Failsafe report as evidence of fresh gates.
 | 1 expanded | collapse-import | 100000 | CORRECTNESS_PASS | 16.49 | 6063.12 | 3.27 | 84.03 | 374.12 | 9.41 | 0.07 | 0.01 |
 
 Bulk heap/RSS are sampled maxima filtered to handoff → local completion. Allocations include concurrent controls and writer drain; post-publication scans/cleanup are excluded from their exact counter. A failed window is not accepted capacity. One fork per cell gives no production percentile or SLO.
+
+## Finite production comparison
+
+The [production capacity closure](production-capacity-closure.md) records the
+reference-resource full-service cases, actual SMB publication, post-service
+receipt/cleanup costs and the model choice. Native remains production-wired;
+the Staged candidate is not activated. The original intermediate per-point
+matrix is deferred under the owner's finish-first steering, not declared passed.
+
+A strict 100-document Native case exposed ING-17: concurrent admission
+finalization left a run without completion despite finished canonical work.
+Its timeout remains unsuccessful evidence. The narrow source fix has independent
+forced-interleaving regressions; the new-binary whole-service case passed with
+zero terminalization conflicts in 909.48 service seconds at workers/window 1/1.
+This closes a correctness seam rather than reopening SQLite performance design.

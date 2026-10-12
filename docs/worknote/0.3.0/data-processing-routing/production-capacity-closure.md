@@ -96,9 +96,10 @@ meets the complete-cycle band and remains the production model. The current
 staged case later failed during its post-publication census, as recorded below.
 Deferred cells are not
 passed, failed workloads or a whole-matrix completion claim. No further
-measurement grid is queued. A single source-fixed regression run under
-`.dev/hybrid-release-single-native-fixed/` is the remaining qualification, not
-an automatic retry of the failed binary or another performance redesign.
+measurement grid is queued. The source-fixed regression run under
+`.dev/hybrid-release-single-native-fixed-v2/` passed. It is a new-binary
+qualification, not an automatic retry of the failed binary or another
+performance redesign.
 
 ## Finite measurement sequence
 
@@ -185,13 +186,21 @@ the fix. The tooling's 53 focused tests also pass; a known terminalization
 conflict now prevents a successful qualification status even if outputs converge.
 These are focused checks, not deferred reactor gates.
 
-A single corrected-binary replay is planned. Its application JAR digest is
+A corrected-binary replay uses application JAR digest
 `85f1cbd135eb2700c842b6513710b02c5469dd48be0d29713801651c04f241e3`;
 the only production class changed from the preceding frozen runtime is
 `DocumentAdmissionService`. The previously tested one-pass census helper is also
 included. The original runtime and failed measurement are not replaced. This
 bounded correctness fix belongs before production readiness, not to another
 storage performance loop.
+
+The first repaired-runtime launch under `.dev/hybrid-release-single-native-fixed/`
+was rejected before intake because its controller was outside the shared
+reference slice. No workload was admitted, and private application/remote state
+was removed. This provisioning failure remains ERROR. The explicitly corrected
+launch uses `--slice=ioc-capacity-reference.slice` and a new measurement identity
+under `.dev/hybrid-release-single-native-fixed-v2/`; applied parent/child limits
+and stable UTC were verified before intake.
 
 ## Current status
 
@@ -201,11 +210,13 @@ from independent readback. Both actual SMB smoke cases and the native import
 cases and native single-document 100k/1m cases and the configured native
 100-document case have passed their independent correctness checks. The original
 strict native single-document batch failed on ING-17; its corrected-binary replay
-is the remaining case. The staged million-DOCX
+passed, with zero terminalization conflicts and all 100 bulk admissions/runs
+complete. The staged million-DOCX
 collector failed in its post-service census, and later staged batches are
-deferred under the finite finish rule. Native remains the production choice,
-subject to the explicit execution-window and finalization regression check. Quality gates remain deferred by the owner during optimization;
-no deployment, schema activation or completed acceptance is claimed.
+deferred under the finite finish rule. The performance comparison is finished;
+native remains the production choice under the explicitly declared resource and
+workload envelope. Quality gates remain deferred by the owner during optimization;
+no deployment, schema activation or completed release acceptance is claimed.
 
 The first reference smoke attempts failed before application intake because the
 collector used `export.cadence` instead of the real `export.trigger` property.
@@ -231,7 +242,7 @@ Each report also records its helper classes, driver hashes, corpus and effective
 limits. These are single-fork diagnostic observations, not production percentiles.
 The native single-million-document case and configured 100-document batch are
 complete; the original strict native single-document batch is unsuccessful, and
-the corrected-binary replay remains pending in this snapshot.
+the corrected-binary replay passed under a separately recorded runtime identity.
 The staged million-DOCX service interval is retained with its failed
 post-publication collection status, rather than promoted to qualification.
 
@@ -244,6 +255,7 @@ post-publication collection status, rather than promoted to qualification.
 | Native | 100,000 distinct IOC / 1 DOCX / SMB | 65.56 | 11.72 | 243.92 / 691.64 | 1,644.82 | 4 / 4 |
 | Native | 1,000,000 distinct IOC / 1 DOCX / SMB | 705.29 | 116.87 | 207.96 / 868.16 | 5,120.20 | 5 / 5 |
 | Native | 1,000,000 IOC / 100 DOCX / SMB; workers/window 2/4 | 640.05 | 385.31 | 266.07 / 820.97 | 5,120.12 | 3 / 3 |
+| Native, admission fix | Same 1,000,000 IOC / 100 DOCX / SMB; workers/window 1/1 | 909.48 | 389.93 | 297.97 / 774.31 | 5,120.20 | 3 / 3 |
 | Staged hybrid | 100,000 detailed URL import rows → 20 hosts | 16.63 | 3.30 | 166.42 / 543.35 | 1,071.17 | 1 / 0; local export |
 | Staged hybrid | 1,000,000 detailed URL import rows → 20 hosts | 118.89 | 32.79 | 196.80 / 589.02 | 2,787.01 | 1 / 0; local export |
 | Staged hybrid | 100,000 distinct IOC / 1 DOCX / SMB | 151.49 | 27.29 | 227.93 / 693.17 | 2,602.68 | 5 / 5 |
@@ -303,6 +315,37 @@ Existing final-export cadence coalesces remote publications; it does not
 eliminate per-document mapping, promotion or mutable-projection work. Those
 costs remain part of the measured service rather than another optimization
 cycle launched without a failed complete-cycle requirement.
+
+The final strict batch passed in **15 minutes 9.48 seconds** from producer
+upload through durable successful SMB publication. This is slightly above the
+preferred 15-minute band and below the provisional 30-minute finish criterion;
+it is not a newly agreed universal SLO. The corpus manifest, public canonical
+fields/keys/provenance and complete receipt payload checksum match the preceding
+configured 2/4 native batch. Different execution windows and a new correctness
+fix make the elapsed-time difference unsuitable as a causal optimization ratio.
+
+All 100 bulk admissions and ingest runs completed, with zero terminalization CAS
+conflicts. Including the two warmups, independent checks verified 2,167,020 rows:
+166,727 masks, 166,727 IP rows, 499,968 hashes, 333,454 blacklist rows and
+1,000,144 aggregate rows. Mutable and immutable CSVs, export slots, remote
+readback and markers passed; exactly three new final slices/publications were
+observed. Complete replay read 102 receipts / 2,167,020 rows in 10.58 seconds.
+
+Maximum promotion ownership was 1.873 seconds. Overall writer ownership peaked
+at 5.294 seconds in export-slot allocation; maximum CONTROL wait was 4.899
+seconds. The additional 96 maintenance calls took 0.117 seconds. After those
+calls the dataframe DB was 3,719.99 MiB with a 64-MiB named WAL. Native's mostly
+empty maintenance pages are not proof of a superior sustainable reclamation
+rate: the two representations create different physical cleanup debt.
+
+At durable SMB completion application CPU was 866.26 CPU seconds, GC took
+3.556 seconds, and shared-slice CPU throttling was 4.019 seconds. Shared memory
+recorded 3,676 high events, without max/OOM events or swap. Bulk sampled live
+heap/RSS were 297.97/774.31 MiB; shared memory peaked at 5,120.20 MiB, including
+collector and file cache. Cumulative allocations were 389.93 GiB, not retained
+RAM. These are one-fork observations. All owned application, service/dataframe
+DB, workspace, helper runtime and remote namespace state was removed, with no
+cleanup errors. The installed stand was not changed.
 
 The staged 100k document passed its independent checks in 151.49 seconds.
 Maximum writer hold/control wait were 62.45/41.50 ms, and complete receipt
@@ -413,3 +456,32 @@ new lifecycles. Its text limits that refinement to the staged protocol. The
 at this boundary. A production choice must state which accepted timing contract
 it uses; it must not silently apply the proposed refinement to native or claim
 all-behavior equivalence from these timings.
+
+## Final choice and bounded follow-up
+
+Keep production native SQLite and the existing accepted lifecycle contract.
+The declared single-document-execution batch fits the owner's provisional
+complete-cycle band with independent correctness checks. Staged is an isolated
+candidate: it improves writer access but its million-DOCX observation costs
+32 minutes 14.65 seconds, has materially larger storage/maintenance costs and
+incomplete post-publication qualification. It is not activated or a migration
+recommendation. Do not add another performance corrective cycle to reach an
+unagreed percentage, nor deploy the source-patched diagnostic JAR as a release.
+
+The remaining production work is finite: review the normal JDK 21 build and
+deferred verify/PMD/coverage evidence; validate the intended operator policy and
+resource profile through the controlled deployment procedure; and resolve the
+host time-synchronization arrangement. The owner-stopped timesyncd remains
+inactive, while these workloads observed stable UTC and unchanged application
+safe-clock protection. Normal compilation requires the full JDK toolchain:
+the local focused runner used JDK 21 compiler modules with source/target 21
+because this host's `--release 21` compiler path failed. This is not reactor
+build evidence. No thresholds or analyzer baselines were changed by this cycle.
+
+Preserve the remaining limits: long native writer occupancy for a giant document,
+unknown sustained arrival/retention balance, populated/history-heavy databases,
+physical LAN/hardware behavior and arbitrary operator catalogs are not covered
+by this finite rehearsal. Historical C5/G6 acceptance remains failed/open where
+its frozen budgets failed. The intermediate eight-point cost matrix and further
+Staged batches remain explicitly deferred. These dispositions bound the work;
+they do not turn unavailable evidence into acceptance.
