@@ -15,6 +15,7 @@
 |---|---|---|
 | [configuration.md](configuration.md) | [ru/configuration.md](ru/configuration.md) | Полный операторский справочник всех поддерживаемых параметров, значений и рекомендаций; источник для настройки production template |
 | [deployment.md](deployment.md) | [ru/deployment.md](ru/deployment.md) | Установка, upgrade, reconciliation конфигурации, backup, rollback, restore и uninstall |
+| [bulk-resource-sizing.md](bulk-resource-sizing.md) | — | Ресурсный профиль массовой обработки, границы concurrency, измерение памяти/диска и завершение квалификации |
 | [daemon-operations.md](daemon-operations.md) | [ru/daemon-operations.md](ru/daemon-operations.md) | Повседневная эксплуатация daemon: подача файлов, health/logs, failed sources, backlog, retention и recovery |
 | [canonical-record-lifecycle.md](canonical-record-lifecycle.md) | [ru/canonical-record-lifecycle.md](ru/canonical-record-lifecycle.md) | Fresh-install TTL, двухэтапная activation для upgrade, health, retention и rollback boundary |
 | [ioc-aggregate.md](ioc-aggregate.md) | [ru/ioc-aggregate.md](ru/ioc-aggregate.md) | IOC aggregate contract, empty-start activation, ordered names, health и coordinated rollback |

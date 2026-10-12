@@ -34,6 +34,7 @@ best effort and must be validated by the operator.
 ## Operator documentation
 
 - [Deployment, upgrade and rollback](../docs/guides/deployment.md)
+- [Bulk resource sizing](../docs/guides/bulk-resource-sizing.md)
 - [Complete configuration reference](../docs/guides/configuration.md)
 - [Daemon operations](../docs/guides/daemon-operations.md)
 - [Canonical record lifecycle](../docs/guides/canonical-record-lifecycle.md)
