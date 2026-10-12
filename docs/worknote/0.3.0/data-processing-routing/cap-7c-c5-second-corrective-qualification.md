@@ -12,7 +12,7 @@ clock, admission and export-query corrections. All 12 primary forks ran at
 clean HEAD `87fe7b0dca746a4c150bdaa18d104f5435f79680`, with the same frozen JAR
 SHA-256 `99fa2227e61183dd85a7810f10ea032aa151f1b506017628ef1fe129b56e28bd`
 and identical helper class bytes. The
-[versioned evidence](qualification/capacity/cap-7c-c5-second-corrective.json)
+`qualification/capacity/cap-7c-c5-second-corrective.json`
 retains complete reports, exact driver/policy/helper identities, raw-file
 hashes, UTC-step observations, independent oracles and cleanup facts. Private
 raw roots are `.dev/cap7c-cycle2-*`.

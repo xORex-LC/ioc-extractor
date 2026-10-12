@@ -57,7 +57,7 @@ the coordination-clock risk separately from Router optimization.
 
 ## Paired complete-service evidence
 
-[Compact raw evidence](qualification/capacity/cap-7b-reference.json) retains
+`qualification/capacity/cap-7b-reference.json` retains
 all six fresh complete-service samples, configuration/input/runtime identities,
 three paired ratios and output/cleanup results. Each runs a physical 100k HTML
 mostly-unique document through the actual Spring/YAML/preflight/runtime,
@@ -140,7 +140,7 @@ CAP-7D reducer capacity remain required separate work.
 
 ## Final packaged screen and repository gates
 
-[Final packaged evidence](qualification/capacity/cap-7b-production.json) is a
+`qualification/capacity/cap-7b-production.json` is a
 separate single 100k screen of compiler cleanup at source `5100ee85` (production
 change `94d39dfb`), boot digest
 `e501557b333901bb6dde942f377f7dc05dc2e0ea43d32c24919c3b259a40bd89`.

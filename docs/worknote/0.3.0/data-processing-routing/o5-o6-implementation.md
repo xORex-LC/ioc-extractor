@@ -42,7 +42,7 @@ Three alternating before/after fresh JVM pairs exercise 20,000 warm-up and
 100,000 measured three-key scopes (`-Xms128m -Xmx512m`), checking the in-scope
 view and ambient restoration. Before uses the e3b9248c compiled MdcScope; after
 uses the source hash and standalone source retained in
-[the isolated report](qualification/optimization/o5-mdc-isolated.json).
+`qualification/optimization/o5-mdc-isolated.json`.
 Median calling-thread allocation is 53,990,184 → 36,766,712 bytes (31.9% lower)
 and elapsed time 54.6 → 41.6 ms. This qualifies removal of the close-time list
 in that mechanism, not an application speedup or a whole-process memory claim.
@@ -89,7 +89,7 @@ Five alternating fresh-JVM pairs per workload, one disjoint warm-up, identical
 Before is the retained O4 production reference 2ddae036 (production-equivalent
 at starting e3b9248c); after is clean 7e0330bd. All input digests, per-path
 configuration digests, outcome counts and canonical/projection signatures match
-across revisions. Reviewed report: [O5 warmed comparison](qualification/optimization/o5-after-warm.json).
+across revisions. Reviewed report: `qualification/optimization/o5-after-warm.json`.
 
 | Selected workload | Median time O4 / O5 | Calling-thread allocation O4 / O5 | Sampled heap O4 / O5 | Current RSS O4 / O5 |
 |---|---:|---:|---:|---:|
@@ -116,7 +116,7 @@ The stopped-route regression also passes on the retained O5 runtime.
 Five alternating primary pairs per workload use the same harness, input/config
 hashes, logging/JVM settings and one disjoint warm-up as O5. Every same-path
 outcome and canonical/projection signature matches across revisions. Report:
-[O6 warmed prototype comparison](qualification/optimization/o6-prototype-warm.json).
+`qualification/optimization/o6-prototype-warm.json`.
 
 | Selected workload | Median time O5 / prototype | Calling-thread allocation O5 / prototype | Sampled heap O5 / prototype | Current RSS O5 / prototype |
 |---|---:|---:|---:|---:|
@@ -194,11 +194,11 @@ quality checks apply to the retained implementation, not to an unadopted engine.
 ### Separate mechanism counters
 
 One diagnostic pair per workload uses the unchanged observer/JFR harness on the
-same clean candidate: [diagnostic report](qualification/optimization/o6-prototype-diagnostic.json).
+same clean candidate: `qualification/optimization/o6-prototype-diagnostic.json`.
 Timing and allocation in this instrumented run are not primary evidence.
 Template sends are 8,000 for 8,000 document observations and 2,000 for 2,000
 import rows, versus 16,000 and 4,000 in the retained
-[O4 diagnostic reference](qualification/optimization/o4-after-diagnostic.json).
+`qualification/optimization/o4-after-diagnostic.json`.
 O5 does not change those send sites. All other counted semantic work agrees:
 24,000 document candidates, 136,000 mapped cells, 20 host computations,
 60 retained output rows and 20 reserved IDs; import retains 2,000 prepared rows,

@@ -151,7 +151,7 @@ ratchets were not relaxed. Final committed-HEAD freshness is owned by
 
 ## Source-only diagnostic
 
-[Compact evidence](qualification/capacity/cap-7a-reference.json) retains the
+`qualification/capacity/cap-7a-reference.json` retains the
 commands, fixture generator and executable identities, all four raw samples and
 ordered value/type/source/count oracles. Each cell is a fresh JVM with actual
 Spring admission, source parsing, disk refang, extraction and attribution.

@@ -55,7 +55,7 @@ import warnings nor receipt schema/recovery.
 
 ## Focused measurements
 
-[Raw samples and frozen identities](qualification/capacity/cap-3-stages.json)
+`qualification/capacity/cap-3-stages.json`
 contain 60 primary JVM forks: five alternating before/after pairs for each of
 four 100k profiles and two 1m attribution profiles. Each fork runs one full
 warmup; measured work has no Java agent. Common compiled dependencies are

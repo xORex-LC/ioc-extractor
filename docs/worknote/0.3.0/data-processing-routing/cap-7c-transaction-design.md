@@ -44,7 +44,7 @@ sqlite-jdbc 3.53.2.0. Subsequent edits need their own final quality gates.
 
 ## Trigger and unchanged acceptance limits
 
-The [final CAP-7B packaged screen](qualification/capacity/cap-7b-production.json)
+The `qualification/capacity/cap-7b-production.json`
 passed its canonical, provenance, mutable-projection and immutable-slice oracles
 but failed the local-time and writer limits. Its maximum PROMOTION occupancy
 was 11.579311126 s, across five completed admissions. Local time was a

@@ -61,7 +61,7 @@ A missed or unagreed budget leaves performance acceptance open.
 
 ## Results and risk dispositions
 
-The [reviewed measurement bundle](qualification/optimization/o7-final.json)
+The `qualification/optimization/o7-final.json`
 retains every primary sample, manifest, median/range/paired ratio, original
 reference, supplementary series, diagnostic counters and JFR triage. Initial
 primary profiles use clean `41a22a7c`; supplementary/diagnostic and final neutral
@@ -171,19 +171,19 @@ allocation samples. A concrete follow-up is `CanonicalKeyMaterial`'s
 its lexical contract when assessing a future optimization. No extra production
 optimization or framework replacement is introduced in O7.
 
-The clean [1k](qualification/optimization/o7-router-1000.csv) and
-[100k](qualification/optimization/o7-router-100000.csv) neutral matrices each cover
+The clean `qualification/optimization/o7-router-1000.csv` and
+`qualification/optimization/o7-router-100000.csv` neutral matrices each cover
 24 profiles: 1/4/16/64 branches, 1/4 callers and success/failure/recovery.
 All expected candidates/blocked/recovered totals and positive allocation metrics
 were checked. Metadata is retained for
-[1k](qualification/optimization/o7-router-1000.metadata) and
-[100k](qualification/optimization/o7-router-100000.metadata).
+`qualification/optimization/o7-router-1000.metadata` and
+`qualification/optimization/o7-router-100000.metadata`.
 The previous neutral series had `dirty=true` from an analysis-generated Python
 bytecode cache only; its complete raw files remain in `.dev/o7-neutral-dirty`.
 Both whole matrices were repeated from a clean identity, without selecting
 particular timing samples. These are mechanism diagnostics, not IOC SLOs.
 
-[Session retention calibration](qualification/optimization/o7-session-budget.txt)
+`qualification/optimization/o7-session-budget.txt`
 again shows 40 entries / 348,420 charged bytes for repeated keys, 120 entries /
 1,045,460 bytes for unique keys, zero admission for 40k-character oversized
 inputs, and 480 entries / 4,181,840 bytes across four independent sessions.

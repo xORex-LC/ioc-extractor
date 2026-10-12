@@ -8,7 +8,7 @@ performance acceptance is part of this experiment.
 Status: the bounded implementation and measurement cycle is complete. Retain
 one allocation optimization; no stable end-to-end speedup or C5/G6 acceptance
 is established. The machine-readable
-[evidence bundle](qualification/capacity/cap-7c-bounded-native-cost.json)
+`qualification/capacity/cap-7c-bounded-native-cost.json`
 preserves every completed fork, failed screen, runtime identity and comparison.
 
 ## Measurement contract

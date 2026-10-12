@@ -65,7 +65,7 @@ invalid-configuration suites remain part of qualification.
 O0 baseline on clean `52517ceb` used five pairs for each retained 8k-document /
 2k-import workload. All output signatures matched. Selected/compatible ratios
 were 1.938 time and 2.941 calling-thread allocation for the document; 1.564 and
-1.560 for import. See [raw baseline samples](qualification/optimization/o0-baseline.json).
+1.560 for import. See `qualification/optimization/o0-baseline.json`.
 The historical guards passed; this is not an agreed acceptance budget.
 Focused O1 adapter tests and O0 sampler regressions passed; complete gates are
 recorded after the final O2 worktree is fixed.
@@ -98,7 +98,7 @@ pairs per workload. Selected medians changed from 1340.4 to 1185.5 ms and
 430.1 to 342.5 MB calling-thread allocation for the document; import changed
 from 1274.0 to 1239.9 ms and 119.7 to 107.9 MB. Timing spread prevents treating
 the small import time change as a firm conclusion. All historical guards
-passed. See [O1 samples](qualification/optimization/o1-binding.json).
+passed. See `qualification/optimization/o1-binding.json`.
 The final focused O2 dispatch test run passed after moving the immutable
 snapshot out of Camel's completion callback; the failed timeout evidence is
 retained locally and was not retried without a code change.
@@ -114,7 +114,7 @@ O1, calling-thread allocation changed by -0.6% for the three-recipient document
 and -5.7% for the single-recipient import. Selected time medians were 1155.7 and
 1083.6 ms. The small document change is not evidence of a large end-to-end gain
 from list aggregation; the asymptotic benefit matters with larger fan-out.
-See [dispatch samples](qualification/optimization/o2-dispatch.json).
+See `qualification/optimization/o2-dispatch.json`.
 
 Two failed isolated build attempts were retained locally before measurement:
 new direct dependencies first needed parent version management, then
@@ -155,9 +155,9 @@ are 1.687 / 2.482 for documents and 1.196 / 1.354 for import. O0 warmed exceeded
 the historical 3x allocation guard (3.22x document); O2 warmed passed every
 historical guard. Both reports are retained; thresholds were unchanged.
 
-See [row-copy samples](qualification/optimization/o2-row.json),
-[warmed O0 samples](qualification/optimization/o0-warmed.json) and
-[warmed O2 samples](qualification/optimization/o2-warmed.json).
+See `qualification/optimization/o2-row.json`,
+`qualification/optimization/o0-warmed.json` and
+`qualification/optimization/o2-warmed.json`.
 
 The primary Java probe includes outcome verification/summary construction in
 total workload time. Preparation is isolated only in separate diagnostic forks,
@@ -259,8 +259,8 @@ Selected import still has 4,000 classifications and prepares all 2,000 rows;
 Both complete diagnostic profiles retained equivalent results and happened to
 pass historical guards, which are not diagnostic acceptance criteria.
 
-See [before counters](qualification/optimization/o0-diagnostic.json) and
-[after counters](qualification/optimization/o2-diagnostic.json). The preparation
+See `qualification/optimization/o0-diagnostic.json` and
+`qualification/optimization/o2-diagnostic.json`. The preparation
 durations above include instrumentation and JFR effects and do not prove primary
 timing gains. Forty JFR files/raw logs remain under the ignored worktrees for
 method/allocation triage. The standard JFR summary tool successfully read the

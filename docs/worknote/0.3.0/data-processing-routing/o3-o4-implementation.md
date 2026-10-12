@@ -41,8 +41,8 @@ Five alternating compatible/selected pairs per workload, one disjoint warm-up,
 ba46a10a; after is 3cfcad04. Fixture/configuration digests and every same-path
 outcome and canonical/projection signature match across revisions. The harness
 and resource settings are unchanged. Raw logs remain in ignored isolated
-worktrees; reviewed summaries are [before](qualification/optimization/o3-before-warm.json)
-and [after](qualification/optimization/o3-after-warm.json).
+worktrees; reviewed summaries are `qualification/optimization/o3-before-warm.json`
+and `qualification/optimization/o3-after-warm.json`.
 
 | Selected workload | Median time before / after | Calling-thread allocation before / after | Sampled heap before / after | Current RSS before / after |
 |---|---:|---:|---:|---:|
@@ -73,7 +73,7 @@ diagnostics, occurrence metadata and mapped candidates are not cached.
 Initial joint bounds are 256 entries, 1 MiB charged retention and 64 KiB per
 entry. Exhaustion/oversize computes normally. The charge is conservative UTF-16
 text accounting plus object/list allowances, not an exact heap limit.
-[Calibration](qualification/optimization/session-budget.txt) preceded production
+`qualification/optimization/session-budget.txt` preceded production
 wiring and used 8,000 observations per caller:
 
 | Profile | Callers | Policy calls | Retained entries | Charged bytes | Live heap after diagnostic GC | Current RSS |
@@ -121,7 +121,7 @@ Both use the same primary harness, profiles, inputs, one disjoint warm-up,
 five alternating compatible/selected pairs and the pinned logging/JVM settings
 above. Cross-revision fixture/configuration digests, same-path outcome counts
 and canonical/projection signatures match. Reviewed after summary:
-[O4 warmed comparison](qualification/optimization/o4-after-warm.json).
+`qualification/optimization/o4-after-warm.json`.
 
 | Selected workload | Median time before / after O4 | Calling-thread allocation before / after | Sampled heap before / after | Current RSS before / after |
 |---|---:|---:|---:|---:|
@@ -164,8 +164,8 @@ candidate-retention change separately from the final prepared-row count.
 Import retains 20 accepted representatives and 1,980 COALESCED participants,
 canonical receipt outcome/warnings and terminal state. Row-local scope explains
 why import host computations remain 2,000: delivery-wide reuse was not enabled.
-See [before counters](qualification/optimization/o4-before-diagnostic.json) and
-[after counters](qualification/optimization/o4-after-diagnostic.json).
+See `qualification/optimization/o4-before-diagnostic.json` and
+`qualification/optimization/o4-after-diagnostic.json`.
 
 ## Verification and uncovered boundary
 

@@ -76,7 +76,7 @@ are retained in the execution bundle. Original O7 measurements remain unchanged.
 
 ## Executed evidence and results
 
-The [reviewed bundle](qualification/optimization/o7-host-collapse.json) retains
+The `qualification/optimization/o7-host-collapse.json` retains
 all 60 primary fresh-JVM samples and four separate agent/JFR samples, manifests,
 series order, raw time/throughput/allocation/heap/current RSS/VmHWM/startup/GC
 metrics, computation counters and independent validation source. It includes

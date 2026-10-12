@@ -5,7 +5,7 @@ covering screens are retained; failed capacity, unavailable transport and the
 unexecuted acceptance cells remain explicit. The frozen budgets in the
 [capacity plan](data-processing-capacity-plan.md) are unchanged.
 
-Compact [reference evidence](qualification/capacity/cap-6-reference.json)
+Compact `qualification/capacity/cap-6-reference.json`
 preserves original report identities, raw writer snapshots, corrected window
 bounds, phase anchors, resource counters, output signatures and cleanup.
 

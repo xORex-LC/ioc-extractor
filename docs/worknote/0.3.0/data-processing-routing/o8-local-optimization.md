@@ -108,7 +108,7 @@ scan removes repeated regex construction; the regression tests include wrong
 length, uppercase/non-ASCII characters and trailing whitespace. This gain does
 not require any semantic cache hit.
 
-[Raw measurements and runtime manifests](qualification/optimization/o8-local-optimization.json)
+`qualification/optimization/o8-local-optimization.json`
 retain every sample, paired ratio, range, environment, fixture/config fingerprints,
 frozen runtime file hashes and the excluded interrupted series. Full fork logs,
 SQLite workspaces and signatures remain under `.dev/o8-final-primary`; the

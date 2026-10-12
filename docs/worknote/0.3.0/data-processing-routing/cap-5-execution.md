@@ -217,7 +217,7 @@ these candidate checks do not close G6 or the frozen absolute resource budgets.
 
 ## Writer occupancy and atomic-unit decision (2026-10-07)
 
-The [retained raw evidence](qualification/capacity/cap-5-writer.json) uses
+The `qualification/capacity/cap-5-writer.json` uses
 implementation commit `21785ba90b5e4cf3db88f6a30f7670883557698e` and frozen
 runtime SHA-256
 `e204d1853f9c89a368c9d607edfe6b3bf1f3a1d77c27a5936671bbceb18875f5`.

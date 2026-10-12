@@ -11,7 +11,7 @@ G6 are unchanged. This report supplements, and does not replace, the retained
 HEAD `c01d116cd20617de7364cc06e1af8fa88ab9ddbf`. All 12 forks use the same frozen
 JAR SHA-256 `090c16d7b51261b6ce0c5657ba96e51b291a6edd33c619101dfddf3c83f1ddd7`,
 helper bytes and original credential-free C5 policy. The
-[versioned evidence](qualification/capacity/cap-7c-c5-corrective.json) retains
+`qualification/capacity/cap-7c-c5-corrective.json` retains
 complete reports, raw-file hashes, effective limits, independent oracles,
 failure traces and cleanup facts. Private raw roots are `.dev/cap7c-corrective-*`.
 

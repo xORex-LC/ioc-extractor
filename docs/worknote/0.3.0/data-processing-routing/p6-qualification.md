@@ -48,8 +48,8 @@ correctness tests and from provisioned external-transport evidence.
 
 `tools/dev/processing-route-comparison.py --document-rows 8000 --import-rows
 2000 --pairs 3` was repeated on 2026-10-01 against commit `7d0c9844` plus the
-sampler fix. The [current raw report](qualification/p6/processing-route-comparison-sampler-fixed-20261001.json)
-and [earlier report](qualification/p6/processing-route-comparison-20261001.json)
+sampler fix. The `qualification/p6/processing-route-comparison-sampler-fixed-20261001.json`
+and `qualification/p6/processing-route-comparison-20261001.json`
 are versioned; current per-run logs are retained locally under
 `.dev/processing-route-comparison-sampler-fixed-20261001/`. The probe starts a new
 Spring context and isolated SQLite/workspace in each JVM, then measures only

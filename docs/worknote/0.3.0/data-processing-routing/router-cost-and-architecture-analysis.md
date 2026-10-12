@@ -56,7 +56,7 @@ Line numbers are navigation aids and may drift after edits.
 
 ### Existing paired measurement
 
-The [sampler-fixed P6 report](qualification/p6/processing-route-comparison-sampler-fixed-20261001.json)
+The `qualification/p6/processing-route-comparison-sampler-fixed-20261001.json`
 supersedes the earlier timing table for this investigation. Its recorded source
 is the preceding commit plus the sampler-fix worktree, as explained in
 [P6 qualification](p6-qualification.md). It is not an exact-clean-HEAD benchmark.

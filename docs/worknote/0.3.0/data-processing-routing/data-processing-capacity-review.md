@@ -90,7 +90,7 @@ The fetch ledger records completion at 08:59:53.137: fetched → publication too
 37 min 53.027 s last-write → publication interval; this timestamp is not verified
 upload completion. Physical CSV has 90,203 data rows, its SHA-256 equals the
 manifest, `_SUCCESS` equals the manifest hash, and coverage includes aggregate
-revision 10. See [final evidence](qualification/capacity/stand-final-state-20261004.json).
+revision 10. See `qualification/capacity/stand-final-state-20261004.json`.
 
 ## Confirmed findings so far
 

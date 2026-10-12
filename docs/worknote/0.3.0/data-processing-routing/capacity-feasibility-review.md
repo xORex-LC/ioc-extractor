@@ -39,9 +39,9 @@ Reviewed clean HEAD: `36c7b5c52ddc220fdcab155c00a6ea35494327a8`, branch
 Changes between that measured source and reviewed HEAD are documentation/evidence.
 
 The [second C5 repeat](cap-7c-c5-second-corrective-qualification.md) and its
-[raw-identity bundle](qualification/capacity/cap-7c-c5-second-corrective.json)
+`qualification/capacity/cap-7c-c5-second-corrective.json`
 remain authoritative for those executions. The
-[derived phase evidence](qualification/capacity/cap-7c-feasibility-phase-analysis.json)
+`qualification/capacity/cap-7c-feasibility-phase-analysis.json`
 adds analysis of retained logs, **not another benchmark**. Every included log's
 SHA-256 was checked against the retained bundle. Document stages are selected
 by `event.action=stage_complete`, the `reference.docx` source and run ID;

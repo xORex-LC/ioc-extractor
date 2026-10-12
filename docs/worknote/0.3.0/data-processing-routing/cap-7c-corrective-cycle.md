@@ -145,7 +145,7 @@ Four logical source commits implement this correction:
   hydration/receipt/analyzer boundary regressions.
 
 The [repeat report](cap-7c-c5-corrective-qualification.md) and
-[complete versioned reports](qualification/capacity/cap-7c-c5-corrective.json)
+`qualification/capacity/cap-7c-c5-corrective.json`
 retain all 12 forks under the standard row/field limits, original budgets and
 concurrent control/cleanup policy. The 1k DOCX admission smoke passes for both
 variants. Two staged processed-import windows pass full fields, keys, provenance,

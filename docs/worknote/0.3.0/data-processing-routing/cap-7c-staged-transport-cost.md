@@ -7,7 +7,7 @@ large staged DOCX and aggregate-import cells now have valid measurements.
 **C5/G6 remain NOT_ACCEPTED.** Native remains the default, and proposed ADR 0041
 is not activated. This is not a replacement workload or acceptance budget.
 
-The [machine-readable evidence](qualification/capacity/cap-7c-staged-transport-cost.json)
+The `qualification/capacity/cap-7c-staged-transport-cost.json`
 preserves all reports, metric scopes, bytecode identities, negative screens,
 clock observations, raw-file hashes and cleanup results. It supplements the
 [second corrective C5 repeat](cap-7c-c5-second-corrective-qualification.md) and

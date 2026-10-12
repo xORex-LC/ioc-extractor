@@ -107,7 +107,7 @@ offline suites do not replace the provisioned SMB evidence below.
 
 ## Measurement protocol
 
-[Raw measurements and identities](qualification/capacity/cap-0-1-20261004.json)
+`qualification/capacity/cap-0-1-20261004.json`
 pin frozen CAP-1A/CAP-1B production classes/libraries, byte-equal common probes
 and policies, physical input hashes, driver/JDK versions, JVM limits, schema
 versions, samples and oracle digests. Both primary profiles use five alternating

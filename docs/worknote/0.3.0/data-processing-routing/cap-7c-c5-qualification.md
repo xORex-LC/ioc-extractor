@@ -107,7 +107,7 @@ workload, hardware increase or deferred cleanup makes a failed cell acceptable.
 
 ## Recorded comparison
 
-[Evidence](qualification/capacity/cap-7c-c5-reference.json) preserves all 42
+`qualification/capacity/cap-7c-c5-reference.json` preserves all 42
 serialized forks, their original statuses, source/executable/helper/policy hashes,
 raw-file digests, exact counters, independent oracles and verified cleanup.
 One earlier caller-interrupted warmup has raw logs but no serialized sample;

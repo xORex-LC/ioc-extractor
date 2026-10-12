@@ -65,7 +65,7 @@ deployment is included.
 
 ## G4 measurements and remaining resource limits
 
-The retained [raw evidence](qualification/capacity/cap-4-workspace.json) is from
+The retained `qualification/capacity/cap-4-workspace.json` is from
 implementation commit `be4afb5a787efbe6ee18c42b09501b98f2b0bfdf`, with frozen
 runtime SHA-256
 `38caf0e9dfe4bdb6967019dac46e7d02acbd88a26faf2dbb0a89fd0694b70043`.
