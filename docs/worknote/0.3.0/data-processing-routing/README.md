@@ -31,6 +31,23 @@ routing and deterministic data precedence. The owner considers both configured
 operation sequences and operator-authored graphs viable; scope and extension
 cost should determine the choice.
 
+- [Typed journal experiment](typed-journal-experiment.md): one bounded compact
+  chunk-journal comparison after direct ACK, with complete typed business evidence,
+  recovery/visibility regressions and whole-service resource qualification.
+- [Immutable receipt-payload experiment](receipt-payload-experiment.md): remaining
+  storage attribution, one isolated representation, 12 whole-service forks,
+  complete receipt reads, process-loss recovery and finite bounded retirement.
+  Storage/retirement improve while reads regress; production activation remains open.
+- [Hybrid proposal review](sqlite-hybrid-proposal-review.md): supplied control,
+  bulk SQL, receipt and cleanup approaches checked against current owners and
+  SQLite guarantees; existing mechanisms, narrow candidates and stopping conditions.
+- [Eight-point hybrid execution](hybrid-eight-point-execution.md): sequential
+  implementation, frozen 100k/1m service profiles, local raw evidence and deferred
+  build-quality gates under the owner's explicit optimization-cycle instruction.
+- [Production capacity closure](production-capacity-closure.md): finite native
+  versus final-hybrid choice under the owner's 4-vCPU/8-GiB reference, real SMB
+  completion boundaries, architectural risks and explicit finish conditions.
+
 - [Router cost and architecture analysis](router-cost-and-architecture-analysis.md):
   implementation-level cost mechanisms, diagnostic JFR evidence, framework
   comparison and prioritized optimization experiments at `08d30621`.
@@ -138,6 +155,27 @@ Related context: [processing](../../../dev/processing.md),
 optional dispatch and the required original-value production defaults.
 
 ## Stand capacity investigation
+
+[SQLite hybrid storage assessment](sqlite-hybrid-storage-assessment.md) records
+the 2026-10-11 owner-requested analysis of direct controls, typed transport
+journals, mutable versus immutable physical families, dependency scopes and
+migration seams. It proposes one canonical backend with bounded execution
+choices; no implementation, schema activation or capacity acceptance is implied.
+The owner review narrows its first candidate to direct projection controls on
+the unchanged versioned layout, with shared protocol/ownership, forced-order
+tests and read/disk/cleanup/recovery qualification. General lane dispatch and
+physical representation changes remain conditional.
+
+[Bounded projection ACK experiment](projection-ack-experiment.md) implements
+that first candidate only: common CAS policy and typed publication, forced
+concurrent ordering, owned child-JVM crash tests and paired frozen-runtime
+control/document/import evidence. Production activation and numeric resource
+acceptance remain separate decisions.
+
+The completed comparison retains twelve successful forks: ACK p95 falls from
+about 105 ms to 3.4 ms, while the document window is longer and physical effect
+count is unchanged. The candidate stays qualification-only; no production
+activation or automatic corrective cycle follows from this result.
 
 [SQLite capacity feasibility review](capacity-feasibility-review.md) records the
 2026-10-11 owner-requested reassessment before another corrective cycle: remaining

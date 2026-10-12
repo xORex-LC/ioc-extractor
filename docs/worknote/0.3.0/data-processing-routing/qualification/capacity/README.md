@@ -9,20 +9,20 @@ CAP-0/1 evidence additionally qualifies isolated corrected executables.
 
 | File | Scope |
 |---|---|
-| [stand-observation-20261004.json](stand-observation-20261004.json) | Read-only ledger observations during the stall, nearby process/cgroup/JMX measurements and sampled stack summary |
-| [stand-final-state-20261004.json](stand-final-state-20261004.json) | Completed ingest, aggregate revision and successful publication ledger |
-| [sqlite-matcher-scaling.json](sqlite-matcher-scaling.json) | All retained JDBC samples, median summaries, VM-work counts and exact-driver live EXPLAIN |
+| `stand-observation-20261004.json` | Read-only ledger observations during the stall, nearby process/cgroup/JMX measurements and sampled stack summary |
+| `stand-final-state-20261004.json` | Completed ingest, aggregate revision and successful publication ledger |
+| `sqlite-matcher-scaling.json` | All retained JDBC samples, median summaries, VM-work counts and exact-driver live EXPLAIN |
 | [SqliteMatcherProbe.java](SqliteMatcherProbe.java) | Reproducible private SQL mechanism experiment |
-| [cap-0-1-20261004.json](cap-0-1-20261004.json) | CAP-0/1 frozen identities, 40 paired primary forks, ten diagnostic phase forks, exact-driver work/plans and all-five live SMB/oracle checks |
-| [cap-3-stages.json](cap-3-stages.json) | CAP-3 stage mechanisms: 60 alternating primary JVM forks, 100k/1m attribution and bounded 100k diagnostics, identical semantic signatures, no retained database state |
-| [cap-4-workspace.json](cap-4-workspace.json) | CAP-4 G4: three incremental workspace/canonical/receipt JVM forks (10k/100k/1m rows per artifact) and three separate actual Spring/Tika/extraction forks; frozen bytecode, full-row oracle, explicit-GC diagnostics and verified removal of all private runtime/state |
-| [cap-5-writer.json](cap-5-writer.json) | CAP-5 writer-occupancy diagnostic: 100k/1m incremental rows per artifact, real atomic lifecycle writer and receipts, operation wait/hold counters, full-row oracle and mandatory private-state cleanup; no whole-service or mixed-load acceptance |
-| [cap-6-reference.json](cap-6-reference.json) | CAP-6 whole-service first-failure screens, all five AS_IS imports, private diagnostic/SMB attempts and drained upgrade/restore; explicit metric corrections and NOT_RUN cells; G6 remains NOT_ACCEPTED |
-| [cap-7a-reference.json](cap-7a-reference.json) | CAP-7A source-only ordered oracles, HTML/DOCX 100k complete output screens and million-row reducer failures; frozen executable/tree identities, phase anchors and owned-state cleanup; G6 remains NOT_ACCEPTED |
-| [cap-7c-c5-reference.json](cap-7c-c5-reference.json) | C5 native/staged whole-service comparison: 42 serialized forks plus one explicitly missing interrupted warmup; canonical-scope metrics, 100k failed/complete cells, all-five AS_IS contract screens, separate populated diagnostics and unchanged NOT_ACCEPTED decision |
+| `cap-0-1-20261004.json` | CAP-0/1 frozen identities, 40 paired primary forks, ten diagnostic phase forks, exact-driver work/plans and all-five live SMB/oracle checks |
+| `cap-3-stages.json` | CAP-3 stage mechanisms: 60 alternating primary JVM forks, 100k/1m attribution and bounded 100k diagnostics, identical semantic signatures, no retained database state |
+| `cap-4-workspace.json` | CAP-4 G4: three incremental workspace/canonical/receipt JVM forks (10k/100k/1m rows per artifact) and three separate actual Spring/Tika/extraction forks; frozen bytecode, full-row oracle, explicit-GC diagnostics and verified removal of all private runtime/state |
+| `cap-5-writer.json` | CAP-5 writer-occupancy diagnostic: 100k/1m incremental rows per artifact, real atomic lifecycle writer and receipts, operation wait/hold counters, full-row oracle and mandatory private-state cleanup; no whole-service or mixed-load acceptance |
+| `cap-6-reference.json` | CAP-6 whole-service first-failure screens, all five AS_IS imports, private diagnostic/SMB attempts and drained upgrade/restore; explicit metric corrections and NOT_RUN cells; G6 remains NOT_ACCEPTED |
+| `cap-7a-reference.json` | CAP-7A source-only ordered oracles, HTML/DOCX 100k complete output screens and million-row reducer failures; frozen executable/tree identities, phase anchors and owned-state cleanup; G6 remains NOT_ACCEPTED |
+| `cap-7c-c5-reference.json` | C5 native/staged whole-service comparison: 42 serialized forks plus one explicitly missing interrupted warmup; canonical-scope metrics, 100k failed/complete cells, all-five AS_IS contract screens, separate populated diagnostics and unchanged NOT_ACCEPTED decision |
 | [cap-7c-c5-policy.yml](cap-7c-c5-policy.yml) | Credential-free actual private document policy; the C5 driver explicitly derives the common bounded-row override and selected import catalogs |
-| [cap-7c-feasibility-phase-analysis.json](cap-7c-feasibility-phase-analysis.json) | Derived retained-log phase durations, completed-window writer/resource metrics and public-row census; original log hashes verified; no new benchmark or acceptance |
-| [cap-7c-bounded-native-cost.json](cap-7c-bounded-native-cost.json) | Bounded native experiment: 13 primary forks and two separate JFR diagnostics, exact allocation reduction, equal fields/keys/IDs/provenance/receipts, time-drift control and retained negative resource screens; no C5/G6 acceptance |
+| `cap-7c-feasibility-phase-analysis.json` | Derived retained-log phase durations, completed-window writer/resource metrics and public-row census; original log hashes verified; no new benchmark or acceptance |
+| `cap-7c-bounded-native-cost.json` | Bounded native experiment: 13 primary forks and two separate JFR diagnostics, exact allocation reduction, equal fields/keys/IDs/provenance/receipts, time-drift control and retained negative resource screens; no C5/G6 acceptance |
 
 `artifact_revision.changed_at` is transaction effective time sampled before
 the mutation loop. It must not be used as commit completion wall time. The
@@ -160,11 +160,11 @@ removed; compact reports and diagnostic journals retain the failed disposition.
 [CAP-7B execution](../../cap-7b-execution.md) records rejection of the direct
 processor control on existing native lifecycle contracts, and admission of
 sequential bound-template calls with fewer dispatch structures.
-[Compact raw evidence](cap-7b-reference.json) retains paired repeat-profile
+`cap-7b-reference.json` retains paired repeat-profile
 allocations/timings, the incomplete unique import disposition, and six complete
 100k service samples. All service output oracles pass, but original G6 `FAIL`
 statuses and unchanged writer/local-time limits are retained. Prototype ratios
-are separate from [final packaged compiler-cleanup qualification](cap-7b-production.json),
+are separate from `cap-7b-production.json`,
 whose single sample passes data checks and retains the unchanged G6 budget failure. No private
 DB, WAL, runtime snapshot or replayable transport state is versioned.
 
@@ -201,7 +201,7 @@ digests. All owned runtime and business state was removed.
 
 [Staged transport optimization and C5 repeat](../../cap-7c-staged-transport-cost.md)
 retains nine typed-chunk diagnostic forks and ten complete service windows in
-[the evidence bundle](cap-7c-staged-transport-cost.json). Only the typed-chunk
+`cap-7c-staged-transport-cost.json`. Only the typed-chunk
 production compilation unit changes. The old executable identity is separate
 from its later harness HEAD; all bytecode, probe, raw-file and policy identities
 are preserved. Caller allocations fall about 65% in the mechanism diagnostic,
