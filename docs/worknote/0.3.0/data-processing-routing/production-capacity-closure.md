@@ -93,7 +93,8 @@ the earlier measurements. The initially queued paired batch under
 staged giant service interval was observed at 1,934.65 seconds, the two additional
 staged batch cells were deferred under the finish-first choice: native already
 meets the complete-cycle band and remains the production model. The current
-staged case still completes its independent checks. Deferred cells are not
+staged case later failed during its post-publication census, as recorded below.
+Deferred cells are not
 passed, failed workloads or a whole-matrix completion claim. No further
 measurement grid is queued.
 
@@ -149,6 +150,30 @@ The relevant primary references are [Linux cgroup v2](https://docs.kernel.org/ad
 and [SQLite WAL](https://www.sqlite.org/wal.html). SQLite has one writer and FULL
 commits require synchronization. Neither more CPU nor relaxed durability is a
 substitute for removing unnecessary work while retaining the data contract.
+
+## Correctness finding outside the performance choice
+
+Inspection of the live strict batch found `INGEST.RECOVERY_FAILED` with
+`Document admission changed concurrently`. Three occurrences were observed
+before completion; the queue continued progressing. The retained reference logs
+also contain one occurrence in the native smoke and one in the staged giant
+case. This is not a CPU, memory or SQLite throughput limit.
+
+The ordinary completion path and reconciliation both call
+`DocumentAdmissionService.complete` / `finalizeRegistration`. A failed CAS
+accepts only equality with the entire proposed aggregate, including its
+timestamp/version. Equivalent concurrent finalization can therefore throw;
+normal completion archives the source before this call and marks the ingest run
+complete afterwards. No canonical data loss is established, but eventual
+successful outputs are not proof that the race is acceptable for production.
+
+The persistent issue is [ING-17](../../../KNOWN-ISSUES.md). Its separate closure
+requires a forced concurrent-finalization regression, compatible terminal
+outcome idempotency and rejection of conflicting outcomes or registration pins.
+Keep the existing ownership/fencing checks; do not turn all CAS conflicts into
+success. This bounded correctness fix belongs before production readiness,
+not to another storage performance loop. The current capacity observations and
+their original qualification statuses remain unchanged.
 
 ## Current status
 
