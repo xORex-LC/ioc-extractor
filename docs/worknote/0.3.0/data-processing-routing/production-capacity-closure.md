@@ -31,7 +31,7 @@ improve a percentage. A failed candidate can be rejected in favor of native.
 | Dimension | Reference |
 |---|---|
 | Equipment | 4 vCPU, approximately 8 GiB RAM, local SSD/NVMe |
-| Workload | 1,000,000 input occurrences before reduction; concurrency 1 |
+| Workload | 1,000,000 input occurrences before reduction; ordered canonical promotion; explicit preparation workers/window below |
 | Application and collector | Shared 4-CPU cgroup, 5 GiB high / 6 GiB hard memory limit; 2 GiB reserved for the rest of an 8 GiB host |
 | JVM | Xms 256 MiB, Xmx 2 GiB; a ceiling rather than required live heap |
 | SQLite tuning | Existing balanced preset on both public stores; identical for both models, correctness PRAGMAs unchanged |
@@ -51,6 +51,13 @@ but cannot measure a physical 1 Gbit/s LAN. The existing service and its DBs,
 inboxes and remote directories are not modified. Each test uses an unpredictable
 owned remote namespace and private service/dataframe databases and removes them.
 
+Business policy is the pinned `cap-7c-c5-policy.yml` qualification fixture; only
+the stand's sync policy is copied. The fixture uses the supported file document
+admission journal and JDBC ingest-run/export/publish/import ledgers. It exercises
+the real Spring binding, preflight and components, but it is not the installed
+stand's complete configuration. Reports identify these settings; capacity for
+an unmeasured operator policy or a different admission backend is not inferred.
+
 The reproducible corpus includes one large DOCX across five artifacts, a processed
 CSV collapsing detailed URLs to hosts, and 100 deterministic DOCX files totaling
 one million occurrences. Batch completion waits for every document's successful
@@ -59,6 +66,19 @@ The multi-document profile declares a 30-second export quiet period / 30-minute
 cap using the existing cadence mechanism; actual slice/publication counts remain
 evidence, not an assumed one-final-publication guarantee. Mutable projections
 can still be rebuilt repeatedly: cadence alone does not eliminate that cost.
+
+`ioc.ingestion.concurrency=1` serializes detection, not all document execution.
+The original v3 corpus cases inherit two preparation workers and a window of
+four documents from the pinned classpath configuration. One giant document
+still has only one bulk document active, but the 100-document v3 profile can
+overlap preparation. Its results are labeled as the configured production
+pipeline rather than strict single-document evidence. An additional finite
+paired batch under `.dev/hybrid-release-single-document/` uses the existing
+`execution.preparation-workers=1` and `execution.window=1` through
+`--single-document-execution`. It waits for the v3 controller to dispose all its
+applications, then runs once for each model, with no retries. This closes the
+owner's explicit single-document workload condition without silently rewriting
+the earlier measurements. No further measurement grid is queued.
 
 ## Finite measurement sequence
 
@@ -118,8 +138,9 @@ substitute for removing unnecessary work while retaining the data contract.
 Reference-envelope and backend selection support is implemented in the existing
 qualification harness. The new timing boundary separates durable SMB completion
 from independent readback. Both actual SMB smoke cases and the native import
-cases have passed their independent correctness checks. The larger document
-cases and the final production choice are pending. Quality gates remain deferred by the owner during optimization;
+cases and native single-document 100k/1m cases have passed their independent
+correctness checks. The 100-document case, large staged cases and final
+production choice are pending. Quality gates remain deferred by the owner during optimization;
 no deployment, schema activation or completed acceptance is claimed.
 
 The first reference smoke attempts failed before application intake because the
@@ -144,7 +165,8 @@ Sequence: `.dev/hybrid-release-reference-v3/`. Frozen application JAR SHA-256:
 `be42a81ec73e88615190b14d19fd297d021295bc5fbf7680d14411bd32523c06`.
 Each report also records its helper classes, driver hashes, corpus and effective
 limits. These are single-fork diagnostic observations, not production percentiles.
-The million-document cases remain pending in this snapshot.
+The native single-million-document case is complete; the 100-document batch and
+large staged cases remain pending in this snapshot.
 
 | Model | Input | Complete service seconds | Cumulative allocations GiB | Bulk heap / RSS MiB | Shared slice peak MiB | New completed slices / successful SMB publications |
 |---|---|---:|---:|---|---:|---|
@@ -153,6 +175,7 @@ The million-document cases remain pending in this snapshot.
 | Native | 100,000 detailed URL import rows → 20 hosts | 14.76 | 3.21 | 178.69 / 586.21 | 1,022.76 | 1 / 0; local export |
 | Native | 1,000,000 detailed URL import rows → 20 hosts | 117.80 | 31.68 | 193.43 / 630.53 | 2,694.06 | 1 / 0; local export |
 | Native | 100,000 distinct IOC / 1 DOCX / SMB | 65.56 | 11.72 | 243.92 / 691.64 | 1,644.82 | 4 / 4 |
+| Native | 1,000,000 distinct IOC / 1 DOCX / SMB | 705.29 | 116.87 | 207.96 / 868.16 | 5,120.20 | 5 / 5 |
 
 SMB time starts with producer upload and ends with successful durable publication
 of all required final profiles; local import time starts with handoff and ends
@@ -170,6 +193,36 @@ with 0.11 seconds for native. These probes include retention/control preparation
 as well as a bounded maintenance page; their sum is not a measured per-row GC
 cost and is excluded from the service completion interval. Protected receipt
 payloads are not eligible cleanup debt.
+
+The native million-DOCX cycle took 11 minutes 45 seconds through durable SMB
+completion and passed the subsequent independent checks. It creates 2,166,987
+final rows across the five overlapping artifacts, rather than one million
+physical SQLite rows. Writer occupancy reached 169.205 seconds; maximum
+observed control wait was 168.469 seconds. The complete 2,166,987-row receipt
+replay took 7.98 seconds. After extra cleanup the dataframe DB occupied
+3,754.00 MiB and its named WAL 64.00 MiB. The sampled bulk workspace peak was
+about 1,451 MiB. The shared slice reached its 5-GiB high threshold, with 15,847
+high events but no OOM/hard-limit events or swap. File cache was the dominant
+shared memory category. These results qualify elapsed time for this declared
+case; they do not satisfy the historical five-second writer-occupancy limit or
+establish an accepted control-latency SLO.
+
+The independent post-service full-row/CSV/receipt/fingerprint verification adds
+several minutes to the qualification job. It does not represent additional
+production processing after the durable SMB completion boundary. Private service,
+dataframe, workspace and owned remote state were removed after verification.
+
+## Production configuration consequence
+
+The packaged defaults still describe a smaller installation: 2 CPUs,
+`MemoryHigh=768M`, `MemoryMax=1G`, JVM `-Xmx512m`, a 2-GiB document workspace and
+an 8-GiB total private-workspace ceiling. The new results do not qualify those
+defaults for the million-input scenario. A production bulk profile must declare
+the measured resource and disk envelope explicitly; changing the architecture
+while retaining the old hard memory limit would not reproduce this evidence.
+The installed stand and packaging defaults have not been changed by the
+qualification. Choosing and documenting that deployment profile is part of
+production closure, after the finite backend comparison.
 
 The 117.80-second import case has strong reduction to 20 hosts. It proves the
 full processed-import workload and its receipt/COALESCE checks under this

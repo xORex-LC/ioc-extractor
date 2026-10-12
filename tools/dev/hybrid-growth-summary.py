@@ -55,7 +55,8 @@ def reference_tables(root):
             return sum(row['count'] for row in after[table] if row['status'] == status) - sum(row['count'] for row in before[table] if row['status'] == status)
         inputs = sample.get('rows')
         q = sample.get('qualification', sample.get('qualification_at_failure', {}))
-        print('| ' + ' | '.join([report['backend'], f"{sample.get('profile', 'pending')} / {inputs or '—'} / {report.get('document_count', 1)}",
+        model = report['backend'] + (' (workers/window 1/1)' if report.get('single_document_execution') else '')
+        print('| ' + ' | '.join([model, f"{sample.get('profile', 'pending')} / {inputs or '—'} / {report.get('document_count', 1)}",
             sample['status'], number(elapsed), number(inputs / elapsed if inputs and elapsed else None),
             number(q.get('allocatedProcessBytes'), 2**30), number(peaks.get('heap_used_bytes'), 2**20),
             number(peaks.get('rss_bytes'), 2**20), number(peaks.get('reference_slice_current_bytes'), 2**20),
@@ -72,7 +73,8 @@ def reference_tables(root):
         pages = q.get('bounded_cleanup', [])
         cleanup = sum(p['eligibleToCompleteNanos'] for p in pages) if pages else None
         storage = q.get('storage_after_cleanup', {})
-        print('| ' + ' | '.join([report['backend'], f"{sample.get('profile', 'pending')} / {sample.get('rows') or '—'} / {report.get('document_count', 1)}",
+        model = report['backend'] + (' (workers/window 1/1)' if report.get('single_document_execution') else '')
+        print('| ' + ' | '.join([model, f"{sample.get('profile', 'pending')} / {sample.get('rows') or '—'} / {report.get('document_count', 1)}",
             number(hold, 1e6) + ' / ' + number(wait, 1e6),
             number(reads.get('samplesNanos', [None])[0], 1e9) + ' / ' + str(reads.get('rowsPerScan', '—')),
             number(cleanup, 1e9), number(storage.get('dataframe_db_bytes'), 2**20) + ' / ' + number(storage.get('canonical_wal_bytes'), 2**20)]) + ' |')
@@ -80,7 +82,8 @@ def reference_tables(root):
     for folder, report, sample in cells:
         if sample['status'] == 'CORRECTNESS_PASS':
             key = (sample.get('profile'), sample.get('rows'), report.get('document_count', 1), report.get('smb'),
-                   report.get('sqlite_tuning'), report.get('batch_export_quiet_seconds'), sample['input']['sha256'])
+                   report.get('sqlite_tuning'), report.get('batch_export_quiet_seconds'), sample['input']['sha256'],
+                   report.get('single_document_execution', False))
             matched.setdefault(key, {})[report['backend']] = sample
     for key, models in matched.items():
         if set(models) == {'native', 'staged'}:

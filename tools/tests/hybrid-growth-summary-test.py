@@ -88,6 +88,23 @@ class GrowthSummaryTest(unittest.TestCase):
             self.assertEqual(text.count('CORRECTNESS_PASS'), 2)
             self.assertNotIn('Paired semantic evidence matches', text)
 
+    def test_reference_does_not_pair_different_document_execution_windows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sample = dict(index=0, status='CORRECTNESS_PASS', profile='document', rows=1000,
+                input=dict(sha256='same-input'), canonical_oracle=dict(fields='same'),
+                canonical_evidence=dict(deterministic_fingerprints=dict(aliases='same')),
+                qualification=dict(receipt_read_after=dict(payloadSha256='same', rowsPerScan=10, receiptCount=1)))
+            for backend in ('native', 'staged'):
+                folder = root / backend
+                folder.mkdir()
+                (folder / 'report.json').write_text(json.dumps(dict(resource_profile='reference-8g',
+                    backend=backend, smb=True, single_document_execution=backend == 'staged', samples=[sample])))
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                SUMMARY.reference_tables(root)
+            self.assertIn('staged (workers/window 1/1)', output.getvalue())
+            self.assertNotIn('Paired semantic evidence matches', output.getvalue())
+
 
 if __name__ == '__main__':
     unittest.main()

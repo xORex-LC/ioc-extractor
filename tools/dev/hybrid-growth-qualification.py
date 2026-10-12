@@ -102,7 +102,9 @@ def main():
     parser.add_argument('--smb', action='store_true')
     parser.add_argument('--environment', type=Path, help='systemd EnvironmentFile; secrets are never reported')
     parser.add_argument('--transport-config', type=Path, help='Existing stand YAML; only sync is copied into the private policy')
-    parser.add_argument('--document-count', type=int, default=1, help='Deterministic DOCX corpus, still one active document at a time')
+    parser.add_argument('--document-count', type=int, default=1, help='Deterministic DOCX corpus; preparation uses the configured execution window')
+    parser.add_argument('--single-document-execution', action='store_true',
+                        help='Set preparation-workers=1 and window=1; detector concurrency alone does not serialize document execution')
     parser.add_argument('--batch-export-quiet-seconds', type=int, help='Declared export cadence for batch coalescing; production settings unchanged')
     parser.add_argument('--sqlite-tuning', choices=('low-memory', 'balanced', 'high-throughput'),
                         help='Existing SQLite preset; applied equally to both canonical/service stores')
@@ -129,7 +131,8 @@ def main():
                   runtime_envelope=CAP.RESOURCE_PROFILES[args.resource_profile])
     report.update(smb=args.smb, transport_policy_sha256=CAP.BASE.digest(args.transport_config) if args.smb else None,
                   scope='full local daemon plus actual SMB fetch/publish/readback in an owned namespace' if args.smb else report['scope'])
-    report.update(document_count=args.document_count, batch_export_quiet_seconds=args.batch_export_quiet_seconds)
+    report.update(document_count=args.document_count, batch_export_quiet_seconds=args.batch_export_quiet_seconds,
+                  single_document_execution=args.single_document_execution)
     report.update(sqlite_tuning=args.sqlite_tuning, control_http_timeout_seconds=300 if args.resource_profile == 'reference-8g' else 40)
     report['driver_sha256'] = {name: CAP.BASE.digest(Path(__file__).with_name(name)) for name in (
         'hybrid-growth-qualification.py', 'typed-journal-comparison.py', 'projection-ack-comparison.py',
@@ -144,7 +147,7 @@ def main():
         for field, default in [('smb', False), ('transport_policy_sha256', None)]:
             if previous.get(field, default) != report[field]:
                 parser.error('Resume would change frozen transport identity: ' + field)
-        for field, default in [('document_count', 1), ('batch_export_quiet_seconds', None)]:
+        for field, default in [('document_count', 1), ('batch_export_quiet_seconds', None), ('single_document_execution', False)]:
             if previous.get(field, default) != report[field]:
                 parser.error('Resume would change frozen corpus/cadence identity: ' + field)
         if previous.get('sqlite_tuning') != args.sqlite_tuning:
@@ -191,6 +194,9 @@ def main():
                     if args.batch_export_quiet_seconds:
                         policy['ioc']['export']['trigger'].update(**{
                             'quiet-period': str(args.batch_export_quiet_seconds) + 's', 'max-cap': '30m'})
+                    if args.single_document_execution:
+                        policy['ioc']['ingestion'].setdefault('execution', {}).update(
+                            **{'preparation-workers': 1, 'window': 1})
                     if args.sqlite_tuning:
                         for role in ('service', 'dataframe'):
                             policy['ioc']['storage'][role]['sqlite']['tuning'] = args.sqlite_tuning

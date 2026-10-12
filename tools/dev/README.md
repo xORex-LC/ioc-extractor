@@ -15,6 +15,7 @@
 | `hybrid-cycle-compile.py --output .dev/…` | Скомпилировать изменённый JDBC adapter и qualification helpers поверх сохранённого baseline JAR без quality gates |
 | `hybrid-growth-qualification.py --point N --runtime .dev/… --output .dev/…` | Изолированный полный daemon цикл: документ и processed import по 100k/1m; raw замеры остаются локальными |
 | `hybrid-growth-qualification.py … --resource-profile reference-8g --backend native\|staged` | Конечное сравнение на общем cgroup для приложения и collector: 4 CPU, 6 GiB без swap; оставшиеся 2 GiB зарезервированы под ОС. Нужен controller в `ioc-capacity-reference.slice` с применёнными лимитами |
+| `hybrid-growth-qualification.py … --document-count 100 --single-document-execution` | Один corpus в 100 DOCX с preparation-workers=1 и window=1; `ingestion.concurrency=1` ограничивает только detector и не заменяет это условие |
 | `hybrid-growth-summary.py --root .dev/hybrid-eight` | Сводка сопоставимых окон, памяти, хранения, reads и cleanup; неуспешные окна не дают отношения производительности |
 | `app.sh …` | Запустить public CLI через единственный найденный bootable jar; optional isolated workspace |
 | `doctor.sh [core|dev|ci|security|all]` | Проверить обязательные и optional prerequisites без установки пакетов |
