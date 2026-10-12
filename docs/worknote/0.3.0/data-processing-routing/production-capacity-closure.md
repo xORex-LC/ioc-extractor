@@ -138,9 +138,10 @@ substitute for removing unnecessary work while retaining the data contract.
 Reference-envelope and backend selection support is implemented in the existing
 qualification harness. The new timing boundary separates durable SMB completion
 from independent readback. Both actual SMB smoke cases and the native import
-cases and native single-document 100k/1m cases have passed their independent
-correctness checks. The 100-document case, large staged cases and final
-production choice are pending. Quality gates remain deferred by the owner during optimization;
+cases and native single-document 100k/1m cases and the configured native
+100-document case have passed their independent correctness checks. The strict
+single-document batch, large staged cases and final production choice are
+pending. Quality gates remain deferred by the owner during optimization;
 no deployment, schema activation or completed acceptance is claimed.
 
 The first reference smoke attempts failed before application intake because the
@@ -165,8 +166,9 @@ Sequence: `.dev/hybrid-release-reference-v3/`. Frozen application JAR SHA-256:
 `be42a81ec73e88615190b14d19fd297d021295bc5fbf7680d14411bd32523c06`.
 Each report also records its helper classes, driver hashes, corpus and effective
 limits. These are single-fork diagnostic observations, not production percentiles.
-The native single-million-document case is complete; the 100-document batch and
-large staged cases remain pending in this snapshot.
+The native single-million-document case and configured 100-document batch are
+complete; the strict single-document batch and large staged cases remain pending
+in this snapshot.
 
 | Model | Input | Complete service seconds | Cumulative allocations GiB | Bulk heap / RSS MiB | Shared slice peak MiB | New completed slices / successful SMB publications |
 |---|---|---:|---:|---|---:|---|
@@ -176,6 +178,7 @@ large staged cases remain pending in this snapshot.
 | Native | 1,000,000 detailed URL import rows → 20 hosts | 117.80 | 31.68 | 193.43 / 630.53 | 2,694.06 | 1 / 0; local export |
 | Native | 100,000 distinct IOC / 1 DOCX / SMB | 65.56 | 11.72 | 243.92 / 691.64 | 1,644.82 | 4 / 4 |
 | Native | 1,000,000 distinct IOC / 1 DOCX / SMB | 705.29 | 116.87 | 207.96 / 868.16 | 5,120.20 | 5 / 5 |
+| Native | 1,000,000 IOC / 100 DOCX / SMB; workers/window 2/4 | 640.05 | 385.31 | 266.07 / 820.97 | 5,120.12 | 3 / 3 |
 
 SMB time starts with producer upload and ends with successful durable publication
 of all required final profiles; local import time starts with handoff and ends
@@ -206,6 +209,28 @@ high events but no OOM/hard-limit events or swap. File cache was the dominant
 shared memory category. These results qualify elapsed time for this declared
 case; they do not satisfy the historical five-second writer-occupancy limit or
 establish an accepted control-latency SLO.
+
+The configured 100-document native batch also passed its independent checks.
+Its 10-minute-40-second service interval includes all 100 documents and exactly
+three new final slices/publications, one per profile. It produces 2,167,020 rows
+across the overlapping artifacts. Maximum promotion occupancy was 2.414 seconds;
+the overall maximum writer hold was 5.032 seconds in export-slot allocation,
+with a 5.029-second maximum observed control wait. Complete receipt replay read
+102 receipts / 2,167,020 rows in 12.13 seconds; the post-cleanup dataframe DB was
+3,721.76 MiB with a 64-MiB named WAL. Cumulative allocations reached 385.31 GiB,
+but sampled bulk heap/RSS were 266.07/820.97 MiB, GC took 3.92 seconds, and there
+were no OOM events or swap. This is allocation churn, not hundreds of GiB of
+required RAM. The reference slice recorded 6,554 high events and about 906 CPU
+seconds over the bulk interval, with only 0.153 seconds of CPU throttling.
+
+The batch uses the existing two preparation workers / four-document window.
+Its corpus and cadence also differ from the one-giant-document case, so the
+timing difference is not a causal architecture speedup. It does demonstrate
+that document granularity changes the control-delay tradeoff substantially.
+Existing final-export cadence coalesces remote publications; it does not
+eliminate per-document mapping, promotion or mutable-projection work. Those
+costs remain part of the measured service rather than another optimization
+cycle launched without a failed complete-cycle requirement.
 
 The independent post-service full-row/CSV/receipt/fingerprint verification adds
 several minutes to the qualification job. It does not represent additional
