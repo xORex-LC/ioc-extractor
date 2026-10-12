@@ -93,10 +93,12 @@ class PrivateShare:
         self.share.run(f'rename "{remote}.part" "{remote}"')
         return {'monotonic': time.monotonic(), 'epoch_seconds': time.time(),
                 'kind': 'producer SMB atomic rename completed',
+                'upload_started_monotonic': upload_start,
                 'upload_seconds': upload_complete - upload_start,
                 'rename_request_seconds': time.monotonic() - upload_complete}
 
-    def publications(self, unit, root, local, oracle, base, timeout):
+    def wait_publications(self, unit, root, local, base, timeout):
+        """Observe durable service completion before independent readback/diagnostics."""
         deadline, found = time.monotonic() + timeout, {}
         while time.monotonic() < deadline:
             unit.assert_running()
@@ -112,30 +114,43 @@ class PrivateShare:
                 folder = publication['remote_path']
                 if not folder.lstrip('/').startswith(self.namespace + '/get/'):
                     raise RuntimeError('Publication escaped private SMB namespace')
-                target = root / 'readback' / profile
-                target.mkdir(parents=True, exist_ok=True)
-                for name in ('_SUCCESS', 'manifest.json'):
-                    self.share.run(f'get "{folder}/{name}" "{target / name}"')
-                marker = (target / '_SUCCESS').read_text().strip()
-                if marker != expected['run']['manifest_sha256'] or base.digest(target / 'manifest.json') != marker:
-                    raise RuntimeError('Remote marker/manifest mismatch')
-                manifest = json.loads((target / 'manifest.json').read_text())
-                if manifest != expected['manifest']:
-                    raise RuntimeError('Remote manifest/revision coverage mismatch')
-                for entry in manifest['artifacts']:
-                    if Path(entry['file']).name != entry['file']:
-                        raise RuntimeError('Unsafe remote manifest filename')
-                    path = target / entry['file']
-                    self.share.run(f'get "{folder}/{entry["file"]}" "{path}"')
-                    if base.digest(path) != entry['sha256'] or entry['rows'] != oracle.counts()[entry['artifact']]:
-                        raise RuntimeError('Remote CSV hash/count mismatch')
-                    oracle.check_csv(entry['artifact'], path, root / 'var/db/ioc-dataframe.db', profile)
-                found[profile] = {'verified_monotonic': time.monotonic(), 'slice_id': publication['slice_id'],
-                                  'manifest_sha256': marker, 'status': publication['status']}
+                found[profile] = {'publication': publication, 'observed_monotonic': time.monotonic()}
             if set(found) == set(local['profiles']):
                 return found
             time.sleep(.2)
         raise RuntimeError('Complete remote publication timeout')
+
+    def publications(self, unit, root, local, oracle, base, timeout, observed=None):
+        observed = observed if observed is not None else self.wait_publications(unit, root, local, base, timeout)
+        found = {}
+        for profile, expected in local['profiles'].items():
+            unit.assert_running()
+            publication = observed[profile]['publication']
+            folder = publication['remote_path']
+            if not folder.lstrip('/').startswith(self.namespace + '/get/'):
+                raise RuntimeError('Publication escaped private SMB namespace')
+            target = root / 'readback' / profile
+            target.mkdir(parents=True, exist_ok=True)
+            for name in ('_SUCCESS', 'manifest.json'):
+                self.share.run(f'get "{folder}/{name}" "{target / name}"')
+            marker = (target / '_SUCCESS').read_text().strip()
+            if marker != expected['run']['manifest_sha256'] or base.digest(target / 'manifest.json') != marker:
+                raise RuntimeError('Remote marker/manifest mismatch')
+            manifest = json.loads((target / 'manifest.json').read_text())
+            if manifest != expected['manifest']:
+                raise RuntimeError('Remote manifest/revision coverage mismatch')
+            for entry in manifest['artifacts']:
+                if Path(entry['file']).name != entry['file']:
+                    raise RuntimeError('Unsafe remote manifest filename')
+                path = target / entry['file']
+                self.share.run(f'get "{folder}/{entry["file"]}" "{path}"')
+                if base.digest(path) != entry['sha256'] or entry['rows'] != oracle.counts()[entry['artifact']]:
+                    raise RuntimeError('Remote CSV hash/count mismatch')
+                oracle.check_csv(entry['artifact'], path, root / 'var/db/ioc-dataframe.db', profile)
+            found[profile] = {'verified_monotonic': time.monotonic(), 'slice_id': publication['slice_id'],
+                              'manifest_sha256': marker, 'status': publication['status'],
+                              'publication_observed_monotonic': observed[profile]['observed_monotonic']}
+        return found
 
     def close(self):
         try:

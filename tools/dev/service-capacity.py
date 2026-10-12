@@ -35,6 +35,34 @@ INPUTS = importlib.util.module_from_spec(INPUT_SPEC)
 INPUT_SPEC.loader.exec_module(INPUTS)
 FLAGS = ['-Xms128m', '-Xmx512m']
 
+# A measurement envelope is distinct from a production configuration or acceptance gate.
+RESOURCE_PROFILES = {
+    'legacy': {'cpu_count': 2, 'memory_high_bytes': 768 * 1024**2,
+               'memory_max_bytes': 1024**3, 'flags': FLAGS, 'slice': None},
+    'reference-8g': {'cpu_count': 4, 'memory_high_bytes': 5 * 1024**3,
+                     'memory_max_bytes': 6 * 1024**3, 'flags': ['-Xms256m', '-Xmx2g'],
+                     'slice': 'ioc-capacity-reference.slice'},
+}
+
+
+def verify_resource_limits(profile, limits, parent_limits=None):
+    """Reject unapplied limits before intake; the reference also bounds the collector."""
+    envelope = RESOURCE_PROFILES[profile]
+    quota, period = limits['cpu.max'].split()
+    if (quota == 'max' or int(quota) != envelope['cpu_count'] * int(period)
+            or limits['memory.high'] != str(envelope['memory_high_bytes'])
+            or limits['memory.max'] != str(envelope['memory_max_bytes'])):
+        raise RuntimeError('Effective unit limits differ from frozen envelope')
+    if envelope['slice']:
+        if parent_limits is None:
+            raise RuntimeError('Missing shared reference slice limits')
+        parent_quota, parent_period = parent_limits['cpu.max'].split()
+        if (parent_quota == 'max' or int(parent_quota) != 4 * int(parent_period)
+                or parent_limits['memory.max'] != str(6 * 1024**3)
+                or parent_limits['memory.high'] != str(5 * 1024**3)
+                or parent_limits['memory.swap.max'] != '0' or limits['memory.swap.max'] != '0'):
+            raise RuntimeError('Reference slice limits differ from the reserved 8 GiB host envelope')
+
 
 class WorkloadFailure(RuntimeError):
     """A fatal workload result, distinct from a collector or external provisioning failure."""
@@ -334,7 +362,7 @@ class ResourceSampler:
         hwm = int(re.search(r'^VmHWM:\s+(\d+)', status, re.M)[1]) * 1024
         memory = counters((self.cgroup / 'memory.stat').read_text())
         stat = Path(f'/proc/{self.pid}/stat').read_text().rsplit(')', 1)[1].split()
-        return dict(monotonic=time.monotonic(), utc_epoch_ns=time.time_ns(), rss_bytes=rss, hwm_bytes=hwm,
+        sample = dict(monotonic=time.monotonic(), utc_epoch_ns=time.time_ns(), rss_bytes=rss, hwm_bytes=hwm,
             process_cpu_seconds=(int(stat[11]) + int(stat[12])) / os.sysconf('SC_CLK_TCK'),
             anon_bytes=memory['anon'], file_bytes=memory['file'], kernel_bytes=memory['kernel'],
             non_file_bytes=memory['anon'] + memory['kernel'],
@@ -343,6 +371,17 @@ class ResourceSampler:
             psi=pressure((self.cgroup / 'memory.pressure').read_text()),
             events=counters((self.cgroup / 'memory.events').read_text()),
             cpu=counters((self.cgroup / 'cpu.stat').read_text()), **named_storage(self.root), **self.jvm)
+        if self.cgroup.parent.name == 'ioc-capacity-reference.slice':
+            shared = self.cgroup.parent
+            memory = counters((shared / 'memory.stat').read_text())
+            sample.update(reference_slice_current_bytes=int((shared / 'memory.current').read_text()),
+                          reference_slice_anon_bytes=memory['anon'], reference_slice_file_bytes=memory['file'],
+                          reference_slice_kernel_bytes=memory['kernel'],
+                          reference_slice_swap_bytes=int((shared / 'memory.swap.current').read_text()),
+                          reference_slice_events=counters((shared / 'memory.events').read_text()),
+                          reference_slice_cpu=counters((shared / 'cpu.stat').read_text()),
+                          reference_slice_psi=pressure((shared / 'memory.pressure').read_text()))
+        return sample
 
     def run(self):
         try:
@@ -371,7 +410,7 @@ class ResourceSampler:
             last = dict(self.latest)
             wall = last['monotonic'] - self.first['monotonic']
             psi = difference(self.first['psi'], last['psi'])
-            return {'samples': self.samples, 'sample_interval_seconds': .1, 'wall_seconds': wall,
+            result = {'samples': self.samples, 'sample_interval_seconds': .1, 'wall_seconds': wall,
                     'process_cpu_seconds': last['process_cpu_seconds'] - self.first['process_cpu_seconds'],
                     'peaks': dict(self.peak), 'process_hwm_bytes': last['hwm_bytes'],
                     'cpu_delta': difference(self.first['cpu'], last['cpu']),
@@ -380,6 +419,11 @@ class ResourceSampler:
                     'storage_scope': 'Named files only; WAL paths in raw samples; unlinked SQLite TEMP excluded',
                     'memory_events_delta': difference(self.first['events'], last['events']),
                     'psi_microseconds_delta': psi, 'psi_full_fraction': psi['full'] / (wall * 1e6) if wall > 0 else None}
+            if 'reference_slice_events' in last:
+                result.update(reference_slice_memory_events_delta=difference(self.first['reference_slice_events'], last['reference_slice_events']),
+                              reference_slice_cpu_delta=difference(self.first['reference_slice_cpu'], last['reference_slice_cpu']),
+                              reference_slice_psi_microseconds_delta=difference(self.first['reference_slice_psi'], last['reference_slice_psi']))
+            return result
 
     def close(self):
         self.stop.set()
@@ -435,20 +479,27 @@ def gate_sample(sample, size):
 
 class PrivateUnit:
     """Own exactly one user-systemd JVM; verify applied cgroup ceilings before intake."""
-    def __init__(self, root):
+    def __init__(self, root, resource_profile='legacy'):
+        if resource_profile not in RESOURCE_PROFILES:
+            raise ValueError('Unknown capacity resource profile: ' + resource_profile)
         self.root, self.name = root, 'ioc-cap6-' + uuid.uuid4().hex
+        self.resource_profile = resource_profile
         self.pid, self.cgroup = None, None
         self.log_offset, self.log_tail = 0, ''
 
     def start(self, jar, config, environment=None, diagnostic=False, launcher=None):
+        envelope = RESOURCE_PROFILES[self.resource_profile]
         arguments = ['systemd-run', '--user', '--quiet', '--unit=' + self.name,
-                     '-p', 'WorkingDirectory=' + str(self.root), '-p', 'CPUQuota=200%',
-                     '-p', 'MemoryHigh=768M', '-p', 'MemoryMax=1G', '-p', 'TimeoutStopSec=40s',
+                     '-p', 'WorkingDirectory=' + str(self.root), '-p', 'CPUQuota=' + str(envelope['cpu_count'] * 100) + '%',
+                     '-p', 'MemoryHigh=' + str(envelope['memory_high_bytes']),
+                     '-p', 'MemoryMax=' + str(envelope['memory_max_bytes']), '-p', 'TimeoutStopSec=40s',
                      '-p', 'StandardOutput=append:' + str(self.root / 'daemon.log'),
                      '-p', 'StandardError=append:' + str(self.root / 'daemon.log')]
+        if envelope['slice']:
+            arguments += ['-p', 'Slice=' + envelope['slice'], '-p', 'MemorySwapMax=0']
         if environment:
             arguments += ['-p', 'EnvironmentFile=' + str(environment)]
-        flags = FLAGS + (['-XX:NativeMemoryTracking=summary',
+        flags = list(envelope['flags']) + (['-XX:NativeMemoryTracking=summary',
                          '-XX:StartFlightRecording=filename=' + str(self.root / 'diagnostic.jfr') + ',settings=profile,dumponexit=true'] if diagnostic else [])
         command(arguments + [shutil.which('java'), *flags,
                 '-Dlogging.config=file:' + str(self.root / 'logback.xml'),
@@ -462,11 +513,18 @@ class PrivateUnit:
                 self.cgroup = Path('/sys/fs/cgroup') / properties['ControlGroup'].lstrip('/')
                 limits = {name: (self.cgroup / name).read_text().strip()
                           for name in ('cpu.max', 'memory.high', 'memory.max', 'memory.swap.max')}
-                quota, period = limits['cpu.max'].split()
-                if quota == 'max' or int(quota) != 2 * int(period) or limits['memory.high'] != str(768 * 1024**2) or limits['memory.max'] != str(1024**3):
-                    raise RuntimeError('Effective unit limits differ from frozen envelope')
+                parent_limits = None
+                if envelope['slice']:
+                    collector_group = next(line.split('::', 1)[1] for line in Path('/proc/self/cgroup').read_text().splitlines() if line.startswith('0::'))
+                    collector_parent = (Path('/sys/fs/cgroup') / collector_group.lstrip('/')).parent
+                    parent_limits = {name: (self.cgroup.parent / name).read_text().strip()
+                                     for name in ('cpu.max', 'memory.high', 'memory.max', 'memory.swap.max')}
+                    if collector_parent != self.cgroup.parent or self.cgroup.parent.name != envelope['slice']:
+                        raise RuntimeError('Reference slice does not bound the application and collector together')
+                verify_resource_limits(self.resource_profile, limits, parent_limits)
                 return {'unit': self.name, 'pid': self.pid, 'cgroup': str(self.cgroup), 'effective_limits': limits,
-                        'flags': flags, 'environment_owner': 'systemd EnvironmentFile; never sourced in a shell'}
+                        'flags': flags, 'resource_profile': self.resource_profile, 'parent_limits': parent_limits,
+                        'environment_owner': 'systemd EnvironmentFile; never sourced in a shell'}
             self.assert_running()
             time.sleep(.05)
         raise RuntimeError('Private unit did not start a JVM')
@@ -594,10 +652,28 @@ def import_completion(root, manifest):
 def local_slices(unit, root, oracle, config, source_key, timeout, import_manifest=None):
     service, dataframe = root / 'var/db/ioc-service.db', root / 'var/db/ioc-dataframe.db'
     profiles = {profile['name']: set(profile['artifacts']) for profile in config['ioc']['export']['profiles']}
+    keys = tuple(source_key) if isinstance(source_key, (tuple, list)) else (source_key,)
+    multi = len(keys) > 1
+    completed_sources = set()
+    if multi:
+        source_key = keys[-1]
     deadline, found, transitions = time.monotonic() + timeout, {}, []
     previous = None
     while time.monotonic() < deadline:
         unit.assert_running()
+        if multi:
+            for key in keys:
+                if key in completed_sources:
+                    continue
+                entries = admission_rows(root, config, key)
+                if any(entry['phase'] == 'TERMINAL' and entry['terminal_outcome'] != 'SUCCEEDED' for entry in entries):
+                    raise WorkloadFailure('A batch document reached a failed terminal outcome')
+                finalized = any(entry['phase'] == 'TERMINAL' and entry['registration_finalized'] == 1 for entry in entries)
+                if finalized and BASE.rows(service, 'SELECT run_id FROM ingest_run WHERE source_key=? AND status=?', (key, 'COMPLETED')):
+                    completed_sources.add(key)
+            if len(completed_sources) != len(keys):
+                time.sleep(.1)
+                continue
         admissions = [] if import_manifest else admission_rows(root, config, source_key)
         if admissions and admissions[0] != previous:
             previous = admissions[0]
@@ -632,7 +708,8 @@ def local_slices(unit, root, oracle, config, source_key, timeout, import_manifes
                     raise RuntimeError('Document terminal outcome failed')
                 # Stop timing before independent output readback/verification.
                 return {'complete_monotonic': time.monotonic(), 'profiles': found,
-                        'admission_transitions': transitions, 'run': runs[0], 'revisions': revisions, 'projections': projections}
+                        'admission_transitions': transitions, 'run': runs[0], 'revisions': revisions, 'projections': projections,
+                        'completed_document_sources': len(completed_sources) if multi else (0 if import_manifest else 1)}
         time.sleep(.1)
     raise RuntimeError('Complete local slices timeout')
 
@@ -651,6 +728,14 @@ def verify_slices(local, oracle, dataframe):
         evidence[profile] = {'manifest_sha256': value['run']['manifest_sha256'], 'artifacts': manifest['artifacts'],
                              'slice_id': value['run']['run_id']}
     return evidence
+
+
+def publication_counts(root):
+    """Count durable export/publish operations without materializing their payloads."""
+    service = root / 'var/db/ioc-service.db'
+    return {table: BASE.rows(service,
+                'SELECT profile,status,COUNT(*) AS count FROM ' + table + ' GROUP BY profile,status')
+            for table in ('export_run', 'publish_ledger')}
 
 
 def private_config(source, root, port):
@@ -716,7 +801,12 @@ def sample(args, jar, report, index, evidence_root):
     # State cleanup is unconditional, including exceptions and collection failure.
     temporary = tempfile.mkdtemp(prefix='ioc-cap6-', dir=REPO / '.dev')
     root = Path(temporary)
+    checkpoint = getattr(args, 'sample_checkpoint', None)
+    if checkpoint:
+        result.update(private_state=str(root), profile=args.sample_profile, rows=args.rows)
     try:
+        if checkpoint:
+            checkpoint()
         config = private_config(args.config, root, args.port)
         if getattr(args, 'smb', False):
             original = yaml.safe_load(args.config.read_text())['ioc']
@@ -730,11 +820,13 @@ def sample(args, jar, report, index, evidence_root):
         result['policy_changes'] = ['Private state/inbox/import paths and loopback port',
                                     'Private SMB namespace' if share else 'Sync disabled for local reference', 'Log phase observer enabled']
         oracle = DiskOracle(config, root / 'oracle.db')
-        unit = PrivateUnit(root)
+        unit = PrivateUnit(root, args.resource_profile) if getattr(args, 'resource_profile', None) else PrivateUnit(root)
         launch = {'launcher': args.launcher} if getattr(args, 'launcher', None) else {}
         result['runtime'] = unit.start(jar, root / 'application.yml',
                                        environment=getattr(args, 'environment', None) if share else None,
                                        diagnostic=args.diagnostic, **launch)
+        if checkpoint:
+            checkpoint()
         result['startup'] = ready(unit, args.port)
         sampler = ResourceSampler(unit.pid, unit.cgroup, root)
         warmup = root / 'warmup.html'
@@ -752,6 +844,7 @@ def sample(args, jar, report, index, evidence_root):
             verify_slices(local, oracle, root / 'var/db/ioc-dataframe.db')
         import_artifact = getattr(args, 'import_artifact', None)
         document = root / ('reference.csv' if import_artifact else 'reference.' + args.format)
+        documents = [document]
         if import_artifact:
             generator = getattr(args, 'import_fixture', INPUTS.import_fixture)
             result['input'] = generator(document, args.rows, import_artifact, config, oracle, BASE.digest)
@@ -761,24 +854,61 @@ def sample(args, jar, report, index, evidence_root):
             feed_fixture(oracle, document)
             if oracle.observations - 60 - args.initial_rows != args.rows:
                 raise RuntimeError('Physical input occurrence count differs from declared workload')
+        elif getattr(args, 'document_count', 1) > 1:
+            manifest = []
+            documents = []
+            quotient, remainder = divmod(args.rows, args.document_count)
+            for document_index in range(args.document_count):
+                path = root / f'reference-{document_index + 1:04d}.{args.format}'
+                item = fixture(path, quotient + int(document_index < remainder), args.shape, seed=43 + document_index)
+                feed_fixture(oracle, path)
+                documents.append(path)
+                manifest.append(dict(filename=path.name, **item))
+            result['input'] = {'rows': args.rows, 'document_count': len(documents), 'documents': manifest,
+                               'bytes': sum(item['bytes'] for item in manifest),
+                               'sha256': hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest(),
+                               'scope': 'SHA-256 of deterministic corpus manifest; each physical DOCX also has its own digest'}
         else:
             result['input'] = fixture(document, args.rows, args.shape)
             feed_fixture(oracle, document)
         result['expected_final_rows'] = oracle.counts()
+        if share:
+            # Settle prepopulation publications outside the measured bulk window.
+            share.wait_publications(unit, root, local, BASE, args.timeout)
+        result['publication_counts_before'] = publication_counts(root)
         result['health_before'] = health(args.port, 'dataProcessingCapacity')['details']
         if getattr(args, 'qualification', None):
             qualification = args.qualification(root, args.port)
             qualification.begin()
         sampler.begin()
-        handoff = share.handoff(document) if share else (INPUTS.import_handoff(document, root) if import_artifact else local_handoff(document, root))
+        handoffs = [share.handoff(path) if share else (INPUTS.import_handoff(path, root) if import_artifact else local_handoff(path, root))
+                    for path in documents]
+        handoff = dict(handoffs[0])
+        if len(handoffs) > 1:
+            handoff.update(document_count=len(handoffs), last_handoff_monotonic=handoffs[-1]['monotonic'],
+                           corpus_upload_seconds=sum(item.get('upload_seconds', 0) for item in handoffs))
         result['handoff'] = handoff
-        local = local_slices(unit, root, oracle, config, BASE.digest(document), args.timeout,
+        if checkpoint:
+            checkpoint()
+        source_keys = tuple(BASE.digest(path) for path in documents) if len(documents) > 1 else BASE.digest(document)
+        local = local_slices(unit, root, oracle, config, source_keys, args.timeout,
                              result['input'] if import_artifact else None)
         quiet = quiet_seconds(config) if not import_artifact else 0
         result['local_window_upper_seconds'] = local['complete_monotonic'] - handoff['monotonic'] - quiet
         result['configured_stability_seconds'] = quiet
         result['raw_local_handoff_to_slices_seconds'] = local['complete_monotonic'] - handoff['monotonic']
         result['timeline'] = {key: value for key, value in local.items() if key != 'profiles'}
+        remote_observed = None
+        if share and getattr(args, 'separate_smb_completion', False):
+            remote_observed = share.wait_publications(unit, root, local, BASE, args.timeout)
+            completed = max(value['observed_monotonic'] for value in remote_observed.values())
+            result['smb_publication_completion_upper_seconds'] = completed - handoff['monotonic']
+            result['smb_from_producer_upload_upper_seconds'] = completed - handoff['upload_started_monotonic']
+            result['resources_at_smb_completion'] = sampler.summary()
+            result['smb_timing_scope'] = 'durable publish-ledger success, including service verification; excludes later independent readback and post-bulk diagnostics'
+        result['publication_counts_at_service_completion'] = publication_counts(root)
+        if checkpoint:
+            checkpoint()
         if qualification:
             result['qualification'] = qualification.finish()
         result['resources'] = sampler.summary()
@@ -789,7 +919,8 @@ def sample(args, jar, report, index, evidence_root):
             oracle.check_csv(artifact['name'], root / artifact['path'], root / 'var/db/ioc-dataframe.db', None)
         result['mutable_projection_oracle'] = 'PASS; fields, complete keys, canonical ids and durable generations'
         if share:
-            result['publications'] = share.publications(unit, root, local, oracle, BASE, args.timeout)
+            options = {'observed': remote_observed} if remote_observed is not None else {}
+            result['publications'] = share.publications(unit, root, local, oracle, BASE, args.timeout, **options)
             result['complete_smb_seconds'] = max(value['verified_monotonic'] for value in result['publications'].values()) - handoff['monotonic']
             result['smb_resource_window'] = sampler.summary()
         if getattr(args, 'canonical_evidence', None):

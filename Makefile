@@ -282,6 +282,30 @@ service-capacity: ## CAP-6 private cgroup-limited whole-service screens; SERVICE
 sqlite-publication-capacity: ## C5 paired native/staged private service qualification; SQLITE_CAPACITY_ARGS selects the covering cell
 	@python3 tools/dev/sqlite-publication-capacity.py $(SQLITE_CAPACITY_ARGS)
 
+.PHONY: projection-ack-comparison
+projection-ack-comparison: ## Bounded prepared/direct projection ACK comparison; ACK_COMPARISON_ARGS supplies frozen jars and private output
+	@python3 tools/dev/projection-ack-comparison.py $(ACK_COMPARISON_ARGS)
+
+.PHONY: typed-journal-comparison
+typed-journal-comparison: ## Bounded row/chunk typed journal comparison with identical direct ACK; JOURNAL_COMPARISON_ARGS supplies frozen runtimes
+	@python3 tools/dev/typed-journal-comparison.py $(JOURNAL_COMPARISON_ARGS)
+
+.PHONY: receipt-payload-comparison
+receipt-payload-comparison: ## Bounded versioned/immutable receipt comparison; RECEIPT_COMPARISON_ARGS supplies frozen runtimes
+	@python3 tools/dev/receipt-payload-comparison.py $(RECEIPT_COMPARISON_ARGS)
+
+.PHONY: hybrid-cycle-compile
+hybrid-cycle-compile: ## Fast candidate compilation only; HYBRID_COMPILE_ARGS supplies a new private executable directory
+	@python3 tools/dev/hybrid-cycle-compile.py $(HYBRID_COMPILE_ARGS)
+
+.PHONY: hybrid-growth-qualification
+hybrid-growth-qualification: ## Frozen 100k/1m local service cycle; HYBRID_QUALIFICATION_ARGS supplies point, runtime and output
+	@python3 tools/dev/hybrid-growth-qualification.py $(HYBRID_QUALIFICATION_ARGS)
+
+.PHONY: receipt-retention-qualification
+receipt-retention-qualification: ## Finite receipt retirement and bounded cleanup; RECEIPT_RETENTION_ARGS supplies output
+	@python3 tools/dev/receipt-retention-qualification.py $(RECEIPT_RETENTION_ARGS)
+
 .PHONY: sqlite-typed-chunk-cost
 sqlite-typed-chunk-cost: ## Isolated staged typed chunk cost; CHUNK_COST_ARGS selects a frozen jar and private output
 	@python3 tools/dev/sqlite-typed-chunk-cost.py $(CHUNK_COST_ARGS)

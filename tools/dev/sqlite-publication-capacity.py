@@ -67,9 +67,10 @@ def clock_preflight(root, duration_seconds=90):
 
 class QualificationWindow:
     """Bounded control/cleanup load and fail-closed, exact admission/allocation measurement."""
-    def __init__(self, root, port, maintenance_every=5):
+    def __init__(self, root, port, maintenance_every=5, http_timeout_seconds=40):
         self.root, self.port = root, port
         self.maintenance_every = maintenance_every
+        self.http_timeout_seconds = http_timeout_seconds
         self.stop = threading.Event()
         self.thread = None
         self.failure = None
@@ -83,7 +84,7 @@ class QualificationWindow:
         request = urllib.request.Request(f'http://127.0.0.1:{self.port}/qualification/' + path,
                                          data=b'', method='POST')
         try:
-            with opener.open(request, timeout=40) as response:
+            with opener.open(request, timeout=self.http_timeout_seconds) as response:
                 return json.load(response)
         except urllib.error.HTTPError as failure:
             # Preserve bounded test-only diagnostic context, never turn an HTTP failure into a sample.
@@ -127,7 +128,7 @@ class QualificationWindow:
     def close(self):
         self.stop.set()
         if self.thread:
-            self.thread.join(45)
+            self.thread.join(self.http_timeout_seconds + 5)
             if self.thread.is_alive():
                 raise RuntimeError('Qualification control worker did not terminate')
         if self.failure:
@@ -303,6 +304,7 @@ def freeze_runtime(jar, target):
     classes = []
     for package, prefix in [('com/iocextractor/bootstrap', 'SqliteCapacityApplication'),
                             ('com/iocextractor/bootstrap', 'SqliteCapacityMetrics'),
+                            ('com/iocextractor/bootstrap', 'ReceiptPayloadDiagnostics'),
                             ('com/iocextractor/adapter/out/store/jdbc', 'StagedCapacityBundle')]:
         matched = sorted((helpers / package).glob(prefix + '*.class'))
         if not matched:

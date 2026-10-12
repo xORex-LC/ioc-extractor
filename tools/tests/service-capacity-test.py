@@ -22,6 +22,15 @@ C5_SPEC.loader.exec_module(C5)
 NATIVE_COST_SPEC = importlib.util.spec_from_file_location('native_cost_comparison', Path(__file__).resolve().parents[1] / 'dev/native-cost-comparison.py')
 NATIVE_COST = importlib.util.module_from_spec(NATIVE_COST_SPEC)
 NATIVE_COST_SPEC.loader.exec_module(NATIVE_COST)
+ACK_SPEC = importlib.util.spec_from_file_location('projection_ack', Path(__file__).resolve().parents[1] / 'dev/projection-ack-comparison.py')
+ACK = importlib.util.module_from_spec(ACK_SPEC)
+ACK_SPEC.loader.exec_module(ACK)
+JOURNAL_SPEC = importlib.util.spec_from_file_location('typed_journal', Path(__file__).resolve().parents[1] / 'dev/typed-journal-comparison.py')
+JOURNAL = importlib.util.module_from_spec(JOURNAL_SPEC)
+JOURNAL_SPEC.loader.exec_module(JOURNAL)
+RETENTION_SPEC = importlib.util.spec_from_file_location('receipt_retention', Path(__file__).resolve().parents[1] / 'dev/receipt-retention-qualification.py')
+RETENTION = importlib.util.module_from_spec(RETENTION_SPEC)
+RETENTION_SPEC.loader.exec_module(RETENTION)
 
 
 def policy():
@@ -39,6 +48,176 @@ def policy():
 
 
 class ServiceCapacityTest(unittest.TestCase):
+    def test_publication_counts_keep_intermediate_slices_and_failed_deliveries_visible(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / 'var/db/ioc-service.db'
+            database.parent.mkdir(parents=True)
+            with sqlite3.connect(database) as connection:
+                for table in ('export_run', 'publish_ledger'):
+                    connection.execute('CREATE TABLE ' + table + '(profile TEXT,status TEXT)')
+                connection.executemany('INSERT INTO export_run VALUES (?,?)',
+                                      [('lists', 'COMPLETED')] * 3 + [('lists', 'SKIPPED')])
+                connection.executemany('INSERT INTO publish_ledger VALUES (?,?)',
+                                      [('lists', 'SUCCEEDED')] * 2 + [('lists', 'FAILED')])
+
+            counts = CAP.publication_counts(root)
+
+            self.assertEqual(counts['export_run'], [{'profile': 'lists', 'status': 'COMPLETED', 'count': 3},
+                                                   {'profile': 'lists', 'status': 'SKIPPED', 'count': 1}])
+            self.assertEqual(counts['publish_ledger'], [{'profile': 'lists', 'status': 'FAILED', 'count': 1},
+                                                       {'profile': 'lists', 'status': 'SUCCEEDED', 'count': 2}])
+
+    def test_batch_completion_does_not_accept_only_the_last_finished_document(self):
+        from unittest.mock import MagicMock
+        config = {'ioc': {'export': {'profiles': [{'name': 'profile', 'artifacts': ['masks']}]}}}
+        pending = {'phase': 'PREPARED', 'terminal_outcome': None, 'registration_finalized': 0}
+        complete = {'phase': 'TERMINAL', 'terminal_outcome': 'SUCCEEDED', 'registration_finalized': 1}
+        with patch.object(CAP, 'admission_rows', side_effect=lambda root, policy, key: [pending if key == 'first' else complete]), \
+                patch.object(CAP.BASE, 'rows', return_value=[{'run_id': 'last-run'}]) as rows, \
+                patch.object(CAP.time, 'monotonic', side_effect=[0, 0, 2]), patch.object(CAP.time, 'sleep'):
+            with self.assertRaisesRegex(RuntimeError, 'Complete local slices timeout'):
+                CAP.local_slices(MagicMock(spec=CAP.PrivateUnit), Path('.'), None, config, ('first', 'last'), 1)
+        self.assertTrue(all('export_run' not in call.args[1] for call in rows.call_args_list))
+
+    def test_smb_service_completion_is_observed_without_independent_readback(self):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        share = object.__new__(CAP.INPUTS.PrivateShare)
+        share.namespace = '.ioc-cap6-owned'
+        share.share = MagicMock()
+        unit = MagicMock(spec=CAP.PrivateUnit)
+        local = {'profiles': {'profile': {'run': {'run_id': 'slice'}}}}
+        base = SimpleNamespace(rows=lambda *args: [{'remote_path': '.ioc-cap6-owned/get/slice',
+                                                   'slice_id': 'slice', 'status': 'SUCCEEDED'}])
+        observed = share.wait_publications(unit, Path('.'), local, base, 1)
+        self.assertEqual(observed['profile']['publication']['status'], 'SUCCEEDED')
+        self.assertGreater(observed['profile']['observed_monotonic'], 0)
+        share.share.run.assert_not_called()
+
+    def test_smb_completion_rejects_a_successful_ledger_row_outside_the_owned_namespace(self):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        share = object.__new__(CAP.INPUTS.PrivateShare)
+        share.namespace = '.ioc-cap6-owned'
+        base = SimpleNamespace(rows=lambda *args: [{'remote_path': '.ioc-cap6-owned-other/get/slice'}])
+        with self.assertRaisesRegex(RuntimeError, 'escaped private SMB'):
+            share.wait_publications(MagicMock(spec=CAP.PrivateUnit), Path('.'),
+                                    {'profiles': {'profile': {'run': {'run_id': 'slice'}}}}, base, 1)
+
+    def test_reference_resource_limits_include_the_collector_and_reserve_host_headroom(self):
+        limits = {'cpu.max': '400000 100000', 'memory.high': str(5 * 1024**3),
+                  'memory.max': str(6 * 1024**3), 'memory.swap.max': '0'}
+        CAP.verify_resource_limits('reference-8g', limits, limits)
+        for changes in ({'cpu.max': '200000 100000'}, {'memory.max': str(8 * 1024**3)},
+                        {'memory.swap.max': 'max'}):
+            with self.subTest(changes=changes), self.assertRaisesRegex(RuntimeError, 'limits differ'):
+                CAP.verify_resource_limits('reference-8g', limits, dict(limits, **changes))
+        with self.assertRaisesRegex(RuntimeError, 'Missing shared'):
+            CAP.verify_resource_limits('reference-8g', limits)
+
+    def test_legacy_resource_identity_stays_fixed_and_reference_cannot_relabel_it(self):
+        limits = {'cpu.max': '200000 100000', 'memory.high': str(768 * 1024**2),
+                  'memory.max': str(1024**3), 'memory.swap.max': 'max'}
+        CAP.verify_resource_limits('legacy', limits)
+        with self.assertRaisesRegex(RuntimeError, 'limits differ'):
+            CAP.verify_resource_limits('reference-8g', limits, limits)
+        with self.assertRaisesRegex(ValueError, 'Unknown capacity'):
+            CAP.PrivateUnit(Path('.'), 'unbounded')
+
+    def test_receipt_retention_freeze_excludes_empty_classpath_and_rejects_recursive_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / 'measurements'
+            self.assertEqual(RETENTION.classpath_entries('/tmp/helper.jar:', output), ['/tmp/helper.jar'])
+            with self.assertRaisesRegex(ValueError, 'contains the output'):
+                RETENTION.classpath_entries(str(root) + ':', output)
+
+    def test_receipt_comparison_keeps_modes_separate_and_refuses_changed_payloads(self):
+        versioned = dict(payloads='versioned', status='CORRECTNESS_PASS', input={'sha256': 'same'},
+                         canonical_oracle={'masks': {'rows': 20}},
+                         canonical_evidence={'deterministic_fingerprints': {'receipt': 'same'}},
+                         local_window_upper_seconds=2, qualification={'allocatedProcessBytes': 200})
+        append = dict(versioned, payloads='append', local_window_upper_seconds=1,
+                      qualification={'allocatedProcessBytes': 150})
+        self.assertEqual(JOURNAL.compare_pair([versioned, append], 'payloads', ('versioned', 'append'))['allocations_ratio'], .75)
+        self.assertNotIn('time_ratio', JOURNAL.compare_pair([versioned, dict(append, status='ERROR')], 'payloads', ('versioned', 'append')))
+        with self.assertRaisesRegex(RuntimeError, 'receipt payload'):
+            JOURNAL.compare_pair([versioned, dict(append, canonical_evidence={'deterministic_fingerprints': {'receipt': 'lost'}})],
+                                 'payloads', ('versioned', 'append'))
+
+    def test_journal_comparison_requires_complete_pairs_identical_semantics_and_receipt_payloads(self):
+        row = dict(journal='row', status='CORRECTNESS_PASS', input={'sha256': 'same'},
+                   canonical_oracle={'masks': {'rows': 20}}, canonical_evidence={'deterministic_fingerprints': {'receipt': 'same'}},
+                   local_window_upper_seconds=2, qualification={'allocatedProcessBytes': 200})
+        chunk = dict(row, journal='chunk', local_window_upper_seconds=1, qualification={'allocatedProcessBytes': 100})
+        self.assertEqual(JOURNAL.compare_pair([row, chunk])['time_ratio'], .5)
+        self.assertNotIn('time_ratio', JOURNAL.compare_pair([row, dict(chunk, status='ERROR')]))
+        with self.assertRaisesRegex(RuntimeError, 'receipt payload'):
+            JOURNAL.compare_pair([row, dict(chunk, canonical_evidence={'deterministic_fingerprints': {'receipt': 'changed'}})])
+        with self.assertRaisesRegex(RuntimeError, 'Incomplete'):
+            JOURNAL.compare_pair([row])
+
+    def test_journal_physical_census_does_not_replace_typed_effects_with_pointer_count(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'var/db').mkdir(parents=True)
+            with sqlite3.connect(root / 'var/db/ioc-dataframe.db') as db:
+                db.executescript("CREATE TABLE publication_version_data(value); INSERT INTO publication_version_data VALUES(1),(2),(3);"
+                                 "CREATE TABLE publication_fact(value); INSERT INTO publication_fact VALUES(1);"
+                                 "CREATE TABLE publication_chunk(value); INSERT INTO publication_chunk VALUES(1);"
+                                 "CREATE TABLE publication_unit(contributions,state); INSERT INTO publication_unit VALUES(3,'COMMITTED');")
+            value = JOURNAL.physical_evidence(root)
+            self.assertEqual(value['typed_version_rows'], 3)
+            self.assertEqual(value['journal_pointer_rows'], 1)
+            self.assertEqual(value['committed_effects'], 3)
+
+    def test_journal_bulk_window_has_no_ack_prefix_and_keeps_same_concurrent_control(self):
+        with patch.object(JOURNAL, 'physical_evidence', return_value={'rows': 0}), patch.object(JOURNAL.C5.QualificationWindow, 'begin') as begin:
+            window = JOURNAL.JournalWindow(Path('.'), 1)
+            window.begin()
+            begin.assert_called_once_with()
+        with patch.object(JOURNAL.C5.QualificationWindow, 'request', return_value={}) as request:
+            window.request('control')
+            request.assert_called_once_with('ack?pendingOnly=true')
+
+    def test_ack_runtime_cleanup_is_observed_after_owner_exit_and_on_failure(self):
+        for fail in (False, True):
+            report = {}
+            try:
+                with ACK.runtime_directory(report) as root:
+                    (root / 'owned').write_text('frozen helper')
+                    self.assertTrue(root.exists())
+                    if fail:
+                        raise RuntimeError('qualification failure')
+            except RuntimeError as error:
+                self.assertTrue(fail)
+                self.assertEqual(str(error), 'qualification failure')
+            self.assertFalse(root.exists())
+            self.assertTrue(report['temporary_runtime_removed'])
+
+    def test_ack_comparison_does_not_publish_ratios_for_failed_windows(self):
+        members = [dict(projection='prepared', status='ERROR'), dict(projection='direct', status='CORRECTNESS_PASS')]
+        self.assertEqual(ACK.compare_pair(members)['status'], 'INCOMPLETE')
+        self.assertNotIn('time_ratio', ACK.compare_pair(members))
+
+    def test_ack_comparison_rejects_different_inputs_or_final_semantics(self):
+        prepared = dict(projection='prepared', status='CORRECTNESS_PASS', input={'sha256': 'same'},
+                        canonical_oracle={'masks': {'rows': 20}}, local_window_upper_seconds=2,
+                        qualification={'allocatedProcessBytes': 200})
+        direct = dict(prepared, projection='direct', local_window_upper_seconds=1,
+                      qualification={'allocatedProcessBytes': 100})
+        self.assertEqual(ACK.compare_pair([prepared, direct])['time_ratio'], .5)
+        with self.assertRaisesRegex(RuntimeError, 'provenance differ'):
+            ACK.compare_pair([prepared, dict(direct, canonical_oracle={'masks': {'rows': 19}})])
+        with self.assertRaisesRegex(RuntimeError, 'inputs'):
+            ACK.compare_pair([prepared, dict(direct, input={'sha256': 'different'})])
+
+    def test_ack_tail_estimator_requires_samples_and_uses_nearest_rank(self):
+        self.assertEqual(ACK.percentile(range(1, 201), .99), 198)
+        with self.assertRaises(ValueError):
+            ACK.percentile([], .95)
+
     def test_clock_preflight_rejects_backward_step_before_any_workload(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -177,6 +356,7 @@ class ServiceCapacityTest(unittest.TestCase):
             helpers = root / 'bootstrap/ioc-app/target/test-classes'
             for package, name in [('com/iocextractor/bootstrap', 'SqliteCapacityApplication'),
                                   ('com/iocextractor/bootstrap', 'SqliteCapacityMetrics'),
+                                  ('com/iocextractor/bootstrap', 'ReceiptPayloadDiagnostics'),
                                   ('com/iocextractor/adapter/out/store/jdbc', 'StagedCapacityBundle')]:
                 path = helpers / package / (name + '.class')
                 path.parent.mkdir(parents=True, exist_ok=True)

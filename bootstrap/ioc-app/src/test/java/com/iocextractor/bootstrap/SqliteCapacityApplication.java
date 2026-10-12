@@ -43,6 +43,18 @@ public final class SqliteCapacityApplication {
         if (!"native".equals(backend) && !"staged".equals(backend)) {
             throw new IllegalArgumentException("qualification.sqlite must be native or staged");
         }
+        String projection = System.getProperty("qualification.projection", "prepared");
+        if (!projection.equals("prepared") && !projection.equals("direct")) {
+            throw new IllegalArgumentException("qualification.projection must be prepared or direct");
+        }
+        String receipts = System.getProperty("qualification.receipts", "versioned");
+        if (!receipts.equals("versioned") && !receipts.equals("append")) {
+            throw new IllegalArgumentException("qualification.receipts must be versioned or append");
+        }
+        String journal = System.getProperty("qualification.journal", "row");
+        if (!journal.equals("row") && !journal.equals("chunk")) {
+            throw new IllegalArgumentException("qualification.journal must be row or chunk");
+        }
         SpringApplication.run(new Class<?>[]{IocExtractorApplication.class,
                 CandidateConfiguration.class, SqliteCapacityMetrics.Endpoints.class}, arguments);
     }
@@ -74,7 +86,10 @@ public final class SqliteCapacityApplication {
                     config.artifactIdAllocatorDefinitions(props, baseline), identities, time, clock,
                     props.lifecycle().validity().fixedTtl(), writers, workspaces,
                     Path.of(props.dataframeImport().runtime().dirs().staging()), ArtifactPolicyCatalog.compile(props),
-                    props.lifecycle().receiptRetention(), diagnostics, props.storage().dataframe().pool().readMax()));
+                    props.lifecycle().receiptRetention(), diagnostics, props.storage().dataframe().pool().readMax()),
+                    System.getProperty("qualification.projection", "prepared").equals("direct"),
+                    System.getProperty("qualification.journal", "row").equals("chunk"),
+                    System.getProperty("qualification.receipts", "versioned").equals("append"));
         }
 
         @Bean

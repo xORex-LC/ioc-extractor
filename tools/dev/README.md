@@ -12,6 +12,10 @@
 |---|---|
 | `bootstrap.sh lychee` | Установить закреплённый lychee в `.dev/tools/bin` с SHA-256 verification |
 | `context.sh …` | Вывести стабильный `key=value` cold-start context: version, Git, runtime и свежесть последнего `verify` |
+| `hybrid-cycle-compile.py --output .dev/…` | Скомпилировать изменённый JDBC adapter и qualification helpers поверх сохранённого baseline JAR без quality gates |
+| `hybrid-growth-qualification.py --point N --runtime .dev/… --output .dev/…` | Изолированный полный daemon цикл: документ и processed import по 100k/1m; raw замеры остаются локальными |
+| `hybrid-growth-qualification.py … --resource-profile reference-8g --backend native\|staged` | Конечное сравнение на общем cgroup для приложения и collector: 4 CPU, 6 GiB без swap; оставшиеся 2 GiB зарезервированы под ОС. Нужен controller в `ioc-capacity-reference.slice` с применёнными лимитами |
+| `hybrid-growth-summary.py --root .dev/hybrid-eight` | Сводка сопоставимых окон, памяти, хранения, reads и cleanup; неуспешные окна не дают отношения производительности |
 | `app.sh …` | Запустить public CLI через единственный найденный bootable jar; optional isolated workspace |
 | `doctor.sh [core|dev|ci|security|all]` | Проверить обязательные и optional prerequisites без установки пакетов |
 | `fixture.sh …` | Сгенерировать детерминированный HTML/text IOC fixture и JSON manifest |
@@ -28,6 +32,10 @@
 | `document-workspace-capacity.py …` | Диагностика CAP-4: инкрементальный дисковый reducer, canonical writer и receipts; удалить все временные базы даже при отказе |
 | `service-capacity.py …` | CAP-6: отдельный user-systemd, фактические cgroup limits, прогретый полный локальный цикл, дисковый oracle и очистка |
 | `sqlite-publication-capacity.py …` | C5: парные изолированные прогоны native/staged SQLite, точные writer wait/hold, allocations всего JVM, параллельные control/cleanup; `make sqlite-publication-capacity SQLITE_CAPACITY_ARGS='…'` |
+| `projection-ack-comparison.py …` | Ограниченный эксперимент ACK: замороженные prepared/direct staged JVM, ACK отдельно и вместе с document/import, проверка полей и receipt, reader samples и физической очистки; `make projection-ack-comparison ACK_COMPARISON_ARGS='…'`. Численный ресурсный бюджет остаётся открытым. |
+| `typed-journal-comparison.py …` | Ограниченный эксперимент журнала: прежний staged JAR с per-effect pointers и кандидат с per-chunk pointers, одинаковый direct ACK без прогревочного ACK-префикса; проверка receipt/identity/provenance, ресурсы, reads и фиксированный бюджет cleanup; `make typed-journal-comparison JOURNAL_COMPARISON_ARGS='…'`. |
+| `receipt-payload-comparison.py …` | Парный эксперимент неизменяемых ordinary receipt payloads после compact journal/direct ACK: штатная Spring-сборка, document/import oracle, dbstat и 20 полных real-port receipt scans; `make receipt-payload-comparison RECEIPT_COMPARISON_ARGS='…'`. `--baseline-only` — только исходная атрибуция. |
+| `receipt-retention-qualification.py …` | Отдельная конечная file-backed квалификация retirement/cleanup: крупные receipts, открытый reader, продолжение публикации и catch-up до нулевого payload debt; `make receipt-retention-qualification RECEIPT_RETENTION_ARGS='--output .dev/receipt-retention-run --rows 2000 --cycles 3'`. Не измеряет throughput Spring-сервиса или sustained retention. |
 | `ProcessingAllocationProfile.java …` | Потоковый разбор диагностического JFR: сэмплированный вес allocations и стеки по ближайшему IOC-методу; `make native-processing-profile JFR=…` |
 | `native-cost-comparison.py …` | Сравнить завершённые primary-серии native на одинаковых физических inputs и policy: поля/ключи/ID/provenance/receipt, метрики и сохранённые отрицательные screens; `make native-cost-comparison COST_COMPARISON_ARGS='…'` |
 | `service-capacity-upgrade.py …` | CAP-6: приватный upgrade после drain, backup остановленных БД/файлов и проверка restore до запуска прежнего бинарника |

@@ -142,10 +142,19 @@ public final class SqliteCapacityMetrics {
         private final JdbcLifecycleClock clock;
         private final RunLifecycleHistoryRetentionUseCase retention;
         private final ObjectProvider<StagedCapacityBundle> staged;
+        private final com.iocextractor.application.port.out.artifact.lifecycle.ArtifactProjectionWorkStore projections;
+        private final javax.sql.DataSource dataframe;
+        private final com.iocextractor.application.port.out.artifact.lifecycle.ConfirmationReceiptStore receipts;
 
         public Endpoints(JdbcWriterAdmission writers, JdbcLifecycleClock clock,
-                RunLifecycleHistoryRetentionUseCase retention, ObjectProvider<StagedCapacityBundle> staged) {
+                RunLifecycleHistoryRetentionUseCase retention, ObjectProvider<StagedCapacityBundle> staged,
+                com.iocextractor.application.port.out.artifact.lifecycle.ArtifactProjectionWorkStore projections,
+                @org.springframework.beans.factory.annotation.Qualifier("dataframeStorageDataSource") javax.sql.DataSource dataframe,
+                com.iocextractor.application.port.out.artifact.lifecycle.ConfirmationReceiptStore receipts) {
             this.writers = writers; this.clock = clock; this.retention = retention; this.staged = staged;
+            this.projections = projections;
+            this.dataframe = dataframe;
+            this.receipts = receipts;
             observeAdmission(writers);
         }
         @PostMapping("/qualification/window/start") public Map<String, Object> start() {
@@ -154,6 +163,13 @@ public final class SqliteCapacityMetrics {
             return begin();
         }
         @GetMapping("/qualification/window") public Map<String, Object> window() { return snapshot(); }
+        @PostMapping("/qualification/receipt-families") public Map<String, Object> receiptFamilies() throws java.sql.SQLException {
+            return ReceiptPayloadDiagnostics.inspect(dataframe);
+        }
+        @PostMapping("/qualification/receipt-read-burst") public Map<String, Object> receiptReadBurst(
+                @org.springframework.web.bind.annotation.RequestParam(defaultValue = "20") int count) throws Exception {
+            return ReceiptPayloadDiagnostics.read(dataframe, receipts, clock.now(), count);
+        }
         @PostMapping("/qualification/window/end") public Map<String, Object> finish() {
             var result = new java.util.LinkedHashMap<>(end());
             var candidate = staged.getIfAvailable();
@@ -168,6 +184,98 @@ public final class SqliteCapacityMetrics {
                     "utcBeforeEpochMs", rawBefore, "utcAfterEpochMs", System.currentTimeMillis(),
                     "eligibleMonotonicNanos", eligible, "completedMonotonicNanos", System.nanoTime(),
                     "clockSnapshotAfter", clock.inspect());
+        }
+
+        /** Executes the real projection port, including a generation-scoped error when work is pending. */
+        @PostMapping("/qualification/ack") public Map<String, Object> acknowledge(
+                @org.springframework.web.bind.annotation.RequestParam(defaultValue = "false") boolean pendingOnly) {
+            long eligible = System.nanoTime();
+            long rawBefore = System.currentTimeMillis();
+            long readStarted = System.nanoTime();
+            var before = projections.load("masks");
+            long readNanos = System.nanoTime() - readStarted;
+            boolean failureApplied = (pendingOnly || before.pending()) && projections.recordFailure("masks", before.requiredGeneration(),
+                    "QUALIFICATION.PROJECTION_FAILED");
+            boolean shouldAcknowledge = !pendingOnly || before.pending();
+            boolean applied = shouldAcknowledge && projections.acknowledge(
+                    new com.iocextractor.application.artifact.lifecycle.ProjectionAcknowledgement("masks", before.requiredGeneration()));
+            var after = projections.load("masks");
+            if (shouldAcknowledge && (!applied || after.projectedGeneration().compareTo(before.requiredGeneration()) < 0)) {
+                throw new IllegalStateException("Projection acknowledgement did not preserve its admitted generation");
+            }
+            return Map.of("eligibleToCompleteNanos", System.nanoTime() - eligible,
+                    "readNanos", readNanos, "failureApplied", failureApplied, "ackApplied", applied,
+                    "requiredGeneration", after.requiredGeneration().value(),
+                    "projectedGeneration", after.projectedGeneration().value(),
+                    "utcBeforeEpochMs", rawBefore, "utcAfterEpochMs", System.currentTimeMillis(),
+                    "eligibleMonotonicNanos", eligible, "completedMonotonicNanos", System.nanoTime());
+        }
+
+        /** Read-only post-publication samples, with no ACK mutations or artificial bulk warmup. */
+        @PostMapping("/qualification/projection-read-burst") public Map<String, Object> readBurst(
+                @org.springframework.web.bind.annotation.RequestParam(defaultValue = "100") int count) {
+            if (count < 1 || count > 500) { throw new IllegalArgumentException("Read count must be 1..500"); }
+            var samples = new java.util.ArrayList<Long>(count);
+            for (int index = 0; index < count; index++) {
+                long before = System.nanoTime();
+                projections.load("masks");
+                samples.add(System.nanoTime() - before);
+            }
+            return Map.of("samplesNanos", samples, "scope", "committed masks projection metadata through the real port");
+        }
+
+        /** Separate command identities: this probe never writes an error as part of ACK. */
+        @PostMapping("/qualification/pure-ack") public Map<String, Object> pureAcknowledgement() {
+            long started = System.nanoTime();
+            var before = projections.load("masks");
+            boolean applied = projections.acknowledge(new com.iocextractor.application.artifact.lifecycle.ProjectionAcknowledgement(
+                    "masks", before.requiredGeneration()));
+            var after = projections.load("masks");
+            if (!applied || after.projectedGeneration().compareTo(before.requiredGeneration()) < 0) {
+                throw new IllegalStateException("Pure ACK lost its admitted generation");
+            }
+            return Map.of("kind", "pure-ack", "eligibleToCompleteNanos", System.nanoTime() - started,
+                    "ackApplied", applied, "requiredGeneration", after.requiredGeneration().value(),
+                    "projectedGeneration", after.projectedGeneration().value());
+        }
+
+        /** Error persistence is still synchronous and durable; acknowledgement semantics stay unchanged. */
+        @PostMapping("/qualification/pure-error") public Map<String, Object> pureError() {
+            long started = System.nanoTime();
+            var before = projections.load("masks");
+            boolean applied = projections.recordFailure("masks", before.requiredGeneration(), "QUALIFICATION.PURE_ERROR");
+            return Map.of("kind", "pure-error", "eligibleToCompleteNanos", System.nanoTime() - started,
+                    "failureApplied", applied, "pendingAtRead", before.pending());
+        }
+
+        /** Bounded retained samples; sampler failures propagate synchronously and invalidate the window. */
+        @PostMapping("/qualification/ack-burst") public Map<String, Object> burst(
+                @org.springframework.web.bind.annotation.RequestParam(defaultValue = "200") int count)
+                throws java.io.IOException, InterruptedException {
+            if (count < 1 || count > 500) { throw new IllegalArgumentException("ACK burst must contain 1..500 operations"); }
+            var samples = new java.util.ArrayList<Map<String, Object>>(count);
+            long heap = 0;
+            long rss = 0;
+            for (int index = 0; index < count; index++) {
+                // Same one-millisecond cadence in both variants: avoid accidental same-timestamp no-ops.
+                Thread.sleep(1);
+                samples.add(acknowledge(false));
+                heap = Math.max(heap, ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed());
+                try (var status = java.nio.file.Files.lines(java.nio.file.Path.of("/proc/self/status"))) {
+                    String line = status.filter(value -> value.startsWith("VmRSS:")).findFirst()
+                            .orElseThrow(() -> new java.io.IOException("Missing current RSS"));
+                    rss = Math.max(rss, Long.parseLong(line.split("\\s+")[1]) * 1024L);
+                }
+            }
+            return Map.of("samples", samples, "sampledHeapMaximumBytes", heap, "sampledRssMaximumBytes", rss,
+                    "memorySampling", "after each completed ACK; not a continuous peak");
+        }
+
+        @PostMapping("/qualification/projection-evidence") public Map<String, Object> projectionEvidence() throws java.sql.SQLException {
+            return staged.getObject().projectionEvidence();
+        }
+        @PostMapping("/qualification/maintenance-evidence") public Map<String, Object> maintenanceEvidence() throws java.sql.SQLException {
+            return staged.getObject().cleanupEvidence();
         }
         @PostMapping("/qualification/maintenance") public Map<String, Object> cleanup() {
             long eligible = System.nanoTime();
