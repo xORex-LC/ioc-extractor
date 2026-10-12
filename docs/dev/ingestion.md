@@ -88,6 +88,16 @@ precommit failure marked FAILED. Canonical truth is SQLite; projection failure i
 recovered forward. Service-journal and dataframe transactions are independent;
 the terminal registration handshake is retried from durable state.
 
+Normal completion and reconciliation can race on the same terminal handshake.
+If a terminal CAS loses, the service rereads durable state and accepts only the
+same occurrence, source/candidate evidence, registration pins, execution state
+and terminal outcome at an equal or newer version. A completed registration
+handshake may satisfy a concurrent terminal transition; a pending handshake
+cannot satisfy finalization. Different transition timestamps do not make these
+terminal facts conflict. The dataframe registration reference is verified even
+for an already finalized retry. Other admission CAS transitions retain their
+strict equality check; incompatible outcomes or authority changes fail closed.
+
 ## Receipts and retry
 
 With active fixed lifecycle, a read-only complete receipt lookup can avoid

@@ -67,7 +67,7 @@ Canonical safe-clock остаётся независимой защитой и �
 нагрузочную приёмку. Владельцы: service ledger / [managed import](dev/dataframe-import.md),
 [ingestion](dev/ingestion.md), эксплуатация часов хоста.
 
-**ING-17 — конкурентная терминализация document admission (открыт, M).**
+**ING-17 — конкурентная терминализация document admission (частично, M).**
 Нагрузочная квалификация 2026-10-13 зарегистрировала
 `INGEST.RECOVERY_FAILED: Document admission changed concurrently` в Native и
 Staged. Обычное завершение документа и reconciliation могут одновременно вызвать
@@ -76,11 +76,16 @@ Staged. Обычное завершение документа и reconciliation
 эквивалентное завершение другим участником. Очередь в наблюдаемых случаях
 продолжает двигаться, но возникает лишняя ошибка recovery; исключение после
 архивации также предшествует `runLedger.markCompleted`. Потеря канонических
-данных не установлена. До production-завершения нужны проверка согласованности
-admission / registration / ingest-run и регрессия с принудительным одновременным
-завершением: одинаковый terminal outcome должен быть идемпотентен, несовместимый
-outcome и изменённая registration reference должны отклоняться. Это отдельный
-дефект корректности, а не основание для нового цикла оптимизации SQLite.
+данных не установлена. Строго последовательный прогон 1 млн IOC / 100 DOCX
+не завершил все ingest-run и был сохранён как ERROR по часовому таймауту.
+Узкий фикс принимает одинаковые terminal-факты после проигранного CAS,
+проверяет registration даже при finalized retry и сохраняет отказ при
+несовместимых outcome / source / registration. Семь новых регрессий включают
+принудительную перестановку обоих terminal writes и гонку completion/recovery;
+три падают на исходной версии. На исправленной версии прошли все 24 проверки
+admission/registration; полный повтор и release gates ещё не завершены.
+Это отдельный дефект корректности, а не основание для нового цикла оптимизации
+SQLite. До закрытия проверить согласованность admission / registration / ingest-run.
 Владельцы: [ingestion](dev/ingestion.md), document admission / reconciliation.
 
 ## 2. Обогащение вывода (`OUT`)

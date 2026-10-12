@@ -48,6 +48,25 @@ def policy():
 
 
 class ServiceCapacityTest(unittest.TestCase):
+    def test_terminalization_conflicts_are_counted_without_hiding_eventual_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            entries = [
+                {'error': {'message': 'Document admission changed concurrently'}},
+                {'message': 'source ingested', 'event': {'outcome': 'success'}},
+                {'error': {'message': 'Document admission changed concurrently'}},
+                {'error': {'message': 'Synthetic projection probe'}}]
+            (root / 'daemon.log').write_text('startup text\n' + '\n'.join(json.dumps(row) for row in entries))
+
+            self.assertEqual(CAP.admission_terminalization_conflicts(root), 2)
+
+    def test_no_terminalization_conflict_is_inferred_without_a_matching_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.assertEqual(CAP.admission_terminalization_conflicts(root), 0)
+            (root / 'daemon.log').write_text(json.dumps({'message': 'source ingested'}))
+            self.assertEqual(CAP.admission_terminalization_conflicts(root), 0)
+
     def test_publication_counts_keep_intermediate_slices_and_failed_deliveries_visible(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -85,10 +85,10 @@ overlap preparation. Its results are labeled as the configured production
 pipeline rather than strict single-document evidence. A final native batch
 under `.dev/hybrid-release-single-native/` uses the existing
 `execution.preparation-workers=1` and `execution.window=1` through
-`--single-document-execution`. It waits for the current staged giant case to
-finish and dispose its application, then runs once, with no retries. This closes the
-owner's explicit single-document workload condition without silently rewriting
-the earlier measurements. The initially queued paired batch under
+`--single-document-execution`. It waited for the staged giant case to
+finish and dispose its application, then ran once. It failed to complete all
+ingest runs because of ING-17; it does not close the owner's explicit condition.
+The initially queued paired batch under
 `.dev/hybrid-release-single-document/` was stopped before admission. After the
 staged giant service interval was observed at 1,934.65 seconds, the two additional
 staged batch cells were deferred under the finish-first choice: native already
@@ -96,7 +96,9 @@ meets the complete-cycle band and remains the production model. The current
 staged case later failed during its post-publication census, as recorded below.
 Deferred cells are not
 passed, failed workloads or a whole-matrix completion claim. No further
-measurement grid is queued.
+measurement grid is queued. A single source-fixed regression run under
+`.dev/hybrid-release-single-native-fixed/` is the remaining qualification, not
+an automatic retry of the failed binary or another performance redesign.
 
 ## Finite measurement sequence
 
@@ -167,13 +169,29 @@ normal completion archives the source before this call and marks the ingest run
 complete afterwards. No canonical data loss is established, but eventual
 successful outputs are not proof that the race is acceptable for production.
 
-The persistent issue is [ING-17](../../../KNOWN-ISSUES.md). Its separate closure
-requires a forced concurrent-finalization regression, compatible terminal
-outcome idempotency and rejection of conflicting outcomes or registration pins.
-Keep the existing ownership/fencing checks; do not turn all CAS conflicts into
-success. This bounded correctness fix belongs before production readiness,
-not to another storage performance loop. The current capacity observations and
-their original qualification statuses remain unchanged.
+The persistent issue is [ING-17](../../../KNOWN-ISSUES.md). The original strict
+batch eventually failed its 3,600-second local-completion deadline, despite
+completed preparation/canonical writes for all 100 bulk inputs. The logs contain
+102 completed pipelines (including two warmups), but only 101 successful source
+completion observations. There is no qualified complete-cycle time for this cell.
+Owned application/remote state was removed; the failed logs remain local.
+
+The narrow source fix accepts only matching durable terminal facts after a lost
+CAS, verifies registration pins on already finalized retries and retains strict
+nonterminal transitions. Seven regressions force competing terminal writes,
+completion versus recovery and changed outcome/source/registration. Three fail
+on the original frozen binary; all seven plus seventeen existing checks pass on
+the fix. The tooling's 53 focused tests also pass; a known terminalization
+conflict now prevents a successful qualification status even if outputs converge.
+These are focused checks, not deferred reactor gates.
+
+A single corrected-binary replay is planned. Its application JAR digest is
+`85f1cbd135eb2700c842b6513710b02c5469dd48be0d29713801651c04f241e3`;
+the only production class changed from the preceding frozen runtime is
+`DocumentAdmissionService`. The previously tested one-pass census helper is also
+included. The original runtime and failed measurement are not replaced. This
+bounded correctness fix belongs before production readiness, not to another
+storage performance loop.
 
 ## Current status
 
@@ -181,11 +199,12 @@ Reference-envelope and backend selection support is implemented in the existing
 qualification harness. The new timing boundary separates durable SMB completion
 from independent readback. Both actual SMB smoke cases and the native import
 cases and native single-document 100k/1m cases and the configured native
-100-document case have passed their independent correctness checks. The strict
-native single-document batch is the remaining case. The staged million-DOCX
+100-document case have passed their independent correctness checks. The original
+strict native single-document batch failed on ING-17; its corrected-binary replay
+is the remaining case. The staged million-DOCX
 collector failed in its post-service census, and later staged batches are
 deferred under the finite finish rule. Native remains the production choice,
-subject to the final explicit execution-window check. Quality gates remain deferred by the owner during optimization;
+subject to the explicit execution-window and finalization regression check. Quality gates remain deferred by the owner during optimization;
 no deployment, schema activation or completed acceptance is claimed.
 
 The first reference smoke attempts failed before application intake because the
@@ -211,8 +230,9 @@ Sequence: `.dev/hybrid-release-reference-v3/`. Frozen application JAR SHA-256:
 Each report also records its helper classes, driver hashes, corpus and effective
 limits. These are single-fork diagnostic observations, not production percentiles.
 The native single-million-document case and configured 100-document batch are
-complete; the strict native single-document batch remains pending in this
-snapshot. The staged million-DOCX service interval is retained with its failed
+complete; the original strict native single-document batch is unsuccessful, and
+the corrected-binary replay remains pending in this snapshot.
+The staged million-DOCX service interval is retained with its failed
 post-publication collection status, rather than promoted to qualification.
 
 | Model | Input | Complete service seconds | Cumulative allocations GiB | Bulk heap / RSS MiB | Shared slice peak MiB | New completed slices / successful SMB publications |

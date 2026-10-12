@@ -62,9 +62,9 @@ public final class DocumentAdmissionService {
     }
 
     public DocumentAdmission complete(ObservationId id, DocumentTerminalOutcome outcome) {
-        DocumentAdmission current = required(id);
+        DocumentAdmission current = verifyRegistration(required(id));
         if (current.phase() != DocumentAdmissionPhase.TERMINAL) {
-            current = advance(current, current.terminal(outcome, clock.instant()));
+            current = advanceTerminal(current, current.terminal(outcome, clock.instant()));
         } else if (current.terminalOutcome().orElseThrow() != outcome) {
             throw new IllegalStateException("Document terminal outcome changed during retry");
         }
@@ -141,7 +141,35 @@ public final class DocumentAdmissionService {
         }
         RegisteredObservation registration = current.registration().orElseThrow();
         registrations.markTerminal(current.observationId(), registration.namespaceId());
-        return advance(current, current.registrationFinalized(clock.instant()));
+        return advanceTerminal(current, current.registrationFinalized(clock.instant()));
+    }
+
+    /** Completion and reconciliation may publish the same terminal facts at different instants. */
+    private DocumentAdmission advanceTerminal(DocumentAdmission current, DocumentAdmission updated) {
+        if (journal.replace(current, updated)) {
+            return updated;
+        }
+        DocumentAdmission durable = required(current.observationId());
+        if (durable.phase() != DocumentAdmissionPhase.TERMINAL
+                || durable.version() < updated.version()
+                || updated.registrationFinalized() && !durable.registrationFinalized()
+                || !sameTerminalFacts(updated, durable)) {
+            throw new IllegalStateException("Document admission changed concurrently");
+        }
+        return verifyRegistration(durable);
+    }
+
+    private static boolean sameTerminalFacts(DocumentAdmission expected, DocumentAdmission durable) {
+        return expected.observationId().equals(durable.observationId())
+                && expected.candidatePath().equals(durable.candidatePath())
+                && expected.candidateEvidence().equals(durable.candidateEvidence())
+                && expected.claimPath().equals(durable.claimPath())
+                && expected.claimedEvidence().equals(durable.claimedEvidence())
+                && expected.registration().equals(durable.registration())
+                && expected.sourceKey().equals(durable.sourceKey())
+                && expected.terminalOutcome().equals(durable.terminalOutcome())
+                && expected.createdAt().equals(durable.createdAt())
+                && expected.execution().equals(durable.execution());
     }
 
     private DocumentAdmission required(ObservationId id) {

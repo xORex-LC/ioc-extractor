@@ -738,6 +738,23 @@ def publication_counts(root):
             for table in ('export_run', 'publish_ledger')}
 
 
+def admission_terminalization_conflicts(root):
+    """Keep known terminalization races visible even when output/recovery eventually succeeds."""
+    log = root / 'daemon.log'
+    if not log.is_file():
+        return 0
+    conflicts = 0
+    with log.open() as stream:
+        for line in stream:
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if event.get('error', {}).get('message') == 'Document admission changed concurrently':
+                conflicts += 1
+    return conflicts
+
+
 def private_config(source, root, port):
     config = yaml.safe_load(source.read_text())
     config.setdefault('server', {})['port'] = port
@@ -980,6 +997,14 @@ def sample(args, jar, report, index, evidence_root):
             except Exception as failure:
                 errors.append('Oracle close: ' + str(failure))
         # Keep small evidence and separate diagnostic recording, no SQLite/CSV copies.
+        try:
+            conflicts = admission_terminalization_conflicts(root)
+            result['admission_terminalization_cas_conflicts'] = conflicts
+            if conflicts and result['status'] not in ('FAIL', 'ERROR', 'ABORTED'):
+                result.update(status='FAIL', failure='Document admission terminalization CAS conflicts',
+                              failure_kind='workload')
+        except Exception as failure:
+            errors.append('Terminalization log evidence: ' + str(failure))
         folder = evidence_root / str(index)
         folder.mkdir()
         for name in ('resources.jsonl', 'controls.jsonl', 'daemon.log', 'application.yml', 'diagnostic.jfr'):
