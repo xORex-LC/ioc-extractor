@@ -97,8 +97,11 @@ JFR/NMT startup flags and rollout belong to a separate controlled qualification.
 ## CAP implementation baseline
 
 The owner adopted [cap-targets.json](cap-targets.json) on 2026-10-04.
-[cap-baseline.json](cap-baseline.json) pins the historical stand identity and
-fixture; it does not yet establish G0 or corrected-runtime acceptance.
+Historical stand identity and measurements are summarized in the
+[capacity review](../../data-processing-capacity-review.md). The raw
+`cap-baseline.json` remains local; it does not establish G0 or corrected-runtime
+acceptance. The versioned target file is an adopted policy, not raw measurement
+output.
 
 The [execution report](../../cap-0-1-execution.md) records scoped G0/G1A/G1B
 qualification and remaining RSS/writer-hold limits. Equal complete oracle

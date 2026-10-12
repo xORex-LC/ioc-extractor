@@ -86,4 +86,3 @@ AGENTS.md
 # Per-sample rendered policies are generated measurement state, not source fixtures.
 /docs/worknote/0.3.0/**/qualification/**/[0-9]*/application.yml
 !/docs/worknote/0.3.0/data-processing-routing/qualification/capacity/cap-targets.json
-!/docs/worknote/0.3.0/data-processing-routing/qualification/capacity/cap-baseline.json
