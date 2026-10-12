@@ -29,7 +29,30 @@ runtime JDBC drivers.
 
 **Не импортируется:** domain/application internals and sibling adapters.
 
+The isolated staged candidate keeps one publication/conflict/recovery protocol.
+Direct projection controls bypass private preparation admission while retaining
+writer ownership and synchronous durability. Ordinary receipt replay merges two
+ordered cursors in one snapshot. Typed transfer batches remain bounded to 256
+effects and the admitted byte ceiling. Cleanup deletes a bounded address window
+and commits its service counters with cursor progress. Fresh candidate layouts
+omit exact redundant lookup indexes and maintain planner statistics outside
+control/publication paths.
+
+Unreferenced committed promotion headers may become permanent compact records
+in `publication_retired_identity`. They retain exact identity/pins and commit
+evidence, and a persisted insertion guard prevents replay from allocating a new
+unit. Live version/validity/owner/journal references prohibit retirement. The
+capability is pinned at reopen; older candidates are not implicitly migrated.
+These mechanisms do not activate staged storage in production.
+
 ## Runtime Notes
+
+- The isolated staged candidate also exposes a package-private direct projection
+  ACK/error experiment. It uses the same SQL CAS policy and typed publication
+  protocol in one transaction over one borrowed-connection TEMP row. Existing
+  readers, artifact epochs, safe UTC and recovery semantics remain in force.
+  The normal staged projection store still uses private preparation; production
+  remains native. Test-only qualification composition selects the alternative.
 
 - Mutable streaming returns row count and generation from the same read
   transaction. Safe-clock sampling finishes before opening that read lease, so
@@ -128,6 +151,27 @@ runtime JDBC drivers.
   order and exact replay. Initialization
   refuses existing business rows; migration and runtime activation are separate.
 - `JdbcStagedCanonicalBackend` is an explicitly composed isolated candidate.
+  `JdbcTypedJournal.CHUNK_POINTER` is a separate qualification-only experiment:
+  one count/checksum/deadline pointer per bounded typed chunk replaces the
+  per-effect pointers. Complete typed versions, receipt payloads and provenance
+  still transfer atomically. The manifest counts actual effects; exact replay
+  checks every value, SQL kind, NULL, key, tombstone, time flag and attempt stamp.
+  Persisted journal mode and configuration pins guard restart and reject an
+  unannounced representation switch. The earlier layout without a discriminator
+  reopens as `ROW_POINTER`; no production migration or selector is added.
+  `CompactTypedJournalIT` covers replay/completeness, rollback, conflicting direct
+  ACK, process termination and receipt recovery after the private stage is gone.
+  `JdbcReceiptPayloadLayout.IMMUTABLE` isolates a fresh-fixture representation
+  experiment for ordinary artifact receipt rows and field positions. Payloads
+  retain ordered native keys and publication UTC, but omit general replacement
+  metadata. Mutable receipt headers/artifact markers and managed-import children
+  remain versioned. Parent retirement hides children atomically; bounded cleanup
+  retains a committed retirement barrier until older payloads are reclaimed, so
+  receipt ID reuse cannot resurrect them. The layout is persisted and included
+  in restart pins. No populated conversion or production selector is provided.
+  `ImmutableReceiptPayloadIT` qualifies staging, ordered origins, key/ordinal
+  distinction, immutability, retirement under a pinned reader and receipt-only
+  recovery at four killed-process boundaries.
   Its native ordinary/import writers and control operations share committed
   visibility, selective private hydration, bounded workspace admission and
   receipt recovery. Fresh publication UTC revalidates selected lifecycles;

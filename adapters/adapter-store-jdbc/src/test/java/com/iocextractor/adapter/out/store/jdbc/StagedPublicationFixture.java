@@ -104,6 +104,15 @@ final class StagedPublicationFixture implements AutoCloseable {
         return nativeFixture(root, true);
     }
 
+    StagedPublicationFixture(Path root, boolean fresh, JdbcPublicationObserver observer, JdbcTypedJournal journal) {
+        this(root, fresh, observer, Map.of(), CLOCK, false, false, journal);
+    }
+
+    StagedPublicationFixture(Path root, boolean fresh, JdbcPublicationObserver observer,
+            JdbcTypedJournal journal, JdbcReceiptPayloadLayout layout) {
+        this(root, fresh, observer, Map.of(), CLOCK, false, false, journal, layout);
+    }
+
     static StagedPublicationFixture nativeFixture(Path root, boolean fresh) {
         return new StagedPublicationFixture(root, fresh, JdbcPublicationObserver.NOOP, Map.of(), CLOCK, true, false);
     }
@@ -114,6 +123,22 @@ final class StagedPublicationFixture implements AutoCloseable {
 
     private StagedPublicationFixture(Path root, boolean fresh, JdbcPublicationObserver observer,
                              Map<String, ArtifactWritePolicy> policies, Clock wall, boolean nativeOnly, boolean idless) {
+        this(root, fresh, observer, policies, wall, nativeOnly, idless, JdbcTypedJournal.ROW_POINTER);
+    }
+
+    private StagedPublicationFixture(Path root, boolean fresh, JdbcPublicationObserver observer,
+                             Map<String, ArtifactWritePolicy> policies, Clock wall, boolean nativeOnly, boolean idless,
+                             JdbcTypedJournal journal) {
+        this(root, fresh, observer, policies, wall, nativeOnly, idless, journal, JdbcReceiptPayloadLayout.VERSIONED);
+    }
+
+    StagedPublicationFixture(Path root, boolean fresh, JdbcPublicationObserver observer, JdbcReceiptPayloadLayout layout) {
+        this(root, fresh, observer, Map.of(), CLOCK, false, false, JdbcTypedJournal.CHUNK_POINTER, layout);
+    }
+
+    private StagedPublicationFixture(Path root, boolean fresh, JdbcPublicationObserver observer,
+            Map<String, ArtifactWritePolicy> policies, Clock wall, boolean nativeOnly, boolean idless,
+            JdbcTypedJournal journal, JdbcReceiptPayloadLayout layout) {
         this.root = root;
         schemas = List.of(schema("masks", "mask"), schema("hashes", "hash")).stream()
                 .map(s -> idless ? new DataframeArtifactSchema(s.artifactName(), s.columns().stream().filter(c -> !c.name().equals("id")).toList()) : s)
@@ -150,7 +175,7 @@ final class StagedPublicationFixture implements AutoCloseable {
                                 JdbcPublicationCatalog.inspectNative(connection, schemas), java.util.Set.of("masks", "hashes")), observer);
                     } catch (SQLException failure) { throw new IllegalStateException("Cannot inspect native fixture", failure); }
                 } else {
-                    backend = fresh ? JdbcStagedCanonicalBackend.createEmpty(configuration, observer)
+                    backend = fresh ? JdbcStagedCanonicalBackend.createEmpty(configuration, observer, journal, layout)
                             : JdbcStagedCanonicalBackend.reopen(configuration, observer);
                 }
                 ledger = new JdbcImportDeliveryLedger(service);

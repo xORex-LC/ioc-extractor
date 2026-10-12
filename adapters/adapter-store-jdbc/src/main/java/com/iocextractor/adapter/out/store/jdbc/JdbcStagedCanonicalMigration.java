@@ -29,7 +29,7 @@ final class JdbcStagedCanonicalMigration {
         JdbcPublicationTable.execute(connection, "CREATE TABLE publication_configuration("
                 + "singleton_id INTEGER PRIMARY KEY CHECK(singleton_id=1),pins TEXT NOT NULL)");
         try (var statement = connection.prepareStatement("INSERT INTO publication_configuration VALUES(1,?)")) {
-            statement.setString(1, configuration.fingerprint()); statement.executeUpdate();
+            statement.setString(1, store.pins(configuration.fingerprint())); statement.executeUpdate();
         }
         JdbcPublicationTable.execute(connection, "PRAGMA user_version=" + STAGED_VERSION);
         return store;

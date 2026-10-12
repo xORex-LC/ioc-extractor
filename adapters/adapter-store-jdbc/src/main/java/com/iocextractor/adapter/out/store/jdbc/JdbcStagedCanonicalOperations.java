@@ -114,7 +114,7 @@ final class JdbcStagedCanonicalOperations implements AutoCloseable {
                 connection.setAutoCommit(false);
                 JdbcStagedCanonicalMigration.requireVersion(connection, JdbcStagedCanonicalMigration.STAGED_VERSION);
                 try (var statement = connection.createStatement(); var rows = statement.executeQuery("SELECT pins FROM publication_configuration WHERE singleton_id=1")) {
-                    if (!rows.next() || !backend.configuration().fingerprint().equals(rows.getString(1))) {
+                    if (!rows.next() || !backend.store().pins(backend.configuration().fingerprint()).equals(rows.getString(1))) {
                         return new Health(state, false, true, true);
                     }
                 }

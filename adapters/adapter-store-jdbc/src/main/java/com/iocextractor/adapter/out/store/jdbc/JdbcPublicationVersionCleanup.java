@@ -20,17 +20,29 @@ final class JdbcPublicationVersionCleanup {
         JdbcPublicationCleanupCursor.requireLimit(limit);
         var table = store.tables().stream().filter(candidate -> candidate.name().equals(family)).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Unknown publication family"));
+        try {
+            return transactions.execute(JdbcWriterAdmission.OperationClass.MAINTENANCE,
+                    c -> scan(c, family, JdbcSql.quote(table.versions()), eligible(store, table), limit));
+        } catch (SQLException failure) { throw new IocExtractorException("Cannot reclaim obsolete canonical versions", failure); }
+    }
+
+    /** Shared by reclamation and the read-only qualification census; no alternative visibility model. */
+    static String eligible(JdbcTypedPublicationStore store, JdbcPublicationTable table) {
         String versions = JdbcSql.quote(table.versions());
         String eligible = "u.fence<>v.fence OR u.state='CANCELLED' OR(u.state='COMMITTED' AND NOT "
                 + JdbcTypedVersionTable.latest(table, "v") + ") OR(u.state='COMMITTED' AND v.deleted=1"
                 + " AND NOT EXISTS(SELECT 1 FROM " + versions + " other WHERE other.address=v.address AND other.rowid<>v.rowid))";
-        try {
-            return transactions.execute(JdbcWriterAdmission.OperationClass.MAINTENANCE,
-                    c -> scan(c, family, versions, eligible, limit));
-        } catch (SQLException failure) { throw new IocExtractorException("Cannot reclaim obsolete canonical versions", failure); }
+        if (store.receiptPayloads().contains(table, store.artifacts())) {
+            eligible = "u.fence<>v.fence OR u.state='CANCELLED' OR(u.state='COMMITTED' AND NOT("
+                    + JdbcImmutableReceiptPayload.parentVisible("v") + "))";
+        } else if (table.name().equals("confirmation_receipt")) {
+            eligible = "(" + eligible + ") AND " + JdbcImmutableReceiptPayload.preserveRetirementBarrier(store, "v");
+        }
+        return eligible;
     }
 
     private static Page scan(Connection connection, String family, String versions, String eligible, int limit) throws SQLException {
+        long started = System.nanoTime();
         long after = JdbcPublicationCleanupCursor.read(connection, family);
         var addresses = new java.util.ArrayList<Long>(limit);
         // Bound scanned addresses, not just deletions: a retained prefix cannot cause an unbounded writer scan.
@@ -39,22 +51,31 @@ final class JdbcPublicationVersionCleanup {
             try (var rows = statement.executeQuery()) { while (rows.next()) { addresses.add(rows.getLong(1)); } }
         }
         int removed = 0;
-        try (var statement = connection.prepareStatement("DELETE FROM " + versions + " WHERE rowid=? AND EXISTS(SELECT 1 FROM "
-                + versions + " v JOIN publication_unit u ON u.id=v.unit_id WHERE v.rowid=? AND (" + eligible + "))")) {
-            for (long address : addresses) {
-                statement.setLong(1, address); statement.setLong(2, address); removed += statement.executeUpdate();
+        if (!addresses.isEmpty()) {
+            // The interval contains at most the selected page: no other writer can insert within this transaction.
+            try (var statement = connection.prepareStatement("DELETE FROM " + versions + " WHERE rowid>? AND rowid<=?"
+                    + " AND EXISTS(SELECT 1 FROM " + versions + " v JOIN publication_unit u ON u.id=v.unit_id"
+                    + " WHERE v.rowid=" + versions + ".rowid AND (" + eligible + "))")) {
+                statement.setLong(1, after); statement.setLong(2, addresses.getLast()); removed = statement.executeUpdate();
             }
         }
         boolean wrapped = addresses.size() < limit;
         JdbcPublicationCleanupCursor.write(connection, family, wrapped ? 0 : addresses.getLast());
-        return new Page(addresses.size(), removed, wrapped);
+        var page = new Page(addresses.size(), removed, wrapped);
+        JdbcPublicationCleanupCursor.record(connection, family, page, System.nanoTime() - started);
+        return page;
     }
 
     Page purgeJournal(int limit) {
         JdbcPublicationCleanupCursor.requireLimit(limit);
         try {
             return transactions.execute(JdbcWriterAdmission.OperationClass.MAINTENANCE,
-                    c -> JdbcPublicationJournalCleanup.purge(c, limit));
+                    c -> {
+                        long started = System.nanoTime();
+                        var page = JdbcPublicationJournalCleanup.purge(c, limit);
+                        JdbcPublicationCleanupCursor.record(c, "$journal", page, System.nanoTime() - started);
+                        return page;
+                    });
         } catch (SQLException failure) { throw new IocExtractorException("Cannot reclaim publication transfer journals", failure); }
     }
 }

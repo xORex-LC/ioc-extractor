@@ -565,10 +565,23 @@ class StagedPublicationFaultIT {
     }
 
     private static void killAt(Path root, String phase, int chunk) throws Exception {
+        killAt(root, phase, chunk, "import");
+    }
+
+    static void killAt(Path root, String phase, int chunk, String operation) throws Exception {
+        killAt(root, phase, chunk, operation, JdbcTypedJournal.ROW_POINTER);
+    }
+
+    static void killAt(Path root, String phase, int chunk, String operation, JdbcTypedJournal journal) throws Exception {
+        killAt(root, phase, chunk, operation, journal, JdbcReceiptPayloadLayout.VERSIONED);
+    }
+
+    static void killAt(Path root, String phase, int chunk, String operation, JdbcTypedJournal journal,
+            JdbcReceiptPayloadLayout layout) throws Exception {
         Path log = root.resolve("child.log");
         var process = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
                 "-Xmx256m", "-cp", System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")),
-                StagedPublicationCrashProbe.class.getName(), root.toString(), phase, Integer.toString(chunk))
+                StagedPublicationCrashProbe.class.getName(), root.toString(), phase, Integer.toString(chunk), operation, journal.name(), layout.name())
                 .redirectErrorStream(true).redirectOutput(log.toFile()).start();
         try {
             long deadline = System.nanoTime() + Duration.ofSeconds(25).toNanos();

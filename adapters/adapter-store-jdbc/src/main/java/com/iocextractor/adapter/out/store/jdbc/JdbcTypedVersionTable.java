@@ -38,6 +38,10 @@ final class JdbcTypedVersionTable {
     }
 
     private static void copyLookupIndexes(Connection connection, JdbcPublicationTable table) throws SQLException {
+        // The canonical key index already starts with the complete native PK.
+        // Only eliminate exact duplicate column sequences, never partial/prefix guesses.
+        var covered = new java.util.HashSet<java.util.List<String>>();
+        covered.add(table.keys());
         try (var indexes = connection.prepareStatement("SELECT name FROM pragma_index_list(?)")) {
             indexes.setString(1, table.name());
             try (var rows = indexes.executeQuery()) {
@@ -54,7 +58,9 @@ final class JdbcTypedVersionTable {
                             }
                         }
                     }
-                    if (!columns.isEmpty()) { index(connection, table, "lookup_" + number++, joinedQuoted(columns), false); }
+                    if (!columns.isEmpty() && covered.add(java.util.List.copyOf(columns))) {
+                        index(connection, table, "lookup_" + number++, joinedQuoted(columns), false);
+                    }
                 }
             }
         }

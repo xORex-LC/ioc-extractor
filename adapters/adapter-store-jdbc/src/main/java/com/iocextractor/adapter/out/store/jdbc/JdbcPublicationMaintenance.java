@@ -13,7 +13,7 @@ final class JdbcPublicationMaintenance {
     JdbcPublicationMaintenance(JdbcStagedCanonicalBackend backend) {
         this.backend = backend;
         var names = new java.util.ArrayList<>(backend.store().tables().stream().map(JdbcPublicationTable::name).sorted().toList());
-        names.add("$journal"); names.add("$headers"); families = List.copyOf(names);
+        names.add("$journal"); names.add("$headers"); names.add("$statistics"); families = List.copyOf(names);
     }
 
     Result tick(int limit) {
@@ -34,6 +34,8 @@ final class JdbcPublicationMaintenance {
                 case "$journal" -> cleanup.purgeJournal(limit);
                 case "$headers" -> transactions.execute(JdbcWriterAdmission.OperationClass.MAINTENANCE,
                         c -> JdbcPublicationHeaderCleanup.purge(c, backend.store(), limit));
+                case "$statistics" -> transactions.execute(JdbcWriterAdmission.OperationClass.MAINTENANCE,
+                        c -> JdbcPublicationStatistics.optimize(c, backend.configuration().allocatorClock().millis()));
                 default -> cleanup.scanVersions(family, limit);
             };
             return new Result(family, page);

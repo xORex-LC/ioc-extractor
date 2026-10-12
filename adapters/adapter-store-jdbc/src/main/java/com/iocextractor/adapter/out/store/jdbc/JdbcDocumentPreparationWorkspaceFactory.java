@@ -138,6 +138,7 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
     }
 
     int canonicalReadCacheKiB() { return JdbcCanonicalWorkspaceLimits.privateLimits(limits).cacheKiB(); }
+    int canonicalChunkBytes() { return JdbcCanonicalWorkspaceLimits.chunkBytes(JdbcCanonicalWorkspaceLimits.privateLimits(limits)); }
 
     /** Accounts byte-bounded row/chunk bindings and six base/private/stage caches. */
     private int canonicalLeasePermits() {

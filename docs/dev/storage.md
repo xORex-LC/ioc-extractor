@@ -293,6 +293,81 @@ record key, включая очистку всех его значений, не
 
 ### Очередь операций и наблюдение нагрузки
 
+В изолированном staged-кандидате эксперимент ACK/error допускает только одну
+строку projection state одного настроенного артефакта. `JdbcDirectProjectionStore`
+получает общий control admission и SQLite writer до чтения текущего committed
+состояния. Общий `JdbcProjectionMutation` выполняет тот же SQL compare-and-set,
+что native и prepared пути, над одной TEMP-строкой в заимствованной connection.
+Изменение публикуется через существующие typed begin/append/seal/publish и epoch
+проверки в одной транзакции. TEMP-строка удаляется до возврата connection в pool;
+отдельные private DB, pool и миграции на этот ACK не создаются.
+
+Direct ACK/error больше не ожидает gate приватной подготовки control: его TEMP
+state принадлежит только writer connection. Общий writer admission, safe UTC,
+fencing и artifact epoch остаются обязательными. Подготовленный control после
+конкурирующего ACK перестраивается по прежнему conflict protocol. ACK по-прежнему
+означает завершённый durable commit; запись ошибок не вынесена в асинхронную очередь.
+
+Отдельный квалификационный эксперимент `JdbcTypedJournal.CHUNK_POINTER`
+сокращает только журнал переноса: один указатель с числом эффектов, checksum
+и признаком привязки TTL хранится на chunk вместо указателя на каждый эффект.
+Все типизированные версии, receipt и provenance сохраняются полностью; их
+вставка и подтверждение chunk выполняются в одной транзакции. Manifest считает
+реальное число эффектов, а checksum включает значения, SQL-типы, NULL, ключи,
+tombstone, флаги времени и stamp попытки. Повтор с изменённым содержимым,
+пропущенный или лишний chunk и устаревший ownership отклоняются прежним протоколом.
+Режим записывается в `publication_journal_format` и configuration pins; старый
+кандидат без discriminator считается `ROW_POINTER`. Production остаётся native,
+переключатель и миграция production для нового представления не добавлены.
+
+Следующий изолированный эксперимент `JdbcReceiptPayloadLayout.IMMUTABLE`
+меняет только `<artifact>_receipt_rows` и `confirmation_receipt_field_position`
+в свежей staged БД. Данные вставляются неизменяемыми с native keys и привязкой
+к committed unit; заголовки/маркеры и дочерние результаты managed import остаются
+версионными. Payload раннего артефакта виден при родителе `STAGING`, поэтому
+последующий артефакт может завершить полный receipt. Retirement родителя скрывает
+payload без копирования всех детей в private workspace. Physical cleanup удаляет
+детей порциями и сохраняет committed tombstone родителя, пока существуют более
+старые payloads: повторное использование receipt ID не возвращает старые строки.
+Режим сохраняется в `publication_receipt_layout` и configuration pins. Эксперимент
+не меняет publication protocol, conflict epochs, fencing или семантику recovery;
+production conversion и runtime selector отсутствуют.
+
+Receipt replay читает строки и field positions двумя упорядоченными курсорами
+в одной SQL snapshot; запрос на positions больше не выполняется для каждой
+строки. Пустые positions, порядок и count проверки сохраняются. Сканирование
+transfer manifest вычисляет framing size без повторного SHA-256; фактический
+checksum и ограниченный batch вставок формируются только при переносе.
+
+Физическая очистка ограничивает просмотр адресов и удаляет выбранную порцию
+одним SQL statement. Cursor и счётчики просмотренных/удалённых строк фиксируются
+в той же транзакции; защищённые версии не считаются удаляемым долгом. Периодическое
+`PRAGMA optimize` принадлежит maintenance и не выполняется в ACK/commit пути.
+Свежая кандидатная схема исключает точные дубликаты copied lookup indexes;
+существующие индексы при reopen автоматически не удаляются.
+
+Свежий staged-кандидат поддерживает `publication_retired_identity`: после
+проверки отсутствия всех version, deadline, journal и ownership ссылок committed
+document/import header заменяется компактным постоянным replay proof.
+Identity, pins, sequence, UTC и receipt не забываются. Guard запрещает повторное
+создание unit с retired identity. Старые кандидатные БД без этой capability
+сохраняют прежнюю политику; reopen не выполняет скрытой миграции. Это уменьшает
+служебный footprint, но не устанавливает конечный retention для идемпотентности.
+
+Даже no-op проверяет safe UTC и прерывание до commit; неизменённое значение не
+создаёт publication unit и не увеличивает artifact epoch. Payload ограничен
+существующим размером canonical chunk с резервом 2048 байт для framing;
+непомещающийся существующий state или failure code отклоняется до публикации.
+Новый failure code допускается по консервативной оценке `3 * String.length()`.
+Успех возвращается только после commit. Устаревший error не применяется к
+новому required generation, а ACK не подтверждает более новое поколение.
+Изменённый ACK того же артефакта по-прежнему инвалидирует ранее подготовленную
+попытку: гранулярность epochs в этом эксперименте не меняется.
+
+Production остаётся native; штатный staged projection store сохраняет prepared
+execution. Выбор direct существует только в тестовом qualification launcher,
+не является свойством `ioc.*` и не активирует новый backend или формат данных.
+
 Один bootstrap-owned `JdbcWriterAdmission` обслуживает canonical promotion,
 expiry, export slots, короткие control updates и maintenance. Свежие запросы
 предпочитаются в порядке CONTROL, EXPIRY, EXPORT_SLOTS, PROMOTION, MAINTENANCE;

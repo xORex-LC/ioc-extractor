@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.Optional;
 import javax.sql.DataSource;
 
-/** Repeatable receipt rows with one row's positions in memory and no second writer connection. */
+/** Two ordered cursors share one SQL snapshot; only the current row's positions are retained. */
 final class JdbcReceiptRowSource implements JdbcConnectionRowSource<CanonicalRecordConfirmation> {
     private final DataSource dataSource;
     private final DataframeArtifactSchema schema;
@@ -80,10 +80,10 @@ final class JdbcReceiptRowSource implements JdbcConnectionRowSource<CanonicalRec
                     + " WHERE receipt_id=? ORDER BY ordinal");
             statement.setString(1, receipt.value());
             ResultSet rows = statement.executeQuery();
-            positions = connection.prepareStatement("SELECT field_name,occurrence_position FROM confirmation_receipt_field_position WHERE receipt_id=? AND artifact=? AND ordinal=? ORDER BY field_name");
+            positions = connection.prepareStatement("SELECT ordinal,field_name,occurrence_position FROM confirmation_receipt_field_position WHERE receipt_id=? AND artifact=? ORDER BY ordinal,field_name");
             positions.setString(1, receipt.value());
             positions.setString(2, schema.artifactName());
-            return new ReceiptCursor(connection, ownsConnection, statement, positions, rows);
+            return new ReceiptCursor(connection, ownsConnection, statement, positions, rows, positions.executeQuery());
         } catch (SQLException | RuntimeException failure) {
             closeOnFailure(positions, failure);
             closeOnFailure(statement, failure);
@@ -107,14 +107,17 @@ final class JdbcReceiptRowSource implements JdbcConnectionRowSource<CanonicalRec
         private final PreparedStatement statement;
         private final PreparedStatement positions;
         private final ResultSet rows;
+        private final ResultSet fieldRows;
+        private boolean hasPosition;
         private CanonicalRecordConfirmation current;
         private int read;
         private boolean closed;
 
         private ReceiptCursor(Connection connection, boolean ownsConnection, PreparedStatement statement,
-                PreparedStatement positions, ResultSet rows) {
+                PreparedStatement positions, ResultSet rows, ResultSet fieldRows) throws SQLException {
             this.connection = connection; this.ownsConnection = ownsConnection;
             this.statement = statement; this.positions = positions; this.rows = rows;
+            this.fieldRows = fieldRows; this.hasPosition = fieldRows.next();
         }
 
         public boolean next() {
@@ -123,6 +126,7 @@ final class JdbcReceiptRowSource implements JdbcConnectionRowSource<CanonicalRec
             try {
                 if (!rows.next()) {
                     current = null;
+                    if (hasPosition) { throw new IocExtractorException("Receipt positions have no matching row"); }
                     if (read != size) { throw new IocExtractorException("Receipt rows disappeared during replay"); }
                     return false;
                 }
@@ -132,11 +136,16 @@ final class JdbcReceiptRowSource implements JdbcConnectionRowSource<CanonicalRec
                     values.put(column.name(), "id".equals(column.name()) ? null : rows.getString(column.name()));
                 }
                 Map<String, OccurrencePosition> fields = new LinkedHashMap<>();
-                positions.setInt(3, rows.getInt("ordinal"));
-                try (var fieldRows = positions.executeQuery()) {
-                    while (fieldRows.next()) {
-                        fields.put(fieldRows.getString(1), new OccurrencePosition(fieldRows.getLong(2)));
+                int ordinal = rows.getInt("ordinal");
+                if (hasPosition && fieldRows.getInt(1) < ordinal) {
+                    throw new IocExtractorException("Receipt positions have no matching row");
+                }
+                while (hasPosition && fieldRows.getInt(1) == ordinal) {
+                    String field = fieldRows.getString(2);
+                    if (fields.put(field, new OccurrencePosition(fieldRows.getLong(3))) != null) {
+                        throw new IocExtractorException("Duplicate receipt field position");
                     }
+                    hasPosition = fieldRows.next();
                 }
                 var id = values.containsKey("id") ? Optional.of("id") : Optional.<String>empty();
                 current = new CanonicalRecordConfirmation(new ArtifactRowKey(rows.getString("row_key")),

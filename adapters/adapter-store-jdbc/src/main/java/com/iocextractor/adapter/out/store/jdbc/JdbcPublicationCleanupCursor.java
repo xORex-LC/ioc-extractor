@@ -29,4 +29,18 @@ final class JdbcPublicationCleanupCursor {
     static void requireLimit(int limit) {
         if (limit < 1 || limit > 256) { throw new IllegalArgumentException("Publication cleanup is bounded to 256 rows"); }
     }
+
+    /** Counters commit with deletions and cursor progress; a rollback records no useful service. */
+    static void record(Connection connection, String family, JdbcPublicationVersionCleanup.Page page, long nanos)
+            throws SQLException {
+        add(connection, "$service." + family + ".pages", 1);
+        add(connection, "$service." + family + ".scanned", page.scanned());
+        add(connection, "$service." + family + ".removed", page.removed());
+        add(connection, "$service." + family + ".nanos", nanos);
+        if (page.wrapped()) { add(connection, "$service." + family + ".wraps", 1); }
+    }
+
+    private static void add(Connection connection, String family, long value) throws SQLException {
+        write(connection, family, Math.addExact(read(connection, family), value));
+    }
 }

@@ -162,6 +162,21 @@ final class JdbcPublicationProtocol {
 
     /** Returns false for an exact acknowledged replay, before any typed effect must be copied. */
     boolean append(Connection connection, Attempt attempt, int ordinal, List<Fact> facts) throws SQLException {
+        return append(connection, attempt, ordinal, facts, facts.size());
+    }
+
+    /** One bounded checksum pointer accounts for the complete, atomically inserted typed chunk. */
+    boolean appendTypedChunk(Connection connection, Attempt attempt, int ordinal, String scope,
+                             String checksum, int contributions, boolean anchored) throws SQLException {
+        if (contributions < 1 || contributions > CHUNK_FACT_LIMIT) {
+            throw new IllegalArgumentException("Experiment chunk contribution limit");
+        }
+        return append(connection, attempt, ordinal, List.of(new Fact("typed-chunk", scope,
+                Integer.toString(ordinal), contributions + ":" + checksum, anchored ? attempt.unitId() : null)), contributions);
+    }
+
+    private boolean append(Connection connection, Attempt attempt, int ordinal, List<Fact> facts, int contributions)
+            throws SQLException {
         requireTransaction(connection);
         requireState(connection, attempt, "PENDING");
         if (facts.isEmpty() || facts.size() > CHUNK_FACT_LIMIT) {
@@ -190,13 +205,13 @@ final class JdbcPublicationProtocol {
                 WHERE id=? AND fence=? AND next_chunk=? AND next_chunk<expected_chunks
                     AND contributions+?<=expected_contributions
                 """)) {
-            statement.setInt(1, facts.size());
+            statement.setInt(1, contributions);
             statement.setLong(2, inheritedDeadline);
             statement.setInt(3, needsValidity ? 1 : 0);
             statement.setLong(4, attempt.unitId());
             statement.setLong(5, attempt.fence());
             statement.setInt(6, ordinal);
-            statement.setInt(7, facts.size());
+            statement.setInt(7, contributions);
             requireOne(statement.executeUpdate());
         }
         try (PreparedStatement statement = connection.prepareStatement(
@@ -468,9 +483,11 @@ final class JdbcPublicationProtocol {
 
     private void requireState(Connection connection, Attempt attempt, String state) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT 1 FROM publication_unit WHERE id=? AND fence=? AND state=?")) {
+                "SELECT 1 FROM publication_unit u WHERE id=? AND fence=? AND state=?"
+                        + " AND EXISTS(SELECT 1 FROM publication_attempt a WHERE a.unit_id=u.id AND a.fence=u.fence AND a.stamp=?)")) {
             bindAttempt(statement, attempt);
             statement.setString(3, state);
+            statement.setLong(4, attempt.stamp());
             try (ResultSet result = statement.executeQuery()) {
                 if (!result.next()) { throw new SQLException("Stale attempt or invalid publication state"); }
             }

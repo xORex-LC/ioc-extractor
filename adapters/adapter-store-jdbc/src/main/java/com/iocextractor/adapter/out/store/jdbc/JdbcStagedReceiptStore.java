@@ -46,11 +46,14 @@ final class JdbcStagedReceiptStore implements ConfirmationReceiptStore, Canonica
                 + " OR(r.state='STAGING' AND a.staged_at_ms<=?) GROUP BY r.receipt_id"
                 + " ORDER BY COALESCE(r.purge_after_ms,MIN(a.staged_at_ms)),r.receipt_id LIMIT ?";
         List<Object> parameters = List.of(asOf.value().toEpochMilli(), asOf.value().minus(stagingRetention).toEpochMilli(), limit);
-        for (String table : List.of("confirmation_receipt", "confirmation_receipt_artifact", "confirmation_receipt_field_position")) {
+        for (String table : List.of("confirmation_receipt", "confirmation_receipt_artifact")) {
             base.copy(table, "b.receipt_id IN(" + selected + ")", parameters);
         }
-        for (var schema : backend.configuration().schemas()) {
-            base.copy(schema.artifactName() + "_receipt_rows", "b.receipt_id IN(" + selected + ")", parameters);
+        if (backend.store().receiptPayloads() == JdbcReceiptPayloadLayout.VERSIONED) {
+            base.copy("confirmation_receipt_field_position", "b.receipt_id IN(" + selected + ")", parameters);
+            for (var schema : backend.configuration().schemas()) {
+                base.copy(schema.artifactName() + "_receipt_rows", "b.receipt_id IN(" + selected + ")", parameters);
+            }
         }
         String observations = "SELECT observation_id FROM canonical_observation WHERE state='TERMINAL' AND purge_after_ms<=?"
                 + " ORDER BY purge_after_ms,observation_id LIMIT ?";

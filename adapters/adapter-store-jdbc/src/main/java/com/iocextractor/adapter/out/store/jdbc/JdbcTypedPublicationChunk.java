@@ -18,6 +18,7 @@ final class JdbcTypedPublicationChunk {
     private final Set<String> artifacts;
     private final int byteLimit;
     private long bytes;
+    private static final String DESCRIPTION_ADDRESS = "0".repeat(64);
 
     JdbcTypedPublicationChunk(Set<String> artifacts) { this(artifacts, 1024 * 1024); }
 
@@ -39,16 +40,32 @@ final class JdbcTypedPublicationChunk {
         return true;
     }
 
+    /** SHA-256 hex addresses have a fixed framed size; counting needs no key hashing or retained row list. */
+    static long descriptionBytes(JdbcPrivateChanges.Effect effect, boolean publicationTime) throws SQLException {
+        return framedBytes(new Row(effect, DESCRIPTION_ADDRESS,
+                publicationTime ? JdbcPublicationTimes.changed(effect) : "", false));
+    }
+
     int size() { return rows.size(); }
     boolean isEmpty() { return rows.isEmpty(); }
 
     /** Drained migration copies literal facts, without confirmation, renewal or runtime transfer journals. */
     void copyMigrationRows(Connection connection, JdbcPublicationProtocol.Attempt attempt) throws SQLException {
-        insertRows(connection, attempt);
+        insertRows(connection, attempt, JdbcReceiptPayloadLayout.VERSIONED);
     }
 
     void append(Connection connection, JdbcPublicationProtocol protocol, JdbcPublicationProtocol.Attempt attempt,
                 String scope, int ordinal) throws SQLException {
+        append(connection, protocol, attempt, scope, ordinal, JdbcTypedJournal.ROW_POINTER);
+    }
+
+    void append(Connection connection, JdbcPublicationProtocol protocol, JdbcPublicationProtocol.Attempt attempt,
+                String scope, int ordinal, JdbcTypedJournal journal) throws SQLException {
+        append(connection, protocol, attempt, scope, ordinal, journal, JdbcReceiptPayloadLayout.VERSIONED);
+    }
+
+    void append(Connection connection, JdbcPublicationProtocol protocol, JdbcPublicationProtocol.Attempt attempt,
+            String scope, int ordinal, JdbcTypedJournal journal, JdbcReceiptPayloadLayout receiptPayloads) throws SQLException {
         var digest = new JdbcPublicationChunkDigest();
         for (var row : rows) {
             digest.row();
@@ -59,45 +76,63 @@ final class JdbcTypedPublicationChunk {
             digest.field(attempt.unitId()); digest.field(attempt.fence()); digest.field(attempt.stamp());
         }
         String checksum = digest.finish();
-        var pointers = rows.stream().map(row -> new JdbcPublicationProtocol.Fact("typed", scope,
-                row.effect().table().name() + ":" + row.address(), checksum,
-                anchored(row) ? attempt.unitId() : null)).toList();
-        if (protocol.append(connection, attempt, ordinal, pointers)) {
-            insertRows(connection, attempt);
+        boolean inserted;
+        if (journal == JdbcTypedJournal.CHUNK_POINTER) {
+            inserted = protocol.appendTypedChunk(connection, attempt, ordinal, scope, checksum, rows.size(),
+                    rows.stream().anyMatch(JdbcTypedPublicationChunk::anchored));
+        } else {
+            var pointers = rows.stream().map(row -> new JdbcPublicationProtocol.Fact("typed", scope,
+                    row.effect().table().name() + ":" + row.address(), checksum,
+                    anchored(row) ? attempt.unitId() : null)).toList();
+            inserted = protocol.append(connection, attempt, ordinal, pointers);
+        }
+        if (inserted) {
+            insertRows(connection, attempt, receiptPayloads);
         }
     }
 
-    private void insertRows(Connection connection, JdbcPublicationProtocol.Attempt attempt) throws SQLException {
+    private void insertRows(Connection connection, JdbcPublicationProtocol.Attempt attempt, JdbcReceiptPayloadLayout receiptPayloads) throws SQLException {
         // Reuse the existing bounded, thread-confined owner only within this chunk transaction.
         // Contiguous families share SQL construction/binding ownership without reordering effects.
         try (var statements = new JdbcStatementScope(connection)) {
             int index = 0;
             while (index < rows.size()) {
                 var table = rows.get(index).effect().table();
-                try (var lease = statements.borrow(insertSql(table))) {
-                    do { insert(lease.statement(), attempt, rows.get(index++)); }
+                boolean immutable = receiptPayloads.contains(table, artifacts);
+                try (var lease = statements.borrow(insertSql(table, immutable))) {
+                    int first = index;
+                    do { bind(lease.statement(), attempt, rows.get(index++), immutable); lease.statement().addBatch(); }
                     while (index < rows.size() && rows.get(index).effect().table().equals(table));
+                    int[] applied = lease.statement().executeBatch();
+                    if (applied.length != index - first) { throw new SQLException("Incomplete typed publication batch"); }
+                    for (int count : applied) {
+                        if (count != 1 && count != java.sql.Statement.SUCCESS_NO_INFO) {
+                            throw new SQLException("Typed publication batch did not insert one effect");
+                        }
+                    }
                 }
             }
         }
     }
 
-    private static String insertSql(JdbcPublicationTable table) {
+    private static String insertSql(JdbcPublicationTable table, boolean immutable) {
         return "INSERT INTO " + quote(table.versions()) + "(" + joinedQuoted(table.columns())
-                + ",unit_id,fence,stamp,address,deleted,publication_columns,absolute_deadline,deadline_anchor) VALUES("
-                + placeholders(table.columns().size() + 8) + ")";
+                + (immutable ? ",unit_id,fence,stamp,address,publication_columns"
+                        : ",unit_id,fence,stamp,address,deleted,publication_columns,absolute_deadline,deadline_anchor") + ") VALUES("
+                + placeholders(table.columns().size() + (immutable ? 5 : 8)) + ")";
     }
 
-    private static void insert(PreparedStatement statement, JdbcPublicationProtocol.Attempt attempt, Row row)
+    private static void bind(PreparedStatement statement, JdbcPublicationProtocol.Attempt attempt, Row row, boolean immutable)
             throws SQLException {
         int index = 1;
         for (Object value : row.effect().values()) { statement.setObject(index++, value); }
         statement.setLong(index++, attempt.unitId()); statement.setLong(index++, attempt.fence());
         statement.setLong(index++, attempt.stamp()); statement.setString(index++, row.address());
-        statement.setInt(index++, row.effect().deleted() ? 1 : 0); statement.setString(index++, row.timeColumns());
+        if (!immutable) { statement.setInt(index++, row.effect().deleted() ? 1 : 0); }
+        statement.setString(index++, row.timeColumns());
+        if (immutable) { return; }
         statement.setObject(index++, row.artifact() && !anchored(row) ? row.effect().value("_valid_until_epoch_ms") : null);
         statement.setObject(index, anchored(row) ? attempt.unitId() : null);
-        statement.executeUpdate();
     }
 
     private static boolean anchored(Row row) {

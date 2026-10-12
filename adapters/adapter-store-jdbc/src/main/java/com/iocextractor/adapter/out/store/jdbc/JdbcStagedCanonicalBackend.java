@@ -26,6 +26,16 @@ final class JdbcStagedCanonicalBackend {
     }
 
     static JdbcStagedCanonicalBackend createEmpty(JdbcStagedCanonicalConfiguration configuration, JdbcPublicationObserver observer) {
+        return createEmpty(configuration, observer, JdbcTypedJournal.ROW_POINTER);
+    }
+
+    static JdbcStagedCanonicalBackend createEmpty(JdbcStagedCanonicalConfiguration configuration,
+                                                  JdbcPublicationObserver observer, JdbcTypedJournal journal) {
+        return createEmpty(configuration, observer, journal, JdbcReceiptPayloadLayout.VERSIONED);
+    }
+
+    static JdbcStagedCanonicalBackend createEmpty(JdbcStagedCanonicalConfiguration configuration,
+            JdbcPublicationObserver observer, JdbcTypedJournal journal, JdbcReceiptPayloadLayout receiptPayloads) {
         try {
             try (var connection = configuration.dataSource().getConnection()) {
                 JdbcPublicationCatalog.requireEmpty(connection, JdbcPublicationCatalog.inspectNative(connection, configuration.schemas()));
@@ -35,10 +45,10 @@ final class JdbcStagedCanonicalBackend {
             var transactions = new JdbcPublicationTransactions(configuration.dataSource(), configuration.admission());
             var store = transactions.execute(JdbcWriterAdmission.OperationClass.CONTROL,
                     c -> {
-                        var candidate = JdbcTypedPublicationStore.initializeEmpty(c, configuration.schemas());
+                        var candidate = JdbcTypedPublicationStore.initializeEmpty(c, configuration.schemas(), journal, receiptPayloads);
                         JdbcPublicationTable.execute(c, "CREATE TABLE publication_configuration(singleton_id INTEGER PRIMARY KEY CHECK(singleton_id=1),pins TEXT NOT NULL)");
                         try (var statement = c.prepareStatement("INSERT INTO publication_configuration VALUES(1,?)")) {
-                            statement.setString(1, configuration.fingerprint()); statement.executeUpdate();
+                            statement.setString(1, candidate.pins(configuration.fingerprint())); statement.executeUpdate();
                         }
                         return candidate;
                     });
@@ -48,13 +58,14 @@ final class JdbcStagedCanonicalBackend {
 
     static JdbcStagedCanonicalBackend reopen(JdbcStagedCanonicalConfiguration configuration, JdbcPublicationObserver observer) {
         try (var connection = configuration.dataSource().getConnection()) {
+            var store = JdbcTypedPublicationStore.reopen(connection, configuration.schemas());
             try (var statement = connection.createStatement(); var rows = statement.executeQuery("SELECT pins FROM publication_configuration WHERE singleton_id=1")) {
-                if (!rows.next() || !configuration.fingerprint().equals(rows.getString(1))) {
+                if (!rows.next() || !store.pins(configuration.fingerprint()).equals(rows.getString(1))) {
                     throw new SQLException("Staged canonical configuration changed; drained migration required");
                 }
             }
             return new JdbcStagedCanonicalBackend(configuration,
-                    JdbcTypedPublicationStore.reopen(connection, configuration.schemas()), observer);
+                    store, observer);
         } catch (SQLException failure) { throw new IocExtractorException("Cannot reopen staged canonical backend", failure); }
     }
 
@@ -124,6 +135,7 @@ final class JdbcStagedCanonicalBackend {
     JdbcStagedExpiryStore expiry() { return new JdbcStagedExpiryStore(this); }
     JdbcStagedHistoryStore history() { return new JdbcStagedHistoryStore(this); }
     JdbcStagedProjectionStore projections() { return new JdbcStagedProjectionStore(this); }
+    JdbcDirectProjectionStore directProjections() { return new JdbcDirectProjectionStore(this); }
     JdbcStagedImportEvidenceStore importEvidence() { return new JdbcStagedImportEvidenceStore(this); }
     JdbcStagedReceiptStore receipts(java.time.Duration stagingRetention) { return new JdbcStagedReceiptStore(this, stagingRetention); }
     JdbcPublicationVersionCleanup cleanup() { return new JdbcPublicationVersionCleanup(this); }

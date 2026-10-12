@@ -17,17 +17,22 @@ final class JdbcPublicationTransfer {
 
     Description describe(Connection working, boolean publicationTime, long preparedUtc, long minimumDeadline)
             throws SQLException {
-        var counts = new int[2];
+        var counts = new int[3];
+        long[] bytes = {0};
         long[] deadline = {minimumDeadline};
-        walk(working, publicationTime, effect -> {
+        effects(working, effect -> {
             if (sameLifecycle(effect)) {
                 long oldDeadline = ((Number) effect.oldValue("_valid_until_epoch_ms")).longValue();
                 if (oldDeadline > preparedUtc) { deadline[0] = Math.min(deadline[0], oldDeadline); }
             }
-        }, chunk -> {
-            counts[0] = Math.incrementExact(counts[0]);
-            counts[1] = Math.addExact(counts[1], chunk.size());
+            long size = JdbcTypedPublicationChunk.descriptionBytes(effect, publicationTime);
+            if (size > byteLimit) { throw new SQLException("One typed publication row exceeds chunk byte limit"); }
+            if (counts[2] == 256 || bytes[0] + size > byteLimit) {
+                counts[0] = Math.incrementExact(counts[0]); counts[2] = 0; bytes[0] = 0;
+            }
+            counts[1] = Math.incrementExact(counts[1]); counts[2]++; bytes[0] += size;
         });
+        if (counts[2] != 0) { counts[0] = Math.incrementExact(counts[0]); }
         return new Description(counts[0], counts[1], deadline[0]);
     }
 
@@ -40,7 +45,7 @@ final class JdbcPublicationTransfer {
                 description.minimumDeadline(), dependencies);
         JdbcPublicationProtocol.Attempt attempt = writer.begin(identity, pins, manifest);
         int[] ordinal = {0};
-        walk(working, publicationTime, ignored -> { },
+        walk(working, publicationTime,
                 chunk -> writer.append(attempt, payloadScope, ordinal[0]++, chunk));
         if (ordinal[0] != description.chunks()) { throw new SQLException("Private publication snapshot changed"); }
         writer.seal(attempt);
@@ -54,33 +59,38 @@ final class JdbcPublicationTransfer {
         return java.util.Objects.equals(effect.value("_lifecycle_id"), effect.oldValue("_lifecycle_id"));
     }
 
-    private void walk(Connection working, boolean publicationTime, JdbcPrivateChanges.EffectConsumer observer,
+    private void walk(Connection working, boolean publicationTime,
                       ChunkConsumer consumer) throws SQLException {
-        var accumulator = new Accumulator(publicationTime, observer, consumer);
+        var accumulator = new Accumulator(publicationTime, consumer);
+        effects(working, accumulator::add);
+        accumulator.finish();
+    }
+
+    private void effects(Connection working, JdbcPrivateChanges.EffectConsumer consumer) throws SQLException {
         for (var table : store.tables()) {
             var after = JdbcPrivateChanges.Cursor.START;
             while (true) {
-                var next = JdbcPrivateChanges.read(working, table, after, accumulator::add);
+                var next = JdbcPrivateChanges.read(working, table, after, effect -> {
+                    if (Thread.currentThread().isInterrupted()) { throw new SQLException("Typed publication transfer interrupted"); }
+                    if (!store.receiptPayloads().contains(effect.table(), store.artifacts())
+                            || JdbcImmutableReceiptPayload.retainEffect(working, effect)) { consumer.accept(effect); }
+                });
                 if (next.equals(after)) { break; }
                 after = next;
             }
         }
-        accumulator.finish();
     }
 
     private final class Accumulator {
         private final boolean publicationTime;
-        private final JdbcPrivateChanges.EffectConsumer observer;
         private final ChunkConsumer consumer;
         private JdbcTypedPublicationChunk chunk = new JdbcTypedPublicationChunk(store.artifacts(), byteLimit);
 
-        Accumulator(boolean publicationTime, JdbcPrivateChanges.EffectConsumer observer, ChunkConsumer consumer) {
-            this.publicationTime = publicationTime; this.observer = observer; this.consumer = consumer;
+        Accumulator(boolean publicationTime, ChunkConsumer consumer) {
+            this.publicationTime = publicationTime; this.consumer = consumer;
         }
 
         void add(JdbcPrivateChanges.Effect effect) throws SQLException {
-            if (Thread.currentThread().isInterrupted()) { throw new SQLException("Typed publication transfer interrupted"); }
-            observer.accept(effect);
             if (!chunk.add(effect, publicationTime)) {
                 consumer.accept(chunk);
                 chunk = new JdbcTypedPublicationChunk(store.artifacts(), byteLimit);

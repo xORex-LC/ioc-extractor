@@ -41,21 +41,85 @@ final class JdbcStagedPublication {
     JdbcStagedPublication(Environment environment, JdbcPublicationObserver observer) {
         this.environment = environment;
         this.observer = observer;
-        transactions = new JdbcPublicationTransactions(environment.canonical(), environment.admission());
+        transactions = new JdbcPublicationTransactions(environment.canonical(), environment.admission(), observer);
     }
 
     boolean execute(Unit unit, NativeTask task) {
         if (unit.promotion()) { return executeAdmitted(unit, task); }
+        return admitControl(() -> executeAdmitted(unit, task));
+    }
+
+    private boolean admitControl(java.util.function.BooleanSupplier work) {
         if (controlPreparation.isHeldByCurrentThread() || environment.admission().ownedByCurrentThread()) {
             throw new IocExtractorException("Control preparation cannot wait under canonical ownership or recurse");
         }
+        long waiting = System.nanoTime();
         try { controlPreparation.lockInterruptibly(); }
         catch (InterruptedException failure) {
             Thread.currentThread().interrupt();
             throw new IocExtractorException("Control preparation admission interrupted", failure);
         }
-        try { return executeAdmitted(unit, task); }
-        finally { controlPreparation.unlock(); }
+        long held = System.nanoTime();
+        try {
+            observer.elapsed(JdbcPublicationObserver.Timing.CONTROL_GATE_WAIT, held - waiting);
+            return work.getAsBoolean();
+        }
+        finally {
+            controlPreparation.unlock();
+            observer.elapsed(JdbcPublicationObserver.Timing.CONTROL_GATE_HOLD, System.nanoTime() - held);
+        }
+    }
+
+    /** Same typed protocol in one transaction, allowlisted to one projection metadata row. */
+    boolean updateProjection(Unit unit, String artifact,
+                             java.util.function.Predicate<JdbcProjectionMutation> mutation) {
+        if (unit.promotion() || !unit.scopes().equals(Set.of("artifact:" + artifact))
+                || !environment.store().artifacts().contains(artifact)) {
+            throw new IllegalArgumentException("Direct execution only admits one configured projection artifact");
+        }
+        // Direct state is connection-local and needs no private-control workspace.
+        // Keep one writer owner; prepared controls revalidate the advanced epochs.
+        if (controlPreparation.isHeldByCurrentThread() || environment.admission().ownedByCurrentThread()) {
+            throw new IocExtractorException("Direct projection control cannot recurse under canonical/preparation ownership");
+        }
+        try {
+            boolean result = transactions.execute(operation(unit), c -> {
+                JdbcLifecycleTransactions.acquireActiveWriteOwnership(c);
+                // No-op controls still obey the canonical clock health contract.
+                environment.clock().now(c);
+                Map<String, Long> observed = dependencies(c, unit.scopes());
+                try (var state = new JdbcDirectProjectionState(c, environment.store(), artifact,
+                        environment.workspaces().canonicalChunkBytes())) {
+                    boolean applied = mutation.test(state.mutation());
+                    var chunk = state.effects(environment.store(), environment.workspaces().canonicalChunkBytes());
+                    if (!chunk.isEmpty()) {
+                        var manifest = new JdbcPublicationProtocol.Manifest(1, chunk.size(), Long.MAX_VALUE, observed);
+                        var attempt = protocol.begin(c, unit.identity(), unit.pins(), manifest);
+                        observer.observe(JdbcPublicationObserver.Phase.BEFORE_HIDDEN_CHUNK, 1, 0);
+                        chunk.append(c, protocol, attempt, "artifact:" + artifact, 0, environment.store().journal(), environment.store().receiptPayloads());
+                        observer.observe(JdbcPublicationObserver.Phase.HIDDEN_CHUNK, 1, 0);
+                        protocol.seal(c, attempt);
+                        observer.observe(JdbcPublicationObserver.Phase.SEALED, 1, 0);
+                        observer.observe(JdbcPublicationObserver.Phase.BEFORE_PUBLICATION, 1, 0);
+                        publish(c, unit, null, attempt, 1);
+                    } else {
+                        observer.observe(JdbcPublicationObserver.Phase.BEFORE_PUBLICATION, 1, 0);
+                    }
+                    if (Thread.currentThread().isInterrupted()) {
+                        throw new SQLException("Canonical publication interrupted before commit");
+                    }
+                    return applied;
+                }
+            });
+            observer.observe(JdbcPublicationObserver.Phase.COMMITTED, 1, 0);
+            return result;
+        } catch (SQLException failure) {
+            failControl(unit, failure);
+            throw new IocExtractorException("Direct projection publication failed", failure);
+        } catch (RuntimeException | Error failure) {
+            failControl(unit, failure);
+            throw failure;
+        }
     }
 
     private boolean executeAdmitted(Unit unit, NativeTask task) {
@@ -99,13 +163,20 @@ final class JdbcStagedPublication {
     }
 
     boolean committed(Unit unit) throws SQLException {
+        String sql = "SELECT pins,state FROM publication_unit WHERE identity=?";
+        if (environment.store().retiredIdentities()) {
+            sql += " UNION ALL SELECT pins,'COMMITTED' FROM publication_retired_identity WHERE identity=?";
+        }
         try (var connection = environment.canonical().getConnection();
-             var statement = connection.prepareStatement("SELECT pins,state FROM publication_unit WHERE identity=?")) {
+             var statement = connection.prepareStatement(sql)) {
             statement.setString(1, unit.identity());
+            if (environment.store().retiredIdentities()) { statement.setString(2, unit.identity()); }
             try (var rows = statement.executeQuery()) {
                 if (!rows.next()) { return false; }
                 if (!unit.pins().equals(rows.getString(1))) { throw new SQLException("Canonical publication pins changed"); }
-                return rows.getString(2).equals("COMMITTED");
+                boolean result = rows.getString(2).equals("COMMITTED");
+                if (rows.next()) { throw new SQLException("Duplicate live and retired publication identity"); }
+                return result;
             }
         }
     }
@@ -155,22 +226,28 @@ final class JdbcStagedPublication {
     private void attempt(Unit unit, NativeTask task, JdbcPublicationOwner.Owner owner, int number) throws SQLException {
         EffectiveTime preparedAt = environment.clock().now();
         String workspace = unit.identity() + ":" + (owner == null ? java.util.UUID.randomUUID() : owner.fence()) + ":" + number;
-        try (var privateState = JdbcPrivatePublicationWorkspace.create(environment.workspaces(), workspace, unit.pins(), unit.promotion())) {
-            initializeNative(privateState);
-            Prepared prepared = hydrate(unit, task, privateState, preparedAt);
+        try (var privateState = JdbcPublicationObserver.measure(observer, JdbcPublicationObserver.Timing.WORKSPACE_ADMISSION,
+                () -> JdbcPrivatePublicationWorkspace.create(environment.workspaces(), workspace, unit.pins(), unit.promotion()))) {
+            JdbcPublicationObserver.measure(observer, JdbcPublicationObserver.Timing.SCHEMA,
+                    () -> { initializeNative(privateState); return null; });
+            Prepared prepared = JdbcPublicationObserver.measure(observer, JdbcPublicationObserver.Timing.HYDRATION,
+                    () -> hydrate(unit, task, privateState, preparedAt));
             var authority = new JdbcCanonicalReservationAuthority(environment.canonical(), environment.allocatorClock(), environment.admission());
             var context = new JdbcCanonicalPreparationContext(authority,
                     c -> JdbcPrivateMutationJournal.open(c, unit.identity(), unit.pins()), prepared.slots(), privateState.limits().cacheKiB());
-            task.prepare(privateState.dataSource(), context, preparedAt);
+            JdbcPublicationObserver.measure(observer, JdbcPublicationObserver.Timing.NATIVE_PREPARATION,
+                    () -> { task.prepare(privateState.dataSource(), context, preparedAt); return null; });
             privateState.seal(unit.pins());
             observer.observe(JdbcPublicationObserver.Phase.PREPARED, number, 0);
             try (var source = privateState.dataSource().getConnection()) {
                 source.setAutoCommit(false);
                 try {
                 var transfer = new JdbcPublicationTransfer(environment.store(), JdbcCanonicalWorkspaceLimits.chunkBytes(privateState.limits()));
-                var description = transfer.describe(source, unit.promotion(), preparedAt.value().toEpochMilli(), prepared.deadline());
+                var description = JdbcPublicationObserver.measure(observer, JdbcPublicationObserver.Timing.DESCRIPTION,
+                        () -> transfer.describe(source, unit.promotion(), preparedAt.value().toEpochMilli(), prepared.deadline()));
                 var writer = new TransferWriter(unit, owner, number);
-                var attempt = transfer.stage(source, unit.identity(), unit.pins(), prepared.dependencies(), description, unit.promotion(), writer);
+                var attempt = JdbcPublicationObserver.measure(observer, JdbcPublicationObserver.Timing.TRANSFER,
+                        () -> transfer.stage(source, unit.identity(), unit.pins(), prepared.dependencies(), description, unit.promotion(), writer));
                 observer.observe(JdbcPublicationObserver.Phase.BEFORE_PUBLICATION, number, 0);
                 publish(unit, owner, attempt, number);
                 source.rollback();
@@ -230,15 +307,20 @@ final class JdbcStagedPublication {
 
     private void publish(Unit unit, JdbcPublicationOwner.Owner owner, JdbcPublicationProtocol.Attempt attempt, int number) throws SQLException {
         transactions.execute(operation(unit), c -> {
-            if (owner != null) { owners.require(c, owner); }
-            JdbcLifecycleTransactions.acquireActiveWriteOwnership(c);
-            long utc = environment.clock().now(c).value().toEpochMilli();
-            protocol.publish(c, attempt, utc, unit.pins(), environment.validity());
-            observer.observe(JdbcPublicationObserver.Phase.PUBLICATION_STAGED, number, 0);
-            if (owner != null) { owners.release(c, owner); }
-            if (Thread.currentThread().isInterrupted()) { throw new SQLException("Canonical publication interrupted before commit"); }
+            publish(c, unit, owner, attempt, number);
             return null;
         });
+    }
+
+    private void publish(Connection connection, Unit unit, JdbcPublicationOwner.Owner owner,
+                         JdbcPublicationProtocol.Attempt attempt, int number) throws SQLException {
+        if (owner != null) { owners.require(connection, owner); }
+        JdbcLifecycleTransactions.acquireActiveWriteOwnership(connection);
+        long utc = environment.clock().now(connection).value().toEpochMilli();
+        protocol.publish(connection, attempt, utc, unit.pins(), environment.validity());
+        observer.observe(JdbcPublicationObserver.Phase.PUBLICATION_STAGED, number, 0);
+        if (owner != null) { owners.release(connection, owner); }
+        if (Thread.currentThread().isInterrupted()) { throw new SQLException("Canonical publication interrupted before commit"); }
     }
 
     private static JdbcWriterAdmission.OperationClass operation(Unit unit) {
@@ -281,7 +363,7 @@ final class JdbcStagedPublication {
             observer.observe(JdbcPublicationObserver.Phase.BEFORE_HIDDEN_CHUNK, number, ordinal);
             transactions.execute(operation(unit), c -> {
                 if (owner != null) { owners.require(c, owner); }
-                chunk.append(c, protocol, attempt, scope, ordinal); return null;
+                chunk.append(c, protocol, attempt, scope, ordinal, environment.store().journal(), environment.store().receiptPayloads()); return null;
             });
             observer.observe(JdbcPublicationObserver.Phase.HIDDEN_CHUNK, number, ordinal);
         }

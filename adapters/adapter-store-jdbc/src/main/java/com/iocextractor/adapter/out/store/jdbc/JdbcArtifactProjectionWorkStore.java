@@ -17,6 +17,7 @@ public final class JdbcArtifactProjectionWorkStore implements ArtifactProjection
     private final JdbcClient jdbc;
     private final Clock clock;
     private final JdbcWriterAdmission writerAdmission;
+    private final JdbcProjectionMutation mutation;
 
     /** Creates projection state access with an injected UTC timestamp source. */
     public JdbcArtifactProjectionWorkStore(DataSource dataSource, Clock clock) {
@@ -28,6 +29,7 @@ public final class JdbcArtifactProjectionWorkStore implements ArtifactProjection
                                            Clock clock,
                                            JdbcWriterAdmission writerAdmission) {
         this.jdbc = JdbcClient.create(Objects.requireNonNull(dataSource, "dataSource"));
+        this.mutation = new JdbcProjectionMutation(jdbc);
         this.clock = Objects.requireNonNull(clock, "clock");
         this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
     }
@@ -65,19 +67,7 @@ public final class JdbcArtifactProjectionWorkStore implements ArtifactProjection
 
     private boolean acknowledgeAdmitted(String artifact, long installed) {
         try {
-            return jdbc.sql("""
-                            UPDATE artifact_projection_state
-                            SET projected_generation = :installed,
-                                projected_at_ms = :projectedAt,
-                                last_error_code = NULL
-                            WHERE artifact = :artifact
-                              AND required_generation >= :installed
-                              AND projected_generation <= :installed
-                            """)
-                    .param("installed", installed)
-                    .param("projectedAt", clock.millis())
-                    .param("artifact", artifact)
-                    .update() == 1;
+            return mutation.acknowledge(artifact, installed, clock.millis());
         } catch (RuntimeException e) {
             throw new IocExtractorException(
                     "Failed to acknowledge projection work for artifact: " + artifact, e);
@@ -101,17 +91,7 @@ public final class JdbcArtifactProjectionWorkStore implements ArtifactProjection
                                           ProjectionGeneration expectedGeneration,
                                           String failureCode) {
         try {
-            return jdbc.sql("""
-                            UPDATE artifact_projection_state
-                            SET last_error_code = :failureCode
-                            WHERE artifact = :artifact
-                              AND required_generation = :expected
-                              AND projected_generation < required_generation
-                            """)
-                    .param("failureCode", failureCode)
-                    .param("artifact", artifact)
-                    .param("expected", expectedGeneration.value())
-                    .update() == 1;
+            return mutation.recordFailure(artifact, expectedGeneration.value(), failureCode);
         } catch (RuntimeException e) {
             throw new IocExtractorException(
                     "Failed to record projection failure for artifact: " + artifact, e);
