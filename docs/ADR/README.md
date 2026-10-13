@@ -57,7 +57,9 @@
 
 | [0039-streamed-document-source-processing.md](0039-streamed-document-source-processing.md) | Workspace-owned source streaming, lazy extraction/attribution, bounded parser admission and fatal-worker recovery. |
 | [0040-native-sequential-preparation-dispatch.md](0040-native-sequential-preparation-dispatch.md) | Native sequential branch consumers with isolated UnitOfWork; remove redundant dispatch/aggregation without a second runtime. |
-| [0041-sqlite-staged-publication-experiment.md](0041-sqlite-staged-publication-experiment.md) | Proposed fenced, hidden SQLite versions and atomic publication; isolated experiment only, with typed integration and capacity gates before activation. |
+| [0041-sqlite-staged-publication-experiment.md](0041-sqlite-staged-publication-experiment.md) | Historical isolated versioned SQLite experiment; concluded without activation under ADR 0042. |
+
+| [0042-native-sqlite-production-storage.md](0042-native-sqlite-production-storage.md) | Retain improved Native SQLite as the sole production backend; remove isolated versioned storage and experiment tooling while preserving shared preparation and recovery. |
 
 ## Формат
 

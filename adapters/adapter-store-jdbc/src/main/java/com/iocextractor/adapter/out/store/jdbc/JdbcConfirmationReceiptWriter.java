@@ -25,10 +25,9 @@ final class JdbcConfirmationReceiptWriter {
     private static final int PAYLOAD_VERSION = 2;
 
     private final Map<String, DataframeArtifactSchema> schemas;
-    private final JdbcConfirmationReceiptBase base;
 
-    JdbcConfirmationReceiptWriter(Map<String, DataframeArtifactSchema> schemas, JdbcConfirmationReceiptBase base) {
-        this.schemas = schemas; this.base = base;
+    JdbcConfirmationReceiptWriter(Map<String, DataframeArtifactSchema> schemas) {
+        this.schemas = schemas;
     }
 
     void stageAndPublishIfComplete(Connection connection,
@@ -274,7 +273,7 @@ final class JdbcConfirmationReceiptWriter {
             statement.setString(1, receiptId);
             try (ResultSet resultSet = statement.executeQuery()) {
                 resultSet.next();
-                return Math.addExact(resultSet.getLong(1), base.count(receiptId, artifact));
+                return resultSet.getLong(1);
             }
         }
     }

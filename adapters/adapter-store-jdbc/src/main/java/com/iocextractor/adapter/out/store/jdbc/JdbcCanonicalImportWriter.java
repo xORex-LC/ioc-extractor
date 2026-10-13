@@ -81,14 +81,11 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
     private final JdbcCanonicalMutationEngine mutationEngine;
     private final CanonicalArtifactKeyResolver keyResolver;
     private final JdbcExportSlotRegistry exportSlots;
-    private final int readCacheKiB;
     private final ImportMergeResolver mergeResolver = new ImportMergeResolver();
     private final ImportWorkspaceLayout workspaceLayout;
     private final ConnectionTimeSource timeSource;
     private final RecordValidityPolicy validityPolicy;
     private final JdbcWriterAdmission writerAdmission;
-    private final JdbcWriterAdmission reservationAdmission;
-    private final JdbcMutationEffectSink.Factory effectFactory;
     private final JdbcCanonicalImportObserver observer;
     private final Duration receiptRetention;
     private final Map<String, ArtifactWritePolicy> writePolicies;
@@ -156,48 +153,6 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
             JdbcCanonicalImportObserver observer,
             Duration receiptRetention,
             Map<String, ArtifactWritePolicy> writePolicies) {
-        this(dataSource, schemas, publicIdDefinitions, identityDefinitions, workspaceRoot,
-                timeSource, validityPolicy, writerAdmission, observer,
-                receiptRetention, writePolicies, new JdbcCanonicalReservationAuthority(dataSource, allocatorClock, writerAdmission));
-    }
-
-    /**
-     * Keeps independently committed reservations in their authoritative database
-     * when the same planner and mutation kernel prepare effects in a private database.
-     * Physical admission for that authority is supplied by the caller.
-     */
-    JdbcCanonicalImportWriter(
-            DataSource dataSource,
-            List<DataframeArtifactSchema> schemas,
-            List<ArtifactIdAllocatorDefinition> publicIdDefinitions,
-            List<ArtifactIdentityDefinition> identityDefinitions,
-            Path workspaceRoot,
-            ConnectionTimeSource timeSource,
-            RecordValidityPolicy validityPolicy,
-            JdbcWriterAdmission writerAdmission,
-            JdbcCanonicalImportObserver observer,
-            Duration receiptRetention,
-            Map<String, ArtifactWritePolicy> writePolicies,
-            JdbcCanonicalReservationAuthority reservationAuthority) {
-        this(dataSource, schemas, publicIdDefinitions, identityDefinitions, workspaceRoot,
-                timeSource, validityPolicy, writerAdmission, observer, receiptRetention, writePolicies,
-                new JdbcCanonicalPreparationContext(reservationAuthority));
-    }
-
-    /** Captures native typed effects transactionally during private preparation. */
-    JdbcCanonicalImportWriter(
-            DataSource dataSource,
-            List<DataframeArtifactSchema> schemas,
-            List<ArtifactIdAllocatorDefinition> publicIdDefinitions,
-            List<ArtifactIdentityDefinition> identityDefinitions,
-            Path workspaceRoot,
-            ConnectionTimeSource timeSource,
-            RecordValidityPolicy validityPolicy,
-            JdbcWriterAdmission writerAdmission,
-            JdbcCanonicalImportObserver observer,
-            Duration receiptRetention,
-            Map<String, ArtifactWritePolicy> writePolicies,
-            JdbcCanonicalPreparationContext preparation) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
         List<ArtifactIdentityDefinition> identities = List.copyOf(
@@ -208,19 +163,13 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
         this.timeSource = Objects.requireNonNull(timeSource, "timeSource");
         this.validityPolicy = Objects.requireNonNull(validityPolicy, "validityPolicy");
         this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
-        Objects.requireNonNull(preparation, "preparation");
-        var reservationAuthority = preparation.reservations();
-        this.effectFactory = preparation.effects();
-        this.exportSlots = preparation.exportSlots();
-        this.readCacheKiB = preparation.readCacheKiB();
-        this.reservationAdmission = reservationAuthority.admission();
+        this.exportSlots = new JdbcExportSlotRegistry();
         this.observer = Objects.requireNonNull(observer, "observer");
         this.receiptRetention = requirePositive(receiptRetention, "receiptRetention");
         this.writePolicies = Map.copyOf(Objects.requireNonNull(writePolicies, "writePolicies"));
-        Clock allocatorClock = reservationAuthority.clock();
-        this.lifecycleIdAllocator = new JdbcLifecycleIdAllocator(reservationAuthority.dataSource(), allocatorClock);
+        this.lifecycleIdAllocator = new JdbcLifecycleIdAllocator(dataSource, allocatorClock);
         this.publicIdAllocators = initializePublicIdAllocators(
-                publicIdDefinitions, allocatorClock, reservationAuthority.dataSource());
+                publicIdDefinitions, allocatorClock, dataSource);
     }
 
     @Override
@@ -231,7 +180,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
             return replayed(committed.orElseThrow());
         }
         VerifiedStage stage = verifyStage(command);
-        ReservedIds reservations = reservationAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
+        ReservedIds reservations = writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
                 () -> reserveWorstCase(stage));
         return writerAdmission.execute(() -> promoteAdmitted(command, stage, reservations));
     }
@@ -339,7 +288,6 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
         }
         String url = "jdbc:sqlite:" + immutableUri(paths.sealed());
         try (Connection stageConnection = java.sql.DriverManager.getConnection(url)) {
-            JdbcImportStageReadPolicy.configure(stageConnection, "main", readCacheKiB);
             try (Statement statement = stageConnection.createStatement()) {
                 statement.execute("PRAGMA query_only=ON");
                 try (ResultSet integrity = statement.executeQuery("PRAGMA integrity_check")) {
@@ -370,14 +318,6 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
         }
     }
 
-    /** Shares the complete native integrity/preflight check with selective private preparation. */
-    PreparationInput inspectPreparationInput(CanonicalImportCommand command) {
-        var verified = verifyStage(command);
-        return new PreparationInput(verified.path(), verified.branchCounts(), verified.header().slotProfile());
-    }
-
-    record PreparationInput(Path path, Map<String, Integer> branchCounts, Optional<String> slotProfile) { }
-
     private ReservedIds reserveWorstCase(VerifiedStage stage) {
         int branches = stage.branchCounts().values().stream().mapToInt(Integer::intValue).sum();
         Map<String, ArtifactIdReservation> publicIds = new LinkedHashMap<>();
@@ -401,7 +341,6 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
             statement.setString(1, immutableUri(path));
             statement.execute();
         }
-        JdbcImportStageReadPolicy.configure(connection, STAGE_SCHEMA, readCacheKiB);
     }
 
     private void detachSealedStage(Connection connection) throws SQLException {
@@ -928,8 +867,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
         if (hasOrderedFields) {
             mutationEngine.validateRegistration(connection, registration);
         }
-        try (var effects = effectFactory.open(connection);
-             var sessions = new JdbcCanonicalMutationSessions(mutationEngine, connection, asOf, validity);
+        try (var sessions = new JdbcCanonicalMutationSessions(mutationEngine, connection, asOf, validity);
              PreparedStatement statement = connection.prepareStatement("""
                 SELECT branch_id, source_row_number, artifact, record_key_hash, canonical_row_id,
                        renew_ttl, requested_slot
@@ -973,7 +911,6 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
                                     reservations.lifecycleIds().idAt(lifecycleOffset++),
                                     registration);
                 }
-                effects.record(artifact, outcome, rows.getInt("renew_ttl") == 1);
                 observer.afterMutation(artifact, outcome.canonicalRowId(), rows.getInt("renew_ttl") == 1);
                 if (outcome.publicMutation()) {
                     publicMutations++;

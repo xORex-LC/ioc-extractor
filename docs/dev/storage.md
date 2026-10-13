@@ -1,478 +1,200 @@
-# Canonical storage и производные артефакты
+# Canonical SQLite storage
 
-Storage capability хранит business truth и durable service state, обеспечивает
-stable identity, schema evolution и транзакционные checkpoints. Она не решает,
-когда запускать ingest/export/sync, и не определяет CSV mapping или transport.
+Storage owns business truth, durable coordination facts, schema evolution and
+local transaction boundaries. Application ports define the contracts;
+`adapter-store-jdbc` implements them with SQLite, Spring JDBC and HikariCP.
+Bootstrap owns datasource composition and shutdown. Storage does not choose
+processing rules, CSV mapping, transport or scheduling cadence.
 
-## Два storage role
-
-```text
-ioc-dataframe.db                    ioc-service.db
-business rows                      ingestion / ingest_run
-<artifact>_sources                 export run/progress
-artifact identity/revision         remote fetch/publish ledgers
-match aliases                      import delivery/transition ledger
-lifecycle/history/receipts
-ID allocators/projection work
-export-slot registry
-```
-
-`dataframe` — источник истины для IOC-артефактов. `*_generated.csv` является
-перезаписываемой проекцией, а immutable export slice — снимком для доставки.
-`service` хранит coordination state и не является копией business data.
-
-Application работает через storage-neutral ports. Spring JDBC, HikariCP,
-Xerial SQLite, SQL, migrations и transaction mechanics принадлежат
-`adapter-store-jdbc`; composition и datasource lifecycle — `bootstrap/ioc-app`.
-
-Document preparation хранится отдельно от canonical truth: один приватный
-SQLite workspace на invocation, с общим admission budget и дисковыми квотами.
-Sealed winners читаются по одной строке; canonical mutation и typed receipts
-используют повторяемые курсоры. Receipt JDBC batch сбрасывается после 128 строк
-или при достижении 1 MiB расчётного удержания. Если одна запись превышает этот
-порог, она записывается отдельно; размер строки документа ограничен своим
-настраиваемым лимитом. Positions пишутся без накопления общего batch.
-Проверка повторных row keys перед ID reservation использует дисковый TEMP
-индекс с кешем 64 KiB и пределом 256 MiB. Committed observation/artifact marker
-проверяется до чтения подготовленных строк, включая STAGING whole-document
-receipt. Полный receipt остаётся достаточен после удаления workspace.
-При replay reader использует connection writer, поэтому pool из одного slot
-не приводит к взаимному ожиданию. Решение:
-[ADR 0036](../ADR/0036-sealed-document-preparation-workspace.md).
-
-Изолированный кандидат SQLite с приватной native-подготовкой и публикацией
-типизированных версий описан в [staged canonical publication](staged-canonical-publication.md).
-Он не включён в штатную сборку приложения; миграция накопленных данных и
-операционное включение требуют отдельной квалификации.
-
-## Canonical write
+## Runtime flow
 
 ```text
-prepared rows
-  -> materialize deferred ids
-  -> resolve versioned record key and usable match aliases
-  -> one artifact transaction
-       active match: zero / exact-one / multi at one effective asOf
-       public rows: insert, renew, restart or policy-owned mutation
-       aliases:     maintain canonical_match_alias with the lifecycle
-       provenance:  upsert <artifact>_sources
-       revision:    bump only for revision-significant public change
-  -> full mutable projection from canonical table
+owned document workspace / sealed import workspace
+  -> validate prepared rows and final keys
+  -> reserve non-reusable IDs
+  -> Native canonical transaction
+  -> durable receipt and projection work
+  -> mutable CSV / immutable export snapshot
+  -> service-ledger finalization and delivery
 ```
 
-Одна repository operation атомарна в пределах одного artifact. Pipeline пишет
-настроенные artifacts последовательно; общей транзакции на весь extraction run
-нет. Поэтому новая логика не должна предполагать cross-artifact rollback.
+Ordinary document confirmation commits **one artifact at a time**. There is no
+cross-artifact rollback for an extraction run. Managed import commits all accepted
+artifact branches and its delivery receipt in **one dataframe transaction**.
+Neither path exposes uncommitted rows. The production backend is Native SQLite;
+there is no alternate publication backend or automatic execution dispatcher.
+The decision is recorded in [ADR 0042](../ADR/0042-native-sqlite-production-storage.md).
 
-## Инварианты
+## Ownership boundaries
 
-1. **SQLite dataframe — canonical truth.** Oneshot и daemon накапливают данные
-   одинаково; удаление CSV не удаляет business data.
-2. **Identity отделена от provenance и mutation policy.** Повторный `row_key`
-   не создаёт новую public row и не меняет её id; новый source сохраняется в
-   `<artifact>_sources`. По умолчанию public values остаются keep-first, но
-   артефакт может объявить ordered mutable field policy: у `ioc_aggregate`
-   более поздно зарегистрированное непустое `name` атомарно заменяет прежнее.
-3. **Identity задаётся public output values.** Versioned record key определяет
-   immutable `row_key`, а named match keys дают альтернативные active-only
-   aliases. `key-columns`, `key-mode`, definition name и epoch компилируются до
-   startup storage admission. Несовместимый drift или migration collision
-   отклоняется до business write, а не молча создаёт другое значение
-   `row_key`.
-4. **Schema reconciliation только additive.** Missing table/column можно
-   создать; drop, rename, reorder-sensitive type drift и конфликт внутренних
-   колонок должны завершить startup failure до частичной мутации.
-5. **Canonical и export identity разделены.** Compatibility writer использует
-   schema-aware `max(id)+1`. Lifecycle-aware writer резервирует monotonic
-   per-artifact canonical row ID и global lifecycle ID; они не gapless и не
-   возвращаются после failed commit либо удаления active/history rows. Внешняя
-   колонка export `id` после activation берётся из отдельного reusable registry
-   с namespace `(profile, artifact)` и не является foreign key canonical data.
-6. **Revision отражает изменение public content.** Duplicate-only observation
-   не двигает `artifact_revision` и не продлевает export quiet period.
-7. **Service и dataframe lifecycle раздельны.** Unrelated lightweight CLI
-   paths не должны открывать service DB; daemon eagerly собирает требуемые
-   storage/recovery контуры до operational work.
+| Store | Authority |
+|---|---|
+| Dataframe DB | Public rows, record/match identities, aliases, provenance, ordered field origins, lifecycle/history, canonical receipts, ID allocators, projection generations and reusable export slots |
+| Service DB | Ingest/run, document admission, import delivery, export progress, remote fetch and publish ledgers |
+| Private document workspace | Immutable source pin, decoded/refanged text, extraction scratch and sealed repeatable prepared rows |
+| Private import workspace | Pinned CSV snapshot, logical rows, tri-state cells, branches, keys, warnings and rejections |
+| CSV and immutable slices | Generated projections and delivery snapshots; never runtime lookup inputs |
 
-## Schema и migrations
+The service and dataframe databases do not share a transaction. Application
+recovery reconciles their local durable checkpoints. Moving canonical receipt,
+lifecycle or slot authority into the service DB would break that protocol.
+Private preparation and managed-import staging remain part of Native; they are
+not versioned canonical publication or another storage backend.
 
-Версионированные service/dataframe migrations применяются через SQLite
-`user_version`. Config-driven public artifact tables дополнительно сверяются с
-ordered column definitions и declared storage types. Internal columns имеют
-отдельный namespace и не считаются частью public CSV schema.
+## Invariants
 
-Health проверяет открытие, schema version, необходимые PRAGMA и integrity
-probe. Health сообщает состояние storage, но не заменяет transactional
-guarantees и recovery ledgers.
+1. **SQLite is truth.** Oneshot accumulates the same canonical data as daemon.
+   Removing a CSV does not remove a canonical record.
+2. **Identity is computed after preparation.** Versioned record keys use final
+   public fields; named match keys provide alternative active-only aliases.
+   Digest lookup must also compare complete canonical material. Provenance and
+   mutable-field precedence are separate from identity.
+3. **IDs are separate contracts.** Compatibility writes retain schema-aware
+   ascending ID allocation. Lifecycle writes reserve durable canonical IDs and
+   lifecycle IDs before mutation; failed ranges remain burned. Immutable export
+   uses reusable sparse slots scoped by `(profile, artifact)`, not canonical IDs.
+4. **Checkpoint precedes side effects.** Rejected preparation does not reserve
+   IDs or mutate business rows. The lifecycle writer rejects duplicate final
+   keys before reservation, including retained-observation mapping collisions.
+5. **One owned transaction samples one effective UTC.** Native obtains write
+   ownership before reading lifecycle time. Every active query uses
+   `_valid_until_epoch_ms > asOf`; equality is expired. This is the accepted
+   Native contract, not a fresh wall-clock sample at transaction completion.
+6. **Revision and projection generation differ.** Public insertion or declared
+   public-field mutation advances revision; metadata-only origin/provenance
+   changes and TTL renewal do not. Expiry advances mutable projection work,
+   without producing an insertion-driven immutable slice.
+7. **Receipt completeness is structural.** A document receipt becomes COMPLETE
+   only after every expected artifact marker, including zero-row artifacts,
+   and every typed row total agree. Matching source/policy pins and retention
+   are required before reuse. Import receipts own delivery idempotency.
+8. **Schema changes fail closed.** Public reconciliation is additive; destructive
+   changes and type drift require an explicit migration. Identity backfill
+   checks every pending artifact for collisions before changing durable rows.
 
-Service schema v9 добавляет `import_delivery`, append-only transition audit,
-global sequence authority и индексы ordered head/retry/recovery. Bulk mapped
-values не попадают в service DB: каждый delivery использует отдельную private
-SQLite workspace schema v1. Workspace хранит logical rows, artifact branches,
-tri-state cells (`0=ABSENT`, `1=NULL`, `2=VALUE`), match keys и safe row errors;
-после sealing он checkpoint-ится, atomically переименовывается и проверяется
-read-only по pinned digest и metadata.
+## Native mutation and resource ownership
 
-Dataframe schema v10 добавляет независимый namespace и монотонный
-`admission_order` для delivery observations, а также отдельные lifecycle/compat
-таблицы происхождения изменяемых полей. Service schema v10 хранит только
-recoverable document-admission journal и ссылку managed-import delivery на
-dataframe registration. Между service и dataframe DB нет общей транзакции:
-application выполняет короткие локальные транзакции и завершает terminal
-handshake через reconcile. Retention сначала удаляет finalized service/file
-reference и только затем пытается удалить точную terminal registration; строка
-с canonical field-origin остаётся в dataframe DB.
+`JdbcCanonicalMatchPlanner` uses indexed complete-key singleton lookup or a
+bounded request-first matching session. Only active canonical lifecycles match;
+retained history cannot revive a record. TEMP requests and prepared statements
+belong to the transaction, not a global cache. A mutation session handles
+insert, renewal, restart, update, clear and no-op through the same policy.
+Ordinary confirmation retains one session per artifact; import retains one per
+affected artifact. Each session owns at most 32 statements, resets bindings and
+closes before commit. The writer owns the connection, reservations, revision
+aggregation and receipt publication.
 
-Service schema v11 добавляет `import_observation_reservation`. Маркер создаётся
-атомарно с новой import delivery и является единственным разрешением выделить
-rank после crash между service reservation и dataframe registration. Старые
-nonterminal deliveries без маркера не переоцениваются по timestamps и не
-получают новый rank. Cleanup не выдаёт finalized import reference, пока
-соответствующая delivery не стала `TERMINAL`, поэтому service recovery authority
-не удаляется раньше завершения handshake.
+Writer admission distinguishes control, promotion, expiry, export-slot and
+maintenance operations with bounded fairness. It orders waiting work but cannot
+preempt an already-running SQLite transaction. A giant atomic promotion can
+therefore delay controls; increasing pool size does not create multiple SQLite
+writers. Actual measurement scopes and observed limits are in
+[native capacity](native-capacity.md).
 
-Service schema v12 хранит fingerprint выбранной политики обработки документов.
-Перед сменой политики daemon проверяет отсутствие незавершённых ingestion и
-document-admission записей, ещё не завершённых либо ожидающих регистрации,
-а также файлов в processing. При прежнем fingerprint
-восстановление продолжается без повторной подготовки уже записанных данных.
+The document factory admits one lease against aggregate memory, root-wide disk
+reservations and per-workspace quotas. It pins source bytes and policy identity,
+uses file leases and refuses symlinks or foreign workspace roots. Inactive pins
+are reclaimed by retention; a live lease cannot be removed. Decoded/refanged
+text uses disk-backed pages, and source scratch is removed before sealing.
+The global disk reducer preserves complete final identity, first-key order and
+whole-row winner selection across all artifacts. Repeatable row cursors feed
+writers and receipts without a document-wide winner list.
 
-Dataframe schema v11 завершает ordered-field transaction contract. Complete
-receipt v2 хранит position каждого управляемого поля; commit marker различает
-public update и metadata-only origin advance. Активный lifecycle origin при
-expiry атомарно переносится в history-owned origin table, поэтому retention не
-может удалить registration раньше lifecycle history. Старый complete receipt v1
-не переинтерпретируется: receipt replay возвращает ETL fallback, а уже
-зафиксированный canonical commit остаётся idempotency authority.
+Row decoding validates the versioned bounded payload before allocation. ASCII
+fields avoid temporary per-field decoder/buffer copies; non-ASCII uses one strict
+UTF-8 decoder per row. ABSENT, NULL, field positions and corrupt-input rejection
+are preserved. Receipt batches flush after 128 rows or 1 MiB estimated bindings;
+an individually larger binding flushes alone. Before ID reservation, duplicate
+key validation uses a disk TEMP index with a 64-KiB cache and a 256-MiB cap.
+Receipt replay borrows the owning connection where required, avoiding nested
+pool acquisition even with one connection. Two ordered cursors merge receipt
+rows and field positions in one snapshot; missing, duplicate or orphan positions
+fail closed without retaining the complete receipt in memory.
 
-Dataframe schema v12 хранит ограниченные предупреждения принятых строк импорта
-отдельно от `import_row_rejection`. Они записываются в той же транзакции, что и
-`import_commit`, и доступны при восстановлении terminal-отчёта после сбоя.
-Новая версия private sealed workspace также отделяет предупреждения от ошибок.
-Запечатанный stage v2 читается с его исходным `plan_hash` и без предупреждений;
-неизвестные версии не переинтерпретируются.
+## Lifecycle, projections and export
 
-`LatestRegisteredValuePolicy` остаётся pure application strategy. JDBC adapter
-только загружает текущий origin, применяет решение и в одной транзакции изменяет
-public row, origin, revision/projection generation, commit marker и receipt.
-Более новый одинаковый value двигает только origin; пустой incoming value не
-меняет ни public value, ни precedence; публичное изменение двигает revision и
-попадает в projection/event recovery. Эти правила одинаковы в `ACTIVE` и
-`DISABLED_COMPATIBLE` режимах.
+Lifecycle activation is explicit and one-way. `disabled` preserves compatibility
+behavior. `fixed + existing-records: expire` closes legacy records in bounded
+keyset batches, records history and schedules projection work; intake/export
+remain behind readiness until activation finishes. Upgrade never silently
+renews existing rows.
 
-Shipping `ioc_aggregate` включает ordered `name` policy и использует эти таблицы
-как runtime authority в oneshot, daemon document и managed-import paths. Старый
-binary корректно откажется открывать schema v12; rollback выполняется только
-совместным восстановлением service/dataframe DB, конфигурации и принадлежащих
-сервису файлов из одной остановленной recovery point.
+Native confirmation atomically commits public rows, aliases, provenance, field
+origins, observation markers, revisions, projection work and typed receipt
+payload for its artifact. A live observation renews the same lifecycle; an
+expired observation archives/deletes the old row and creates a new non-reusable
+identity. Safe UTC has a durable non-decreasing high-water mark: small skew is
+clamped, material/prolonged rollback fails closed.
 
-### Lifecycle-aware storage path (dataframe v4; explicit activation)
+Expiry uses one immutable cycle time and indexed bounded archive/delete pages.
+History, source summaries and complete receipts have independent retention.
+A five-second nearest-deadline backstop is read-only when nothing is due.
+Retention and projection have separate backstops; successful empty checks are
+silent. No job or timer is allocated per IOC.
 
-V4 размещает все lifecycle facts рядом с business rows именно в dataframe DB,
-не в service DB. Статическая migration создаёт one-way activation/clock state,
-resumable activation progress, durable ID allocators, projection generations,
-observation/reconcile markers и normalized complete-receipt headers. Для каждого
-configured artifact reconciler additively создаёт:
+Mutable CSV streaming reads rows and generation in one snapshot, writes a
+neighboring temporary file and installs it with `ATOMIC_MOVE`. The application
+serializes installation/acknowledgement per artifact. Acknowledgement advances
+only installed coverage; newer work remains pending. Neither CSV construction
+nor a snapshot reader holds canonical writer admission. Safe-time sampling
+finishes before the read lease opens.
 
-- nullable internal `_lifecycle_id`, first/last-confirmed epoch-ms и
-  `_valid_until_epoch_ms` в active table;
-- unique lifecycle identity и range index
-  `(_valid_until_epoch_ms, _lifecycle_id)`;
-- typed ordered `<artifact>_history` и compact
-  `<artifact>_history_sources` с retention index;
-- typed `<artifact>_receipt_rows` без service-owned public ID.
+Immutable export reconciles reusable slots under writer admission, then pins one
+read snapshot for coverage and all artifact rows. Survivors retain their slots;
+vanished lifecycle slots become coalesced free ranges; new lifecycles take the
+lowest available positive holes. Preferred import slots use the same registry
+and owning import transaction. Generation validation catches races between
+reconciliation and snapshot opening. Id-less artifacts do not allocate slots.
+See [artifact export](artifact-export.md) and
+[canonical lifecycle](canonical-record-lifecycle.md).
 
-Upgrade сохраняет существующие rows и оставляет lifecycle columns `NULL` в
-состоянии `DISABLED_COMPATIBLE`. В P5 mode `disabled` продолжает использовать
-compatibility writer. Явный `fixed + existing-records: expire` переводит control
-через `ACTIVATING`: bounded keyset batches переносят legacy rows и compact
-provenance в history с причиной `LEGACY_ACTIVATION`, удаляют active rows и
-создают projection work, не увеличивая insert-driven revision. Durable progress
-делает restart идемпотентным; intake/export остаются за admission barrier.
+## Schema and recovery
 
-Lifecycle-aware JDBC writer атомарно выполняет insert, renewal либо
-archive/delete + recreate, обновляет compact provenance, observation marker,
-insert-driven revision, projection generation и typed receipt. Один effective
-UTC `asOf` читается только после получения write ownership. Canonical-row и
-lifecycle ID резервируются отдельными committed transactions до canonical
-write, поэтому ошибка создаёт допустимые gaps, но не позволяет переиспользовать
-эти internal identities. Complete
-receipt публикуется в той же canonical transaction только после проверки всех
-artifact markers и typed row totals; marker обязателен и для zero-row artifact.
-Complete receipt читается только при точном совпадении source content key и
-processing-policy fingerprint и только до `purge_after`; иначе ingestion
-выполняет обычный ETL. Observation identity отдельна от content key, поэтому
-новая доставка тех же bytes создаёт новую попытку и подтверждает freshness,
-тогда как retry/recovery той же попытки остаётся идемпотентным.
+Versioned migrations use `user_version`, followed by configured artifact-schema
+reconciliation. Native dataframe format 12 and service format 14 remain the
+supported current formats. The normal migrator rejects newer/experimental
+formats; it does not reinterpret or lower their version.
 
-В `ACTIVE` все service-local dataframe reads используют точный предикат
-`_valid_until_epoch_ms > asOf`. Mutable projection получает один clock sample на
-load, а immutable multi-artifact snapshot использует один общий `asOf` и одну
-SQLite read snapshot как для coverage, так и для rows. В `ACTIVATING` внешние
-stateful entry points и immutable snapshots fail-closed; внутренний mutable
-projection reader допускается только с active predicate, чтобы установить
-пустую/очищенную проекцию до `ACTIVE`. Переход в `ACTIVE` защищён transactional
-CAS и set-based проверкой полной ordered metadata.
+The migration chain preserves these ownership distinctions: dataframe v4 owns
+lifecycle/history/receipts, v5/v8 slots and sparse free ranges, v6 the bounded
+reconciliation checkpoint, v7 named match identities, v9 import receipts,
+v10 ordered registrations/field origins, and v11 ordered receipt positions/origin history and v12 accepted import warnings. Service v9 owns managed deliveries, v10 document
+admission, v11 import observation reservations v12 document-policy pins, v13 export-profile single flight and v14 bounded document execution.
+A document or import retry resumes its original rank; an unreserved legacy
+import occurrence cannot silently acquire a different rank after restart.
 
-P4 runtime поверх этих facts реализует:
+| Failure boundary | Result and recovery |
+|---|---|
+| Schema/identity drift | Startup fails before business mutation; correct configuration or perform an explicit migration |
+| Canonical transaction | Roll back that artifact or complete import delivery; reserved IDs remain burned |
+| Commit before projection/finalization | Canonical truth remains; run/delivery ledgers reconcile from the canonical receipt/checkpoint |
+| Source/workspace removed after commit | A compatible complete receipt is sufficient; do not reapply the delivery |
+| Projection rename before acknowledgement | Required generation remains pending; startup/periodic recovery repeats installation |
+| Interrupted expiry | Committed pages remain closed; reconcile resumes from truth without resurrection |
+| Unsafe UTC | Confirmation fails closed; readiness reflects clock degradation without reducing high-water |
+| CSV lost or corrupt | Regenerate from canonical storage |
+| Unsealed import workspace | Not promotion evidence; rebuild only from the pinned snapshot and delivery checkpoint |
 
-- durable non-decreasing UTC high-water в `canonical_lifecycle_control`; small
-  rollback clamp-ится, material/prolonged rollback fail-closed;
-- constant-cardinality reconciliation checkpoint и indexed bounded
-  archive/delete с одним неизменным `cycleAsOf`; five-second backstop сначала
-  только перечитывает nearest deadline и не пишет idle cycles;
-- независимый bounded history retention по
-  `(closed_at_epoch_ms, history_id)`;
-- durable required/projected generation и retryable projection failure state;
-- read-only aggregate status без IOC/source identities.
+Rollback after schema evolution restores coordinated stopped backups of both
+DBs, owned files, configuration and binary. Copying only the dataframe DB or
+lowering `user_version` is unsupported.
 
-Nearest deadline, history retention и mutable projection schedulers живут в
-bootstrap, а SQL и transaction boundaries — в этом adapter. Expiry увеличивает только mutable
-projection generation: insert-driven `artifact_revision` и immutable export
-trigger не меняются. Незавершённый reconciliation checkpoint при следующем admission
-помечается failed, после чего due rows безопасно перечитываются из canonical
-truth; частично закрытые records не воскресают.
+## Extension and sources of truth
 
-Dataframe v6 мигрирует последний v4 journal row в singleton
-`lifecycle_reconcile_state`. Старый `lifecycle_reconcile_cycle` сохраняется
-read-only для upgrade/rollback evidence, но больше не растёт.
+Extend application ports rather than exposing SQL types inward. A new artifact
+normally needs configured columns, record/match keys and optional field policy;
+reconciliation supplies its typed storage families. A new database family needs
+an adapter and the same port contracts, not a new lifecycle or merge engine.
 
-Mutable CSV-проекция читает строки и их generation через один ordered JDBC
-cursor в одной read transaction и пишет соседний временный файл перед
-`ATOMIC_MOVE`. Общий application owner сериализует чтение, сборку, установку и
-подтверждение по артефакту. Сборка не удерживает canonical writer admission;
-короткое подтверждение повышает projected coverage только до установленного
-поколения, оставляя новое required work pending. Safe clock завершается до
-открытия read lease, в том числе при pool size 1. Ошибка до rename сохраняет
-старый файл; ошибка после rename/до acknowledgement оставляет durable работу
-для startup/periodic recovery без нового canonical изменения. Подробности:
-[canonical-record-lifecycle.md](canonical-record-lifecycle.md).
+- Composition: [AppConfig](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java).
+- Native ordinary writer: [JdbcCanonicalLifecycleWriter](../../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalLifecycleWriter.java).
+- Native import writer and contract: [JdbcCanonicalImportWriter](../../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalImportWriter.java), [contract suite](../../adapters/adapter-store-jdbc/src/test/java/com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalImportWriterContractIT.java).
+- Lifecycle TCK binding: [JdbcCanonicalRecordLifecycleContractIT](../../adapters/adapter-store-jdbc/src/test/java/com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalRecordLifecycleContractIT.java).
+- Production Spring flow: [NativeDeliveryLifecycleIT](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/NativeDeliveryLifecycleIT.java).
+- Module reference: [adapter-store-jdbc](../../adapters/adapter-store-jdbc/README.md).
 
-### Versioned identity and active matching (dataframe v7)
+Update this document when commit scope, identity/UTC authority, receipt recovery,
+resource ownership, schema or projection/slot visibility changes.
 
-V7 additively создаёт `canonical_match_definition` и
-`canonical_match_alias`, а в `artifact_identity` сохраняет имя и fingerprint
-record-key definition. Match lookup индексируется по
-`(artifact, definition_id, key_hash, key_canonical)` и всегда проверяет как
-SHA-256 digest, так и canonical material. Active candidate дополнительно обязан
-иметь тот же lifecycle ID в canonical table и
-`_valid_until_epoch_ms > asOf`; history не участвует.
-
-`JdbcArtifactIdentityStore` выполняет epoch migration одной transaction для
-всех pending artifacts. Сначала он рассчитывает новые record keys и aliases в
-TEMP shadow tables с unique collision preflight. Только после успешной полной
-стадии durable rows получают временные reserved keys, затем окончательные keys,
-definitions и aliases. Ошибка любого artifact откатывает весь migration и не
-разрешает создать writer через startup identity-validation dependency.
-
-Default configuration переводит `address_blacklist` и `hashes` с
-first-non-empty на compound v2 record keys. Миграция меняет только internal
-`row_key`/alias metadata: public columns, canonical/lifecycle IDs, revisions и
-export-slot ownership сохраняются. Named match definitions остаются
-альтернативными ключами поиска; совпадение нескольких active lifecycles
-является конфликтом и не склеивает records автоматически.
-
-`JdbcCanonicalMatchPlanner` принимает batch requests и возвращает zero/exact-one/
-multi plan в исходном порядке. Для одного request с одним key применяется прямой
-запрос; общий поиск использует connection-local TEMP table, создаваемую один раз
-за matching session, и порции по 256 requests / 256 driver batch keys.
-SQLite `CROSS JOIN` закрепляет порядок обхода:
-request → полный `(artifact, definition_id, key_hash, key_canonical)` alias key →
-canonical row; размер таблицы артефакта не определяет число проверяемых aliases.
-Staged import также ищет aliases по полному key material, сохраняя исходные
-границы preplanning. Неизменяемый `JdbcCanonicalMutationEngine` создаёт
-transaction-scoped sessions для ordinary lifecycle writer и managed-import
-promotion. Одна session принадлежит одному артефакту, connection и effective time;
-до 32 prepared statements переиспользуются с очисткой bindings/batches между
-leases. Session закрывает statements и TEMP state до commit, не закрывая
-connection и не владея commit/rollback. Импорт держит отдельную session на каждый
-затронутый артефакт в общей транзакции. Insert/restart/renew/archive поддерживают aliases атомарно; public
-mutation отдельно сообщает update, clear, no-op или TTL confirmation. Изменение
-record key, включая очистку всех его значений, не допускается in-place и должно
-создать новую canonical record.
-
-### Очередь операций и наблюдение нагрузки
-
-В изолированном staged-кандидате эксперимент ACK/error допускает только одну
-строку projection state одного настроенного артефакта. `JdbcDirectProjectionStore`
-получает общий control admission и SQLite writer до чтения текущего committed
-состояния. Общий `JdbcProjectionMutation` выполняет тот же SQL compare-and-set,
-что native и prepared пути, над одной TEMP-строкой в заимствованной connection.
-Изменение публикуется через существующие typed begin/append/seal/publish и epoch
-проверки в одной транзакции. TEMP-строка удаляется до возврата connection в pool;
-отдельные private DB, pool и миграции на этот ACK не создаются.
-
-Direct ACK/error больше не ожидает gate приватной подготовки control: его TEMP
-state принадлежит только writer connection. Общий writer admission, safe UTC,
-fencing и artifact epoch остаются обязательными. Подготовленный control после
-конкурирующего ACK перестраивается по прежнему conflict protocol. ACK по-прежнему
-означает завершённый durable commit; запись ошибок не вынесена в асинхронную очередь.
-
-Отдельный квалификационный эксперимент `JdbcTypedJournal.CHUNK_POINTER`
-сокращает только журнал переноса: один указатель с числом эффектов, checksum
-и признаком привязки TTL хранится на chunk вместо указателя на каждый эффект.
-Все типизированные версии, receipt и provenance сохраняются полностью; их
-вставка и подтверждение chunk выполняются в одной транзакции. Manifest считает
-реальное число эффектов, а checksum включает значения, SQL-типы, NULL, ключи,
-tombstone, флаги времени и stamp попытки. Повтор с изменённым содержимым,
-пропущенный или лишний chunk и устаревший ownership отклоняются прежним протоколом.
-Режим записывается в `publication_journal_format` и configuration pins; старый
-кандидат без discriminator считается `ROW_POINTER`. Production остаётся native,
-переключатель и миграция production для нового представления не добавлены.
-
-Следующий изолированный эксперимент `JdbcReceiptPayloadLayout.IMMUTABLE`
-меняет только `<artifact>_receipt_rows` и `confirmation_receipt_field_position`
-в свежей staged БД. Данные вставляются неизменяемыми с native keys и привязкой
-к committed unit; заголовки/маркеры и дочерние результаты managed import остаются
-версионными. Payload раннего артефакта виден при родителе `STAGING`, поэтому
-последующий артефакт может завершить полный receipt. Retirement родителя скрывает
-payload без копирования всех детей в private workspace. Physical cleanup удаляет
-детей порциями и сохраняет committed tombstone родителя, пока существуют более
-старые payloads: повторное использование receipt ID не возвращает старые строки.
-Режим сохраняется в `publication_receipt_layout` и configuration pins. Эксперимент
-не меняет publication protocol, conflict epochs, fencing или семантику recovery;
-production conversion и runtime selector отсутствуют.
-
-Receipt replay читает строки и field positions двумя упорядоченными курсорами
-в одной SQL snapshot; запрос на positions больше не выполняется для каждой
-строки. Пустые positions, порядок и count проверки сохраняются. Сканирование
-transfer manifest вычисляет framing size без повторного SHA-256; фактический
-checksum и ограниченный batch вставок формируются только при переносе.
-
-Физическая очистка ограничивает просмотр адресов и удаляет выбранную порцию
-одним SQL statement. Cursor и счётчики просмотренных/удалённых строк фиксируются
-в той же транзакции; защищённые версии не считаются удаляемым долгом. Периодическое
-`PRAGMA optimize` принадлежит maintenance и не выполняется в ACK/commit пути.
-Свежая кандидатная схема исключает точные дубликаты copied lookup indexes;
-существующие индексы при reopen автоматически не удаляются.
-
-Свежий staged-кандидат поддерживает `publication_retired_identity`: после
-проверки отсутствия всех version, deadline, journal и ownership ссылок committed
-document/import header заменяется компактным постоянным replay proof.
-Identity, pins, sequence, UTC и receipt не забываются. Guard запрещает повторное
-создание unit с retired identity. Старые кандидатные БД без этой capability
-сохраняют прежнюю политику; reopen не выполняет скрытой миграции. Это уменьшает
-служебный footprint, но не устанавливает конечный retention для идемпотентности.
-
-Даже no-op проверяет safe UTC и прерывание до commit; неизменённое значение не
-создаёт publication unit и не увеличивает artifact epoch. Payload ограничен
-существующим размером canonical chunk с резервом 2048 байт для framing;
-непомещающийся существующий state или failure code отклоняется до публикации.
-Новый failure code допускается по консервативной оценке `3 * String.length()`.
-Успех возвращается только после commit. Устаревший error не применяется к
-новому required generation, а ACK не подтверждает более новое поколение.
-Изменённый ACK того же артефакта по-прежнему инвалидирует ранее подготовленную
-попытку: гранулярность epochs в этом эксперименте не меняется.
-
-Production остаётся native; штатный staged projection store сохраняет prepared
-execution. Выбор direct существует только в тестовом qualification launcher,
-не является свойством `ioc.*` и не активирует новый backend или формат данных.
-
-Один bootstrap-owned `JdbcWriterAdmission` обслуживает canonical promotion,
-expiry, export slots, короткие control updates и maintenance. Свежие запросы
-предпочитаются в порядке CONTROL, EXPIRY, EXPORT_SLOTS, PROMOTION, MAINTENANCE;
-после 100 ms ожидания запрос получает преимущество перед свежими и сохраняет
-FIFO среди ожидающих. Выбор происходит только между atomic units: текущая
-транзакция не прерывается. Вложенная операция входит в внешнюю writer unit.
-Резервирование ID выполняется короткой CONTROL-операцией до promotion.
-
-Service schema v14 сохраняет attempts, retry-after и failure для document
-admission; индекс recovery упорядочивает их по durable admission order.
-Новая схема не меняет canonical dataframe format. Runtime writer scheduling
-не охватывает startup migrations и не объединяет service/dataframe транзакции.
-
-Snapshot reader использует ограниченное число permits из read-бюджета; clock
-и slot transactions завершаются до reader admission. Отказ callback освобождает
-permit и connection. Долгий snapshot может удерживать WAL checkpoint, хотя новые
-canonical writes продолжаются. Capacity health показывает writer wait/hold
-по классам, readers, размер WAL и cached workspace pressure; health не
-сканирует IOC/spill и не выполняет admission transitions. Контракт:
-[ADR-0038](../ADR/0038-durable-bounded-document-execution.md).
-
-### Export-slot storage path (dataframe v5 and v8)
-
-V5 additively создал в dataframe DB три export-owned структуры:
-
-- `export_slot_assignment` с unique ownership как lifecycle→slot, так и
-  slot→lifecycle внутри `(profile, artifact)`;
-- legacy `export_slot_free`, чей primary key одновременно являлся ordered index
-  для smallest-free lookup;
-- `export_slot_state` с policy version, durable `next_slot`, canonical
-  `source_generation` и временем последнего reconciliation.
-
-V8 атомарно преобразует legacy per-hole rows в coalesced
-`export_slot_free_range(profile, artifact, range_start, range_end)`, не меняя
-assignments и `export_slot_state`. Split/merge ranges, exact preferred request,
-occupied fallback и survivor mismatch policy выполняются connection-scoped в
-той же owning canonical transaction. Стоимость sparse request зависит от числа
-затронутых ranges, а не от числовой величины slot.
-
-Registry не хранится в service DB: reconciliation active membership и slot
-state выполняется одной SQLite write transaction. После неё read snapshot
-сверяет generation до выдачи строк. Первое обращение seed-ит active lifecycle
-из текущих canonical IDs; положительные holes ниже seed high-water становятся
-free. Дальнейший high-water продвигается только durable `next_slot`, а не
-пересчитывается через `MAX(active id)`. Артефакты без public `id` не создают
-namespace rows.
-
-## Отказы и восстановление
-
-| Ситуация | Поведение | Восстановление |
-|---|---|---|
-| Schema/identity drift | startup/preflight failure до business write | исправить config или оформить явную миграцию/epoch |
-| Artifact transaction failure | текущая transaction rollback; run fails | повтор invocation безопасен по `row_key` |
-| Crash после DB commit до projection | canonical truth уже сохранена | daemon `ingest_run=DB_COMMITTED` запускает reprojection |
-| Crash в expiry drain | committed batches остаются history, незавершённый cycle остаётся `STARTED` | следующий admission помечает cycle interrupted и продолжает indexed reconcile |
-| Mutable projection/ack failure | required generation остаётся больше projected | отдельный projection backstop повторяет полную atomic CSV replacement |
-| System UTC rollback | small skew clamp-ится; material/prolonged skew отклоняет safe time | исправить clock; readiness отражает `DEGRADED`/`DOWN`, durable high-water не уменьшается |
-| CSV потерян или повреждён | business data не потеряна | полная idempotent projection из dataframe |
-| Service ledger недоступен | coordination operation не притворяется успешной | восстановить service DB/permissions и повторить recovery |
-| Import workspace остался `.building.db` | файл не считается sealed evidence и не допускается к promotion | явно перестроить его из pinned snapshot по service-ledger checkpoint |
-| Sealed import stage не совпадает с digest/metadata | fail-closed до dataframe transaction | восстановить pinned stage либо перестроить из snapshot |
-| Crash после import dataframe commit до service checkpoint | canonical mutation уже завершена ровно один раз | `import_commit` receipt восстанавливает result и продолжает finalization без повторного apply |
-
-## Как расширять
-
-- Новый SQL backend реализует существующие ports отдельным storage adapter-ом;
-  SQL types и transaction semantics не просачиваются в application.
-- Новая public column требует additive schema reconciliation, mapping update и
-  проверки export schema fingerprint.
-- Изменение identity formula требует осознанного epoch/migration решения; это
-  не обычная правка YAML.
-- Новый durable workflow получает собственный ledger/state model, а не
-  перегружает `ingest_run` или `export_run` чужими состояниями.
-
-## Источники истины
-
-- Storage ports/models: `application.port.out.artifact`,
-  `application.port.out.ingest`, `application.artifact`.
-- JDBC implementation: `adapter-store-jdbc` и его migration resources.
-- Runtime schema/config: `IocProperties`, `application.yml`,
-  `DataframeSchemaReconciler`.
-- Identity/matching: `ArtifactIdentityDefinition`,
-  `CanonicalArtifactKeyResolver`, `CanonicalMatchPlanner`,
-  `ArtifactIdentityStore` contract tests.
-- Canonical/provenance behavior: `JdbcCanonicalArtifactRepositoryTest` и
-  dataframe recovery integration tests.
-- Module boundary: `adapters/adapter-store-jdbc/README.md`.
-- Managed import staging and recovery:
-  [dataframe-import.md](dataframe-import.md), delivery-ledger TCK and
-  `JdbcImportWorkspaceIT`.
-
-## Когда обновлять документ
-
-Обновить при смене source of truth, identity/epoch contract, transaction
-boundary, migration policy, revision semantics или разделения service/dataframe.
-SQL helper или pool implementation detail сюда переносить не нужно.
-
-## Связанные документы
-
-- [processing.md](processing.md) — подготовка write plans и policy checkpoint.
-- [ingestion.md](ingestion.md) — write→project run ledger.
-- [artifact-export.md](artifact-export.md) — consistent read snapshot.
-- [ADR-0015](../ADR/0015-retire-legacy-csv-lookup-storage.md) — отказ от legacy
-  CSV storage/lookup mode.
-- [ADR-0020](../ADR/0020-canonical-record-expiration-lifecycle.md) — lifecycle
-  semantics, history, identity and activation boundaries.
-- [ADR-0024](../ADR/0024-managed-dataframe-import.md) — managed import delivery,
-  active-only matching and shared canonical mutation decision.
+Related capabilities: [processing](processing.md), [ingestion](ingestion.md),
+[dataframe import](dataframe-import.md), [observability](observability.md).

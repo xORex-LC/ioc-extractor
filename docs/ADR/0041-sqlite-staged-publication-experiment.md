@@ -185,3 +185,12 @@ It is justified only if measured occupancy and whole-service costs meet the
 adopted limits without weakening data authority. A failed experiment leaves the
 current path and failed capacity status explicit; it does not authorize relaxed
 limits or premature production activation.
+
+## Experiment concluded, 2026-10-13
+
+The owner selected Native SQLite for production. The isolated implementation
+and temporary experiment bundle are removed under
+[ADR 0042](0042-native-sqlite-production-storage.md); this proposed protocol was
+not activated. Historical rationale above remains unchanged. Retained production
+architecture and scoped measurement facts are in [storage](../dev/storage.md)
+and [native capacity](../dev/native-capacity.md).

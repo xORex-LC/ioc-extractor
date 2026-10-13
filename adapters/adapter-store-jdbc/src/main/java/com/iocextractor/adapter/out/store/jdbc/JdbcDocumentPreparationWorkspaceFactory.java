@@ -33,13 +33,8 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
     private final String fingerprint;
     private final Duration retention;
     private final Semaphore leases;
-    private final Semaphore canonicalControls = new Semaphore(1, true);
-    private boolean canonicalHeadroom;
-    private Semaphore documentLeases;
     private final Set<Path> active = new HashSet<>();
     private final int leaseLimit;
-    private int documentLeaseLimit;
-    private boolean intakeStarted;
     private volatile long lastCheckedDiskBytes;
     private volatile int activeWorkspaceCount;
 
@@ -57,148 +52,16 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
         this.retention = Objects.requireNonNull(retention, "retention");
         if (retention.isNegative() || retention.isZero()) { throw new IllegalArgumentException("Pin retention must be positive"); }
         leaseLimit = Math.toIntExact(Math.min(MAXIMUM_PINS, limits.memoryBytes() / limits.leaseBytes()));
-        documentLeaseLimit = leaseLimit;
         this.leases = new Semaphore(leaseLimit, true);
-        documentLeases = new Semaphore(leaseLimit, true);
     }
 
     @Override
-    public synchronized int maximumConcurrentWorkspaces() { return documentLeaseLimit; }
-
-    /** Shares the existing memory/disk admission with a native canonical preparation attempt. */
-    CanonicalLease openCanonicalState(String identity, String pins) {
-        return openCanonicalState(identity, pins, false);
-    }
-
-    CanonicalLease openCanonicalState(String identity, String pins, boolean promotion) {
-        Objects.requireNonNull(identity, "identity");
-        Objects.requireNonNull(pins, "pins");
-        int permits = canonicalLeasePermits();
-        boolean controlReserved = reserveCanonicalAdmission(permits, promotion);
-        Path directory = root.resolve(ArtifactIdentityDefinition.sha256("canonical:" + identity));
-        Lease lease = null;
-        boolean admitted = false;
-        try {
-            synchronized (this) {
-                initializeRoot();
-                try (var ignored = new Lease(root.resolve(".admission"), true)) {
-                    pruneExpired();
-                    if (active.contains(directory)) { throw new IocExtractorException("Canonical workspace is already leased"); }
-                    reserveDisk(directory);
-                    privateDirectory(directory);
-                    lease = new Lease(directory.resolve("lease"), false);
-                    active.add(directory);
-                    activeWorkspaceCount = active.size();
-                    admitted = true;
-                    Path pin = directory.resolve("identity");
-                    String value = "canonical-publication-v1\n" + identity + "\n" + fingerprint + "\n" + pins;
-                    if (value.length() > 32768) { throw new IOException("Canonical identity pin exceeds limit"); }
-                    if (Files.exists(pin) && !Files.readString(pin).equals(value)) {
-                        throw new IOException("Canonical workspace pins changed");
-                    }
-                    DocumentWorkspaceFiles.write(pin, value);
-                    checkDisk(directory);
-                    Lease owner = lease;
-                    return new CanonicalLease(directory, JdbcCanonicalWorkspaceLimits.privateLimits(limits), () -> checkDisk(directory), () -> {
-                        try { release(directory, owner); }
-                        finally { leases.release(permits - 1); releaseCanonicalControl(controlReserved); }
-                    }, () -> {
-                        try { discardCanonical(directory, owner, permits); }
-                        finally { releaseCanonicalControl(controlReserved); }
-                    });
-                }
-            }
-        } catch (IOException | RuntimeException | Error failure) {
-            closeFailedLease(directory, lease, failure);
-            if (admitted) { synchronized (this) { active.remove(directory); activeWorkspaceCount = active.size(); } }
-            leases.release(permits);
-            releaseCanonicalControl(controlReserved);
-            if (failure instanceof Error fatal) { throw fatal; }
-            throw new IocExtractorException("Cannot open canonical preparation workspace", failure);
-        }
-    }
-
-    private boolean reserveCanonicalAdmission(int permits, boolean promotion) {
-        boolean controlReserved;
-        synchronized (this) { controlReserved = canonicalHeadroom && !promotion; }
-        // Two control/export workspaces must not borrow the working set reserved for promotion.
-        if (controlReserved && !canonicalControls.tryAcquire()) {
-            throw new IocExtractorException("Canonical control workspace admission exhausted");
-        }
-        // A document may already own a lease: nested blocking acquisition can deadlock a full pool.
-        if (!leases.tryAcquire(permits)) {
-            releaseCanonicalControl(controlReserved);
-            throw new IocExtractorException("Canonical workspace admission exhausted");
-        }
-        return controlReserved;
-    }
-
-    private void releaseCanonicalControl(boolean reserved) {
-        if (reserved) { canonicalControls.release(); }
-    }
-
-    int canonicalReadCacheKiB() { return JdbcCanonicalWorkspaceLimits.privateLimits(limits).cacheKiB(); }
-    int canonicalChunkBytes() { return JdbcCanonicalWorkspaceLimits.chunkBytes(JdbcCanonicalWorkspaceLimits.privateLimits(limits)); }
-
-    /** Accounts byte-bounded row/chunk bindings and six base/private/stage caches. */
-    private int canonicalLeasePermits() {
-        long bytes = JdbcCanonicalWorkspaceLimits.memoryBytes(JdbcCanonicalWorkspaceLimits.privateLimits(limits));
-        return Math.toIntExact(Math.ceilDiv(bytes, limits.leaseBytes()));
-    }
-
-    synchronized void requireCanonicalCapacity() {
-        int available = leaseLimit - 2 * canonicalLeasePermits();
-        if (available < 1) {
-            throw new IllegalArgumentException("Staged canonical capacity requires promotion, control and a separate document lease");
-        }
-        if (documentLeaseLimit == available) { return; }
-        if (intakeStarted || !active.isEmpty()) { throw new IllegalStateException("Canonical headroom must be configured before intake"); }
-        documentLeaseLimit = available;
-        documentLeases = new Semaphore(available, true);
-        canonicalHeadroom = true;
-    }
-
-    static final class CanonicalLease implements AutoCloseable {
-        private final Path directory;
-        private final DocumentPreparationLimits limits;
-        private final Runnable checkQuota;
-        private final Runnable release;
-        private final Runnable discard;
-        private final Thread owner = Thread.currentThread();
-        private boolean closed;
-
-        CanonicalLease(Path directory, DocumentPreparationLimits limits, Runnable checkQuota, Runnable release, Runnable discard) {
-            this.directory = directory; this.limits = limits; this.checkQuota = checkQuota;
-            this.release = release; this.discard = discard;
-        }
-
-        Path directory() { return directory; }
-        DocumentPreparationLimits limits() { return limits; }
-        void checkQuota() { checkQuota.run(); }
-
-        /** Disposes finished scratch state; durable publication facts live in the dataframe database. */
-        void discard() { finish(discard); }
-
-        @Override public void close() { finish(release); }
-
-        void requireOwner() {
-            if (Thread.currentThread() != owner) { throw new IllegalStateException("Canonical workspace belongs to another thread"); }
-        }
-
-        private void finish(Runnable action) {
-            requireOwner();
-            if (!closed) { closed = true; action.run(); }
-        }
-    }
+    public int maximumConcurrentWorkspaces() { return leaseLimit; }
 
     @Override
     public DocumentPreparationWorkspace open(ExtractionCommand command, Map<String, ArtifactWritePolicy> policies) {
-        Semaphore documents;
-        synchronized (this) { intakeStarted = true; documents = documentLeases; }
-        boolean documentAdmitted = false;
-        try { documents.acquire(); documentAdmitted = true; leases.acquire(); }
+        try { leases.acquire(); }
         catch (InterruptedException failure) {
-            if (documentAdmitted) { documents.release(); }
             Thread.currentThread().interrupt();
             throw new IocExtractorException("Document workspace admission interrupted", failure);
         }
@@ -224,17 +87,13 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
                     checkDisk(directory);
                     Lease owner = lease;
                     return new JdbcDocumentPreparationWorkspace(directory, snapshot, limits, identities, policies,
-                            () -> checkDisk(directory), () -> {
-                                try { release(directory, owner); }
-                                finally { documents.release(); }
-                            });
+                            () -> checkDisk(directory), () -> release(directory, owner));
                 }
             }
         } catch (IOException | RuntimeException | Error failure) {
             closeFailedLease(directory, lease, failure);
             if (admitted) { synchronized (this) { active.remove(directory); activeWorkspaceCount = active.size(); } }
             leases.release();
-            documents.release();
             if (failure instanceof Error fatal) { throw fatal; }
             throw new IocExtractorException("Cannot open private document workspace", failure);
         }
@@ -343,19 +202,6 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
         try { lease.close(); }
         catch (IOException failure) { throw new IocExtractorException("Cannot release document workspace lease", failure); }
         finally { active.remove(directory); activeWorkspaceCount = active.size(); leases.release(); }
-    }
-
-    private synchronized void discardCanonical(Path directory, Lease lease, int permits) {
-        // Keep admission and the workspace lease until unlinking is complete: a new opener
-        // must never lock a replacement lease file while the former owner is retiring it.
-        try (var ignored = new Lease(root.resolve(".admission"), true)) {
-            deletePrivateDirectory(directory);
-        } catch (IOException failure) {
-            throw new IocExtractorException("Cannot discard private canonical workspace", failure);
-        } finally {
-            try { release(directory, lease); }
-            finally { leases.release(permits - 1); }
-        }
     }
 
     private synchronized void checkDisk(Path directory) {
