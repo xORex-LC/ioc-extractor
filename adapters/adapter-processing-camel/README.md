@@ -55,16 +55,13 @@ source-level Camel API, route model and list-aggregation processor dependencies
 are declared directly; `camel-support` also supplies the DSL builder
 superclasses required at compile time and exchange fixtures in tests. Versions remain managed by the existing parent `camel.version` property.
 
-`RouterQualificationTest` runs the 1,000-input synthetic correctness matrix in
-Surefire. `make router-qualification SIZE=100000` runs the opt-in 100,000-input
-profile in fresh JVMs for 1/4/16 selected branches, 1/4 callers and
-success/failure/recovery mixtures. The script records per-profile startup,
-thread allocations, retained-heap samples and throughput under a fixed heap.
-This profile does not assert an IOC end-to-end throughput target; a real
-document/import before/after throughput target requires a separately agreed
-workload and machine budget. The selected document output fixture and routed
-import row fixture are qualified in bootstrap tests; the reference import
-workspace load is measured separately from this synthetic Router profile.
+Functional compiler/runtime conformance tests cover branch ordering, immutable
+replies, distinct exchanges, native UnitOfWork completion, recovery, stopped
+routes, readiness and bounded shutdown. Production Spring document/import
+fixtures connect this runtime to IOC preparation and Native canonical storage.
+Historical cost results and their limits are in
+[native capacity](../../docs/dev/native-capacity.md); they do not establish a
+portable throughput target.
 
 See [routing capability](../../docs/dev/processing.md),
 [module map](../../docs/MODULARIZATION.md) and

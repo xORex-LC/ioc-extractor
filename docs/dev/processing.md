@@ -1,409 +1,207 @@
-# Обработка IOC: document → canonical artifacts
+# IOC processing
 
-Способность читает документ, refang-ит и извлекает IOC, атрибутирует источник,
-классифицирует сетевые значения и готовит строки canonical artifacts. Она не
-владеет обнаружением файлов, долговременным lifecycle источника, физической
-схемой SQLite или доставкой export slices.
-
-Каждый документ обрабатывается через обязательный именованный Router-план.
-Поставляемый `original-document` сохраняет полные исходные значения и использует
-`observation-selection: retained-observations`: для `keep-first` готовятся только
-исходные наблюдения, разрешённые `ioc.pipeline.deduplicate`, без объединения
-mapped-коллизий. Это сохраняет резервирование ID и учёт provenance.
-`last-nonempty` рассматривает все occurrences и удерживает последнюю целую строку
-с непустым selection field по конечному ключу артефакта. Режим `final-key` также
-выбирает победителей `keep-first` по конечному ключу и подходит для сведения URL
-к host/IP. Оба режима исполняют один Router; прежних стадий dispatch нет.
-Диагностики mapping сохраняются для участвующих наблюдений. Lifecycle writer
-по-прежнему отклоняет подтверждение с повторными конечными ключами до
-резервирования ID и commit; план с `retained-observations` не скрывает эту ошибку.
-Основание перехода: [ADR 0034](../ADR/0034-required-router-processing-plans.md).
-
-Подготовка документа использует принадлежащий extraction invocation приватный
-SQLite workspace. Каждый occurrence проходит Router и validation; losing
-candidates также сохраняются. Глобальный выбор сравнивает полную каноническую
-идентичность, сохраняет порядок первого ключа и целую строку победителя.
-Все артефакты sealing завершают до failure-policy checkpoint; ID до него не
-резервируются. `ArtifactWritePlan` содержит повторно читаемый `RowSource`, а
-writer и receipts читают его через закрываемый `RowCursor` без общего списка
-победителей. Один workspace/cache обслуживает все артефакты; лимиты находятся
-в `ioc.processing.workspace`. Этот же owner хранит decoded/refanged UTF-16
-на диске и предоставляет regex полный `CharSequence` через фиксированный cache.
-Пересечения и решения extraction хранятся в индексированном source scratch;
-атрибуция и Router читают occurrences через cursor. Source scratch удаляется
-до sealing и при отказе. HTML разбирается с удалением завершённых поддеревьев,
-DOCX — через SAX. Превышение лимитов parser region, IOC или marker отклоняет
-подготовку до canonical commit; offsets остаются абсолютными UTF-16 позициями.
-Контракт и ограничения форматов:
-[ADR 0039](../ADR/0039-streamed-document-source-processing.md).
-Состояния, pins и recovery:
-[ADR 0036](../ADR/0036-sealed-document-preparation-workspace.md).
-
-Повторное чтение sealed row сохраняет формат payload версии 1. Декодер читает
-проверенные срезы общего bounded payload: ASCII не создаёт декодер и временные
-буферы для каждого поля; Unicode проходит строгий UTF-8 decoder, принадлежащий
-одному вызову чтения строки. `ABSENT`, явный `NULL`, порядок/позиции полей и
-проверки повреждённых данных сохраняются; decoded строки владеют своими bytes.
-
-Document plan открывает отдельную `DocumentProcessingSession` на
-подготовку документа; stage закрывает её до checkpoint и при исключениях.
-Чистый `IndicatorProcessingSession` из `ioc-processing` переиспользует только
-успешные семантические результаты. Ключ классификации включает value, type,
-source label и section; обёртки классификатора должны ссылаться на один и тот
-же экземпляр политики. Для иной operation policy вычисление остаётся без кеша.
-Host-пара сохраняет лишь значение и тип; source присоединяется заново.
-Позиции, диагностики, mapper, часы и строки артефактов не кешируются.
-Общий лимит — 256 записей и 1 MiB расчётного удержания, максимум 64 KiB на
-запись. Бюджет поровну разделён между классификацией и выделением host.
-Заполненная часть вытесняет наименее недавно использованную запись; слишком
-большая запись вычисляется без кеширования и без вытеснения. Это не потолок
-памяти процесса. Классификация исходных и производных значений использует общую
-LRU-часть, поэтому часто используемые host остаются при потоке уникальных URL.
-Импорт открывает сессию на попытку staging после проверки pinned contract и
-закрывает до seal, включая ошибки чтения, mapping и append. Все строки проходят
-прежние проверки authority и staging. Повторная попытка получает новую сессию;
-receipt recovery и as-is импорт её не открывают. Прямой вызов preparer одной
-строки и advisory validation сохраняют сессию строки. Решение:
-[ADR 0033](../ADR/0033-bounded-semantic-reuse-during-import-staging.md).
-
-Имена и аргументы transforms в `ConfigurableRowMapper` привязываются один раз
-при создании mapper. Порядок вызовов, gates и ошибки достигнутых колонок
-сохраняются; значения провайдеров и строки продолжают вычисляться для каждого
-occurrence. Проверка SHA-256 в `CanonicalKeyMaterial` использует точный проход
-по 64 строчным ASCII hex-символам без компиляции regex на каждом ключе.
-
-Статические разрешения выбранного processed-import preparer проверяются один раз
-при его создании: набор артефактов, output targets, запрет изменения source и
-эффективные merge policies закреплены за полным immutable compiled contract.
-На каждой строке проверяются соответствие закреплённому контракту, наличие
-admitted branches/cells и все прежние правила source authority и сборки carriers.
-Один ID контракта не разрешает подмену definition, version или fingerprint.
-
-
-## Квалификация стоимости
-
-Атрибуция сохраняет порядок occurrences и выбирает ближайший маркер с позицией
-не больше позиции IOC. Для упорядоченных occurrences поиск выполняется одним
-курсором (`O(N+S)`); для произвольного порядка — бинарным поиском по маркерам
-(`O(N log S)`). Обнаружение и приоритет перекрывающихся маркеров общие для обоих
-путей. Подсчёт IOC без источника использует attribution decisions и не создаёт
-дополнительный полный список `Indicator`.
-
-Лимит `ioc.pipeline.max-diagnostics-per-run` действует внутри циклов extraction
-и document preparation. Каждый stage-local collector удерживает первые
-ELEMENT/RUN occurrences до лимита и первые ERROR/FATAL сверх него, сохраняя
-порядок поступления. Точные counts по severity передаются через `DiagnosticBatch`
-и `Envelope` отдельно от details. Runner применяет общий лимит, сохраняет
-прежние samples и доставку retained occurrences exactly once, добавляя одно
-итоговое `PIPELINE.DIAGNOSTICS_SUPPRESSED`. Это итоговое сообщение не входит в
-observed counts. OPERATION diagnostics остаются вне occurrence-бюджета по
-прежнему контракту. Отказ collector/delivery не скрывается; failure policy
-видит поздние ERROR/FATAL до резервирования ID и canonical write. TRACE остаётся
-отдельной явно включаемой доставкой решений, а не хранилищем diagnostic details.
-
-Исторический `make processing-route-comparison` сравнивал совместимый и выбранный
-пути через штатную Spring-конфигурацию в отдельных JVM/SQLite/workspaces. После
-полного перехода текущий код поддерживает только выбранные маршруты;
-`--selected-only` остаётся способом сравнивать закреплённые версии одного плана. Сравнение включает
-выходные поля/ключи, canonical IDs, source occurrences, import COALESCE и receipt.
-Время относится к обработке после старта контекста, allocations — к вызывающему
-потоку; heap и текущий RSS снимаются с интервалом 10 ms. Первое выполнение и
-прогрев с новыми ключами измеряются отдельно. Профили и диагностический режим:
-[developer tools](../../tools/dev/README.md).
-
-Обработка каждого occurrence остаётся частью выбранной политики. Уменьшение
-числа вычислений классификации и удержание одного победителя не устраняют
-mapping и transient allocations. Квалификация от 2026-10-03 обнаружила превышение
-исторической границы allocations на документе с 100k occurrences/20 ключами и
-sampled heap на документах с 50% повторов либо без повторов. Принятие ресурсного
-бюджета остаётся открытым — [OUT-4](../KNOWN-ISSUES.md). Neutral Router с четырьмя
-callers и отдельная калибровка сессий не задают throughput/heap SLO всего сервиса.
-
-Mixed/long comparison сохраняет исходное представление ради одинаковых полей;
-он не измеряет очистку подробных URL/IP. Отдельный `--shape host-collapse
---selected-only` квалифицирует HTTP/HTTPS URL с портами, путями, query и fragment,
-которые сходятся к небольшому набору domain/IP. Он использует host-ветвь и
-одинаковую policy до/после оптимизации, проверяет конечные поля/ключи, победителей,
-диагностику и provenance. Ресурсная приёмка остаётся отдельной; множество разных
-URL заполняет bounded session. LRU позволяет переиспользовать соседние повторы
-и частые производные host, но не удерживает все уникальные исходные URL.
-`make processing-optimization-comparison` сравнивает два замороженных runtime
-выбранного пути с чередованием JVM до/после. Он проверяет полную подпись результата,
-включая сводку диагностик; тексты и контекст отдельных диагностик в подпись не
-входят. Локальная серия из пяти пар на профиль после изменения кеша, сессии
-импорта, проверки ключей и привязки transforms показала на 100k URL occurrences
-снижение времени на 11,3% и allocations вызывающего потока на 16,4%. Sampled peak
-heap вырос на 4,8%, поэтому это не доказательство снижения всей памяти процесса
-и не закрытие OUT-4.
-
-Исторический совместимый import отключал `processed-route`, сохраняя каталог
-планов и idle Camel. Его startup/RSS показывал стоимость выбора пути, а не
-разницу deployments без Camel и с Camel. Такая конфигурация после полного
-перехода больше не допускается.
+Processing reads a document, refangs and extracts indicators, attributes sources,
+classifies representations and prepares canonical artifact rows. It does not own
+file detection, physical database schemas or remote delivery. Documents and
+processed CSV imports use required named plans behind application ports;
+`as-is` import bypasses IOC preparation.
 
 ## Runtime flow
 
-Порядок стадий является частью application contract и собирается явно:
-
 ```text
-read -> refang -> extract -> attribute
-     -> required Router plan -> observation selection -> failure-policy checkpoint
-     -> canonical commit -> mutable CSV projection
+pinned source -> read -> refang -> extract -> attribute
+  -> required Router plan -> observation selection
+  -> seal repeatable artifact rows -> failure-policy checkpoint
+  -> Native canonical commit -> mutable CSV projection
 ```
 
+The stage order is an application contract, not an operator-defined workflow.
+Rules, condition parameters, mapping and failure policy are declarative. Domain,
+application and `ioc-processing` remain framework-free. Tika/RE2/J/PSL/CSV/Camel
+live in adapters and Spring composition lives in bootstrap.
 
-`adapter-processing-camel` компилирует ограниченный план: проверяет ссылки,
-связывает зарегистрированные предикаты, создаёт локальные маршруты для операций,
-веток и последовательной отправки выбранным назначениям. Выбор FIRST/ALL/
-EXCLUSIVE учитывает недоступные представления и выполняется до отправки;
-повторной проверки условий в Camel нет. Представления, затребованные условиями,
-вычисляются по мере необходимости не чаще одного раза за вызов. Технический
-контракт R3 различает доступное, отсутствующее и ожидаемо недоступное значение;
-явное восстановление допускает только зарегистрированные причины и отдельное
-альтернативное представление. Результат сохраняет причины, фактически
-затронутые ветки и исход каждой выбранной ветки: кандидат, фильтрация либо
-ожидаемый отказ. Представления, нужные только для mapping, вычисляются лишь
-после выбора соответствующей ветки. R4 добавил изолированный lifecycle Camel:
-bootstrap требует зарегистрированные планы и запускает общий runtime,
-проверяет готовность маршрутов и ограничивает время остановки с ожиданием
-активных вызовов. Типизированные события выбора, вычисления представлений,
-восстановления и исполнения веток переводятся в существующий application
-tracer с fingerprint политики, но без значений IOC; MDC-контекст плана,
-представления и ветки
-восстанавливает родительские поля даже при ошибке. Диагностика и её итоговая
-серьёзность остаются у application, а Camel не делает повторных попыток.
-После атрибуции источника документ всегда использует
-`DocumentProcessingAdapter`: каждый occurrence передаётся в Router, выбранные
-ветки используют CSV mapper и представления для отдельных колонок.
-`PrepareRoutedArtifactsStage` применяет `observation-selection` плана:
-`retained-observations` сохраняет допущенные исходные строки для KEEP_FIRST,
-а `final-key` выбирает победителей по ключам заполненных строк.
-LAST_NONEMPTY в обоих случаях видит все occurrences и выбирает целую строку по
-конечному ключу. Пустые планы для явно пропущенных артефактов сохраняют контракт
-количества записей lifecycle receipt. `IocExtractionServiceFactory` требует
-`ioc.processing.document-plan` и привязывает к Router preparer конкретного
-запуска с его `_source_key`. Каждый processed-контракт требует свой явный
-`processed-route`; режим `as-is` не вызывает processed preparation.
-Оценка серьёзности диагностик, правила IOC и canonical-запись сохраняют текущих
-владельцев. Именованные планы, выбор документа и привязки processed-контрактов
-обязательны; отсутствие выбора является ошибкой конфигурации. На старте
-`ProcessingPlanCatalog` проверяет ссылки на активные артефакты, представления,
-колонки, классификации и предикаты, форму условий AND/OR/NOT, типизированные
-аргументы `type-in` и явный список `omitted-artifacts` для каждого включённого,
-но не маршрутизируемого артефакта документа. Компиляция создаёт технический
-дескриптор Router и привязки колонок; выбранный план активируется в общем
-Camel runtime до начала обработки.
-`ConfigurableRowMapper` умеет брать отдельное классифицированное представление
-для каждой колонки: её gate, provider и transforms используют одно и то же
-представление. Контекстные `id` и `source.label` нельзя переназначить через
-`field-views`; привязка колонки с `const` без условий допускается, но не требует
-вычисления представления и не меняет константу. При выполнении документа
-ожидаемый отказ представления получает итоговую диагностику по фактически
-достигнутым потребителям: только успешные восстановления дают WARN, хотя бы
-один невосстановленный потребитель — ERROR. Отклонение маршрута и
-неоднозначный EXCLUSIVE тоже дают ERROR до checkpoint; штатный SKIP не
-считается ошибкой.
+## Preparation and bounded data
 
-`platform-etl` даёт framework-free `Envelope`, `Stage`, `Pipeline` и
-`PipelineRunner`. IOC-specific payloads и порядок стадий принадлежат
-`core/ioc-application`; композиция классификации и декларативного заполнения
-полей — в чистом `core/ioc-processing`, доменные правила — в `core/ioc-domain`;
-Tika, RE2/J, Guava PSL и Commons CSV изолированы адаптерами.
+One invocation owns a private SQLite workspace, immutable source/policy pins and
+aggregate memory/disk admission. Decoded and refanged UTF-16 text is disk-backed;
+regex reads the full `CharSequence` through fixed pages. Indexed extraction
+scratch resolves overlap priority and absolute offsets. HTML parsing removes
+completed subtrees; DOCX uses SAX. Parser-region, IOC and marker limits reject
+oversized preparation before canonical writes. Source scratch closes before
+sealing and on failure; it is disposable, not recovery authority.
 
-Для сетевых значений доменный `NetworkAddressParser` задаёт единую поддерживаемую
-форму адреса для признаков и вывода хоста. Он принимает HTTP(S), DNS или IPv4,
-необязательный порт, путь, query и fragment; возвращает типизированную причину
-ожидаемого отказа для неподдерживаемой формы. `NetworkHostDeriver` создаёт
-отдельный IOC с исходным контекстом источника, не изменяя оригинал.
-`ExactIndicatorParser` из `ioc-processing` требует одного совпадения на всю структурированную ячейку,
-поэтому частичный адрес не становится импортированным IOC. Документный
-экстрактор по-прежнему ищет совпадения внутри текста. Вывод host подключён к
-явно выбранному плану документа или processed import.
+The workspace reducer retains losing candidates and compares complete final
+identity across all artifacts. It preserves first-key order and the entire
+winning row. Sealed `RowSource`/`RowCursor` contracts are repeatable and closeable,
+so preparation, reservation, mutation and receipt capture do not require a
+retained document-wide winner list. Oneshot remains synchronous. Daemon splits
+owned `prepare` and ordered `promote`; see [ingestion](ingestion.md).
 
-Технический runtime связывает фиксированные Camel endpoints после старта своего
-контекста и использует ссылки внутри этого контекста. Параметры условий
-связываются один раз при компиляции leaf; `type-in` получает неизменяемое
-множество типов после semantic preflight. Это не кеш результатов IOC:
-предикаты и востребованные операции выполняются для каждого вхождения.
-После завершения selection и разрешения всех необходимых views каждая
-доступная ветвь последовательно вызывается через существующий bound
-`ProducerTemplate`. Native consumers сохраняют отдельные Exchange и UnitOfWork;
-неизменяемый input одинаков для всех ветвей. Дополнительные dispatch route и
-Recipient List удалены согласно [ADR 0040](../ADR/0040-native-sequential-preparation-dispatch.md).
-Тип результата проверяется на каждой branch route, а итоговый список
-фиксируется как immutable при завершении; пропущенный ответ является ошибкой.
+Attribution chooses the nearest preceding section marker. Ordered occurrences
+use a linear cursor (`O(N+S)`); arbitrary occurrence order uses binary search
+(`O(N log S)`). Source decisions also supply the unattributed count without
+constructing another complete indicator list.
 
-Порядок стадий не конфигурируется. Декларативны данные правил и mapping, а также
-`FailurePolicy`; перестановка стадий является изменением application contract.
+Diagnostic collectors retain bounded ordered details while carrying exact
+severity counts separately. Later ERROR/FATAL occurrences still reach failure
+policy before reservations. Runner emits retained diagnostics once and adds one
+`PIPELINE.DIAGNOSTICS_SUPPRESSED` summary when required. Operation diagnostics
+and explicitly enabled TRACE are separate contracts; collector/delivery failures
+are not silently ignored.
 
-## Инварианты
+## Router execution and outcomes
 
-1. **Core остаётся framework-free.** Domain/application не импортируют Spring,
-   Tika, RE2/J, Guava, Commons CSV, JDBC или filesystem implementation details;
-   границы защищает ArchUnit.
-2. **Паттерны совместимы с RE2/J.** Поддерживаемые типы — `IPV4`, `DOMAIN`,
-   `URL`, `MD5`, `SHA1`, `SHA256`; patterns используют `\b` и не используют
-   look-around/back-references, чтобы работали оба `PatternEngine`.
-3. **Поддерживаемый document contract проверяем.** HTML, включая explicit
-   legacy charset, PDF, DOCX и XLSX имеют contract tests. Остальные parser-ы
-   Tika являются best effort до появления fixture и теста.
-4. **Domain возвращает решения, а не telemetry.** Refang, extraction и
-   attribution материализуют pure outcomes. Pipeline-neutral application
-   `IndicatorClassifier` materializes the same network/file decision for
-   ordinary ingest and managed import; callers own diagnostics and gated TRACE
-   without repeating the domain rule.
-5. **Dedup принадлежит политике плана.** Штатный `retained-observations`
-   учитывает `ioc.pipeline.deduplicate` для KEEP_FIRST без схлопывания разных
-   исходных IOC в одну строку после mapping. `final-key` сохраняет occurrences
-   до mapping и выбирает целые строки по конечному ключу. Classification
-   выполняется в требуемом представлении через один Router и общую сессию.
-   Durable dedup отдельно выполняет canonical storage по `row_key`.
-6. **Mapping не делает IO.** `ArtifactPreparer` применяет `accepts`, filters,
-   column providers и transforms. `from: id` остаётся deferred slot до
-   materialization непосредственно перед commit. LAST_NONEMPTY выбирает одну
-   целую строку с непустым mapped `selection-column` по конечному ключу;
-   этот выбор выполняется application после Router. KEEP_FIRST следует
-   `observation-selection` плана.
-7. **Failure policy применяется до durable write.** Ожидаемый data-dependent
-   отказ provider/transform становится `SINK.ROW_MAPPING_FAILED`; неожиданный
-   exception остаётся run failure. Rejected run не резервирует id и не пишет
-   canonical rows.
-8. **Persistence выбирается явным command context.** До activation pipeline
-   использует compatibility repository. В `fixed` mode driving boundary
-   передаёт `LifecycleWriteContext`; `WriteArtifactsStage` вычисляет row keys из
-   уже подготовленных templates и вызывает lifecycle writer с observation и
-   receipt facts. Ordered mutable fields дополнительно передают исходную позицию
-   и durable registration; обычные artifacts этого metadata не требуют.
-   Domain/stages не читают config и не знают JDBC.
-9. **Post-commit projection advisory.** Успешный canonical commit необратим для
-   текущего pipeline run. Lossy mutable projection может добавить
-   `SINK.CHARSET_UNMAPPABLE` и повысить completion до warnings, но не запускает
-   повторную failure-policy rejection.
-10. **Dry-run не выполняет side effects.** Pipeline проходит read/decision/
-   preparation, но пропускает canonical commit и projection.
-11. **Processed import переиспользует policy, а не orchestration.**
-    `ProcessedImportRowPreparer` применяет ordinary refang/extract/classify и
-    declarative artifact mapping к уже структурированной logical row. Он не
-    читает source, не владеет staging/transaction и сохраняет compound-row
-    grouping; `as-is` этот path не вызывает. Для processed-маршрута входные
-    IOC-ячейки и производные выходные колонки указываются явно: из имён
-    provider-ов они не выводятся. Application вычисляет record/match keys и
-    проверяет форму строки только после обработки. Предупреждения явного восстановления представления отделены от rejection issues и проходят через sealed stage и
-    canonical receipt к terminal-отчёту.
+`adapter-processing-camel` compiles a bounded local plan. Registry-backed
+operations, predicates and destinations are resolved before intake; operator
+configuration cannot supply endpoint URIs, scripts or a custom expression
+language. Conditions compose registered leaves with AND/OR/NOT. Dependency order
+and view/recovery references are checked before starting routes.
 
-Для daemon выбранная политика документа закрепляется в service DB (schema v12).
-При изменении fingerprint старт отклоняется, пока есть незавершённые записи
-ingestion ledger, файлы в processing или document admissions, ещё не завершённые
-либо ожидающие окончательной регистрации.
-При неизменном fingerprint восстановление продолжается. Импорт закрепляет
-версию и fingerprint контракта на delivery: при повторном staging сначала
-сверяется активный контракт и только затем читаются строки; совместимый sealed
-stage можно принять без повторного чтения. После canonical commit завершение
-всегда идёт по receipt. Изменение политики не переписывает старые canonical
-записи; их срок действия определяется отдельной lifecycle-конфигурацией.
+The compiled selector evaluates FIRST/ALL/EXCLUSIVE before destination calls.
+Conditions short-circuit. Required views are invocation-local and evaluate at
+most once. Available, absent and expected-unavailable outcomes are distinct;
+unavailability is not automatically boolean false, especially under NOT.
+FIRST chooses the first eligible branch, ALL retains eligible branches, and
+EXCLUSIVE rejects ambiguous eligible selection. A branch blocked by a required
+representation carries its reason instead of becoming an ordinary no-match.
+The detailed operator syntax and unavailable/no-match policies are in
+[processing routes](../guides/ioc-processing-routes.md).
 
-## Декларативный artifact mapping
+Explicit `view.recover` uses a registered reason allowlist and a separate earlier
+alternate view. A recovered outcome retains the original failure and effective
+view identity. Application decides diagnostic severity and failure policy;
+Camel does not retry data or storage operations. Destinations return a typed
+candidate, filtered outcome or expected failure. Unexpected exceptions abort
+the invocation.
 
-Колонка задаёт `name`, storage `type`, `from`/`const`, optional `when-type` и
-ordered transforms. `type` описывает public storage schema и участвует в export
-schema fingerprint; это не value provider.
+The runtime binds fixed local Camel endpoints after context startup. After
+selection and resolution of required views, it sends immutable branch input
+sequentially through its existing `ProducerTemplate`. Each native consumer has
+its own Exchange and UnitOfWork; stopped routes are refused. There is no extra
+Recipient List/dispatch/aggregation route or second Java execution engine.
+Bootstrap owns readiness and bounded shutdown with active-call drain. Routing
+trace uses policy fingerprints and plan/view/branch context, without IOC values;
+MDC restores the parent scope even on exceptions.
 
-Актуальные provider/transform/predicate keys принадлежат
-`ConfigRegistryCatalog` и preflight-ятся до первой обработки. Новый артефакт,
-выразимый существующими registries, добавляется конфигурацией. Новая семантика
-значения требует тонкого component-а в `ioc-processing` и явной регистрации в
-composition root. Новый формат или технология вывода требует отдельного
-адаптера за application port.
+## Observation selection and identity
 
-`ioc.source.charset` относится только к document boundary. Для text/HTML можно
-форсировать charset; container formats владеют внутренней кодировкой сами.
-`ioc.sink.csv.charset` относится к mutable projection и immutable export, но у
-них разные failure contracts: projection допускает replacement + advisory,
-immutable slice использует strict encoding, потому что bytes входят в hashes.
+The shipping `original-document` plan uses original values and
+`observation-selection: retained-observations`. KEEP_FIRST passes the original
+observations admitted by `ioc.pipeline.deduplicate` without grouping mapped
+collisions. With deduplication disabled, repeated prepared rows and their ID
+reservation/provenance behavior remain observable. The lifecycle writer still
+rejects duplicate final keys before reservation; this plan does not conceal
+that limitation ([OUT-3](../KNOWN-ISSUES.md)).
 
-Классpath-конфигурация также определяет самостоятельный `ioc_aggregate` без
-публичного `id`: `name`, `ip_address`, `url_match`, `host_match`, `hash`.
-Маршрутизация carrier-значений выражена `when-type`/`when-types` и структурными
-conditions: bare IPv4 попадает в `ip_address`, clean DOMAIN — в `host_match`,
-адрес со схемой, путём, query или port — в `url_match`, hashes нормализуются в
-upper case. Полная четвёрка carrier-колонок является canonical identity; Java-код
-не ветвится по имени этого артефакта. Whole-row `last-nonempty` выбирает последнюю
-помеченную occurrence внутри документа, а ordered field policy меняет только
-непустой `name` от более поздней durable registration.
+`final-key` retains occurrences until mapping and selects KEEP_FIRST winners by
+filled artifact identity. It supports detailed URL -> host/IP collapse.
+LAST_NONEMPTY in either mode examines every relevant occurrence and selects one
+whole row with a nonempty configured selection field. Identity is computed
+**after** preparation; a configured composite key can preserve distinct rows
+with the same IP and different metadata. There is no hard-coded country or IOC
+uniqueness rule. Empty plans for intentionally skipped artifacts still satisfy
+receipt marker/count contracts.
 
-Registration создаётся driving boundary до business processing: oneshot
-декоратор завершает её в рамках invocation, daemon сохраняет pre-hash recovery в
-JDBC либо file journal, managed import связывает её с delivery reservation.
-Повтор и restart возобновляют тот же rank. Aggregate начинает пустым: storage
-reconciliation создаёт схему, но не строит строки из четырёх прежних artifacts.
+Policies affect new incoming data; enabling cleanup does not rewrite existing
+canonical records. They expire through their existing TTL. Source registration
+precedes processing and survives retry/restart; ordered mutable fields use that
+durable rank plus occurrence position, independently of completion order.
+The `ioc_aggregate` artifact uses configured carrier identity and ordered
+nonempty `name` updates; it is not synthesized from the other artifact tables.
 
-## Отказы
+## Shared mapping and semantic reuse
 
-| Граница | Поведение |
+`ioc-processing` owns one mapper for document and processed import: column
+providers, transforms, classification facade and exact structured-cell parsing.
+Column `type` describes public storage, not a value provider. Providers/transform
+names and arguments bind once at construction; gates and transform order remain
+unchanged. Deferred `id` materializes only at the write boundary. Mapping is
+side-effect-free. Expected data-dependent rejection becomes an element
+diagnostic; programming/storage failures abort the run.
+
+Classification rules and mask codes come from the operator catalog, including
+classification of derived views. `NetworkAddressParser` accepts supported
+HTTP(S), DNS/IPv4 and optional port/path/query/fragment shapes;
+`NetworkHostDeriver` creates a separate IOC with current source context.
+`ExactIndicatorParser` requires a complete structured-cell match. Document
+extraction continues to search within text. Fragment remains a feature, so a
+fragment-bearing IPv4 cannot pass a bare-IP predicate.
+
+A document owns one processing session; processed import owns one session per
+staging attempt after contract validation. Successful pure classification and
+host derivation may be reused. Classification keys include value, type, source
+label and section, and require the same classifier-policy identity. Host cache
+entries contain value/type only; source context is attached anew. Mapping,
+positions, diagnostics, rows and time are never cached.
+
+The bounded LRU budget is 256 entries and 1 MiB estimated retention, split
+equally between classification and host derivation, with at most 64 KiB per
+entry. Oversized entries bypass caching without eviction. Original and derived
+classification share their partition. This budget is not whole-process memory;
+every occurrence still runs mapping. Session closure precedes seal/checkpoint
+and also occurs on failure. Receipt recovery and `as-is` import do not open it.
+
+## Processed-import composition
+
+Every processed contract declares a `processed-route`, input IOC cells and
+allowed output targets. Static permissions and effective merge policies pin
+the full immutable compiled contract; the same ID cannot replace its definition,
+version or fingerprint. Each row still validates contract/cell authority.
+
+Multiple input cells contribute independently. A provider's inapplicable `null`
+is no contribution, not an explicit CSV NULL. Contributions are merged before
+route-managed carriers are replaced: URL -> IP removes the old URL carrier
+when that input actually produces another carrier. An independent input's
+contribution and explicit CSV NULL are preserved. Conflicting actual values
+reject the compound logical row rather than losing an input silently.
+
+Source authority stays with the import contract. Allowed source transforms and
+retained source values must use the same `when-type`/`when` applicability as
+mapping, preserve ABSENT, and reject unrelated replacement. Record/match keys
+are calculated only after preparation. Compatible COALESCE participants retain
+warnings in the canonical receipt, even when another participant represents
+the merged row. Fallback warnings and rejection issues remain distinct through
+sealed stage, commit and terminal receipt recovery.
+
+Changing a document-policy fingerprint is refused while admitted/claimed work
+remains unresolved. Import pins contract version/fingerprint per delivery.
+Compatible sealed stages can be reused without reading CSV; after commit,
+finalization uses the receipt. See [dataframe import](dataframe-import.md).
+
+## Failure and extension contracts
+
+| Boundary | Behavior |
 |---|---|
-| Source parsing | adapter переводит parser/IO failure в typed source failure |
-| Empty text / dropped item | diagnostic становится частью `Envelope` outcome |
-| Expected mapping rejection | element diagnostic до commit; судьбу решает `FailurePolicy` |
-| Programming/storage defect | run failure; не маскируется collect-and-continue |
-| Projection после commit | hard failure завершает invocation ошибкой, canonical truth сохраняется |
+| Parsing/admission | Typed source failure; no canonical mutation |
+| Expected mapping rejection | Element diagnostic; failure policy decides the prepared run |
+| Rejected checkpoint | No ID reservation or canonical write |
+| Unexpected exception/storage failure | Run failure; not collect-and-continue |
+| Projection after commit | Canonical truth remains; recovery retries projection |
+| Dry run | Decisions/preparation only, no canonical commit or projection |
 
-## Как расширять
+RE2-compatible patterns use no lookaround/backreferences. Supported IOC types
+are IPV4, DOMAIN, URL, MD5, SHA1 and SHA256. HTML/legacy charset, PDF, DOCX and
+XLSX have explicit format contracts; other Tika parsers are best effort.
+Source charset and CSV charset are independent. Mutable projection may replace
+unmappable characters with a warning; immutable export uses strict encoding
+because bytes enter the manifest hash.
 
-- Новый `IndicatorType`: обновить domain model, RE2-compatible pattern corpus,
-  normalization/classification и artifact routing tests.
-- Новый provider/transform/predicate: добавить adapter/domain component,
-  зарегистрировать key в `ConfigRegistryCatalog`, обновить preflight и mapper
-  contract tests.
-- Новый artifact на существующем CSV contract: добавить sink + identity config
-  и проверить schema/identity drift.
-- Новый sink/format: реализовать application port новым adapter-модулем; stage
-  order и domain model не должны зависеть от технологии.
+Add an artifact through mapping/identity configuration when existing registries
+suffice. New value semantics require a small `ioc-processing` component and
+explicit registry/preflight tests; a new external format belongs in an adapter.
+Changing stage order, winner rules, diagnostics, commit scope or session ownership
+requires updating this guide and the corresponding contract tests.
 
-## Источники истины
+## Sources of truth
 
-- Pipeline assembly: `IocExtractionService`.
-- Generic execution/outcome: `platform-etl`, `platform-diagnostics` и их tests.
-- Domain rules: `core/ioc-domain` + `DomainBoundaryTest`.
-- Registry/config contract: `ConfigRegistryCatalog`, `ConfigRegistryPreflight`,
-  `application.yml`.
-- Source formats: `TikaSourceReaderFormatContractIT` и charset tests.
-- Prepare/checkpoint/commit: `StageContractTest`,
-  `ArtifactPolicyCheckpointTest`, `TypedMappingFailurePolicyTest`.
-- Выбранный план от входного документа до canonical SQLite:
-  `CustomerRoutingPipelineIT`; неизменённый путь и полный public-output
-  baseline: `GoldenPipelineIT`.
-- Generated reference: `DIAGNOSTICS-CATALOG.md`.
+- [IocExtractionService](../../core/ioc-application/src/main/java/com/iocextractor/application/service/IocExtractionService.java) and [AppConfig](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java).
+- [Camel adapter reference](../../adapters/adapter-processing-camel/README.md) and [processing module](../../core/ioc-processing/README.md).
+- [Production configuration](../../bootstrap/ioc-app/src/main/resources/application.yml).
+- [GoldenPipelineIT](../../bootstrap/ioc-app/src/test/java/com/iocextractor/GoldenPipelineIT.java), [CustomerRoutingPipelineIT](../../bootstrap/ioc-app/src/test/java/com/iocextractor/CustomerRoutingPipelineIT.java).
+- [RouterSelectedImportDeliveryIT](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/RouterSelectedImportDeliveryIT.java), [NativeDeliveryLifecycleIT](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/NativeDeliveryLifecycleIT.java).
 
-## Раздельная подготовка и запись документа
-
-Для daemon `IocExtractionService.prepare` завершает precommit stages и передаёт
-owned `PreparedExtraction`: sealed row sources и bounded diagnostics без
-сохранения исходного IOC-графа. `promote` выполняет прежний write checkpoint
-один раз. Отмена закрывает workspace/run, завершает diagnostic suppression
-summary и сохраняет claimed source для recovery. Ошибка после начала promotion
-оставляет sealed pin; атомарность canonical write не меняется.
-
-`IngestionService.prepare` не захватывает content-key guard. Его получает
-последовательный promotion worker по durable document order. Read-only receipt
-lookup может пропустить подготовку; перед canonical confirmation receipt
-проверяется заново. Если он истёк, тот же ordered job выполняет ETL fallback.
-Обычный oneshot `extract` сохраняет синхронный контракт. Подробнее:
-[ingestion.md](ingestion.md),
-[ADR-0038](../ADR/0038-durable-bounded-document-execution.md).
-
-## Когда обновлять документ
-
-Обновить при изменении порядка стадий, supported IOC/document contract,
-failure-policy checkpoint, mapping DSL, границы canonical commit или
-post-commit projection semantics. Переименование внутреннего mapper-а само по
-себе обновления не требует.
-
-## Связанные документы
-
-- [storage.md](storage.md) — canonical identity, transaction и projection truth.
-- [Руководство по маршрутам](../guides/ioc-processing-routes.md) — включение
-  политики, пример конфигурации и восстановление.
-- [ingestion.md](ingestion.md) — daemon driving flow.
-- [observability.md](observability.md) — diagnostics и gated decision tracing.
-- [ADR-0017](../ADR/0017-diagnostics-first-class-outcome.md) — почему write path
-  разделён на prepare/checkpoint/commit.
+Related: [storage](storage.md), [native capacity](native-capacity.md),
+[observability](observability.md), [ADR 0034](../ADR/0034-required-router-processing-plans.md),
+[ADR 0036](../ADR/0036-sealed-document-preparation-workspace.md),
+[ADR 0039](../ADR/0039-streamed-document-source-processing.md),
+[ADR 0040](../ADR/0040-native-sequential-preparation-dispatch.md).

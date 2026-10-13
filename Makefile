@@ -48,7 +48,7 @@ GITHUB ?= 0
 	context \
 	run stop runtime-up runtime-down runtime-status runtime-reset submit \
 	fixture fixture-1k fixture-5k fixture-100k smoke smoke-cli smoke-oneshot smoke-daemon \
-	lifecycle-smoke lifecycle-load dataframe-import-smoke dataframe-import-load dataframe-import-load-100k dataframe-import-load-1m ioc-aggregate-load router-qualification processing-route-comparison \
+	lifecycle-smoke lifecycle-load dataframe-import-smoke dataframe-import-load dataframe-import-load-100k dataframe-import-load-1m ioc-aggregate-load \
 	db logs logs-errors release-notes-context \
 	lint-shell docs security-update security-scan security-report \
 	ci-build ci-pmd ci-packaging ci-docs ci pre-push
@@ -251,76 +251,6 @@ ioc-aggregate-load: package ## Compare duplicate-heavy aggregate candidate with 
 	@args=(--size "$(SIZE)" --duplicate-rate "$(DUPLICATE_RATE)"); \
 	[[ -z "$(BASELINE_JAR)" ]] || args+=(--baseline-jar "$(BASELINE_JAR)"); \
 	tools/dev/ioc-aggregate-load.sh "$${args[@]}"
-
-router-qualification: ## Run opt-in synthetic Camel Router profile; SIZE=1000|100000
-	@tools/dev/router-qualification.sh --size "$(SIZE)"
-
-processing-route-comparison: ## Paired production routing probe; COMPARISON_ARGS passes explicit profile options
-	@python3 tools/dev/processing-route-comparison.py $(COMPARISON_ARGS)
-
-.PHONY: processing-optimization-comparison
-processing-optimization-comparison: ## Alternate frozen before/after selected JVMs; COMPARISON_ARGS selects snapshots
-	@python3 tools/dev/processing-optimization-comparison.py $(COMPARISON_ARGS)
-
-.PHONY: data-processing-capacity
-data-processing-capacity: ## CAP-0/1 exact-driver SQL or private production-policy SMB qualification; CAPACITY_ARGS is required
-	@python3 tools/dev/data-processing-capacity.py $(CAPACITY_ARGS)
-
-.PHONY: processing-stage-capacity
-processing-stage-capacity: ## CAP-3 paired stage probes; STAGE_CAPACITY_ARGS selects baseline, output and sizes
-	@python3 tools/dev/processing-stage-capacity.py $(STAGE_CAPACITY_ARGS)
-
-.PHONY: document-workspace-capacity
-document-workspace-capacity: ## CAP-4 incremental disk-reducer/writer/receipt diagnostic; WORKSPACE_CAPACITY_ARGS selects output and sizes
-	@python3 tools/dev/document-workspace-capacity.py $(WORKSPACE_CAPACITY_ARGS)
-
-.PHONY: service-capacity
-service-capacity: ## CAP-6 private cgroup-limited whole-service screens; SERVICE_CAPACITY_ARGS selects jar, policy and covering cell
-	@python3 tools/dev/service-capacity.py $(SERVICE_CAPACITY_ARGS)
-
-.PHONY: sqlite-publication-capacity
-sqlite-publication-capacity: ## C5 paired native/staged private service qualification; SQLITE_CAPACITY_ARGS selects the covering cell
-	@python3 tools/dev/sqlite-publication-capacity.py $(SQLITE_CAPACITY_ARGS)
-
-.PHONY: projection-ack-comparison
-projection-ack-comparison: ## Bounded prepared/direct projection ACK comparison; ACK_COMPARISON_ARGS supplies frozen jars and private output
-	@python3 tools/dev/projection-ack-comparison.py $(ACK_COMPARISON_ARGS)
-
-.PHONY: typed-journal-comparison
-typed-journal-comparison: ## Bounded row/chunk typed journal comparison with identical direct ACK; JOURNAL_COMPARISON_ARGS supplies frozen runtimes
-	@python3 tools/dev/typed-journal-comparison.py $(JOURNAL_COMPARISON_ARGS)
-
-.PHONY: receipt-payload-comparison
-receipt-payload-comparison: ## Bounded versioned/immutable receipt comparison; RECEIPT_COMPARISON_ARGS supplies frozen runtimes
-	@python3 tools/dev/receipt-payload-comparison.py $(RECEIPT_COMPARISON_ARGS)
-
-.PHONY: hybrid-cycle-compile
-hybrid-cycle-compile: ## Fast candidate compilation only; HYBRID_COMPILE_ARGS supplies a new private executable directory
-	@python3 tools/dev/hybrid-cycle-compile.py $(HYBRID_COMPILE_ARGS)
-
-.PHONY: hybrid-growth-qualification
-hybrid-growth-qualification: ## Frozen 100k/1m local service cycle; HYBRID_QUALIFICATION_ARGS supplies point, runtime and output
-	@python3 tools/dev/hybrid-growth-qualification.py $(HYBRID_QUALIFICATION_ARGS)
-
-.PHONY: receipt-retention-qualification
-receipt-retention-qualification: ## Finite receipt retirement and bounded cleanup; RECEIPT_RETENTION_ARGS supplies output
-	@python3 tools/dev/receipt-retention-qualification.py $(RECEIPT_RETENTION_ARGS)
-
-.PHONY: sqlite-typed-chunk-cost
-sqlite-typed-chunk-cost: ## Isolated staged typed chunk cost; CHUNK_COST_ARGS selects a frozen jar and private output
-	@python3 tools/dev/sqlite-typed-chunk-cost.py $(CHUNK_COST_ARGS)
-
-.PHONY: native-processing-profile
-native-processing-profile: ## Stream diagnostic JFR allocation/stack attribution; JFR selects the recording
-	@java tools/dev/ProcessingAllocationProfile.java "$(JFR)"
-
-.PHONY: native-cost-comparison
-native-cost-comparison: ## Compare completed equal-semantics native cost series; COST_COMPARISON_ARGS selects reports
-	@python3 tools/dev/native-cost-comparison.py $(COST_COMPARISON_ARGS)
-
-.PHONY: service-capacity-upgrade
-service-capacity-upgrade: ## CAP-6 drained private upgrade/backup-restore rehearsal; UPGRADE_ARGS selects frozen executables and policy
-	@python3 tools/dev/service-capacity-upgrade.py $(UPGRADE_ARGS)
 
 db: ## Inspect SQLite read-only; DB=service|dataframe DB_COMMAND=shell|schema|tables
 	@tools/dev/database.sh --workspace "$(WORKSPACE)" --db "$(DB)" "$(DB_COMMAND)"

@@ -18,68 +18,34 @@ Every Failsafe suite must also carry integration semantics through
 discovery; tags describe test semantics. They are complementary and neither is
 a substitute for the complete release gate.
 
-The streamed-source change adds two deterministic Failsafe suites:
-`StreamingSourceContractIT` compares real HTML/DOCX parsing with the independent
-finite parser oracle and tests admission failures; `JdbcDocumentSourceWorkspaceIT`
-checks real disk-backed text, positions, overlap priority, attribution and cleanup.
-CAP-7B removes the obsolete reply-aggregation suite with the removed dispatch
-implementation. Its ordering/isolation contract now runs through concurrent
-64-branch native destinations in `CamelRoutingExecutionTest`; missing replies,
-failure and native view completion keep their existing runtime regressions.
-CAP-7C adds `SqlitePublicationExperimentIT`, an isolated exact-driver Failsafe
-probe for committed visibility, chunk replay, fencing, conflict/expiry rejection,
-rollback, publication order, tombstones, pinned snapshots and inter-chunk control
-admission. It uses a separate experimental database; it does not activate a
-production migration or assert whole-service capacity acceptance. Its real-kernel
-bridges also compare ordinary typed confirmation receipts and populated fan-out
-imports with the existing canonical ports. A 100,001-version deadline fixture
-checks the actual SQLite plans; durable logical-owner fencing and a three-attempt
-budget are tested separately from sustainable-load/resource qualification.
-The native ordinary/import writers also exercise their private transactional
-journal: same-instant renewal survives fresh-UTC publication, rollback removes
-private effects while authoritative reservations remain burned, and bounded
-journal paging, pinned identity and thread/resource ownership are checked.
-The reviewed source universe is 223 fast classes and 86 integration classes,
-including five external shells (304 deterministic classes). The immutable receipt payload suite adds multi-artifact staging, ordered
-origins, pinned-reader retirement, bounded physical reclamation, receipt ID reuse
-and persisted-layout crash recovery. The compact typed
-journal suite adds transfer replay/completeness, atomic rollback, persisted-mode
-and process-loss receipt recovery checks. The bounded direct
-projection-control experiment adds `DirectProjectionControlIT`, covering shared
-CAS semantics, forced concurrent ordering, atomic rollback and child-JVM loss
-before and after commit. Receipt diagnostics and retired publication identities
-add two integration suites. Concurrent document-admission completion adds one
-fast suite, including forced completion/recovery races and rejection of changed
-authority. These additions change the suite inventory only; no coverage floor
-or analyzer ratchet changes.
-`NativeDeliveryLifecycleIT` connects production Spring/YAML routing, native
-canonical writes, immutable CSV export and durable fetch/publish ledgers. Only
-the SMB wire boundary and UTC source are substituted. It checks receipt-only
-replay with deleted input, renewal, exact TTL expiry, non-reusable canonical
-identity, reusable export slots and retry after a lost post-publication reply.
-Native JDBC regressions also cover expiration rollback, receipt snapshots during
-physical retirement, malformed ordered positions, stale finalization and
-reservation/reference authority. They assert durable outcomes and resource
-release; the coverage and analyzer allowances remain unchanged.
-Additional terminal-CAS cases reject changed candidate/claim paths, evidence,
-execution state, creation time and stale versions. Compatibility writes preserve
-duplicate observation contributions and distinguish metadata-only field updates
-from public revision changes. Domain cursor tests cover cancellation and reject
-unsupported streaming capabilities explicitly.
-The C4 staged-publication
-fault suite adds owned child-JVM crash/reopen and native recovery coverage.
-The C6 operational suite qualifies drained populated migration, coordinated
-stopped-state restore, exclusive ownership, startup recovery and durable cleanup. The exact inventory
-in `build-support/test-quality/test-lifecycle.properties` reflects this scope;
-discovery, report integrity and coverage/analyzer floors remain unchanged.
+The reviewed source universe is 221 fast classes and 78 integration classes,
+including five external shells (294 deterministic classes). Removing two fast
+measurement suites and eight Staged/receipt-diagnostic integration suites changes
+only the exact inventory. Coverage floors, report integrity, architecture checks
+and analyzer rules remain enforced. The Native lifecycle and import TCK bindings
+run against the retained backend.
 
-`JdbcCanonicalImportWriterContractIT` also pauses a real fan-out import just
-before commit. Independent readers and the real matcher must exclude pending
-rows, aliases, preferred slots and receipt evidence. A pinned reader retains
-its previous snapshot after commit; a fresh reader sees both artifacts together.
-Deleting the sealed workspace then exercises receipt-only replay, including
-warning/rejection evidence and unchanged provenance. This is an atomicity
-regression, not a writer-occupancy or replacement-backend qualification.
+`StreamingSourceContractIT` and `JdbcDocumentSourceWorkspaceIT` check real
+HTML/DOCX parsing, independent source outcomes, disk-backed text, overlap priority,
+positions and resource admission. Native document-workspace tests preserve seal,
+quota, corruption, replay and owned-resource failure coverage.
+
+`NativeDeliveryLifecycleIT` connects production Spring/YAML processing, Native
+canonical writes, immutable CSV export and durable fetch/publish ledgers. Only
+UTC and the SMB wire boundary are substituted. It checks receipt-only replay
+with deleted input, renewal, exact TTL expiry, non-reusable canonical identity,
+reusable export slots and retry after a lost publication reply.
+`RouterSelectedImportDeliveryIT` connects real processed-route configuration and
+physical CSV to canonical commit, COALESCE and receipt-only delivery recovery.
+
+Native JDBC contracts check rollback of fan-out mutations/receipt evidence,
+source/registration authority, expiry/history rollback, receipt snapshots during
+retirement, malformed ordered positions and connection release on failed close.
+Admission tests force competing completion/recovery operations and reject
+changed claim/file evidence, namespace, rank and stale versions. Compatibility
+writes preserve duplicate observation/ID behavior and distinguish metadata-only
+origins from public changes. These are correctness checks, not load acceptance;
+live and historical load scopes are recorded in [native capacity](dev/native-capacity.md).
 
 The shared composed annotations live in `ioc-application-tck` under
 `com.iocextractor.application.tck.junit`. Adapter and bootstrap test scopes may
