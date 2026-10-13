@@ -518,6 +518,67 @@ class JdbcCanonicalLifecycleWriterIT {
     }
 
     @Test
+    void expiryUsesTheEarliestArtifactDeadlineAndLeavesEmptyChecksSilent() {
+        var expiry = new JdbcExpiredArtifactStore(dataSource, schemas);
+        assertThat(expiry.nearestDeadline()).isEmpty();
+        var empty = expiry.expireDue("masks", EffectiveTime.at(START), 1);
+        assertThat(empty.expired()).isZero();
+        assertThat(empty.artifactRevision()).isZero();
+        var writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        writer.confirm(command("deadline-hash", "hashes", receipt("deadline-hash", 1), row("hash", "AABB")));
+        timeSource.set(START.plusSeconds(60));
+        writer.confirm(command("deadline-mask", "masks", receipt("deadline-mask", 1), row("mask", "example.test")));
+
+        assertThat(expiry.nearestDeadline()).get()
+                .satisfies(deadline -> assertThat(deadline.validUntil()).isEqualTo(START.plus(TTL)));
+        assertThat(expiry.expireDue("hashes", EffectiveTime.at(START.plus(TTL)), 1).expired()).isOne();
+        assertThat(expiry.nearestDeadline()).get()
+                .satisfies(deadline -> assertThat(deadline.validUntil()).isEqualTo(START.plus(TTL).plusSeconds(60)));
+    }
+
+    @Test
+    void expiryRejectsInactiveLifecycleAndInvalidRequestsWithoutChangingCanonicalRows() throws Exception {
+        var expiry = new JdbcExpiredArtifactStore(dataSource, schemas);
+        assertThatThrownBy(() -> expiry.expireDue("unknown", EffectiveTime.at(START), 1))
+                .isInstanceOf(IocExtractorException.class).hasMessageContaining("Unknown dataframe artifact");
+        assertThatThrownBy(() -> expiry.expireDue("masks", EffectiveTime.at(START), 0))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new JdbcExpiredArtifactStore(dataSource, List.of(schema("masks"), schema("masks"))))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Duplicate");
+        execute("UPDATE canonical_lifecycle_control SET state='ACTIVATING', activated_at_ms=NULL");
+        assertThatThrownBy(expiry::nearestDeadline).isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("not active");
+        assertThatThrownBy(() -> expiry.expireDue("masks", EffectiveTime.at(START), 1))
+                .isInstanceOf(IocExtractorException.class).hasMessageContaining("not active");
+        assertThat(queryLong("SELECT COUNT(*) FROM masks_history")).isZero();
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @Test
+    void expiryArchiveFailureRollsBackMembershipHistoryAndProjectionGeneration() throws Exception {
+        writer(JdbcLifecycleTransactionObserver.NOOP).confirm(command(
+                "expiry-atomic", "masks", receipt("expiry-atomic", 1), row("expiry-row", "example.test")));
+        long generation = queryLong("SELECT required_generation FROM artifact_projection_state WHERE artifact='masks'");
+        execute("""
+                CREATE TRIGGER reject_expiry_history BEFORE INSERT ON masks_history
+                BEGIN SELECT RAISE(ABORT, 'expiry archive fixture'); END
+                """);
+        var expiry = new JdbcExpiredArtifactStore(dataSource, schemas);
+
+        assertThatThrownBy(() -> expiry.expireDue("masks", EffectiveTime.at(START.plus(TTL)), 1))
+                .isInstanceOf(IocExtractorException.class)
+                .hasRootCauseMessage("[SQLITE_CONSTRAINT_TRIGGER] A RAISE function within a trigger fired, causing the SQL statement to abort (expiry archive fixture)");
+
+        assertThat(queryLong("SELECT COUNT(*) FROM masks")).isOne();
+        assertThat(queryLong("SELECT COUNT(*) FROM masks_history")).isZero();
+        assertThat(queryLong("SELECT required_generation FROM artifact_projection_state WHERE artifact='masks'"))
+                .isEqualTo(generation);
+        execute("DROP TRIGGER reject_expiry_history");
+        assertThat(expiry.expireDue("masks", EffectiveTime.at(START.plus(TTL)), 1).expired()).isOne();
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @Test
     void last_artifact_atomically_publishes_only_a_complete_count_validated_receipt() throws Exception {
         JdbcCanonicalLifecycleWriter writer = writer(JdbcLifecycleTransactionObserver.NOOP);
         ConfirmationReceiptContext receipt = receipt("receipt-two-artifacts", 2);

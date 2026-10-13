@@ -10,6 +10,7 @@ import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
 import com.iocextractor.application.ingest.admission.DocumentCandidateEvidence;
 import com.iocextractor.application.ingest.admission.DocumentTerminalOutcome;
 import com.iocextractor.application.observation.ManagedImportObservationAdmission;
+import com.iocextractor.application.observation.ObservationAdmissionReference;
 import com.iocextractor.application.observation.ObservationOrder;
 import com.iocextractor.application.observation.ObservationOrigin;
 import com.iocextractor.application.observation.ObservationRegistrationPurgeOutcome;
@@ -211,6 +212,88 @@ class JdbcObservationRegistrationStoreIT {
             assertThat(resumed.execution().attempts()).isEqualTo(2);
             assertThat(resumed.execution().retryAfter()).isEqualTo(Instant.EPOCH);
             assertThat(resumed.registration()).isEqualTo(first.registration());
+        }
+    }
+
+    @Test
+    void documentReservationRetryCannotReplaceOwnedSourceEvidence() throws Exception {
+        try (HikariDataSource service = dataSource("service", "reservation-authority.db")) {
+            new SqliteUserVersionSchemaMigrator(service, ServiceSchemaMigrations.sqlite()).migrate();
+            var journal = new JdbcDocumentAdmissionJournal(service);
+            var id = new ObservationId("reserved-authority");
+            var candidate = tempDir.resolve("inbox/source.html");
+            var claim = tempDir.resolve("processing/source.claim");
+            var evidence = new DocumentCandidateEvidence(Optional.empty(), 8, 10);
+            var reservation = new DocumentAdmissionReservation(id, candidate, evidence, claim, NOW);
+            var original = journal.reserve(reservation);
+
+            assertThat(journal.reserve(new DocumentAdmissionReservation(
+                    id, candidate, evidence, claim, NOW.plusSeconds(1)))).isEqualTo(original);
+            for (var incompatible : java.util.List.of(
+                    new DocumentAdmissionReservation(id, candidate.resolveSibling("other.html"), evidence, claim, NOW),
+                    new DocumentAdmissionReservation(id, candidate,
+                            new DocumentCandidateEvidence(Optional.empty(), 9, 10), claim, NOW),
+                    new DocumentAdmissionReservation(id, candidate, evidence, claim.resolveSibling("other.claim"), NOW))) {
+                assertThatThrownBy(() -> journal.reserve(incompatible))
+                        .isInstanceOf(IllegalStateException.class).hasMessageContaining("changed on retry");
+                assertThat(journal.find(id)).contains(original);
+            }
+            assertThat(journal.findRecoverable(1)).containsExactly(original);
+            assertThat(journal.findTerminalBefore(NOW.plusSeconds(1), 1)).isEmpty();
+            assertThat(journal.purgeTerminal(id, original.version())).isFalse();
+            assertThatThrownBy(() -> journal.findRecoverable(0)).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> journal.replace(original, original)).isInstanceOf(IllegalArgumentException.class);
+            var other = journal.reserve(new DocumentAdmissionReservation(new ObservationId("other-occurrence"),
+                    candidate.resolveSibling("other.html"), evidence, claim.resolveSibling("other.claim"), NOW));
+            var registration = new RegisteredObservation(other.observationId(), "namespace", new ObservationOrder(1),
+                    ObservationOrigin.DOCUMENT);
+            assertThatThrownBy(() -> journal.replace(original, other.ordered(registration, NOW)))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThat(service.getHikariPoolMXBean().getActiveConnections()).isZero();
+        }
+    }
+
+    @Test
+    void importReferencePreservesNamespaceAndRankAcrossRetriesAndStaleFinalization() throws Exception {
+        try (HikariDataSource service = dataSource("service", "reference-authority.db")) {
+            new SqliteUserVersionSchemaMigrator(service, ServiceSchemaMigrations.sqlite()).migrate();
+            var store = new JdbcObservationAdmissionReferenceStore(service, CLOCK);
+            var id = new ObservationId("reference-authority");
+            var registration = new RegisteredObservation(id, "namespace", new ObservationOrder(7),
+                    ObservationOrigin.MANAGED_IMPORT);
+            var original = store.link(registration);
+            assertThat(store.link(registration)).isEqualTo(original);
+            assertThat(store.findUnfinalized(1)).containsExactly(original);
+            for (var incompatible : java.util.List.of(
+                    new RegisteredObservation(id, "other-namespace", new ObservationOrder(7), ObservationOrigin.MANAGED_IMPORT),
+                    new RegisteredObservation(id, "namespace", new ObservationOrder(8), ObservationOrigin.MANAGED_IMPORT))) {
+                assertThatThrownBy(() -> store.link(incompatible))
+                        .isInstanceOf(IllegalStateException.class).hasMessageContaining("changed on retry");
+                var replacement = new ObservationAdmissionReference(incompatible, 1, Optional.empty(), false, NOW, NOW);
+                assertThatThrownBy(() -> store.replace(original, replacement)).isInstanceOf(IllegalArgumentException.class);
+            }
+            assertThatThrownBy(() -> store.link(new RegisteredObservation(id, "namespace", new ObservationOrder(7),
+                    ObservationOrigin.DOCUMENT))).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> store.replace(original, original)).isInstanceOf(IllegalArgumentException.class);
+            var other = new ObservationAdmissionReference(new RegisteredObservation(new ObservationId("other-import"),
+                    "namespace", new ObservationOrder(9), ObservationOrigin.MANAGED_IMPORT),
+                    1, Optional.empty(), false, NOW, NOW);
+            assertThatThrownBy(() -> store.replace(original, other)).isInstanceOf(IllegalArgumentException.class);
+            assertThat(store.purgeFinalized(id, original.version())).isFalse();
+            var terminal = original.terminal("SUCCEEDED", NOW);
+            assertThat(store.replace(original, terminal)).isTrue();
+            assertThat(store.replace(original, terminal)).isFalse();
+            assertThat(store.replace(terminal, terminal.finalized(NOW))).isTrue();
+            assertThat(store.findUnfinalized(1)).isEmpty();
+            assertThat(store.findFinalizedBefore(NOW, 1)).isEmpty();
+            var eligible = store.findFinalizedBefore(NOW.plusMillis(1), 1);
+            assertThat(eligible).containsExactly(terminal.finalized(NOW));
+            assertThat(store.purgeFinalized(id, terminal.version())).isFalse();
+            assertThat(store.purgeFinalized(id, eligible.getFirst().version())).isTrue();
+            assertThat(store.find(id)).isEmpty();
+            assertThatThrownBy(() -> store.findUnfinalized(0)).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> store.findFinalizedBefore(NOW, 0)).isInstanceOf(IllegalArgumentException.class);
+            assertThat(service.getHikariPoolMXBean().getActiveConnections()).isZero();
         }
     }
 

@@ -183,6 +183,24 @@ counts; COMPLETED_WITH_ERRORS has failure outcome. Receipt replay carries
 Startup recovery logs one start and one terminal outcome with duration and counts.
 Events remain latency hints; durable ledgers and periodic reconcile own correctness.
 
+## Verification boundaries
+
+`NativeDeliveryLifecycleIT` connects the production Spring configuration and
+route preflight to physical source processing, canonical storage, typed receipts,
+CSV export, fetch and publication ledgers. Only the SMB wire and the wall clock
+are substituted. It checks host/IP cleanup, final keys, selected-row provenance,
+retry after a lost publication response, receipt replay without the source file,
+and a new lifecycle and export slice at TTL equality even when CSV bytes repeat.
+This deterministic test is not evidence of a live SMB server or a load budget.
+
+The JDBC lifecycle tests separately exercise rollback of expiration when history
+writing fails, pinned receipt reads during physical retirement, malformed ordered
+positions and connection release on failed cursor closure. Admission/reference
+tests reject changed file evidence, namespaces and ranks on retry and preserve
+version checks during finalization and cleanup. The managed-import delivery test
+connects actual YAML, processing and canonical commit to receipt-only recovery;
+import atomicity remains separate from per-artifact document commits.
+
 ## Extension and maintenance
 
 New detection transports still need stable candidates, durable occurrence

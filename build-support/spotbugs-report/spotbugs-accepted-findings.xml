@@ -1621,16 +1621,16 @@
         </suppression>
         <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
     </finding>
-    <finding id="CAP-7C-C3-SB-010" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="e396c498641d72c6a074130749c91a0b" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL/CAP-7C-C6-SQL" review="staged-publication-query-boundary-change">
+    <finding id="CAP-7C-C3-SB-010" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="791a9aa093ba51630a9e063c983b9510" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL/CAP-7C-C6-SQL/TYPED-JOURNAL-SQL/RECEIPT-PAYLOAD-SQL" review="staged-publication-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcTypedPublicationStore" />
-        <method name="initialize" signature="(Ljava/sql/Connection;Ljava/util/List;ZJ)Lcom/iocextractor/adapter/out/store/jdbc/JdbcTypedPublicationStore;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcTypedPublicationStore.java" startLine="49" bytecode="232" />
+        <method name="initialize" signature="(Ljava/sql/Connection;Ljava/util/List;ZJLcom/iocextractor/adapter/out/store/jdbc/JdbcTypedJournal;Lcom/iocextractor/adapter/out/store/jdbc/JdbcReceiptPayloadLayout;)Lcom/iocextractor/adapter/out/store/jdbc/JdbcTypedPublicationStore;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcTypedPublicationStore.java" startLine="74" bytecode="269" />
         <suppression>
             <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcTypedPublicationStore" />
             <Method name="initialize" />
         </suppression>
-        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations. Reviewed 2026-10-12: the isolated receipt layout selects adapter-owned metadata column lists; business values remain bound. The changed method signature and finding identity are reviewed under RECEIPT-PAYLOAD-SQL.</rationale>
     </finding>
     <finding id="CAP-7C-C3-SB-011" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="b55033049e5ace62667cd0ac977cbe87" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcTypedVersionTable" />
@@ -1756,7 +1756,7 @@
     <finding id="CAP-7C-C3-SB-022" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="ffc56632c2c9f59ce80015879679d9fc" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationVersionCleanup" />
         <method name="scan" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationVersionCleanup$Page;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationVersionCleanup.java" startLine="37" bytecode="25" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcPublicationVersionCleanup.java" startLine="59" bytecode="30" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublicationVersionCleanup" />
@@ -1786,16 +1786,16 @@
         </suppression>
         <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
     </finding>
-    <finding id="CAP-7C-C3-SB-025" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="56098a692b5788c1c178388724a18fb" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL" review="staged-publication-query-boundary-change">
+    <finding id="CAP-7C-C3-SB-025" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="fd25f55ed21ab816591bd96ec7ba8f82" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C3-SQL/RECEIPT-PAYLOAD-SQL" review="staged-publication-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcTypedPublicationChunk" />
-        <method name="insertRows" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationProtocol$Attempt;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcTypedPublicationChunk.java" startLine="77" bytecode="54" />
+        <method name="insertRows" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationProtocol$Attempt;Lcom/iocextractor/adapter/out/store/jdbc/JdbcReceiptPayloadLayout;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcTypedPublicationChunk.java" startLine="95" bytecode="70" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcTypedPublicationChunk" />
             <Method name="insertRows" />
         </suppression>
-        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations. Reviewed 2026-10-11: chunk-local JdbcStatementScope reuse moves SQL preparation from insert to insertRows; SQL identifiers, prepared value bindings and admission authority are unchanged. This replaces one exact prior identity without adding a selector or accepting another warning.</rationale>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations. Reviewed 2026-10-11: chunk-local JdbcStatementScope reuse moves SQL preparation from insert to insertRows; SQL identifiers, prepared value bindings and admission authority are unchanged. This replaces one exact prior identity without adding a selector or accepting another warning. Reviewed 2026-10-12: the isolated receipt layout selects adapter-owned metadata column lists; business values remain bound. The changed method signature and finding identity are reviewed under RECEIPT-PAYLOAD-SQL.</rationale>
     </finding>
     <finding id="CAP-7C-C6-SB-001" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="7dcbc6b3c401b43a12c275a898d2e5b7" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="CAP-7C-C6-SQL" review="staged-publication-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcStagedCanonicalMigration" />
@@ -1862,5 +1862,27 @@
             <Method name="ordinaryReceipt" />
         </suppression>
         <rationale>The receipt table name derives from a validated artifact schema and passes identifier validation and quoting. Receipt identity is a bound parameter in a fixed COUNT/WHERE template. Multi-artifact receipt, exact field-position and receipt-only recovery regressions preserve completeness and immutable payload semantics; see the corrective-cycle SQL review.</rationale>
+    </finding>
+    <finding id="RECEIPT-PAYLOAD-SB-001" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="be06a1a43c80a00d10e1773f867bf325" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="RECEIPT-PAYLOAD-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcImmutableReceiptPayload" />
+        <method name="create" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationTable;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcImmutableReceiptPayload.java" startLine="17" bytecode="27" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcImmutableReceiptPayload" />
+            <Method name="create" />
+        </suppression>
+        <rationale>Physical table, column and index identifiers come from the validated native catalog and JdbcSql quoting. DDL and visibility predicates are adapter-owned templates. The artifact literal is derived only from an admitted artifact name and escapes single quotes; source text, IOC values and receipt IDs do not enter generated SQL. ImmutableReceiptPayloadIT verifies hidden visibility, native key uniqueness, parent retirement, receipt ID reuse, replay and crash recovery. Re-review if catalog grammar, quotation or value binding changes.</rationale>
+    </finding>
+    <finding id="RECEIPT-PAYLOAD-SB-002" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="7b112553bab90e3f82806dcdcacf8e48" occurrence="0" priority="1" rank="10" category="SECURITY" disposition="false-positive" owner="CAP-7C" evidence="RECEIPT-PAYLOAD-SQL" review="staged-publication-query-boundary-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcImmutableReceiptPayload" />
+        <method name="createView" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/JdbcPublicationTable;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcImmutableReceiptPayload.java" startLine="33" bytecode="112" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcImmutableReceiptPayload" />
+            <Method name="createView" />
+        </suppression>
+        <rationale>Physical table, column and index identifiers come from the validated native catalog and JdbcSql quoting. DDL and visibility predicates are adapter-owned templates. The artifact literal is derived only from an admitted artifact name and escapes single quotes; source text, IOC values and receipt IDs do not enter generated SQL. ImmutableReceiptPayloadIT verifies hidden visibility, native key uniqueness, parent retirement, receipt ID reuse, replay and crash recovery. Re-review if catalog grammar, quotation or value binding changes.</rationale>
     </finding>
 </spotbugs-accepted-findings>

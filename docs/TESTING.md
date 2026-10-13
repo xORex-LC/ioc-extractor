@@ -57,6 +57,10 @@ canonical writes, immutable CSV export and durable fetch/publish ledgers. Only
 the SMB wire boundary and UTC source are substituted. It checks receipt-only
 replay with deleted input, renewal, exact TTL expiry, non-reusable canonical
 identity, reusable export slots and retry after a lost post-publication reply.
+Native JDBC regressions also cover expiration rollback, receipt snapshots during
+physical retirement, malformed ordered positions, stale finalization and
+reservation/reference authority. They assert durable outcomes and resource
+release; the coverage and analyzer allowances remain unchanged.
 The C4 staged-publication
 fault suite adds owned child-JVM crash/reopen and native recovery coverage.
 The C6 operational suite qualifies drained populated migration, coordinated
