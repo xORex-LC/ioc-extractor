@@ -360,8 +360,8 @@ The separate
 [`pmd-watchlist-ruleset.xml`](../../build-support/pmd-report/pmd-watchlist-ruleset.xml)
 contains exactly `PreserveStackTrace`, `CloseResource` and `NcssCount`. The first
 two currently mostly report framework/lifecycle ownership that PMD cannot see;
-the third is retained as a high-size observation but currently produces no
-finding. Keeping them executable preserves future detection without pretending
+the third reports large methods for explicit review. Keeping them executable
+preserves future detection without pretending
 that their present signal has adoption quality.
 
 Rule disposition is about routine execution, not whether a rule happened to
