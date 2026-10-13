@@ -153,20 +153,11 @@ business fields requires a separate versioned consumer contract.
 - Export behavior: [artifact-export.md](artifact-export.md).
 - Ingestion confirmation point: [ingestion.md](ingestion.md).
 - Module map: [MODULARIZATION.md](../MODULARIZATION.md).
+### Native reservation authority
 
-### Private preparation and reservation authority
-
-The JDBC confirmation writer has an internal reservation datasource/admission
-seam, shared in purpose with managed import. A private native mutation database
-can consume row and lifecycle ranges committed independently in the authoritative
-dataframe database. Runtime constructors continue to use the canonical datasource
-and its admission. This does not activate staged publication or change existing
-reader, expiry, receipt, retention or migration behavior.
-
-Both native confirmation/import writers also have a transactional effect-sink
-seam. Private preparation can persist the actual row/lifecycle identities and
-explicit renewal flags with the native mutation. This preserves equal-time
-renewals that cannot be inferred from timestamp differences. The sink borrows
-the mutation connection and never commits or closes it. Runtime constructors
-use a no-op sink; the private journal is not canonical receipt authority or an
-activated versioned-storage protocol.
+Row and lifecycle ID ranges are committed independently in the authoritative
+dataframe database before Native canonical mutation. They use the shared writer
+admission and remain burned on failure. Mutation, provenance, lifecycle and
+receipt effects then commit together in the owning artifact transaction; there
+is no alternate mutation database or effect-journal backend. Private source/row
+preparation is described in [processing](processing.md).

@@ -4,7 +4,7 @@ Use an explicit resource profile when rehearsing a million-input batch. The
 packaged installation defaults target a smaller service: two CPUs, a 512-MiB
 maximum Java heap, a 768-MiB cgroup soft limit and a 1-GiB hard limit. They are
 not a qualified million-input capacity promise. The production storage backend
-remains native SQLite; the isolated Staged candidate has no production selector.
+is Native SQLite, the only supported canonical backend.
 
 ## Declare the workload
 
@@ -134,6 +134,7 @@ The current reference exercises real SMB against a loopback stand under WSL.
 It does not qualify a physical one-Gbit/s LAN, dedicated four-core hardware,
 all document formats, an arbitrary populated database or an unmeasured operator
 policy. Production acceptance still requires the intended deployment profile
-and the deferred release-quality checks. Stop architecture redesign once the
+and current release-quality checks, which are separate from load acceptance.
+Stop architecture redesign once the
 declared scenario passes its agreed end-to-end and operational requirements;
 record remaining stack costs and unavailable evidence explicitly.

@@ -201,7 +201,7 @@ created-at и устаревшей версии при эквивалентно�
 
 ### Критерии закрытия `TOOL-5`
 
-- Для 19 production-analysis модулей зафиксирована admission matrix:
+- Для 21 production-analysis модуля зафиксирована admission matrix:
   `adopt`, `defer` или `reject` с конкретными critical rules, test consumers и
   причиной решения; `ioc-application-tck` не попадает в production
   mutation denominator.

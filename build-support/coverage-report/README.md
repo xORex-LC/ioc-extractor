@@ -15,7 +15,7 @@ library.
 | File/output | Purpose |
 |---|---|
 | `pom.xml` | Reactor ordering, aggregate generation, stale-output cleanup and late coverage/test gates |
-| `coverage-scope.tsv` | Fail-closed disposition for every one of the 26 reactor projects and local-report expectation |
+| `coverage-scope.tsv` | Fail-closed disposition for every one of the 27 reactor projects and local-report expectation |
 | `coverage-ratchets.tsv` | Aggregate and 21 production-module line/branch baselines plus absolute missed context |
 | `coverage-floors.tsv` | Explicit fixed-floor disposition for the aggregate and every production module |
 | `CoverageVerifier.java` | JDK-only universe, report-integrity, no-regression and fixed-floor gate |
@@ -36,7 +36,7 @@ library.
 No class or package exclusion is accepted. The root `validate` phase reconciles
 the complete scope registry, report-module dependencies, report topology and
 ratchet scopes before child projects run. The late verifier then requires the
-aggregate XML/HTML, its exact 20-group production universe, 19 module-local
+aggregate XML/HTML, its exact 21-group production universe, 20 module-local
 XML/HTML pairs and one declared downstream-only group. Missing, stale or
 unexpected execution/report files fail the build.
 

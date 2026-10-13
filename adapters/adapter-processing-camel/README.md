@@ -51,8 +51,8 @@ persistence. This module is not independently published.
 supplies Camel's `simple` language required during context startup, and
 `jspecify` completes Camel's annotation types for bytecode analysis. These
 runtime/analysis dependencies have no source imports in this module. The
-source-level Camel API, route model and list-aggregation processor dependencies
-are declared directly; `camel-support` also supplies the DSL builder
+Camel API, route model and runtime processor dependencies are declared directly;
+`camel-support` also supplies the DSL builder
 superclasses required at compile time and exchange fixtures in tests. Versions remain managed by the existing parent `camel.version` property.
 
 Functional compiler/runtime conformance tests cover branch ordering, immutable
