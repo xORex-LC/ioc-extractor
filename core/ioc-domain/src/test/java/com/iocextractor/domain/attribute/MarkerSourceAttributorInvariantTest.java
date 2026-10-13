@@ -17,6 +17,23 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 class MarkerSourceAttributorInvariantTest {
 
     @Test
+    @org.junit.jupiter.api.Timeout(5)
+    void lazyMarkerScanCancelsBeforeConsumingTheNextMarker() {
+        var cursor = new MarkerSourceAttributor(new LiteralPatternEngine(), List.of("MARK"))
+                .markers("MARK tail", 32);
+        Thread.currentThread().interrupt();
+        try {
+            org.assertj.core.api.Assertions.assertThatThrownBy(cursor::next)
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("interrupted");
+        } finally {
+            Thread.interrupted();
+        }
+        assertThat(cursor.next()).isTrue();
+        assertThat(cursor.value()).isEqualTo(new SourceMarker(0, "MARK"));
+        assertThat(cursor.next()).isFalse();
+    }
+
+    @Test
     void lazyMarkerMergeMatchesBatchPrecedenceAcrossNbspAndAdjacentOverlaps() {
         var attributor = new MarkerSourceAttributor(new LiteralPatternEngine(),
                 List.of("A", "ABC", "BC", "D", "FIRST LABEL"));

@@ -295,6 +295,72 @@ class JdbcArtifactRepositoriesIT {
                 .isEqualTo(newest.admissionOrder().value());
     }
 
+    @Test
+    void streamedCompatibilityWriteKeepsAllObservationContributionsAndSourceFallbacks() {
+        var schema = schema("masks", "id", "mask", "source");
+        var repository = canonicalRepository(List.of(schema), List.of(
+                new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1)));
+        var command = new CanonicalWriteCommand("masks", List.of("id", "mask", "source"), List.of(
+                new CanonicalWriteRow(row("id", null, "mask", "example.test", "source", "public",
+                        "_source_key", "private"), Map.of()),
+                new CanonicalWriteRow(row("id", " ", "mask", "example.test", "source", "public",
+                        "_source_key", " "), Map.of()),
+                new CanonicalWriteRow(row("mask", "other.test", "source", " ", "_source_key", " "), Map.of())), null);
+
+        var result = repository.write(command);
+        var duplicate = repository.write(command);
+
+        assertThat(result.inserted()).isEqualTo(2);
+        assertThat(duplicate.inserted()).isZero();
+        assertThat(duplicate.revision()).isEqualTo(result.revision());
+        assertThat(sourceRows("masks")).containsExactlyInAnyOrder("1:private:2", "1:public:2", "3:unknown:2");
+        assertThat(repository.load("masks").rows()).extracting(value -> value.value("mask"))
+                .containsExactly("example.test", "other.test");
+    }
+
+    @Test
+    void compatibilityCommandRejectsWrongSchemaAndMissingIdentityBeforeAnyDurableEffect() {
+        var schema = schema("masks", "id", "mask", "source");
+        var repository = canonicalRepository(List.of(schema), List.of(
+                new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1)));
+        var value = new CanonicalWriteRow(row("mask", "example.test"), Map.of());
+        assertThatThrownBy(() -> repository.write(new CanonicalWriteCommand(
+                "masks", List.of("id", "mask"), List.of(value), null)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("header");
+        assertThatThrownBy(() -> repository.write(new CanonicalWriteCommand(
+                "missing", List.of("id", "mask", "source"), List.of(value), null)))
+                .isInstanceOf(IocExtractorException.class).hasMessageContaining("Unknown dataframe artifact");
+        assertThatThrownBy(() -> repository.write(new CanonicalWriteCommand(
+                "masks", List.of("id", "mask", "source"), List.of(value,
+                        new CanonicalWriteRow(row("mask", null), Map.of())), null)))
+                .isInstanceOf(IocExtractorException.class).hasMessageContaining("Cannot resolve row_key");
+        assertThat(repository.load("masks").rows()).isEmpty();
+        assertThat(sourceRows("masks")).isEmpty();
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @Test
+    void newerEqualFieldUpdatesOnlyPrecedenceMetadataAndPreservesRevision() throws Exception {
+        var schema = schema("masks", "id", "mask", "source");
+        var repository = canonicalRepository(List.of(schema), List.of(
+                new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1)));
+        var registrations = new JdbcObservationRegistrationStore(dataSource, CLOCK);
+        var first = registrations.registerNew(new ObservationId("equal-first"), ObservationOrigin.DOCUMENT);
+        var next = registrations.registerNew(new ObservationId("equal-next"), ObservationOrigin.DOCUMENT);
+        var inserted = repository.write(orderedCommand(first, "1", "same", new OccurrencePosition(1)));
+
+        var metadata = repository.write(orderedCommand(next, "2", "same", new OccurrencePosition(2)));
+
+        assertThat(metadata.inserted()).isZero();
+        assertThat(metadata.publicRowsUpdated()).isZero();
+        assertThat(metadata.metadataOnlyRows()).isOne();
+        assertThat(metadata.revision()).isEqualTo(inserted.revision());
+        assertThat(queryLong("SELECT admission_order FROM canonical_compat_field_origin "
+                + "WHERE artifact='masks' AND field_name='source'"))
+                .isEqualTo(next.admissionOrder().value());
+        assertThat(sourceRows("masks")).containsExactly("1:same:2");
+    }
+
     private CanonicalWriteCommand orderedCommand(
             com.iocextractor.application.observation.RegisteredObservation registration,
             String id,

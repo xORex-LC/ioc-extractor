@@ -201,6 +201,19 @@ version checks during finalization and cleanup. The managed-import delivery test
 connects actual YAML, processing and canonical commit to receipt-only recovery;
 import atomicity remains separate from per-artifact document commits.
 
+A live Native smoke on 2026-10-13 used a normally packaged Maven application
+JAR (`08f6c799c6025130c2082e0480e9067bea0132a4f35ce9ca3acf7e7688a5be65`)
+with diagnostic helpers, temporary service/dataframe databases and an owned
+SMB namespace. Ten DOCX files contained 1,000 IOC; pre-existing and recovery
+fixtures were additional input. Independent checks passed for all five artifacts,
+keys, provenance, complete receipts, mutable generations, export slots and remote
+manifest/CSV hashes. The final canonical set contained 2,490 artifact rows and
+12 complete receipts. Durable SMB completion took 14.91 seconds from local
+handoff; completion including independent remote readback took 18.02 seconds.
+These are smoke timings, not capacity acceptance. There were no terminalization
+CAS conflicts or cleanup errors; the namespace was removed and the private
+process terminated. Raw reports remain local and are not repository artifacts.
+
 ## Extension and maintenance
 
 New detection transports still need stable candidates, durable occurrence

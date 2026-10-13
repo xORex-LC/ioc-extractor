@@ -61,6 +61,11 @@ Native JDBC regressions also cover expiration rollback, receipt snapshots during
 physical retirement, malformed ordered positions, stale finalization and
 reservation/reference authority. They assert durable outcomes and resource
 release; the coverage and analyzer allowances remain unchanged.
+Additional terminal-CAS cases reject changed candidate/claim paths, evidence,
+execution state, creation time and stale versions. Compatibility writes preserve
+duplicate observation contributions and distinguish metadata-only field updates
+from public revision changes. Domain cursor tests cover cancellation and reject
+unsupported streaming capabilities explicitly.
 The C4 staged-publication
 fault suite adds owned child-JVM crash/reopen and native recovery coverage.
 The C6 operational suite qualifies drained populated migration, coordinated

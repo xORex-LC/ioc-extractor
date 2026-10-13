@@ -67,7 +67,7 @@ Canonical safe-clock остаётся независимой защитой и �
 нагрузочную приёмку. Владельцы: service ledger / [managed import](dev/dataframe-import.md),
 [ingestion](dev/ingestion.md), эксплуатация часов хоста.
 
-**ING-17 — конкурентная терминализация document admission (частично, M).**
+**ING-17 — конкурентная терминализация document admission (закрыт, M).**
 Нагрузочная квалификация 2026-10-13 зарегистрировала
 `INGEST.RECOVERY_FAILED: Document admission changed concurrently` в Native и
 Staged. Обычное завершение документа и reconciliation могут одновременно вызвать
@@ -86,9 +86,14 @@ Staged. Обычное завершение документа и reconciliation
 admission/registration. Полный повтор 1 млн IOC / 100 DOCX при workers/window
 1/1 завершился за 909,48 с до успешной SMB-публикации: все admissions/runs
 завершены, 2 167 020 строк и receipt/CSV/provenance проверены, ошибок CAS — 0.
-Release gates отложены владельцем; до их выполнения статус остаётся частичным.
-Это отдельный дефект корректности, а не основание для нового цикла оптимизации
-SQLite. До закрытия проверить согласованность admission / registration / ingest-run.
+При доведении Native обязательные release gates возобновлены. Дополнительные
+регрессии отклоняют подмену candidate/claim paths, evidence, execution state,
+created-at и устаревшей версии при эквивалентном terminal outcome. Новый малый
+прогон через реальный SMB на обычном Maven JAR проверил 1 000 IOC / 10 DOCX,
+все пять артефактов и receipts: конфликтов терминализации — 0. Подробные границы
+автоматизированной и live-проверки описаны в [ingestion](dev/ingestion.md).
+Закрыт дефект terminal CAS; исторические неуспешные нагрузочные окна не
+переклассифицированы и не становятся ресурсной приёмкой.
 Владельцы: [ingestion](dev/ingestion.md), document admission / reconciliation.
 
 ## 2. Обогащение вывода (`OUT`)

@@ -249,6 +249,11 @@ class JdbcObservationRegistrationStoreIT {
                     ObservationOrigin.DOCUMENT);
             assertThatThrownBy(() -> journal.replace(original, other.ordered(registration, NOW)))
                     .isInstanceOf(IllegalArgumentException.class);
+            var retry = original.execution(new com.iocextractor.application.ingest.admission.DocumentExecutionState(
+                    1, NOW.plusSeconds(10), "registration unavailable"), NOW);
+            assertThat(journal.replace(original, retry)).isTrue();
+            assertThat(journal.replace(original, retry)).isFalse();
+            assertThat(new JdbcDocumentAdmissionJournal(service).find(id)).contains(retry);
             assertThat(service.getHikariPoolMXBean().getActiveConnections()).isZero();
         }
     }
@@ -293,6 +298,30 @@ class JdbcObservationRegistrationStoreIT {
             assertThat(store.find(id)).isEmpty();
             assertThatThrownBy(() -> store.findUnfinalized(0)).isInstanceOf(IllegalArgumentException.class);
             assertThatThrownBy(() -> store.findFinalizedBefore(NOW, 0)).isInstanceOf(IllegalArgumentException.class);
+            assertThat(service.getHikariPoolMXBean().getActiveConnections()).isZero();
+        }
+    }
+
+    @Test
+    void ignoredReservationWritesFailRatherThanInventingDurableOwnership() throws Exception {
+        try (HikariDataSource service = dataSource("service", "ignored-reservations.db")) {
+            new SqliteUserVersionSchemaMigrator(service, ServiceSchemaMigrations.sqlite()).migrate();
+            try (var connection = service.getConnection(); var statement = connection.createStatement()) {
+                statement.execute("CREATE TRIGGER ignore_document BEFORE INSERT ON document_admission BEGIN SELECT RAISE(IGNORE); END");
+                statement.execute("CREATE TRIGGER ignore_import BEFORE INSERT ON observation_admission_reference BEGIN SELECT RAISE(IGNORE); END");
+            }
+            var id = new ObservationId("ignored-reservation");
+            var journal = new JdbcDocumentAdmissionJournal(service);
+            assertThatThrownBy(() -> journal.reserve(new DocumentAdmissionReservation(id,
+                    tempDir.resolve("source.html"), new DocumentCandidateEvidence(Optional.empty(), 8, 10),
+                    tempDir.resolve("source.claim"), NOW)))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("changed no rows");
+            assertThat(journal.find(id)).isEmpty();
+            var references = new JdbcObservationAdmissionReferenceStore(service, CLOCK);
+            assertThatThrownBy(() -> references.link(new RegisteredObservation(id, "namespace",
+                    new ObservationOrder(1), ObservationOrigin.MANAGED_IMPORT)))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("changed no rows");
+            assertThat(references.find(id)).isEmpty();
             assertThat(service.getHikariPoolMXBean().getActiveConnections()).isZero();
         }
     }

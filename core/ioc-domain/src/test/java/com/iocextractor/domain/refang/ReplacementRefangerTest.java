@@ -10,6 +10,19 @@ import static org.assertj.core.api.Assertions.tuple;
 class ReplacementRefangerTest {
 
     @Test
+    void batchOnlyRefangerRejectsStreamingRatherThanSilentlySkippingRewrites() {
+        Refanger batchOnly = refanger::refang;
+        var rewrite = new TextRewrite() {
+            public boolean isEmpty() { throw new AssertionError("Streaming capability is not implemented"); }
+            public int replace(RefangRule rule) { throw new AssertionError("Streaming capability is not implemented"); }
+        };
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> batchOnly.refang(rewrite))
+                .isInstanceOf(UnsupportedOperationException.class).hasMessageContaining("Streaming refang");
+        assertThat(batchOnly.refang("hxxp[:]//a[.]b").text()).isEqualTo("http://a.b");
+    }
+
+    @Test
     void orderedRewriteProtocolPreservesRuleDecisionsAndTheEmptySourceNoop() {
         var text = new StringBuilder("hxxps[:]//a[.]b");
         var rewrite = new TextRewrite() {

@@ -117,6 +117,31 @@ class DocumentAdmissionCompletionTest {
                 .hasMessageContaining("registration reference changed");
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "path", "candidate-evidence", "claim", "claimed-evidence", "created", "execution", "version"})
+    void equivalentOutcomeCannotAcceptChangedDeliveryEvidenceOrStaleVersion(String defect) {
+        var journal = new Journal(linked(REGISTRATION, new SourceKey("digest")));
+        journal.concurrentUpdate.set(value -> {
+            var terminal = value.terminal(DocumentTerminalOutcome.SUCCEEDED, NOW.plusSeconds(1));
+            var changedEvidence = new DocumentCandidateEvidence(Optional.of("other-key"), 2, 2);
+            return new DocumentAdmission(terminal.observationId(),
+                    defect.equals("path") ? Path.of("other.docx") : terminal.candidatePath(),
+                    defect.equals("candidate-evidence") ? changedEvidence : terminal.candidateEvidence(),
+                    defect.equals("claim") ? Path.of("other.claim") : terminal.claimPath(),
+                    defect.equals("claimed-evidence") ? Optional.of(changedEvidence) : terminal.claimedEvidence(),
+                    terminal.phase(), defect.equals("version") ? value.version() : terminal.version(),
+                    terminal.registration(), terminal.sourceKey(), terminal.terminalOutcome(), false,
+                    defect.equals("created") ? NOW.minusSeconds(1) : terminal.createdAt(), terminal.updatedAt(),
+                    defect.equals("execution") ? new DocumentExecutionState(1, NOW, "other attempt") : terminal.execution());
+        });
+
+        assertThatThrownBy(() -> service(journal, new Registrations(), 2)
+                .complete(ID, DocumentTerminalOutcome.SUCCEEDED))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("changed concurrently");
+        assertThat(journal.current.get().registrationFinalized()).isFalse();
+    }
+
     @Test
     void rejectedCasWithoutDurableTerminalProgressDoesNotBecomeSuccess() {
         var journal = new Journal(linked(REGISTRATION, new SourceKey("digest")));
