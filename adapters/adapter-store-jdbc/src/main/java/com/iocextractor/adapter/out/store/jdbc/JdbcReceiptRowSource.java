@@ -135,23 +135,28 @@ final class JdbcReceiptRowSource implements JdbcConnectionRowSource<CanonicalRec
                 for (var column : schema.columns()) {
                     values.put(column.name(), "id".equals(column.name()) ? null : rows.getString(column.name()));
                 }
-                Map<String, OccurrencePosition> fields = new LinkedHashMap<>();
-                int ordinal = rows.getInt("ordinal");
-                if (hasPosition && fieldRows.getInt(1) < ordinal) {
-                    throw new IocExtractorException("Receipt positions have no matching row");
-                }
-                while (hasPosition && fieldRows.getInt(1) == ordinal) {
-                    String field = fieldRows.getString(2);
-                    if (fields.put(field, new OccurrencePosition(fieldRows.getLong(3))) != null) {
-                        throw new IocExtractorException("Duplicate receipt field position");
-                    }
-                    hasPosition = fieldRows.next();
-                }
+                Map<String, OccurrencePosition> fields = readFieldPositions(rows.getInt("ordinal"));
                 var id = values.containsKey("id") ? Optional.of("id") : Optional.<String>empty();
                 current = new CanonicalRecordConfirmation(new ArtifactRowKey(rows.getString("row_key")),
                         new PreparedArtifactRow(ArtifactRow.ordered(values), id, fields));
                 return true;
             } catch (SQLException failure) { throw new IocExtractorException("Cannot read typed receipt row", failure); }
+        }
+
+        /** Consumes only this row's ordered positions within the same pinned SQLite snapshot. */
+        private Map<String, OccurrencePosition> readFieldPositions(int ordinal) throws SQLException {
+            Map<String, OccurrencePosition> fields = new LinkedHashMap<>();
+            if (hasPosition && fieldRows.getInt(1) < ordinal) {
+                throw new IocExtractorException("Receipt positions have no matching row");
+            }
+            while (hasPosition && fieldRows.getInt(1) == ordinal) {
+                String field = fieldRows.getString(2);
+                if (fields.put(field, new OccurrencePosition(fieldRows.getLong(3))) != null) {
+                    throw new IocExtractorException("Duplicate receipt field position");
+                }
+                hasPosition = fieldRows.next();
+            }
+            return fields;
         }
 
         public CanonicalRecordConfirmation value() { return java.util.Objects.requireNonNull(current, "current receipt row"); }

@@ -32,7 +32,8 @@ runtime JDBC drivers.
 The isolated staged candidate keeps one publication/conflict/recovery protocol.
 Direct projection controls bypass private preparation admission while retaining
 writer ownership and synchronous durability. Ordinary receipt replay merges two
-ordered cursors in one snapshot. Typed transfer batches remain bounded to 256
+ordered cursors in one snapshot and rejects orphan or duplicate field positions.
+Each receipt row consumes only its own ordered positions. Typed transfer batches remain bounded to 256
 effects and the admitted byte ceiling. Cleanup deletes a bounded address window
 and commits its service counters with cursor progress. Fresh candidate layouts
 omit exact redundant lookup indexes and maintain planner statistics outside
