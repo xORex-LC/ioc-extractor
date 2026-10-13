@@ -241,8 +241,11 @@ class JdbcCanonicalLifecycleWriterIT {
                         var real = realConnection.prepareStatement(sql); statements.add(real);
                         return jdbcProxy(java.sql.PreparedStatement.class, real, (operation, values) -> {
                             if (operation.getName().equals("close")) {
-                                if (sql.startsWith("SELECT ordinal")) { throw new SQLException("row close"); }
-                                if (positionFailure && sql.startsWith("SELECT field_name")) { throw new SQLException("position close"); }
+                                if (sql.contains("FROM confirmation_receipt_field_position")) {
+                                    if (positionFailure) { throw new SQLException("position close"); }
+                                } else if (sql.startsWith("SELECT ordinal")) {
+                                    throw new SQLException("row close");
+                                }
                             }
                             return invokeJdbc(real, operation, values);
                         });
@@ -260,6 +263,10 @@ class JdbcCanonicalLifecycleWriterIT {
                                 assertThat(cause).hasMessage(positionFailure ? "position close" : "row close");
                                 assertThat(cause.getSuppressed()).extracting(Throwable::getMessage)
                                         .contains("rollback close", "connection close");
+                                if (positionFailure) {
+                                    assertThat(cause.getSuppressed()).extracting(Throwable::getMessage)
+                                            .contains("row close");
+                                }
                             });
                     assertThat(closed).containsExactly("rollback", "connection");
                 } finally {

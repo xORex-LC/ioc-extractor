@@ -339,7 +339,6 @@ class SqlitePublicationExperimentIT {
             }
             var attempt = fixture.begin("typed-failure", 1, 2, Long.MAX_VALUE, Map.of("payload", 0L));
             var prepared = new ArrayList<java.sql.PreparedStatement>();
-            int[] executions = {0};
             var failure = catchThrowable(() -> fixture.write(OperationClass.PROMOTION, connection -> {
                 var traced = proxy(Connection.class, connection, (method, arguments) -> {
                     Object value = invoke(connection, method, arguments);
@@ -347,8 +346,10 @@ class SqlitePublicationExperimentIT {
                     var statement = (java.sql.PreparedStatement) value;
                     prepared.add(statement);
                     return proxy(java.sql.PreparedStatement.class, statement, (operation, parameters) -> {
-                        if (operation.getName().equals("executeUpdate") && ++executions[0] == 2) { throw new SQLException("typed write fixture"); }
                         Object result = invoke(statement, operation, parameters);
+                        // Model a driver reporting a failed batch after physical writes.
+                        // The owned transaction must roll back every effect, not just the journal.
+                        if (operation.getName().equals("executeBatch")) { throw new SQLException("typed write fixture"); }
                         if (operation.getName().equals("close")) { throw new SQLException("typed close fixture"); }
                         return result;
                     });

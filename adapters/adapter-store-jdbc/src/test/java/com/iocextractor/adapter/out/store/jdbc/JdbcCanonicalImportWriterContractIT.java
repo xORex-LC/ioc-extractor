@@ -959,6 +959,8 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
         assertThat(receipts.findComplete("staged-source", "ordinary-policy", EffectiveTime.at(NOW))).isEmpty();
         assertThat(canonical.count("canonical_observation_commit")).isZero();
         var commits = backend.store().tables().stream().filter(table -> table.name().equals("canonical_observation_commit")).findFirst().orElseThrow();
+        // One bounded scan retires predecessors; the next can remove their dominating tombstones.
+        backend.cleanup().purgeVersions(commits.name(), 256);
         assertThat(canonical.count(commits.versions())).isZero();
         assertThat(canonical.count("masks")).isOne();
         assertThatThrownBy(() -> backend.confirmations().confirm(commands.getFirst()))

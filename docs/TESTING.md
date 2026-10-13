@@ -39,8 +39,20 @@ The native ordinary/import writers also exercise their private transactional
 journal: same-instant renewal survives fresh-UTC publication, rollback removes
 private effects while authoritative reservations remain burned, and bounded
 journal paging, pinned identity and thread/resource ownership are checked.
-The reviewed source universe is 222 fast classes and 80 integration classes,
-including five external shells (297 deterministic classes). The C4 staged-publication
+The reviewed source universe is 223 fast classes and 85 integration classes,
+including five external shells (303 deterministic classes). The immutable receipt payload suite adds multi-artifact staging, ordered
+origins, pinned-reader retirement, bounded physical reclamation, receipt ID reuse
+and persisted-layout crash recovery. The compact typed
+journal suite adds transfer replay/completeness, atomic rollback, persisted-mode
+and process-loss receipt recovery checks. The bounded direct
+projection-control experiment adds `DirectProjectionControlIT`, covering shared
+CAS semantics, forced concurrent ordering, atomic rollback and child-JVM loss
+before and after commit. Receipt diagnostics and retired publication identities
+add two integration suites. Concurrent document-admission completion adds one
+fast suite, including forced completion/recovery races and rejection of changed
+authority. These additions change the suite inventory only; no coverage floor
+or analyzer ratchet changes.
+The C4 staged-publication
 fault suite adds owned child-JVM crash/reopen and native recovery coverage.
 The C6 operational suite qualifies drained populated migration, coordinated
 stopped-state restore, exclusive ownership, startup recovery and durable cleanup. The exact inventory
