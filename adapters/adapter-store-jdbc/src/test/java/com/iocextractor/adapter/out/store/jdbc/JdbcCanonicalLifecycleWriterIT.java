@@ -279,6 +279,54 @@ class JdbcCanonicalLifecycleWriterIT {
     }
 
     @Test
+    void openReceiptCursorPinsRowsAndPositionsAcrossPhysicalRetirement() {
+        var original = row("pinned", "pinned.example");
+        var record = new CanonicalRecordConfirmation(original.rowKey(), new PreparedArtifactRow(
+                original.preparedRow().template(), Optional.of("id"),
+                Map.of("value", new com.iocextractor.application.observation.OccurrencePosition(42))));
+        var registration = new JdbcObservationRegistrationStore(dataSource, ALLOCATOR_CLOCK)
+                .registerNew(new ObservationId("pinned-receipt"), ObservationOrigin.DOCUMENT);
+        writer(JdbcLifecycleTransactionObserver.NOOP).confirm(new CanonicalArtifactConfirmation(
+                registration.observationId(), "source-key", receipt("pinned-receipt", 1), "masks",
+                publicHeader(), List.of(record), registration));
+        var store = new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30));
+        var source = store.findComplete("source-key", "policy-v1", EffectiveTime.at(START)).orElseThrow()
+                .artifacts().getFirst().records();
+
+        try (var cursor = source.open()) {
+            store.markTerminal(new ObservationId("pinned-receipt"), EffectiveTime.at(START), Duration.ofDays(30));
+            assertThat(store.purgeExpired(EffectiveTime.at(START.plus(Duration.ofDays(31))), 16).purged()).isOne();
+            assertThat(store.findComplete("source-key", "policy-v1", EffectiveTime.at(START))).isEmpty();
+            assertThat(cursor.next()).isTrue();
+            assertThat(cursor.value().preparedRow().template().value("value")).isEqualTo("pinned.example");
+            assertThat(cursor.value().preparedRow().orderedFieldPositions())
+                    .containsEntry("value", new com.iocextractor.application.observation.OccurrencePosition(42));
+            assertThat(cursor.next()).isFalse();
+        }
+        assertThatThrownBy(source::open).hasRootCauseMessage("Complete receipt disappeared before replay");
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {0, 2})
+    void receiptCursorRejectsPositionsWithoutACorrespondingRow(int orphanOrdinal) throws Exception {
+        writer(JdbcLifecycleTransactionObserver.NOOP).confirm(command("orphan-position", "masks",
+                receipt("orphan-position", 1), row("row", "row.example")));
+        if (orphanOrdinal == 0) {
+            execute("UPDATE masks_receipt_rows SET ordinal=1 WHERE receipt_id='orphan-position'");
+        }
+        execute("INSERT INTO confirmation_receipt_field_position(receipt_id,artifact,ordinal,field_name,occurrence_position)"
+                + " VALUES('orphan-position','masks'," + orphanOrdinal + ",'value',42)");
+        var source = new JdbcReceiptRowSource(dataSource, schemas.getFirst(), new ConfirmationReceiptId("orphan-position"), 1);
+
+        try (var cursor = source.open()) {
+            if (orphanOrdinal > 0) { assertThat(cursor.next()).isTrue(); }
+            assertThatThrownBy(cursor::next).hasMessage("Receipt positions have no matching row");
+        }
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @Test
     void validationRestorationFailuresDoNotMaskTheOriginalRejectionOrReserveIds() throws Exception {
         for (int scenario = 0; scenario < 3; scenario++) {
             boolean invalid = scenario == 2;

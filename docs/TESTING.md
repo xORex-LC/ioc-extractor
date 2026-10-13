@@ -39,8 +39,8 @@ The native ordinary/import writers also exercise their private transactional
 journal: same-instant renewal survives fresh-UTC publication, rollback removes
 private effects while authoritative reservations remain burned, and bounded
 journal paging, pinned identity and thread/resource ownership are checked.
-The reviewed source universe is 223 fast classes and 85 integration classes,
-including five external shells (303 deterministic classes). The immutable receipt payload suite adds multi-artifact staging, ordered
+The reviewed source universe is 223 fast classes and 86 integration classes,
+including five external shells (304 deterministic classes). The immutable receipt payload suite adds multi-artifact staging, ordered
 origins, pinned-reader retirement, bounded physical reclamation, receipt ID reuse
 and persisted-layout crash recovery. The compact typed
 journal suite adds transfer replay/completeness, atomic rollback, persisted-mode
@@ -52,6 +52,11 @@ add two integration suites. Concurrent document-admission completion adds one
 fast suite, including forced completion/recovery races and rejection of changed
 authority. These additions change the suite inventory only; no coverage floor
 or analyzer ratchet changes.
+`NativeDeliveryLifecycleIT` connects production Spring/YAML routing, native
+canonical writes, immutable CSV export and durable fetch/publish ledgers. Only
+the SMB wire boundary and UTC source are substituted. It checks receipt-only
+replay with deleted input, renewal, exact TTL expiry, non-reusable canonical
+identity, reusable export slots and retry after a lost post-publication reply.
 The C4 staged-publication
 fault suite adds owned child-JVM crash/reopen and native recovery coverage.
 The C6 operational suite qualifies drained populated migration, coordinated
