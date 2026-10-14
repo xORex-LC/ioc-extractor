@@ -273,7 +273,7 @@ but they do not prove that a named deployed consumer has accepted a release.
 | Surface | Contract evidence |
 |---|---|
 | Mutable CSV projections | `GoldenPipelineIT` compares all five artifacts byte-for-byte, including UTF-8, semicolon quoting, `NULL`, column order and CRLF records, then parses them through the independent reference consumer |
-| Immutable export slice | `ReferenceArtifactConsumerTest` consumes a committed complete v1 slice without production manifest/model classes and rejects checksum or `_SUCCESS` drift; `OnDemandExportIntegrationIT` applies the same consumer to local and published copies |
+| Immutable export slice | `ReferenceArtifactConsumerTest` consumes committed complete v1 and explicit-layout v2 slices without production manifest/model classes and rejects checksum or `_SUCCESS` drift; `OnDemandExportIntegrationIT` applies the same consumer to local and published copies |
 | CLI automation | CLI tests compare root help, version, usage errors, sync summaries and extraction completion blocks with exact stdout/stderr fixtures; only the generated run ID is replaced by an explicit token |
 | ECS logging | `LogbackConfigurationIT` compares one deterministic ECS JSON event byte-for-byte after replacing only the build version, then evaluates the committed JSON-pointer query corpus with exact scalar types and values |
 
@@ -342,6 +342,12 @@ process deadline would provide a less precise owner and could terminate valid
 evidence. Local operation timeouts plus suite-level JUnit boundaries are the
 authoritative policy. Reconsider a fork watchdog if a reproducible hang can
 survive those bounds; do not use it to conceal an unbounded test primitive.
+
+CSV output format has a dedicated fast suite for independent header/value
+quoting, LF/CRLF bytes and strict unquoted ambiguity. Filesystem projection and
+slice integration suites check failure preservation and manifest recovery. The
+suite inventory includes the formatter suite; existing v1 golden fixtures stay
+unchanged to guard byte compatibility.
 
 ## Update triggers
 

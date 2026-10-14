@@ -247,8 +247,11 @@ charset или enabled. Schema/identity changes меняют durable contract и
 |---|---|---|---|
 | `ioc.sink.csv.delimiter` | один символ | `;` | Должен отличаться от quote. |
 | `ioc.sink.csv.quote` | один символ | `"` | Должен отличаться от delimiter. |
-| `ioc.sink.csv.null-literal` | непустая строка | `NULL` | Сериализованное отсутствие значения. |
-| `ioc.sink.csv.charset` | Java charset | `UTF-8` | Непредставимые символы заменяются и диагностируются, но не останавливают run. |
+| `ioc.sink.csv.null-literal` | непустая строка | `NULL` | Маркер отсутствия значения без кавычек; запрещены разделитель, кавычка, CR и LF. |
+| `ioc.sink.csv.record-separator` | `lf`, `crlf` | `crlf` | Конец записи; комбинации и совместимость: [CSV output format](../../dev/csv-output-format.md). |
+| `ioc.sink.csv.header-quoting` | `all`, `minimal`, `none` | `all` | Кавычки у имён колонок, независимо от значений. |
+| `ioc.sink.csv.value-quoting` | `all`, `minimal`, `none` | `all` | `all` заключает все не-null значения в кавычки, включая пустую строку; `minimal` — только при необходимости; строгий `none` отклоняет значения, требующие кавычек или экранирования. |
+| `ioc.sink.csv.charset` | Java charset | `UTF-8` | При ALL/ALL замена символов в проекциях диагностируется; MINIMAL/NONE и immutable slices требуют точного кодирования. |
 | `ioc.sink.artifacts` | непустой список | masks, ip_list, address_blacklist, hashes, ioc_aggregate | Переопределяйте полные элементы, не отдельные indexes. Перед первой активацией прочитайте [гайд IOC aggregate](ioc-aggregate.md). |
 | `ioc.sink.artifacts[].name` | уникальная строка | обязателен | Stable identity, используемая export и row-key config. |
 | `ioc.sink.artifacts[].enabled` | boolean | обязателен | Disabled artifact не готовится и не проецируется. |

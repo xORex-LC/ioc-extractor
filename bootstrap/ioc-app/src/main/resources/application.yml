@@ -196,8 +196,14 @@ ioc:
       delimiter: ";"
       quote: "\""
       null-literal: "NULL"
+      # Explicit record endings; use lf for Unix consumers. Defaults preserve existing bytes.
+      record-separator: crlf
+      # Independent policies: all, minimal, none (strict rejection, no escaping).
+      header-quoting: all
+      value-quoting: all
       # Output charset (boundary 2) for generated CSV projections and export
-      # slices. Unmappable characters are replaced, never fatal. Blank = UTF-8.
+      # slices. ALL/ALL projections diagnose replacement; MINIMAL/NONE and immutable
+      # slices require lossless encoding. Blank = UTF-8.
       charset: UTF-8
     artifacts:
       - name: masks                  # network IOC -> reputation-list masks

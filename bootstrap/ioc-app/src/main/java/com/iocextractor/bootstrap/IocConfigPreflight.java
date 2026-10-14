@@ -34,10 +34,26 @@ final class IocConfigPreflight implements Validator {
             return;
         }
         validateIngestion(props, errors);
+        validateCsv(props, errors);
         validateLifecycle(props.lifecycle(), errors);
         validateArtifactIdentityReferences(props, errors);
         validateSync(props, errors);
         validateDataframeImport(props, errors);
+    }
+
+    private void validateCsv(IocProperties props, Errors errors) {
+        if (props.sink() == null || props.sink().csv() == null) {
+            return;
+        }
+        var csv = props.sink().csv();
+        if (csv.delimiter() == null || csv.quote() == null || csv.nullLiteral() == null) {
+            return; // Bean Validation owns missing required values.
+        }
+        try {
+            CsvFormatConfiguration.resolve(csv);
+        } catch (IllegalArgumentException failure) {
+            reject(errors, "sink.csv", null, failure.getMessage());
+        }
     }
 
     private void validateDataframeImport(IocProperties props, Errors errors) {

@@ -24,6 +24,49 @@ import static org.assertj.core.api.Assertions.assertThat;
 class IocConfigPreflightTest {
 
     @Test
+    void validates_csv_null_markers_and_delimiters_before_writing() {
+        var source = defaults();
+        for (String marker : List.of("N;A", "\"NULL\"", "N\rA", "N\nA")) {
+            var csv = new IocProperties.Sink.Csv(";", "\"", marker, "UTF-8");
+            var properties = withSink(source, new IocProperties.Sink(csv, source.sink().artifacts()));
+
+            assertThat(fields(validate(properties))).contains("sink.csv");
+        }
+        var invalid = withSink(source, new IocProperties.Sink(
+                new IocProperties.Sink.Csv(";", ";", "NULL", "UTF-8"), source.sink().artifacts()));
+        assertThat(fields(validate(invalid))).contains("sink.csv");
+        assertThat(fields(validate(withSink(source, new IocProperties.Sink(
+                new IocProperties.Sink.Csv(";", "\"", "NULL", ""), source.sink().artifacts())))))
+                .doesNotContain("sink.csv");
+    }
+
+    @Test
+    void rejects_csv_grammar_that_cannot_delimit_records_or_fields() {
+        var source = defaults();
+        for (String[] syntax : List.of(new String[] {";;", "\""}, new String[] {";", "''"},
+                new String[] {"\r", "\""}, new String[] {"\n", "\""},
+                new String[] {";", "\r"}, new String[] {";", "\n"})) {
+            var csv = new IocProperties.Sink.Csv(syntax[0], syntax[1], "NULL", "UTF-8");
+            assertThat(fields(validate(withSink(source, new IocProperties.Sink(csv, source.sink().artifacts())))))
+                    .contains("sink.csv");
+        }
+    }
+
+    @Test
+    void leaves_missing_csv_values_to_bean_validation_without_throwing() {
+        var source = defaults();
+        assertThat(fields(validate(withSink(source, null)))).doesNotContain("sink.csv");
+        assertThat(fields(validate(withSink(source, new IocProperties.Sink(null, source.sink().artifacts())))))
+                .doesNotContain("sink.csv");
+        for (var csv : List.of(new IocProperties.Sink.Csv(null, "\"", "NULL", "UTF-8"),
+                new IocProperties.Sink.Csv(";", null, "NULL", "UTF-8"),
+                new IocProperties.Sink.Csv(";", "\"", null, "UTF-8"))) {
+            assertThat(fields(validate(withSink(source, new IocProperties.Sink(csv, source.sink().artifacts())))))
+                    .doesNotContain("sink.csv");
+        }
+    }
+
+    @Test
     void supportsOnlyTheTypedRootAndIgnoresForeignTargets() {
         IocConfigPreflight preflight = new IocConfigPreflight();
         var errors = errors();

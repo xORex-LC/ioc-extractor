@@ -11,6 +11,8 @@ import com.iocextractor.application.dataframeimport.model.ImportRecordSeparator;
 import com.iocextractor.application.dataframeimport.model.ImportRoutingPolicy;
 import com.iocextractor.application.dataframeimport.model.ImportRowFailurePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportSourceTransport;
+import com.iocextractor.application.export.ExportQuoting;
+import com.iocextractor.application.export.ExportRecordSeparator;
 import com.iocextractor.domain.model.IndicatorType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
@@ -23,6 +25,7 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.ConstructorBinding;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
@@ -160,8 +163,24 @@ public record IocProperties(
             artifacts = snapshotList(artifacts);
         }
 
+        /** Shared byte format for generated CSV projections and immutable export slices. */
         public record Csv(@NotBlank String delimiter, @NotBlank String quote, @NotBlank String nullLiteral,
-                          String charset) {
+                          String charset,
+                          @DefaultValue("CRLF") @NotNull ExportRecordSeparator recordSeparator,
+                          @DefaultValue("ALL") @NotNull ExportQuoting headerQuoting,
+                          @DefaultValue("ALL") @NotNull ExportQuoting valueQuoting) {
+            /** Keeps existing configuration and programmatic callers on the original layout. */
+            @ConstructorBinding
+            public Csv {
+                recordSeparator = recordSeparator == null ? ExportRecordSeparator.CRLF : recordSeparator;
+                headerQuoting = headerQuoting == null ? ExportQuoting.ALL : headerQuoting;
+                valueQuoting = valueQuoting == null ? ExportQuoting.ALL : valueQuoting;
+            }
+
+            public Csv(String delimiter, String quote, String nullLiteral, String charset) {
+                this(delimiter, quote, nullLiteral, charset,
+                        ExportRecordSeparator.CRLF, ExportQuoting.ALL, ExportQuoting.ALL);
+            }
         }
 
         public record Artifact(

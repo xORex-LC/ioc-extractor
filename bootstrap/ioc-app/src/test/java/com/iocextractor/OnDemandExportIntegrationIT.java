@@ -8,6 +8,9 @@ import com.iocextractor.adapter.out.store.jdbc.JdbcPublishLedger;
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.export.ExportPlan;
+import com.iocextractor.application.export.ExportFormat;
+import com.iocextractor.application.export.ExportRecordSeparator;
+import com.iocextractor.application.export.ExportQuoting;
 import com.iocextractor.application.export.ExportProfile;
 import com.iocextractor.application.export.ExportRunStatus;
 import com.iocextractor.application.export.ExportRunRecoveryService;
@@ -230,6 +233,38 @@ class OnDemandExportIntegrationIT {
 
         assertAggregateImmutableSlice();
         assertIndependentProfiles(plan);
+        assertLayoutChangeExportsUnchangedCanonicalRows(plan, catchUpManifest);
+    }
+
+    private void assertLayoutChangeExportsUnchangedCanonicalRows(ExportPlan original,
+                                                                 SliceManifest previous) throws Exception {
+        var format = new ExportFormat("csv", "UTF-8", ";", "\"", "NULL",
+                ExportRecordSeparator.LF, ExportQuoting.ALL, ExportQuoting.NONE);
+        var changed = new ExportPlan(format.requiredManifestVersion(), original.profile(), format,
+                original.artifacts());
+        var service = new ExportService(List.of(changed), revisionReader, progressStore, runLedger,
+                snapshotReader, sliceWriter, recoveryService, operationGuard, clock);
+
+        var result = service.export(new ExportArtifactsCommand(changed.profile().name()));
+
+        assertThat(result.status()).isEqualTo(ExportRunStatus.COMPLETED);
+        Path slice = EXPORT_ROOT.resolve(changed.profile().name()).resolve(result.sliceName());
+        var manifest = manifestCodec.decode(Files.readAllBytes(slice.resolve("manifest.json")));
+        assertThat(manifest.manifestVersion()).isEqualTo(2);
+        assertThat(manifest.format()).isEqualTo(format);
+        assertThat(manifest.planHash()).isNotEqualTo(previous.planHash());
+        assertThat(manifest.artifacts().getFirst().coverage()).isEqualTo(previous.artifacts().getFirst().coverage());
+        assertThat(Files.readString(slice.resolve("masks_list_generated.csv"))).isEqualTo(
+                "\"id\";\"mask\";\"url_match\";\"host_match\";\"score\";\"time_last_seen\";"
+                + "\"time_first_seen\";\"threat_type\";\"source\";\"description\"\n"
+                + "1;example.org;NULL;NULL;NULL;NULL;NULL;NULL;NULL;NULL\n"
+                + "2;before-snapshot.example;NULL;NULL;NULL;NULL;NULL;NULL;NULL;NULL\n"
+                + "3;after-snapshot.example;NULL;NULL;NULL;NULL;NULL;NULL;NULL;NULL\n");
+        assertThat(consumer.readSlice(slice, Map.of("masks", MASKS_HEADER)).artifacts().get("masks").rows())
+                .extracting(row -> row.get("mask"))
+                .containsExactly("example.org", "before-snapshot.example", "after-snapshot.example");
+        assertThat(service.export(new ExportArtifactsCommand(changed.profile().name())).status())
+                .isEqualTo(ExportRunStatus.SKIPPED);
     }
 
     private void assertIndependentProfiles(ExportPlan template) throws Exception {

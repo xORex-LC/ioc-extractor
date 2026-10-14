@@ -32,6 +32,10 @@ Daemon export scheduler до открытия этого barrier не выпол
 
 ## Инварианты
 
+Формат CSV задаёт окончания записей и независимые правила кавычек для заголовка
+и значений. Старый формат сохраняет manifest v1; явное изменение формата использует
+v2 и меняет plan hash. Подробности: [формат CSV](csv-output-format.md).
+
 1. **Profile — неделимая ordered единица.** В v1 поддерживается только полный
    (`COMPLETE`) output; artifacts и columns имеют значимый порядок.
    Defaults публикуют `ioc_aggregate` отдельным профилем `ioc-aggregate`, чтобы

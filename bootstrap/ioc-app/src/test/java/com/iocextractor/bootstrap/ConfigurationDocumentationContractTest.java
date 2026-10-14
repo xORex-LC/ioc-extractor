@@ -149,6 +149,9 @@ class ConfigurationDocumentationContractTest {
         assertHint(metadata, "ioc.storage.dataframe.sqlite.tuning", sqlitePresets);
         assertHint(metadata, "ioc.observability.mode", selectorTokens(ObservabilityMode.values()));
         assertHint(metadata, "ioc.pipeline.failure-policy", Set.of("fail-fast", "collect-and-continue"));
+        assertHint(metadata, "ioc.sink.csv.record-separator", Set.of("lf", "crlf"));
+        assertHint(metadata, "ioc.sink.csv.header-quoting", Set.of("all", "minimal", "none"));
+        assertHint(metadata, "ioc.sink.csv.value-quoting", Set.of("all", "minimal", "none"));
         Set<String> indicatorTypes = new LinkedHashSet<>();
         Arrays.stream(IndicatorType.values()).map(Enum::name).forEach(indicatorTypes::add);
         assertHint(metadata, "ioc.patterns.keys", indicatorTypes);
