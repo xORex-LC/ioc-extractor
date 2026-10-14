@@ -155,6 +155,26 @@ class JdbcSnapshotSliceReaderIT {
     }
 
     @Test
+    void consumerErrorPreservesCauseAndReleasesSnapshotForNextRead() {
+        Fixture fixture = fixture();
+        fixture.write("masks", row("id", "1", "mask", "a.example"));
+        AssertionError fatal = new AssertionError("consumer failed fatally");
+        SnapshotRowConsumer consumer = new NoopConsumer() {
+            @Override
+            public void row(ArtifactRow row) { throw fatal; }
+        };
+
+        assertThatThrownBy(() -> fixture.reader().stream(new SnapshotRequest(fixture.plan()), consumer))
+                .isSameAs(fatal);
+
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+        assertThat(fixture.reader().activeReaders()).isZero();
+        RecordingConsumer next = new RecordingConsumer();
+        fixture.reader().stream(new SnapshotRequest(fixture.plan()), next);
+        assertThat(next.rowsByArtifact.get("masks")).containsExactly("1");
+    }
+
+    @Test
     void boundedReaderWaitsWithoutTakingWriterConnectionAndPinnedWalDrainsAfterClose() throws Exception {
         Fixture fixture = fixture();
         fixture.write("masks", row("id", "1", "mask", "initial.example"));

@@ -82,12 +82,12 @@ public final class JdbcLifecycleClock implements LifecycleTimeSource, LifecycleC
         try (Connection connection = dataSource.getConnection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
-            Exception failure = null;
+            Throwable failure = null;
             try {
                 EffectiveTime result = now(connection);
                 connection.commit();
                 return result;
-            } catch (SQLException | RuntimeException e) {
+            } catch (SQLException | RuntimeException | Error e) {
                 failure = e;
                 JdbcLifecycleTransactions.rollback(connection, e);
                 throw e;

@@ -18,9 +18,14 @@ import java.util.Optional;
 
 /** Versioned bounded row encoding; strict slice decoding preserves absent columns, nulls and field rank. */
 final class DocumentRowCodec {
+    private static final int PAYLOAD_VERSION = 1;
+    private static final int MAXIMUM_FIELDS = 128;
+    private static final int NULL_FIELD_LENGTH = -1;
+
     private final int maximumRowBytes;
     private final int maximumFieldBytes;
 
+    /** Limits come from processing.workspace and bound serialized bytes, not total JVM heap. */
     DocumentRowCodec(int maximumRowBytes, int maximumFieldBytes) {
         this.maximumRowBytes = maximumRowBytes;
         this.maximumFieldBytes = maximumFieldBytes;
@@ -28,10 +33,10 @@ final class DocumentRowCodec {
 
     byte[] encode(PreparedArtifactRow row) {
         try (var bytes = new ByteArrayOutputStream(); var output = new DataOutputStream(bytes)) {
-            output.writeInt(1);
+            output.writeInt(PAYLOAD_VERSION);
             text(output, row.idColumn().orElse(null));
             output.writeInt(row.template().values().size());
-            if (row.template().values().size() > 128 || row.orderedFieldPositions().size() > 128) {
+            if (row.template().values().size() > MAXIMUM_FIELDS || row.orderedFieldPositions().size() > MAXIMUM_FIELDS) {
                 throw new IllegalArgumentException("Document row has too many fields");
             }
             for (var field : row.template().values().entrySet()) {
@@ -55,7 +60,7 @@ final class DocumentRowCodec {
     PreparedArtifactRow decode(byte[] bytes) {
         requireSize(bytes.length);
         try (var input = new DataInputStream(new ByteArrayInputStream(bytes))) {
-            if (input.readInt() != 1) { throw new IOException("Unsupported document row version"); }
+            if (input.readInt() != PAYLOAD_VERSION) { throw new IOException("Unsupported document row version"); }
             // The convenience decode operation resets this invocation-owned decoder for each slice.
             var decoder = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT);
@@ -83,12 +88,12 @@ final class DocumentRowCodec {
 
     private int count(DataInputStream input) throws IOException {
         int count = input.readInt();
-        if (count < 0 || count > 128) { throw new IOException("Invalid document field count"); }
+        if (count < 0 || count > MAXIMUM_FIELDS) { throw new IOException("Invalid document field count"); }
         return count;
     }
 
     private void text(DataOutputStream output, String value) throws IOException {
-        if (value == null) { output.writeInt(-1); return; }
+        if (value == null) { output.writeInt(NULL_FIELD_LENGTH); return; }
         if (value.length() > maximumFieldBytes) { throw new IOException("Document field exceeds byte limit"); }
         byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
         if (bytes.length > maximumFieldBytes) { throw new IOException("Document field exceeds byte limit"); }
@@ -98,7 +103,7 @@ final class DocumentRowCodec {
 
     private String text(DataInputStream input, byte[] payload, CharsetDecoder decoder) throws IOException {
         int size = input.readInt();
-        if (size == -1) { return null; }
+        if (size == NULL_FIELD_LENGTH) { return null; }
         if (size < 0 || size > maximumFieldBytes || size > input.available()) {
             throw new IOException("Invalid document field size");
         }

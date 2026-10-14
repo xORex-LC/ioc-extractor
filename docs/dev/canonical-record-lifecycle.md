@@ -77,6 +77,13 @@ Lifecycle state stays in the dataframe database because confirmation, active
 membership and history movement must share the business-row transaction. The
 service database continues to hold ingestion/export/sync coordination only.
 
+Transaction owners explicitly roll back unsuccessful work, including fatal
+`Error` paths, before restoring connection mode. Restoring auto-commit never
+implicitly publishes partial canonical rows without their receipt. Cleanup
+failures retain the original cause. Committed replay uses the durable observation
+identity and can succeed without reopening preparation; that identity belongs
+to one pinned ingestion event and must not be reused for a different payload.
+
 ## Invariants
 
 1. **Validity belongs to one canonical row lifecycle.** Provenance confirms the

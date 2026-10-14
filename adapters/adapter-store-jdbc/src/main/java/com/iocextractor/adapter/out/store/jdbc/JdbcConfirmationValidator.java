@@ -7,12 +7,17 @@ import java.sql.SQLException;
 
 /** Disk-backed duplicate validation before any canonical ID reservation. */
 final class JdbcConfirmationValidator {
+    private static final int SQLITE_CONSTRAINT_CODE = 19;
+    // Pages, not bytes: 65,536 pages are 256 MiB at the usual 4 KiB SQLite page size.
+    private static final long MAXIMUM_TEMP_PAGES = 65_536;
+    private static final int TEMP_CACHE_KIB = 64;
+
     private JdbcConfirmationValidator() { }
 
     static void validate(Connection connection, CanonicalArtifactConfirmation confirmation, boolean hasPublicId)
             throws SQLException {
         try (var ignored = new TemporaryKeys(connection);
-             var keys = connection.prepareStatement("INSERT INTO cap_confirmation_keys(row_key) VALUES (?)");
+             var keys = connection.prepareStatement("INSERT INTO temp.cap_confirmation_keys(row_key) VALUES (?)");
              var cursor = JdbcRowSources.onConnection(confirmation.records(), connection).open()) {
             int count = 0;
             while (cursor.next()) {
@@ -21,7 +26,7 @@ final class JdbcConfirmationValidator {
                 keys.setString(1, record.rowKey().value());
                 try { keys.executeUpdate(); }
                 catch (SQLException failure) {
-                    if (failure.getErrorCode() == 19) {
+                    if (failure.getErrorCode() == SQLITE_CONSTRAINT_CODE) {
                         throw new IllegalArgumentException("Canonical confirmation contains duplicate row key: " + record.rowKey().value(), failure);
                     }
                     throw failure;
@@ -50,11 +55,11 @@ final class JdbcConfirmationValidator {
             long pageLimit;
             try (var statement = connection.createStatement(); var rows = statement.executeQuery("PRAGMA temp.max_page_count")) {
                 if (!rows.next()) { throw new SQLException("Missing confirmation TEMP page limit"); }
-                pageLimit = Math.min(65536, rows.getLong(1));
+                pageLimit = Math.min(MAXIMUM_TEMP_PAGES, rows.getLong(1));
             }
             try (var ddl = connection.createStatement()) {
-                ddl.execute("CREATE TEMP TABLE cap_confirmation_keys(row_key TEXT PRIMARY KEY) WITHOUT ROWID");
-                ddl.execute("PRAGMA temp.cache_size=-64");
+                ddl.execute("CREATE TEMP TABLE temp.cap_confirmation_keys(row_key TEXT PRIMARY KEY) WITHOUT ROWID");
+                ddl.execute("PRAGMA temp.cache_size=-" + TEMP_CACHE_KIB);
                 // A malformed external streaming command cannot fill the system temporary disk.
                 ddl.execute("PRAGMA temp.max_page_count=" + pageLimit);
             }
@@ -62,7 +67,7 @@ final class JdbcConfirmationValidator {
 
         @Override
         public void close() throws SQLException {
-            try (var ddl = connection.createStatement()) { ddl.execute("DROP TABLE cap_confirmation_keys"); }
+            try (var ddl = connection.createStatement()) { ddl.execute("DROP TABLE temp.cap_confirmation_keys"); }
         }
     }
 }

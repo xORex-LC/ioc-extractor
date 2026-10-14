@@ -56,7 +56,7 @@ public final class JdbcActiveArtifactReader implements ActiveArtifactReader {
                                         EffectiveTime asOf) throws SQLException {
         boolean previousAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
-        Exception failure = null;
+        Throwable failure = null;
         try {
             if (JdbcLifecycleTransactions.readActivationState(connection) != LifecycleActivationState.ACTIVE) {
                 throw new IocExtractorException("Canonical lifecycle is not active");
@@ -67,7 +67,7 @@ public final class JdbcActiveArtifactReader implements ActiveArtifactReader {
             connection.commit();
             return new ActiveArtifactSnapshot(
                     schema.artifactName(), publicHeader(schema), records, revision, generation, asOf);
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | RuntimeException | Error e) {
             failure = e;
             JdbcLifecycleTransactions.rollback(connection, e);
             throw e;

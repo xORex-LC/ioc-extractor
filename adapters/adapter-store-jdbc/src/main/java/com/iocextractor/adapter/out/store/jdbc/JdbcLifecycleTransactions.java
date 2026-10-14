@@ -71,9 +71,13 @@ final class JdbcLifecycleTransactions {
         }
     }
 
-    static void restoreAutoCommit(Connection connection, boolean autoCommit, Exception original)
+    /** Owners commit explicitly; restoring a pooled connection must never commit leftover work. */
+    static void restoreAutoCommit(Connection connection, boolean autoCommit, Throwable original)
             throws SQLException {
         try {
+            if (autoCommit && !connection.getAutoCommit()) {
+                connection.rollback();
+            }
             connection.setAutoCommit(autoCommit);
         } catch (SQLException restoreFailure) {
             if (original == null) {

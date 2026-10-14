@@ -24,9 +24,18 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Semaphore;
 
-/** Owns private pins and aggregate memory/disk admission; cleanup never touches a live lease. */
+/**
+ * Owns private pins and aggregate memory/disk admission; cleanup never touches a live lease.
+ * The composition root creates one factory per workspace root in this JVM. File locks
+ * coordinate other processes; they do not make overlapping factories in one JVM safe.
+ */
 public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPreparationWorkspaceFactory {
     private static final int MAXIMUM_PINS = 128;
+    private static final int SOURCE_BUDGET_DIVISOR = 4;
+    private static final int MAXIMUM_IDENTITY_CHARACTERS = 32 * 1024;
+    private static final int MAXIMUM_IDENTITY_BYTES = 128 * 1024;
+    private static final int MAXIMUM_EXTENSION_CHARACTERS = 32;
+    private static final String OWNER_MARKER = "ioc-document-workspace-v1\n";
     private final Path root;
     private final DocumentPreparationLimits limits;
     private final ArtifactIdentityResolver identities;
@@ -60,18 +69,22 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
 
     @Override
     public DocumentPreparationWorkspace open(ExtractionCommand command, Map<String, ArtifactWritePolicy> policies) {
+        Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(policies, "policies");
+        String observation = command.lifecycleWriteContext() != null
+                ? command.lifecycleWriteContext().observationId().value()
+                : command.registration() != null ? command.registration().observationId().value() : command.runId();
+        Path directory = root.resolve(ArtifactIdentityDefinition.sha256(observation));
         try { leases.acquire(); }
         catch (InterruptedException failure) {
             Thread.currentThread().interrupt();
             throw new IocExtractorException("Document workspace admission interrupted", failure);
         }
-        String observation = command.lifecycleWriteContext() != null
-                ? command.lifecycleWriteContext().observationId().value()
-                : command.registration() != null ? command.registration().observationId().value() : command.runId();
-        Path directory = root.resolve(ArtifactIdentityDefinition.sha256(observation));
         Lease lease = null;
         boolean admitted = false;
         try {
+            // Admission, filesystem ownership and disk accounting form one critical section.
+            // Moving source pinning out requires reserving its disk usage before releasing it.
             synchronized (this) {
                 initializeRoot();
                 try (var ignored = new Lease(root.resolve(".admission"), true)) {
@@ -100,6 +113,8 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
     }
 
     private static void closeFailedLease(Path directory, Lease lease, Throwable failure) {
+        // Without a lease this attempt cannot safely delete an existing pin. Retention
+        // pruning reclaims abandoned directories; sealed pins remain available for replay.
         if (lease == null) { return; }
         if (!Files.exists(directory.resolve("seal"))) {
             try { deletePrivateDirectory(directory); } catch (IOException error) { failure.addSuppressed(error); }
@@ -110,21 +125,23 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
     private Path pinSource(ExtractionCommand command, Path directory, String observation) throws IOException {
         String filename = Objects.requireNonNull(command.source().getFileName(), "source filename").toString();
         Path snapshot = directory.resolve("source" + extension(filename));
-        if (Files.size(command.source()) > limits.workspaceBytes() / 4) {
+        if (Files.size(command.source()) > limits.workspaceBytes() / SOURCE_BUDGET_DIVISOR) {
             throw new IocExtractorException("Document source snapshot exceeds workspace quota");
         }
+        // One quarter of the workspace is available for the pinned source; the remainder
+        // holds prepared rows, metadata and journal files. The pin format is versioned.
         String sourceHash = JdbcDocumentPreparationWorkspace.hash(command.source());
         String identity = "document-workspace-v1\n" + observation + "\n" + fingerprint + "\n"
                 + sourceHash + "\n" + command.registration() + "\n" + command.lifecycleWriteContext();
-        if (identity.length() > 32768) { throw new IocExtractorException("Document pin identity exceeds limit"); }
+        if (identity.length() > MAXIMUM_IDENTITY_CHARACTERS) { throw new IocExtractorException("Document pin identity exceeds limit"); }
         Path pin = directory.resolve("identity");
         if (Files.exists(pin, LinkOption.NOFOLLOW_LINKS)) {
-            if (Files.isSymbolicLink(pin) || Files.size(pin) > 131072 || !Files.readString(pin).equals(identity)
+            if (Files.isSymbolicLink(pin) || Files.size(pin) > MAXIMUM_IDENTITY_BYTES || !Files.readString(pin).equals(identity)
                     || !sourceHash.equals(JdbcDocumentPreparationWorkspace.hash(snapshot))) {
                 throw new IocExtractorException("Document preparation pin identity mismatch");
             }
         } else {
-            DocumentWorkspaceFiles.copy(command.source(), snapshot, limits.workspaceBytes() / 4);
+            DocumentWorkspaceFiles.copy(command.source(), snapshot, limits.workspaceBytes() / SOURCE_BUDGET_DIVISOR);
             if (!sourceHash.equals(JdbcDocumentPreparationWorkspace.hash(snapshot))) {
                 throw new IocExtractorException("Document source changed while pinning");
             }
@@ -141,9 +158,9 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
             try (var contents = Files.list(root)) {
                 if (contents.findAny().isPresent()) { throw new IOException("Document workspace root must be empty or owned"); }
             }
-            DocumentWorkspaceFiles.write(marker, "ioc-document-workspace-v1\n");
-        } else if (Files.isSymbolicLink(marker) || Files.size(marker) != 26
-                || !"ioc-document-workspace-v1\n".equals(Files.readString(marker))) {
+            DocumentWorkspaceFiles.write(marker, OWNER_MARKER);
+        } else if (Files.isSymbolicLink(marker) || Files.size(marker) != OWNER_MARKER.length()
+                || !OWNER_MARKER.equals(Files.readString(marker))) {
             throw new IOException("Invalid document workspace ownership marker");
         }
         privateDirectory(root);
@@ -194,7 +211,7 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
     private static String extension(String filename) {
         int dot = filename.lastIndexOf('.');
         String extension = dot < 0 ? "" : filename.substring(dot);
-        if (extension.length() > 32) { throw new IocExtractorException("Document extension exceeds limit"); }
+        if (extension.length() > MAXIMUM_EXTENSION_CHARACTERS) { throw new IocExtractorException("Document extension exceeds limit"); }
         return extension;
     }
 
@@ -204,6 +221,7 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
         finally { active.remove(directory); activeWorkspaceCount = active.size(); leases.release(); }
     }
 
+    /** Counts retained pins as well as active workspaces; the active map alone is insufficient. */
     private synchronized void checkDisk(Path directory) {
         try {
             long workspaceBytes = bytes(directory);
@@ -227,6 +245,7 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
     public record Pressure(int leasedWorkspaces, int leaseLimit, long lastCheckedDiskBytes,
                            long diskLimitBytes, long memoryLimitBytes) { }
 
+    /** Owned workspaces are flat. Delete entries directly and never follow symlink targets. */
     static void deletePrivateDirectory(Path directory) throws IOException {
         try (var paths = Files.list(directory)) {
             var iterator = paths.iterator();

@@ -23,6 +23,11 @@ import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.quote;
 final class JdbcConfirmationReceiptWriter {
 
     private static final int PAYLOAD_VERSION = 2;
+    private static final int MAXIMUM_BATCH_ROWS = 128;
+    private static final long MAXIMUM_BATCH_BYTES = 1024 * 1024;
+    private static final long ESTIMATED_ROW_OVERHEAD_BYTES = 128;
+    private static final long ESTIMATED_TEXT_OVERHEAD_BYTES = 64;
+    private static final long ESTIMATED_BYTES_PER_CHARACTER = 4;
 
     private final Map<String, DataframeArtifactSchema> schemas;
 
@@ -60,14 +65,14 @@ final class JdbcConfirmationReceiptWriter {
                 CanonicalRecordConfirmation record = cursor.value();
                 var values = receiptValues(receiptId, ordinal, record, confirmation.sourceKey(), asOf, businessColumns);
                 long rowBytes = receiptBytes(values);
-                if (batchBytes > 0 && batchBytes + rowBytes > 1048576) {
+                if (batchBytes > 0 && batchBytes + rowBytes > MAXIMUM_BATCH_BYTES) {
                     statement.executeBatch(); statement.clearBatch(); batchBytes = 0;
                 }
                 bind(statement, values);
                 statement.addBatch();
                 batchBytes += rowBytes;
                 ordinal++;
-                if (ordinal % 128 == 0 || batchBytes >= 1048576) {
+                if (ordinal % MAXIMUM_BATCH_ROWS == 0 || batchBytes >= MAXIMUM_BATCH_BYTES) {
                     statement.executeBatch(); statement.clearBatch(); batchBytes = 0;
                 }
             }
@@ -84,6 +89,7 @@ final class JdbcConfirmationReceiptWriter {
             statement.setLong(4, epochMillis(asOf));
             statement.executeUpdate();
         }
+        // Rows, field ranks and the marker are one receipt unit in the caller's transaction.
         stageFieldPositions(connection, confirmation);
         try (PreparedStatement statement = connection.prepareStatement("""
                 UPDATE confirmation_receipt
@@ -105,10 +111,11 @@ final class JdbcConfirmationReceiptWriter {
         return values;
     }
 
+    /** Conservative batch charge for JDBC values; not a measured Java object size. */
     private static long receiptBytes(List<Object> values) {
-        long bytes = 128;
+        long bytes = ESTIMATED_ROW_OVERHEAD_BYTES;
         for (Object value : values) {
-            if (value instanceof String text) { bytes += text.length() * 4L + 64; }
+            if (value instanceof String text) { bytes += text.length() * ESTIMATED_BYTES_PER_CHARACTER + ESTIMATED_TEXT_OVERHEAD_BYTES; }
         }
         return bytes;
     }
@@ -127,9 +134,9 @@ final class JdbcConfirmationReceiptWriter {
             while (cursor.next()) {
                 CanonicalRecordConfirmation record = cursor.value();
                 for (var field : record.preparedRow().orderedFieldPositions().entrySet()) {
-                    long bytes = 128L + 4L * (confirmation.receipt().id().value().length()
+                    long bytes = ESTIMATED_ROW_OVERHEAD_BYTES + ESTIMATED_BYTES_PER_CHARACTER * (confirmation.receipt().id().value().length()
                             + confirmation.artifactName().length() + field.getKey().length());
-                    if (pending > 0 && batchBytes + bytes > 1048576) {
+                    if (pending > 0 && batchBytes + bytes > MAXIMUM_BATCH_BYTES) {
                         statement.executeBatch(); statement.clearBatch(); pending = 0; batchBytes = 0;
                     }
                     statement.setString(1, confirmation.receipt().id().value());
@@ -138,7 +145,7 @@ final class JdbcConfirmationReceiptWriter {
                     statement.setString(4, field.getKey());
                     statement.setLong(5, field.getValue().value());
                     statement.addBatch(); pending++; batchBytes += bytes;
-                    if (pending == 128 || batchBytes >= 1048576) {
+                    if (pending == MAXIMUM_BATCH_ROWS || batchBytes >= MAXIMUM_BATCH_BYTES) {
                         statement.executeBatch(); statement.clearBatch(); pending = 0; batchBytes = 0;
                     }
                 }

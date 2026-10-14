@@ -84,6 +84,24 @@ affected artifact. Each session owns at most 32 statements, resets bindings and
 closes before commit. The writer owns the connection, reservations, revision
 aggregation and receipt publication.
 
+An unsuccessful transaction rolls back before restoring auto-commit, including
+when a cursor or mutation throws an `Error`. Cleanup failures are suppressed on
+the original failure. Connection restoration cannot commit leftover work. A
+failure after an explicit commit does not undo it: the durable receipt remains
+the replay authority, even when the private source is no longer available.
+
+Import planning rejects collisions between new related keys across different
+primary groups before mutation and applies the configured logical-row failure
+policy to the complete fan-out. Preferred-slot requests and resolutions stay
+in connection-local SQL scratch, with bounded JDBC batches and cursor reads.
+The complete request set is validated before any allocation; independently
+reconciling chunks would change slot selection. Operation-owned TEMP tables are
+dropped on exit, using the `temp` schema explicitly so same-named `main` tables
+cannot be removed. Scratch placement still follows the SQLite tuning preset;
+SQL-backed requests remove delivery-sized Java lists, not a total RSS limit.
+Restoring a connection does not preserve TEMP objects across
+operations; switching `temp_store` also destroys those objects.
+
 Writer admission distinguishes control, promotion, expiry, export-slot and
 maintenance operations with bounded fairness. It orders waiting work but cannot
 preempt an already-running SQLite transaction. A giant atomic promotion can
@@ -99,13 +117,19 @@ text uses disk-backed pages, and source scratch is removed before sealing.
 The global disk reducer preserves complete final identity, first-key order and
 whole-row winner selection across all artifacts. Repeatable row cursors feed
 writers and receipts without a document-wide winner list.
+One factory owns each workspace root within the JVM. The lease memory charge is
+an admission estimate rather than a heap/RSS guarantee. A valid budget admits at
+least one workspace; invalid open arguments are rejected before taking a permit.
+One quarter of each workspace disk budget is available for its source snapshot.
+Unsealed preparation is disposable; sealed pins remain available for replay.
 
 Row decoding validates the versioned bounded payload before allocation. ASCII
 fields avoid temporary per-field decoder/buffer copies; non-ASCII uses one strict
 UTF-8 decoder per row. ABSENT, NULL, field positions and corrupt-input rejection
 are preserved. Receipt batches flush after 128 rows or 1 MiB estimated bindings;
 an individually larger binding flushes alone. Before ID reservation, duplicate
-key validation uses a disk TEMP index with a 64-KiB cache and a 256-MiB cap.
+key validation uses a disk TEMP index with a 64-KiB cache and a 65,536-page cap
+(256 MiB with 4-KiB pages).
 Receipt replay borrows the owning connection where required, avoiding nested
 pool acquisition even with one connection. Two ordered cursors merge receipt
 rows and field positions in one snapshot; missing, duplicate or orphan positions

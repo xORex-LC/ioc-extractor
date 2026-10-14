@@ -108,7 +108,7 @@ public final class JdbcCanonicalArtifactRepository
                                                 CanonicalArtifactRowConsumer consumer) throws SQLException {
         boolean previousAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
-        Exception failure = null;
+        Throwable failure = null;
         try {
             LifecycleActivationState state = JdbcLifecycleTransactions.readActivationState(connection);
             if (state != expectedState) {
@@ -138,7 +138,7 @@ public final class JdbcCanonicalArtifactRepository
             }
             connection.commit();
             return new CanonicalArtifactStreamResult(rows, generation);
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | RuntimeException | Error e) {
             failure = e;
             JdbcLifecycleTransactions.rollback(connection, e);
             throw e;

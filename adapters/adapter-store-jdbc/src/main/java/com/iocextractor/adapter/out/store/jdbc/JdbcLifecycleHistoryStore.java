@@ -55,14 +55,14 @@ public final class JdbcLifecycleHistoryStore implements LifecycleHistoryStore {
         try (Connection connection = dataSource.getConnection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
-            Exception failure = null;
+            Throwable failure = null;
             try {
                 deleteFieldOrigins(connection, artifact, cutoff, batchSize);
                 int purged = deleteBatch(connection, artifact, cutoff, batchSize);
                 boolean moreEligible = hasEligible(connection, artifact, cutoff);
                 connection.commit();
                 return new HistoryPurgeResult(artifact, purged, moreEligible);
-            } catch (SQLException | RuntimeException e) {
+            } catch (SQLException | RuntimeException | Error e) {
                 failure = e;
                 JdbcLifecycleTransactions.rollback(connection, e);
                 throw e;

@@ -212,7 +212,7 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
         try (Connection connection = dataSource.getConnection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
-            Exception failure = null;
+            Throwable failure = null;
             try {
                 JdbcLifecycleTransactions.acquireActiveWriteOwnership(connection);
                 LifecycleActivationState currentState = JdbcLifecycleTransactions.readActivationState(connection);
@@ -222,12 +222,12 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                 }
                 exportSlots.reconcile(connection, plan, asOf);
                 connection.commit();
-            } catch (SQLException | RuntimeException e) {
+            } catch (SQLException | RuntimeException | Error e) {
                 failure = e;
-                rollback(connection, e);
+                JdbcLifecycleTransactions.rollback(connection, e);
                 throw e;
             } finally {
-                restoreAutoCommit(connection, previousAutoCommit, failure);
+                JdbcLifecycleTransactions.restoreAutoCommit(connection, previousAutoCommit, failure);
             }
         }
     }
@@ -239,7 +239,7 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                                     Instant asOf) throws SQLException {
         boolean previousAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
-        Exception failure = null;
+        Throwable failure = null;
         try {
             LifecycleActivationState lifecycleState = JdbcLifecycleTransactions.readActivationState(connection);
             if (lifecycleState != expectedState) {
@@ -258,12 +258,12 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
             consumer.end();
             connection.commit();
             return metadata;
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | RuntimeException | Error e) {
             failure = e;
-            rollback(connection, e);
+            JdbcLifecycleTransactions.rollback(connection, e);
             throw e;
         } finally {
-            restoreAutoCommit(connection, previousAutoCommit, failure);
+            JdbcLifecycleTransactions.restoreAutoCommit(connection, previousAutoCommit, failure);
         }
     }
 
@@ -463,27 +463,6 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
 
     private String quote(String identifier) {
         return "\"" + DataframeColumn.requireSqlIdentifier(identifier, "identifier") + "\"";
-    }
-
-    private void rollback(Connection connection, Exception original) {
-        try {
-            connection.rollback();
-        } catch (SQLException rollbackFailure) {
-            original.addSuppressed(rollbackFailure);
-        }
-    }
-
-    private void restoreAutoCommit(Connection connection,
-                                   boolean autoCommit,
-                                   Exception original) throws SQLException {
-        try {
-            connection.setAutoCommit(autoCommit);
-        } catch (SQLException restoreFailure) {
-            if (original == null) {
-                throw restoreFailure;
-            }
-            original.addSuppressed(restoreFailure);
-        }
     }
 
     private DiagnosticException snapshotFailure(String profile, SQLException cause) {

@@ -149,6 +149,43 @@ class JdbcArtifactIdentityStoreIT extends CanonicalIdentityStoreContractTest {
     }
 
     @Test
+    void fatalFailurePublishingIdentityMarkerRollsBackKeysAndAliases() throws Exception {
+        JdbcArtifactIdentityStore store = store(new CollectingDiagnosticSink());
+        store.ensure(definition("masks", List.of("mask"), false, 1));
+        execute("""
+                INSERT INTO masks(id, mask, source, row_key, _created_at, _first_source_key, _lifecycle_id)
+                VALUES (41, 'example.test', 'feed-a', 'legacy-key', '2026-06-24T00:00:00Z', 'feed-a', 701)
+                """);
+        AssertionError fatal = new AssertionError("identity marker timestamp failed");
+        Clock failingClock = new Clock() {
+            private boolean activationTimestampRead;
+
+            @Override
+            public java.time.ZoneId getZone() { return CLOCK.getZone(); }
+
+            @Override
+            public Clock withZone(java.time.ZoneId zone) { return this; }
+
+            @Override
+            public Instant instant() {
+                if (activationTimestampRead) { throw fatal; }
+                activationTimestampRead = true;
+                return CLOCK.instant();
+            }
+        };
+        var failingStore = new JdbcArtifactIdentityStore(dataSource, failingClock);
+
+        assertThatThrownBy(() -> failingStore.ensure(compoundDefinition(2))).isSameAs(fatal);
+
+        assertThat(queryString("SELECT row_key FROM masks")).isEqualTo("legacy-key");
+        assertThat(queryLong("SELECT epoch FROM artifact_identity WHERE artifact = 'masks'")).isOne();
+        assertThat(queryLong("SELECT COUNT(*) FROM canonical_match_alias")).isZero();
+        assertThat(queryLong("SELECT COUNT(*) FROM canonical_match_definition WHERE identity_epoch = 2")).isZero();
+        store.ensure(compoundDefinition(2));
+        assertThat(queryLong("SELECT epoch FROM artifact_identity WHERE artifact = 'masks'")).isEqualTo(2);
+    }
+
+    @Test
     void requires_a_non_blank_database_role() {
         dataSource = dataSource("invalid-role.db");
         CollectingDiagnosticSink diagnostics = new CollectingDiagnosticSink();

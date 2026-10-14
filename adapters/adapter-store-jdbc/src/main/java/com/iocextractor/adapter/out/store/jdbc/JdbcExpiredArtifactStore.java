@@ -113,7 +113,7 @@ public final class JdbcExpiredArtifactStore implements ExpiredArtifactStore {
                                         int batchSize) throws SQLException {
         boolean previousAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
-        Exception failure = null;
+        Throwable failure = null;
         try {
             JdbcLifecycleTransactions.acquireActiveWriteOwnership(
                     connection,
@@ -132,7 +132,7 @@ public final class JdbcExpiredArtifactStore implements ExpiredArtifactStore {
             connection.commit();
             return new ExpiryBatchResult(
                     schema.artifactName(), cycleAsOf, dueRows.size(), moreDue, revision, generation);
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | RuntimeException | Error e) {
             failure = e;
             JdbcLifecycleTransactions.rollback(connection, e);
             throw e;

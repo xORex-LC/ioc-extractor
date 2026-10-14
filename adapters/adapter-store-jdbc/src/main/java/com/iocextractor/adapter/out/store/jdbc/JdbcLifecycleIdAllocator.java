@@ -28,6 +28,7 @@ final class JdbcLifecycleIdAllocator {
         this.committedTransactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
+    /** Zero rows still participate in an empty confirmation receipt; no IDs are consumed. */
     LifecycleIdReservation reserve(int count) {
         if (count < 0) {
             throw new IllegalArgumentException("Lifecycle reservation count must not be negative");

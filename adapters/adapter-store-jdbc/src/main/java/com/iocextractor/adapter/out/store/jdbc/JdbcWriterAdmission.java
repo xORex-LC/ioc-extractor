@@ -18,6 +18,7 @@ public final class JdbcWriterAdmission {
     public record Metrics(long completed, long totalWaitNanos, long maximumWaitNanos,
                           long totalHoldNanos, long maximumHoldNanos) { }
 
+    // Aging raises a waiting request's priority; it cannot preempt a transaction or promise a deadline.
     private static final long AGING_NANOS = TimeUnit.MILLISECONDS.toNanos(100);
     private final ReentrantLock lock = new ReentrantLock(true);
     private final Condition changed = lock.newCondition();

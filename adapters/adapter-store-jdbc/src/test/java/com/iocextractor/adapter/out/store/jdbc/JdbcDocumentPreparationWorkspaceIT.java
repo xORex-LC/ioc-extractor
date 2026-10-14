@@ -237,6 +237,26 @@ class JdbcDocumentPreparationWorkspaceIT {
     }
 
     @Test
+    @Timeout(5)
+    void invalidOpenArgumentsDoNotConsumeTheOnlyMemoryLease() throws Exception {
+        var configured = limits(1);
+        var single = new DocumentPreparationLimits(configured.leaseBytes(), configured.cacheKiB(),
+                configured.maximumRowBytes(), configured.maximumFieldBytes(), configured.workspaceBytes(),
+                configured.totalDiskBytes(), configured.batchRows());
+        var factory = factory(single);
+        var command = command("valid-after-invalid");
+
+        assertThatThrownBy(() -> factory.open(null, POLICIES)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> factory.open(command, null)).isInstanceOf(NullPointerException.class);
+
+        try (var workspace = factory.open(command, POLICIES)) {
+            assertThat(factory.pressure().leasedWorkspaces()).isOne();
+            workspace.discard();
+        }
+        assertThat(factory.pressure().leasedWorkspaces()).isZero();
+    }
+
+    @Test
     void failedDirectoryCleanupStillReleasesAdmissionAndPreservesTheCause() throws Exception {
         var command = command("cleanup-failure");
         var factory = factory(limits(1));

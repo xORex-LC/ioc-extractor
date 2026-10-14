@@ -9,6 +9,8 @@ import java.nio.file.StandardOpenOption;
 
 /** Durable private metadata and a bounded source copy before a seal can become visible. */
 final class DocumentWorkspaceFiles {
+    private static final int COPY_BUFFER_BYTES = 16 * 1024;
+
     private DocumentWorkspaceFiles() { }
 
     static void write(Path path, String value) throws IOException {
@@ -25,7 +27,7 @@ final class DocumentWorkspaceFiles {
         try (var input = FileChannel.open(source, StandardOpenOption.READ);
              var output = FileChannel.open(target, StandardOpenOption.CREATE,
                      StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
-            var buffer = ByteBuffer.allocate(16384);
+            var buffer = ByteBuffer.allocate(COPY_BUFFER_BYTES);
             long copied = 0;
             while (input.read(buffer) != -1) {
                 if (Thread.currentThread().isInterrupted()) { throw new IOException("Source pinning interrupted"); }

@@ -33,6 +33,13 @@ facts and receipts. Bootstrap owns datasource lifetime.
   atomic across its branches and receipt. Canonical/lifecycle ID reservations
   are durable and never reused after rollback; external sparse slots are a
   separate `(profile, artifact)` contract.
+- Unsuccessful transactions, including `Error` paths, roll back before restoring
+  auto-commit. Post-commit recovery remains receipt-owned. TEMP planning is local
+  to an operation and its cleanup is explicitly scoped to the `temp` schema.
+- Preferred-slot requests and resolutions stream through SQL scratch with
+  complete-set validation before allocation. Conflicting new related keys reject
+  complete logical fan-outs; an unassigned survivor in an initialized slot
+  namespace is a row rejection, never a fabricated canonical-ID assignment.
 - Fair writer admission does not preempt active transactions. Safe lifecycle
   UTC is sampled after obtaining Native write ownership; active reads use a
   strict deadline predicate.

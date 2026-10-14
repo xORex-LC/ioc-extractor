@@ -444,60 +444,60 @@
         </suppression>
         <rationale>Reviewed analyzer false positive: construction validates and deduplicates every candidate, then stores a List.copyOf result; callers cannot mutate the record-owned candidate list.</rationale>
     </finding>
-    <finding id="DATA-TTL-P7-SB-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="355782df4a07f496740324ba980404f6" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="CAP-7C-C3-SQL" review="canonical-query-boundary-change">
+    <finding id="DATA-TTL-P7-SB-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="355782df4a07f496740324ba980404f6" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="NATIVE-TEMP-SQL-ISOLATION" review="canonical-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
         <method name="releaseVanishedAssignments" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;Ljava/time/Instant;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="330" bytecode="34" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="362" bytecode="36" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
             <Method name="releaseVanishedAssignments" />
         </suppression>
-        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations. Re-reviewed 2026-10-14: TEMP identifiers are now explicitly schema-qualified; input values remain bound and artifact identifiers remain validated and quoted. Only the bytecode anchor moved; hash, member, severity and selector are unchanged.</rationale>
     </finding>
-    <finding id="DATA-TTL-P7-SB-004" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="c4d10f6bd4b9ed07dfed654975b672a9" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="CAP-7C-C3-SQL" review="canonical-query-boundary-change">
+    <finding id="DATA-TTL-P7-SB-004" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="c4d10f6bd4b9ed07dfed654975b672a9" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="NATIVE-TEMP-SQL-ISOLATION" review="canonical-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
         <method name="requireCompleteAssignments" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;Ljava/time/Instant;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="1114" bytecode="38" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="1159" bytecode="43" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
             <Method name="requireCompleteAssignments" />
         </suppression>
-        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations. Re-reviewed 2026-10-14: TEMP identifiers are now explicitly schema-qualified; input values remain bound and artifact identifiers remain validated and quoted. Only the bytecode anchor moved; hash, member, severity and selector are unchanged.</rationale>
     </finding>
-    <finding id="DATA-TTL-P7-SB-005" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="28f0374bb762bb997ff6b26236812087" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="CAP-7C-C3-SQL" review="canonical-query-boundary-change">
+    <finding id="DATA-TTL-P7-SB-005" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="28f0374bb762bb997ff6b26236812087" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="NATIVE-TEMP-SQL-ISOLATION" review="canonical-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
         <method name="requireSeedableRows" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/time/Instant;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="258" bytecode="45" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="290" bytecode="49" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
             <Method name="requireSeedableRows" />
         </suppression>
-        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations. Re-reviewed 2026-10-14: TEMP identifiers are now explicitly schema-qualified; input values remain bound and artifact identifiers remain validated and quoted. Only the bytecode anchor moved; hash, member, severity and selector are unchanged.</rationale>
     </finding>
-    <finding id="DATA-TTL-P7-SB-006" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="25d85867ecba53d0379f314ab3628ab6" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="CAP-7C-C3-SQL" review="canonical-query-boundary-change">
+    <finding id="DATA-TTL-P7-SB-006" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="25d85867ecba53d0379f314ab3628ab6" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="NATIVE-TEMP-SQL-ISOLATION" review="canonical-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
         <method name="seedActiveAssignments" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="235" bytecode="66" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="267" bytecode="71" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
             <Method name="seedActiveAssignments" />
         </suppression>
-        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations. Re-reviewed 2026-10-14: TEMP identifiers are now explicitly schema-qualified; input values remain bound and artifact identifiers remain validated and quoted. Only the bytecode anchor moved; hash, member, severity and selector are unchanged.</rationale>
     </finding>
-    <finding id="DATA-TTL-P7-SB-007" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="93a08788dc50b9655188b5ce22163f2" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="CAP-7C-C3-SQL" review="canonical-query-boundary-change">
+    <finding id="DATA-TTL-P7-SB-007" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="93a08788dc50b9655188b5ce22163f2" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="NATIVE-TEMP-SQL-ISOLATION" review="canonical-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
         <method name="upperSlot" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;Ljava/time/Instant;)J" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="151" bytecode="37" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="175" bytecode="43" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
             <Method name="upperSlot" />
         </suppression>
-        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations. Re-reviewed 2026-10-14: TEMP identifiers are now explicitly schema-qualified; input values remain bound and artifact identifiers remain validated and quoted. Only the bytecode anchor moved; hash, member, severity and selector are unchanged.</rationale>
     </finding>
     <finding id="DATA-IMPORT-P3-SB-001" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="e6850ce7bbed94d1323b58cb271d8bc8" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-IMPORT-01" evidence="P3-SQL-TRUST" review="sparse-preferred-slot-query-shape-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
@@ -521,27 +521,27 @@
         </suppression>
         <rationale>Reviewed false positive: both generated identifiers are adapter-owned temporary table constants; profile and artifact values are bound.</rationale>
     </finding>
-    <finding id="DATA-IMPORT-P3-SB-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="d731024eb72783477e95d3878951918c" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-IMPORT-01" evidence="CAP-7C-C3-SQL" review="canonical-query-boundary-change">
+    <finding id="DATA-IMPORT-P3-SB-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="d731024eb72783477e95d3878951918c" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-IMPORT-01" evidence="NATIVE-TEMP-SQL-ISOLATION" review="canonical-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
         <method name="populatePendingLifecycles" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;Ljava/time/Instant;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="460" bytecode="110" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="492" bytecode="115" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
             <Method name="populatePendingLifecycles" />
         </suppression>
-        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations. Re-reviewed 2026-10-14: TEMP identifiers are now explicitly schema-qualified; input values remain bound and artifact identifiers remain validated and quoted. Only the bytecode anchor moved; hash, member, severity and selector are unchanged.</rationale>
     </finding>
-    <finding id="DATA-IMPORT-P3-SB-004" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="eb612f9473fce6837f1a1ca254b4974e" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-IMPORT-01" evidence="CAP-7C-C3-SQL" review="canonical-query-boundary-change">
+    <finding id="DATA-IMPORT-P3-SB-004" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="eb612f9473fce6837f1a1ca254b4974e" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-IMPORT-01" evidence="NATIVE-TEMP-SQL-ISOLATION" review="canonical-query-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
         <method name="requireActiveLifecycle" signature="(Ljava/sql/Connection;Ljava/lang/String;JLjava/time/Instant;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="975" bytecode="25" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="1020" bytecode="27" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
             <Method name="requireActiveLifecycle" />
         </suppression>
-        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations.</rationale>
+        <rationale>Physical table and column names come from the validated native schema catalog and pass identifier validation and quoting. Query predicates and index expressions are adapter-owned templates; IOC, key, source, identity and deadline values use prepared parameters. Persisted DDL originates only from adapter-owned native migrations. Re-reviewed 2026-10-14: TEMP identifiers are now explicitly schema-qualified; input values remain bound and artifact identifiers remain validated and quoted. Only the bytecode anchor moved; hash, member, severity and selector are unchanged.</rationale>
     </finding>
     <finding id="DATA-IMPORT-P4-SB-001" module="adapters/adapter-store-jdbc" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="cb04b55a4f02854fce439c638ed6a494" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P4-FAILURE-BOUNDARY" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcImportWorkspaceWriter" />

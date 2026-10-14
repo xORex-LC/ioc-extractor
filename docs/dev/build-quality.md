@@ -283,6 +283,21 @@ fields or modify the tracked baseline. It also fails when module raw reports are
 missing or unhealthy. Run it before a focused Maven command, because focused
 lifecycles may delete or replace only part of the reactor report set.
 
+The `NATIVE-TEMP-SQL-ISOLATION` review (2026-10-14) refreshed seven bytecode
+anchors in `JdbcExportSlotRegistry` after explicitly qualifying TEMP identifiers
+and adding SQL-backed preferred-request scratch. Raw hashes, occurrences,
+members, severities and suppression selectors stayed unchanged: 137 accepted
+findings and 133 selectors. Each query still validates/quotes artifact names and
+binds business values. Same-named main tables are preserved by integration
+regressions. This is an identity refresh of existing SQL false positives, not
+permission to accept additional findings.
+
+The same review extracted shared failure-preserving cleanup and connection
+restoration. The CPD snapshot decreased from 23 to 22 groups after review of the
+complete report. The former `DoNotThrowExceptionInFinally` finding disappeared,
+so its nonzero PMD count was removed; the rule now has zero tolerance. No
+analyzer rule, selector, scope or coverage threshold was relaxed.
+
 ### Toolchain and analyzer upgrades
 
 Plugin and engine versions are pinned independently in the root POM. Treat a

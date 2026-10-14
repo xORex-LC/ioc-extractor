@@ -223,6 +223,28 @@ continues when notifications are disabled, lost, duplicated or reconnecting.
     reduces duplicates by the last nonempty `name`, and cannot route into the
     four legacy artifacts.
 
+Promotion planning checks the complete delivery before canonical mutation.
+Different primary groups can still share a new related key after workspace
+coalescing. Such groups are all rejected with `IMPORT.DUPLICATE_NEW_TARGET`;
+no branch or provenance from those logical rows is partially applied.
+`ACCEPT_VALID` preserves independent valid rows, while `REJECT_DELIVERY` records
+the rejected delivery without business mutations.
+
+A requested slot for a matched survivor must refer to its stable assignment.
+During the registry's first seed, existing canonical public IDs supply initial
+assignments. Once the registry exists, an active lifecycle without an assignment
+is rejected with `IMPORT.EXISTING_SLOT_UNASSIGNED` under either existing-slot
+policy. The next eligible export can assign that lifecycle a slot; canonical ID
+must not be substituted for an already initialized export namespace.
+
+Slot requests and receipt resolutions are SQL-backed within the same promotion
+transaction. Bounded batches stage the entire set before validation/allocation,
+preserving input order and global sparse-slot preferences. Planning and slot
+scratch are operation-owned TEMP tables, removed before the pooled connection
+returns. The immutable SQLite attachment trusts service ownership of sealed
+bytes; `immutable=1` itself does not prevent another filesystem owner from
+replacing them.
+
 ## Failures and recovery
 
 | Situation | Behavior | Recovery authority |

@@ -327,6 +327,31 @@ class JdbcCanonicalLifecycleWriterIT {
     }
 
     @Test
+    void rollbackFailureNeverEnablesAutoCommitOrReplacesThePrimaryFatalError() throws Exception {
+        try (Connection real = dataSource.getConnection()) {
+            real.setAutoCommit(false);
+            var enabledAutoCommit = new java.util.concurrent.atomic.AtomicBoolean();
+            SQLException rollbackFailure = new SQLException("rollback failed");
+            Connection failing = jdbcProxy(Connection.class, real, (method, arguments) -> {
+                if (method.getName().equals("rollback")) { throw rollbackFailure; }
+                if (method.getName().equals("setAutoCommit")) { enabledAutoCommit.set(true); }
+                return invokeJdbc(real, method, arguments);
+            });
+            AssertionError primary = new AssertionError("mutation failed");
+
+            JdbcLifecycleTransactions.restoreAutoCommit(failing, true, primary);
+
+            assertThat(primary.getSuppressed()).containsExactly(rollbackFailure);
+            assertThat(enabledAutoCommit).isFalse();
+            assertThat(real.getAutoCommit()).isFalse();
+            assertThatThrownBy(() -> JdbcLifecycleTransactions.restoreAutoCommit(failing, true, null))
+                    .isSameAs(rollbackFailure);
+            assertThat(enabledAutoCommit).isFalse();
+            real.rollback();
+        }
+    }
+
+    @Test
     void validationRestorationFailuresDoNotMaskTheOriginalRejectionOrReserveIds() throws Exception {
         for (int scenario = 0; scenario < 3; scenario++) {
             boolean invalid = scenario == 2;
@@ -459,21 +484,7 @@ class JdbcCanonicalLifecycleWriterIT {
     void receiptCursorFailureRollsBackArtifactAndClosesEveryReadWhileReservationsStayBurned() throws Exception {
         var opens = new AtomicInteger();
         var closes = new AtomicInteger();
-        var source = new com.iocextractor.application.port.out.artifact.RowSource<CanonicalRecordConfirmation>() {
-            public int size() { return 2; }
-            public com.iocextractor.application.port.out.artifact.RowCursor<CanonicalRecordConfirmation> open() {
-                int attempt = opens.incrementAndGet();
-                var delegate = com.iocextractor.application.port.out.artifact.RowSource.of(List.of(row("a", "a"), row("b", "b"))).open();
-                return new com.iocextractor.application.port.out.artifact.RowCursor<>() {
-                    public boolean next() {
-                        if (attempt == 5) { throw new IllegalStateException("receipt cursor fault"); }
-                        return delegate.next();
-                    }
-                    public CanonicalRecordConfirmation value() { return delegate.value(); }
-                    public void close() { delegate.close(); closes.incrementAndGet(); }
-                };
-            }
-        };
+        var source = failingRecords(5, new IllegalStateException("receipt cursor fault"), opens, closes);
         var writer = writer(JdbcLifecycleTransactionObserver.NOOP);
         var confirmation = new CanonicalArtifactConfirmation(new ObservationId("cursor-fault"), "source-key",
                 receipt("cursor-fault", 1), "masks", publicHeader(), source, null);
@@ -484,6 +495,53 @@ class JdbcCanonicalLifecycleWriterIT {
         assertThat(queryLong("SELECT COUNT(*) FROM confirmation_receipt")).isZero();
         assertThat(queryLong("SELECT next_value FROM artifact_id_allocator WHERE artifact='masks'")).isEqualTo(3);
         assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {1, 4, 5})
+    void fatalCursorFailureNeverCommitsPartialRowsOrEvidence(int failedPass) throws Exception {
+        var opens = new AtomicInteger();
+        var closes = new AtomicInteger();
+        var fatal = new AssertionError("fatal row read");
+        var source = failingRecords(failedPass, fatal, opens, closes);
+        var confirmation = new CanonicalArtifactConfirmation(new ObservationId("fatal"), "source-key",
+                receipt("fatal", 1), "masks", publicHeader(), source, null);
+
+        assertThatThrownBy(() -> writer(JdbcLifecycleTransactionObserver.NOOP).confirm(confirmation)).isSameAs(fatal);
+
+        assertThat(opens).hasValue(failedPass);
+        assertThat(closes).hasValue(failedPass);
+        for (String table : List.of("masks", "masks_sources", "canonical_observation_commit", "confirmation_receipt")) {
+            assertThat(queryLong("SELECT COUNT(*) FROM " + table)).as(table).isZero();
+        }
+        assertThat(queryLong("SELECT next_value FROM artifact_id_allocator WHERE artifact='masks'"))
+                .isEqualTo(failedPass == 1 ? 1 : 3);
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    private com.iocextractor.application.port.out.artifact.RowSource<CanonicalRecordConfirmation> failingRecords(
+            int failedPass, Throwable fault, AtomicInteger opens, AtomicInteger closes) {
+        var records = com.iocextractor.application.port.out.artifact.RowSource.of(List.of(row("a", "a"), row("b", "b")));
+        return new com.iocextractor.application.port.out.artifact.RowSource<>() {
+            public int size() { return records.size(); }
+            public com.iocextractor.application.port.out.artifact.RowCursor<CanonicalRecordConfirmation> open() {
+                int pass = opens.incrementAndGet();
+                var delegate = records.open();
+                return new com.iocextractor.application.port.out.artifact.RowCursor<>() {
+                    private int reads;
+                    public boolean next() {
+                        // The mutation pass must write one row before the injected failure.
+                        if (pass == failedPass && ++reads == 2) {
+                            if (fault instanceof Error fatal) { throw fatal; }
+                            throw (RuntimeException) fault;
+                        }
+                        return delegate.next();
+                    }
+                    public CanonicalRecordConfirmation value() { return delegate.value(); }
+                    public void close() { delegate.close(); closes.incrementAndGet(); }
+                };
+            }
+        };
     }
 
     @Test

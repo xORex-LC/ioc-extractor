@@ -99,14 +99,14 @@ public final class JdbcConfirmationReceiptStore
         try (Connection connection = dataSource.getConnection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
-            Exception failure = null;
+            Throwable failure = null;
             try {
                 int purged = purgeReceipts(connection, asOf, batchSize);
                 purgeObservations(connection, asOf, batchSize);
                 boolean more = hasExpiredReceipts(connection, asOf);
                 connection.commit();
                 return new PurgeResult(purged, more);
-            } catch (SQLException | RuntimeException e) {
+            } catch (SQLException | RuntimeException | Error e) {
                 failure = e;
                 JdbcLifecycleTransactions.rollback(connection, e);
                 throw e;

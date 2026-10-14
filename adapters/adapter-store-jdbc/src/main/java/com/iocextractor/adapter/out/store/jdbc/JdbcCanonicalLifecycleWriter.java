@@ -48,7 +48,10 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
     private final JdbcLifecycleTransactionObserver transactionObserver;
     private final JdbcWriterAdmission writerAdmission;
 
-    /** Creates and validates the lifecycle writer's durable ID allocators. */
+    /**
+     * Creates durable ID allocators for a standalone caller. Production passes
+     * its shared admission and lifecycle clock through the corresponding overload.
+     */
     public JdbcCanonicalLifecycleWriter(DataSource dataSource,
                                         List<DataframeArtifactSchema> schemas,
                                         List<ArtifactIdAllocatorDefinition> publicIdDefinitions,
@@ -183,7 +186,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                                          ReservedIds ids) throws SQLException {
         boolean previousAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
-        Exception failure = null;
+        Throwable failure = null;
         try {
             JdbcLifecycleTransactions.acquireActiveWriteOwnership(
                     connection,
@@ -261,7 +264,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
             return new LifecycleWriteResult(
                     confirmation.observationId(), confirmation.artifactName(), asOf,
                     created, renewed, restarted, updated, metadataOnly, revision, generation, false);
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | RuntimeException | Error e) {
             failure = e;
             JdbcLifecycleTransactions.rollback(connection, e);
             throw e;
@@ -289,14 +292,17 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
             try (var pragma = connection.createStatement(); var result = pragma.executeQuery("PRAGMA temp_store")) {
                 result.next(); tempStore = result.getInt(1);
             }
+            // This pool lease is exclusive. TEMP tables belong to individual operations;
+            // switching temp_store deletes them, and restoring the PRAGMA cannot restore rows.
+            // FILE keeps duplicate validation on disk under the validator's page limit.
             try (var pragma = connection.createStatement()) { pragma.execute("PRAGMA temp_store=FILE"); }
             boolean autoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
-            Exception validationFailure = null;
+            Throwable validationFailure = null;
             try {
                 JdbcConfirmationValidator.validate(connection, confirmation, publicHeader(schema).contains("id"));
                 connection.commit();
-            } catch (SQLException | RuntimeException failure) {
+            } catch (SQLException | RuntimeException | Error failure) {
                 validationFailure = failure;
                 JdbcLifecycleTransactions.rollback(connection, failure);
                 throw failure;
@@ -309,9 +315,9 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
     }
 
     private void restoreValidationConnection(Connection connection, boolean autoCommit,
-            int tempStore, Exception original) throws SQLException {
+            int tempStore, Throwable original) throws SQLException {
         SQLException failure = null;
-        try { connection.setAutoCommit(autoCommit); }
+        try { JdbcLifecycleTransactions.restoreAutoCommit(connection, autoCommit, null); }
         catch (SQLException restoreFailure) { failure = restoreFailure; }
         try (var pragma = connection.createStatement()) { pragma.execute("PRAGMA temp_store=" + tempStore); }
         catch (SQLException restoreFailure) {
@@ -503,6 +509,8 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
         }
     }
 
+    // Construct writers before intake: initialization writes allocator epochs.
+    // Runtime reservations use shared admission; dynamic construction is not a scheduling path.
     private Map<String, JdbcArtifactIdAllocator> initializePublicIdAllocators(
             List<ArtifactIdAllocatorDefinition> definitions,
             java.time.Clock allocatorClock,

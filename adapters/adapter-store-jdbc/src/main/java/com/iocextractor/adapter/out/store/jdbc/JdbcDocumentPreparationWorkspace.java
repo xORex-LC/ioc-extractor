@@ -30,6 +30,16 @@ import java.util.Objects;
 
 /** One disk-backed global reducer. The single connection/cache is shared by all artifact cursors. */
 final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorkspace {
+    private static final int HASH_BUFFER_BYTES = 64 * 1024;
+    private static final long MANIFEST_ALLOWANCE_BYTES = 64 * 1024L;
+    private static final int MINIMUM_DATABASE_PAGES = 8;
+    private static final int PAGE_AND_JOURNAL_BYTES = 2 * 4096;
+    private static final int CACHE_PARTITIONS = 2;
+    private static final int MAXIMUM_ARTIFACTS = 128;
+    private static final int MAXIMUM_CATALOG_CHARACTERS = 32 * 1024;
+    private static final int MAXIMUM_CATALOG_BYTES = 128 * 1024;
+    private static final int SHA256_HEX_CHARACTERS = 64;
+
     private final Path directory;
     private final Path snapshot;
     private final Path database;
@@ -76,14 +86,14 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
             }
             opened = DriverManager.getConnection("jdbc:sqlite:" + database);
             try (var statement = opened.createStatement()) {
-                statement.execute("PRAGMA cache_size=-" + limits.cacheKiB() / 2);
+                statement.execute("PRAGMA cache_size=-" + limits.cacheKiB() / CACHE_PARTITIONS);
                 statement.execute("PRAGMA mmap_size=0");
                 statement.execute("PRAGMA temp_store=FILE");
                 statement.execute("PRAGMA journal_mode=DELETE");
                 statement.execute("PRAGMA synchronous=FULL");
                 // Reserve room for the source, manifest and a worst-case DELETE journal.
-                long available = limits.workspaceBytes() - Files.size(snapshot) - 65536;
-                statement.execute("PRAGMA max_page_count=" + Math.max(8, available / 8192));
+                long available = limits.workspaceBytes() - Files.size(snapshot) - MANIFEST_ALLOWANCE_BYTES;
+                statement.execute("PRAGMA max_page_count=" + Math.max(MINIMUM_DATABASE_PAGES, available / PAGE_AND_JOURNAL_BYTES));
                 if (!replay) {
                     statement.execute("CREATE TABLE originals(key TEXT PRIMARY KEY, first_ordinal INTEGER NOT NULL) WITHOUT ROWID");
                     statement.execute("CREATE TABLE candidate(ordinal INTEGER PRIMARY KEY, artifact TEXT NOT NULL, payload BLOB NOT NULL, eligible INTEGER NOT NULL, retained INTEGER NOT NULL)");
@@ -232,7 +242,7 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
             }
             String catalog = descriptors.stream().map(plan -> plan.artifactName() + ":" + plan.header())
                     .collect(java.util.stream.Collectors.joining("\n"));
-            if (descriptors.size() > 128 || catalog.length() > 32768) {
+            if (descriptors.size() > MAXIMUM_ARTIFACTS || catalog.length() > MAXIMUM_CATALOG_CHARACTERS) {
                 throw new IocExtractorException("Document artifact catalog exceeds limit");
             }
             var counts = new StringBuilder().append(summary.extracted()).append(':').append(summary.retained())
@@ -242,7 +252,7 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
             }
             catalog += "\ncounts:" + counts + ":suppressed:" + summary.diagnostics().suppressed();
             Path catalogFile = directory.resolve("catalog");
-            if (replay && (Files.size(catalogFile) > 131072 || !Files.readString(catalogFile).equals(catalog))) {
+            if (replay && (Files.size(catalogFile) > MAXIMUM_CATALOG_BYTES || !Files.readString(catalogFile).equals(catalog))) {
                 throw new IocExtractorException("Document seal schema mismatch");
             }
             if (!replay) {
@@ -330,7 +340,7 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
     }
 
     private void validateSeal() throws IOException {
-        if (Files.size(directory.resolve("seal")) != 64
+        if (Files.size(directory.resolve("seal")) != SHA256_HEX_CHARACTERS
                 || !Files.readString(directory.resolve("seal")).equals(checksum())) {
             throw new IocExtractorException("Document workspace seal checksum mismatch");
         }
@@ -344,7 +354,7 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
     static String hash(Path file) throws IOException {
         try (InputStream input = Files.newInputStream(file)) {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] buffer = new byte[65536];
+            byte[] buffer = new byte[HASH_BUFFER_BYTES];
             int size;
             while ((size = input.read(buffer)) >= 0) {
                 if (Thread.currentThread().isInterrupted()) { throw new IocExtractorException("Document pin hashing interrupted"); }
