@@ -30,6 +30,10 @@ public record ExportPlan(int manifestVersion,
         }
         profile = Objects.requireNonNull(profile, "profile");
         format = Objects.requireNonNull(format, "format");
+        if (manifestVersion < format.requiredManifestVersion()) {
+            throw new IllegalArgumentException("CSV layout requires manifest version "
+                    + format.requiredManifestVersion());
+        }
         artifacts = List.copyOf(Objects.requireNonNull(artifacts, "artifacts"));
         List<String> plannedNames = artifacts.stream().map(ExportArtifactSpec::artifactName).toList();
         if (!profile.artifacts().equals(plannedNames)) {
@@ -51,6 +55,13 @@ public record ExportPlan(int manifestVersion,
             FingerprintFraming.add(digest, format.delimiter());
             FingerprintFraming.add(digest, format.quote());
             FingerprintFraming.add(digest, format.nullLiteral());
+            // Keep v1 fingerprints stable when the emitted layout is unchanged.
+            if (format.requiredManifestVersion() > ExportFormat.LEGACY_MANIFEST_VERSION) {
+                FingerprintFraming.add(digest, "csv-layout:v1");
+                FingerprintFraming.add(digest, format.recordSeparator().name());
+                FingerprintFraming.add(digest, format.headerQuoting().name());
+                FingerprintFraming.add(digest, format.valueQuoting().name());
+            }
             if (artifacts.stream().anyMatch(artifact -> artifact.columns().contains(EXTERNAL_ID_COLUMN))) {
                 FingerprintFraming.add(digest, EXPORT_SLOT_POLICY_VERSION);
             }

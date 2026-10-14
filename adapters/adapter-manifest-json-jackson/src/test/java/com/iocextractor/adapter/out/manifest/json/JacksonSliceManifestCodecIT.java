@@ -4,6 +4,8 @@ import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.application.export.ArtifactCoverage;
 import com.iocextractor.application.export.ExportFormat;
 import com.iocextractor.application.export.ExportMode;
+import com.iocextractor.application.export.ExportQuoting;
+import com.iocextractor.application.export.ExportRecordSeparator;
 import com.iocextractor.application.export.SliceArtifactManifest;
 import com.iocextractor.application.export.SliceManifest;
 import com.iocextractor.common.IocExtractorException;
@@ -27,6 +29,39 @@ class JacksonSliceManifestCodecIT {
     private static final String HASH_C = "c".repeat(64);
 
     private final JacksonSliceManifestCodec codec = new JacksonSliceManifestCodec();
+
+    @Test
+    void v2_records_the_explicit_layout_and_round_trips_it() {
+        var format = new ExportFormat("csv", "UTF-8", ";", "\"", "NULL",
+                ExportRecordSeparator.LF, ExportQuoting.ALL, ExportQuoting.NONE);
+        var manifest = manifest("reputation", "masks.csv", ArtifactCoverage.empty(), format);
+
+        byte[] bytes = codec.encode(manifest);
+
+        assertThat(new String(bytes, StandardCharsets.UTF_8)).contains(
+                "\"manifest_version\" : 2", "\"record_separator\" : \"lf\"",
+                "\"header_quoting\" : \"all\"", "\"value_quoting\" : \"none\"");
+        assertThat(codec.decode(bytes)).isEqualTo(manifest);
+        var old = manifest("reputation", "masks.csv", ArtifactCoverage.empty(), format());
+        assertThat(codec.decode(codec.encode(old)).format().recordSeparator()).isEqualTo(ExportRecordSeparator.CRLF);
+    }
+
+    @Test
+    void rejects_v2_without_layout_policies_and_v1_with_new_policies() {
+        String legacy = new String(codec.encode(manifest(
+                "reputation", "masks.csv", ArtifactCoverage.empty(), format())), StandardCharsets.UTF_8);
+
+        assertThatThrownBy(() -> codec.decode(legacy.replace("\"manifest_version\" : 1",
+                "\"manifest_version\" : 2").getBytes(StandardCharsets.UTF_8)))
+                .isInstanceOf(IocExtractorException.class).hasMessageContaining("Failed to decode");
+        for (String policy : List.of("record_separator", "header_quoting", "value_quoting")) {
+            assertThatThrownBy(() -> codec.decode(legacy.replace("\"null_literal\" : \"NULL\"",
+                    "\"null_literal\" : \"NULL\", \"" + policy + "\" : \"none\"")
+                    .getBytes(StandardCharsets.UTF_8)))
+                    .isInstanceOf(IocExtractorException.class).hasRootCauseMessage(
+                            "Manifest v1 cannot declare CSV layout policies");
+        }
+    }
 
     @Test
     void produces_stable_pretty_utf8_golden_bytes_with_unicode_escaping_and_explicit_null() {
@@ -94,12 +129,12 @@ class JacksonSliceManifestCodecIT {
     void rejects_unknown_manifest_version_before_building_application_model() {
         byte[] bytes = new String(codec.encode(manifest(
                 "reputation", "masks.csv", ArtifactCoverage.empty(), format())), StandardCharsets.UTF_8)
-                .replace("\"manifest_version\" : 1", "\"manifest_version\" : 2")
+                .replace("\"manifest_version\" : 1", "\"manifest_version\" : 3")
                 .getBytes(StandardCharsets.UTF_8);
 
         assertThatThrownBy(() -> codec.decode(bytes))
                 .isInstanceOf(IocExtractorException.class)
-                .hasMessageContaining("Unsupported slice manifest version: 2");
+                .hasMessageContaining("Unsupported slice manifest version: 3");
     }
 
     @Test
@@ -152,7 +187,7 @@ class JacksonSliceManifestCodecIT {
                                    ArtifactCoverage coverage,
                                    ExportFormat format) {
         return new SliceManifest(
-                1,
+                format.requiredManifestVersion(),
                 "run-1",
                 "run-1",
                 profile,

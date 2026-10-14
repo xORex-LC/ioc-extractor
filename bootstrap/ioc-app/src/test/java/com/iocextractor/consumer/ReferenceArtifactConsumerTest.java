@@ -43,6 +43,20 @@ class ReferenceArtifactConsumerTest {
     }
 
     @Test
+    void consumes_independent_v2_lf_fixture_and_distinguishes_literal_null_text() throws Exception {
+        Path slice = Path.of("src/test/resources/consumer/export-slice-v2");
+
+        var document = consumer.readSlice(slice, Map.of("masks", MASKS_HEADER));
+
+        assertThat(document.sliceId()).isEqualTo("consumer-fixture-2");
+        assertThat(document.artifacts().get("masks").rows()).singleElement().satisfies(row ->
+                assertThat(row).containsEntry("mask", "example.org").containsEntry("source", "NULL")
+                        .containsEntry("host_match", null));
+        assertThat(new String(document.artifacts().get("masks").bytes(), StandardCharsets.UTF_8))
+                .doesNotContain("\r");
+    }
+
+    @Test
     void rejects_artifact_or_visibility_marker_drift() throws Exception {
         Path brokenArtifact = copyFixture("broken-artifact");
         Files.writeString(

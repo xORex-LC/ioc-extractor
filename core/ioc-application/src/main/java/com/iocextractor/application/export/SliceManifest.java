@@ -32,6 +32,10 @@ public record SliceManifest(int manifestVersion,
         outputMode = Objects.requireNonNull(outputMode, "outputMode");
         planHash = ExportArtifactSpec.requireSha256(planHash, "planHash");
         format = Objects.requireNonNull(format, "format");
+        if (manifestVersion < format.requiredManifestVersion()) {
+            throw new IllegalArgumentException("CSV layout requires manifest version "
+                    + format.requiredManifestVersion());
+        }
         artifacts = List.copyOf(Objects.requireNonNull(artifacts, "artifacts"));
         if (artifacts.isEmpty()) {
             throw new IllegalArgumentException("Slice manifest requires at least one artifact");

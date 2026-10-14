@@ -11,11 +11,38 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ExportPlanTest {
 
     @Test
+    void csv_layout_changes_invalidate_the_plan_without_changing_schema_or_mapping() {
+        ExportPlan original = plan(List.of("masks"));
+        var layouts = List.of(
+                new ExportFormat("csv", "UTF-8", ";", "\"", "NULL",
+                        ExportRecordSeparator.LF, ExportQuoting.ALL, ExportQuoting.ALL),
+                new ExportFormat("csv", "UTF-8", ";", "\"", "NULL",
+                        ExportRecordSeparator.CRLF, ExportQuoting.NONE, ExportQuoting.ALL),
+                new ExportFormat("csv", "UTF-8", ";", "\"", "NULL",
+                        ExportRecordSeparator.CRLF, ExportQuoting.ALL, ExportQuoting.MINIMAL));
+
+        assertThat(layouts).allSatisfy(layout -> {
+            var changed = new ExportPlan(layout.requiredManifestVersion(), original.profile(), layout,
+                    original.artifacts());
+            assertThat(changed.planHash()).isNotEqualTo(original.planHash());
+            assertThat(changed.artifacts()).isEqualTo(original.artifacts());
+            assertThatThrownBy(() -> new ExportPlan(1, original.profile(), layout, original.artifacts()))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("manifest version 2");
+        });
+        assertThat(layouts.stream().map(layout -> new ExportPlan(layout.requiredManifestVersion(),
+                original.profile(), layout, original.artifacts()).planHash()).toList())
+                .doesNotHaveDuplicates();
+        assertThat(format().recordSeparator().characters()).isEqualTo("\r\n");
+    }
+
+    @Test
     void plan_hash_is_deterministic_and_order_sensitive() {
         ExportPlan first = plan(List.of("masks", "hashes"));
         ExportPlan replay = plan(List.of("masks", "hashes"));
         ExportPlan reordered = plan(List.of("hashes", "masks"));
 
+        // Fixed fingerprint from the original CRLF/ALL/ALL contract, before layout options.
+        assertThat(first.planHash()).isEqualTo("a014ed66681f7cb3caaed658d49977ca8a7f5c5b6912faf4beb77630899643c1");
         assertThat(first.planHash()).isEqualTo(replay.planHash());
         assertThat(reordered.planHash()).isNotEqualTo(first.planHash());
     }

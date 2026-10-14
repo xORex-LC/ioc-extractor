@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.DuplicateHeaderMode;
+import org.apache.commons.csv.QuoteMode;
 
 import java.io.IOException;
 import java.io.StringReader;
@@ -44,6 +45,10 @@ public final class ReferenceArtifactConsumer {
             "output_mode", "plan_hash", "format", "artifacts");
     private static final Set<String> FORMAT_FIELDS = Set.of(
             "type", "charset", "delimiter", "quote", "null_literal");
+    private static final Set<String> EXPLICIT_FORMAT_FIELDS = Set.of(
+            "type", "charset", "delimiter", "quote", "null_literal",
+            "record_separator", "header_quoting", "value_quoting");
+    private static final Set<String> QUOTING = Set.of("all", "minimal", "none");
     private static final Set<String> ARTIFACT_FIELDS = Set.of(
             "artifact", "file", "rows", "coverage", "identity_epoch",
             "identity_hash", "schema_hash", "sha256");
@@ -55,17 +60,22 @@ public final class ReferenceArtifactConsumer {
             .build();
 
     public CsvDocument readCsv(Path file, List<String> expectedHeader) throws IOException {
+        return readCsv(file, expectedHeader, "\r\n");
+    }
+
+    private CsvDocument readCsv(Path file, List<String> expectedHeader, String separator) throws IOException {
         byte[] bytes = Files.readAllBytes(file);
         String content = strictUtf8(bytes);
-        require(content.endsWith("\r\n"), "CSV must end with CRLF: " + file);
-        String withoutCrLf = content.replace("\r\n", "");
-        require(!withoutCrLf.contains("\r") && !withoutCrLf.contains("\n"),
-                "CSV contains a non-CRLF record separator: " + file);
+        require(content.endsWith(separator), "CSV must end with declared record separator: " + file);
+        String withoutSeparators = content.replace(separator, "");
+        require(!withoutSeparators.contains("\r") && !withoutSeparators.contains("\n"),
+                "CSV contains a different record separator: " + file);
 
         CSVFormat format = CSVFormat.Builder.create()
                 .setDelimiter(';')
                 .setQuote('"')
                 .setNullString("NULL")
+                .setQuoteMode(QuoteMode.ALL_NON_NULL)
                 .setHeader()
                 .setSkipHeaderRecord(true)
                 .setDuplicateHeaderMode(DuplicateHeaderMode.DISALLOW)
@@ -92,15 +102,23 @@ public final class ReferenceArtifactConsumer {
         byte[] manifestBytes = Files.readAllBytes(manifestFile);
         JsonNode manifest = json.readTree(manifestBytes);
         requireObjectWithFields(manifest, ROOT_FIELDS, "manifest");
+        int version = manifest.path("manifest_version").asInt(-1);
         require(manifest.path("manifest_version").isIntegralNumber()
-                        && manifest.path("manifest_version").intValue() == 1,
-                "Unsupported manifest_version");
+                        && (version == 1 || version == 2), "Unsupported manifest_version");
         require("complete".equals(requiredText(manifest, "output_mode")),
                 "Unsupported output_mode");
         Instant.parse(requiredText(manifest, "created_at"));
 
         JsonNode format = manifest.path("format");
-        requireObjectWithFields(format, FORMAT_FIELDS, "format");
+        requireObjectWithFields(format, version == 1 ? FORMAT_FIELDS : EXPLICIT_FORMAT_FIELDS, "format");
+        String separator = "\r\n";
+        if (version == 2) {
+            String ending = requiredText(format, "record_separator");
+            require(Set.of("lf", "crlf").contains(ending), "Unsupported format.record_separator");
+            separator = ending.equals("lf") ? "\n" : "\r\n";
+            require(QUOTING.contains(requiredText(format, "header_quoting")), "Unsupported format.header_quoting");
+            require(QUOTING.contains(requiredText(format, "value_quoting")), "Unsupported format.value_quoting");
+        }
         require("csv".equals(requiredText(format, "type")), "Unsupported format.type");
         require("UTF-8".equals(requiredText(format, "charset")), "Unsupported format.charset");
         require(";".equals(requiredText(format, "delimiter")), "Unsupported format.delimiter");
@@ -141,7 +159,7 @@ public final class ReferenceArtifactConsumer {
             requireHash(expectedSha256, "sha256");
             require(sha256(Files.readAllBytes(artifactFile)).equals(expectedSha256),
                     "Artifact checksum mismatch: " + fileName);
-            CsvDocument csv = readCsv(artifactFile, expectedHeaders.get(artifactName));
+            CsvDocument csv = readCsv(artifactFile, expectedHeaders.get(artifactName), separator);
             require(csv.rows().size() == artifact.path("rows").asLong(-1),
                     "Artifact row count mismatch: " + fileName);
             require(consumed.put(artifactName, csv) == null,
