@@ -20,6 +20,11 @@ import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.artifact.IngestRun;
 import com.iocextractor.application.artifact.IngestRunRecoveryService;
 import com.iocextractor.application.artifact.IngestRunStatus;
+import com.iocextractor.application.artifact.lifecycle.ArtifactProjectionConvergenceService;
+import com.iocextractor.application.artifact.lifecycle.GenerationOwnedArtifactProjection;
+import com.iocextractor.adapter.out.store.jdbc.JdbcArtifactProjectionWorkStore;
+import com.iocextractor.application.port.out.artifact.CanonicalArtifactStreamReader;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
 import com.iocextractor.application.export.ExportFormat;
 import com.iocextractor.application.port.out.artifact.RunLedger;
 import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
@@ -27,6 +32,7 @@ import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.charset.StandardCharsets;
@@ -38,6 +44,10 @@ import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -120,6 +130,79 @@ class DataframeRecoveryIntegrationIT {
         assertThat(projectionLines).hasSize(dbMasks.size() + 1); // header + one line per DB row
         assertThat(projectionLines.getFirst()).isEqualTo("\"id\";\"mask\";\"source\"");
         assertThat(projectionLines).contains("\"1\";\"example.com\";\"letter-a\"", "\"2\";\"example.org\";\"letter-b\"");
+    }
+
+    @Test
+    @Timeout(20)
+    void older_ingest_snapshot_cannot_overwrite_newer_acknowledged_projection() throws Exception {
+        var schema = new DataframeArtifactSchema("masks", HEADER.stream().map(DataframeColumn::new).toList());
+        dataframeDataSource = dataSource("projection-race.db", "projection-race");
+        new SqliteUserVersionSchemaMigrator(dataframeDataSource, DataframeFormatMigrations.sqlite()).migrate();
+        new DataframeSchemaReconciler(dataframeDataSource).reconcile(List.of(schema));
+        var canonical = new JdbcCanonicalArtifactRepository(dataframeDataSource, List.of(schema),
+                new CanonicalArtifactIdentityResolver(List.of(
+                        new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1))), CLOCK);
+        canonical.write("masks", new CanonicalArtifact("masks", HEADER,
+                List.of(row("1", "old.example", "first", "source"))));
+        setProjectionGeneration(1);
+        var captured = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var first = new AtomicBoolean(true);
+        CanonicalArtifactStreamReader delayedReader = (artifact, consumer) -> {
+            var result = canonical.stream(artifact, consumer);
+            if (first.getAndSet(false)) {
+                captured.countDown();
+                await(release);
+            }
+            return result;
+        };
+        Path target = tempDir.resolve("race.csv");
+        var installer = new CsvArtifactProjection(delayedReader, Map.of("masks", HEADER),
+                Map.of("masks", target), new ExportFormat("csv", "UTF-8", ";", "\"", "NULL"),
+                new DiagnosticFactory(CLOCK));
+        var work = new JdbcArtifactProjectionWorkStore(dataframeDataSource, CLOCK);
+        var projection = new GenerationOwnedArtifactProjection(List.of("masks"), installer, work);
+        var convergence = new ArtifactProjectionConvergenceService(List.of("masks"), work, projection,
+                NoopDiagnosticSink.INSTANCE);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var older = executor.submit(() -> projection.project(new ArtifactProjectionCommand("ingest", "masks")));
+            assertThat(captured.await(5, TimeUnit.SECONDS)).isTrue();
+            canonical.write("masks", new CanonicalArtifact("masks", HEADER,
+                    List.of(row("2", "new.example", "second", "source"))));
+            setProjectionGeneration(2);
+            var newer = executor.submit(convergence::convergePending);
+            release.countDown();
+            older.get(5, TimeUnit.SECONDS);
+            newer.get(5, TimeUnit.SECONDS);
+            assertThat(work.load("masks").pending()).isFalse();
+            assertThat(Files.readString(target)).contains("old.example", "new.example");
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    private void setProjectionGeneration(long generation) throws Exception {
+        try (var connection = dataframeDataSource.getConnection();
+             var statement = connection.prepareStatement("""
+                     INSERT INTO artifact_projection_state(artifact, required_generation, projected_generation,
+                         requested_at_ms) VALUES ('masks', ?, 0, 0)
+                     ON CONFLICT(artifact) DO UPDATE SET required_generation = excluded.required_generation
+                     """)) {
+            statement.setLong(1, generation);
+            statement.executeUpdate();
+        }
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Projection test interrupted", failure);
+        }
     }
 
     private ArtifactRow row(String id, String mask, String source, String sourceKey) {

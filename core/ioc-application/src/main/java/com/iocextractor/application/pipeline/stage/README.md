@@ -17,9 +17,7 @@ composition.
 | `RefangStage.java` | `Refanger` → `RefangedText` |
 | `ExtractIndicatorsStage.java` | `IndicatorExtractor` → `ExtractedIndicators` + overlap diagnostics |
 | `AttributeSourceStage.java` | `SourceAttributor` → `AttributedIndicators` |
-| `DeduplicateIndicatorsStage.java` | within-batch dedup decisions + `PIPELINE.ITEM_SKIPPED` batch |
-| `ClassifyIndicatorsStage.java` | one materialized decision per retained indicator; NETWORK rules + unsupported-category guard |
-| `PrepareArtifactsStage.java` | side-effect-free artifact routing/mapping и сбор element diagnostics |
+| `PrepareRoutedArtifactsStage.java` | Обязательный план документа; учёт исходных наблюдений, routing/classification/mapping diagnostics и выбор по конечному ключу согласно плану |
 | `WriteArtifactsStage.java` | deferred-id materialization, canonical commit, projection / dry-run summary |
 
 ## Зависимости
@@ -38,3 +36,8 @@ Per-item TRACE идёт через application-owned `PipelineDecisionTracer`: �
 Обычная diagnostic occurrence использует ровно один путь: stage либо прикрепляет
 её к возвращаемому envelope, либо бросает typed `DiagnosticException`, если
 валидный payload вернуть невозможно.
+
+Extraction и document preparation ограничивают diagnostic detail внутри циклов
+через per-invocation `BoundedDiagnosticCollector`. Его `DiagnosticBatch`
+передаёт точные severity counts в envelope отдельно от retained samples;
+поздние ERROR/FATAL достигают checkpoint даже при исчерпанном лимите.

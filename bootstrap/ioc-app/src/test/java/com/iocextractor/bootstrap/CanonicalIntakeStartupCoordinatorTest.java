@@ -2,6 +2,7 @@ package com.iocextractor.bootstrap;
 
 import com.iocextractor.adapter.in.ingest.IngestionLifecycleState;
 import com.iocextractor.adapter.in.ingest.IngestionStartupObserver;
+import com.iocextractor.adapter.in.ingest.DurableDocumentDispatcher;
 import com.iocextractor.application.artifact.IngestRun;
 import com.iocextractor.application.artifact.IngestRunRecoveryService;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
@@ -21,6 +22,9 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 
 class CanonicalIntakeStartupCoordinatorTest {
 
@@ -85,6 +89,44 @@ class CanonicalIntakeStartupCoordinatorTest {
                 "recovery-started", "ordinary-run-recovery", "ordinary-source-recovery",
                 "lifecycle-admission", "import-recovery", "import-start", "intake-stop",
                 "import-close", "recovery-failed");
+        assertThat(intake.isRunning()).isFalse();
+        assertThat(state.snapshot().phase()).isEqualTo(IngestionLifecycleState.Phase.FAILED);
+    }
+
+    @Test
+    void documentStartupFailureStopsEveryIntakeAndPreservesCleanupFailure() {
+        List<String> events = new ArrayList<>();
+        var intake = new RecordingLifecycle(events);
+        var imports = new RecordingImportRuntime(events, false);
+        var state = new IngestionLifecycleState();
+        var documents = mock(DurableDocumentDispatcher.class);
+        doThrow(new IllegalStateException("document start failed")).when(documents).start();
+        doThrow(new IllegalStateException("document close failed")).when(documents).close();
+        var coordinator = coordinator(events, intake, imports, state).withDocuments(documents);
+
+        assertThatThrownBy(() -> coordinator.run(null)).hasMessage("document start failed")
+                .satisfies(failure -> assertThat(failure.getSuppressed()).extracting(Throwable::getMessage)
+                        .containsExactly("document close failed"));
+
+        verify(documents).close();
+        assertThat(events).endsWith("intake-stop", "import-close", "recovery-failed");
+        assertThat(intake.isRunning()).isFalse();
+        assertThat(state.snapshot().phase()).isEqualTo(IngestionLifecycleState.Phase.FAILED);
+    }
+
+    @Test
+    void prematurelyOpenedIntakeIsClosedBeforeAnyRecoveryRuns() {
+        List<String> events = new ArrayList<>();
+        var intake = new RecordingLifecycle(events);
+        intake.start();
+        events.clear();
+        var state = new IngestionLifecycleState();
+        var coordinator = coordinator(events, intake, null, state);
+
+        assertThatThrownBy(() -> coordinator.run(null))
+                .hasMessage("Ingestion intake must remain stopped until startup recovery");
+
+        assertThat(events).containsExactly("recovery-started", "intake-stop", "recovery-failed");
         assertThat(intake.isRunning()).isFalse();
         assertThat(state.snapshot().phase()).isEqualTo(IngestionLifecycleState.Phase.FAILED);
     }

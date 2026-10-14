@@ -56,17 +56,28 @@ Composition root и конфигурация. Единственное мест�
 | `DaemonSliceRetentionScheduler.java` | Отдельный late-phase lifecycle для profile-scoped slice retention |
 | `*HealthIndicator.java` | Actuator contributors, включая export freshness/failure/revision lag |
 
+## Маршрутизация
+
+`IocProcessingProperties` задаёт обязательный план документа и именованные планы.
+`ProcessingPlanBindings` и `ConfigRegistryPreflight` проверяют выборы до запуска
+`RouterRuntimeConfiguration`. `DocumentProcessingAdapter` и
+`RouterProcessedImportRowPreparer` используют один Camel runtime;
+`SelectedProcessedImportRowPreparer` требует точного binding для processed-контракта.
+`ProcessingConditionBinding` связывает вложенный `not`, сохраняя типизированную
+модель и строгую проверку ключей. Подмена Router прежним preparer отсутствует.
+
 ## Заметки
 
-Артефакты собираются из конфигурации (`buildSinks`): маппер + id-стратегия +
+Артефакты собираются из конфигурации (`artifactPreparers`): маппер + id-стратегия +
 диалект CSV. В daemon mode здесь же связываются ingest flow, JDBC storage,
 projection и health contributors. Доменные объекты остаются framework-free —
 Spring живёт здесь.
 
-Canonical SQLite writers, expiry и export-slot reconciliation получают один
-fair `JdbcWriterAdmission` bean. Это локальная защита от barging, а не замена DB
-transaction ownership. Managed import promotion намеренно не запускается до P7,
-когда composition root сможет сначала завершить общий recovery barrier.
+Canonical SQLite writers, expiry, export-slot reconciliation и durable
+mutable-projection acknowledgements получают один fair `JdbcWriterAdmission`
+bean. Это локальная защита от barging и false `SQLITE_BUSY` на коротком
+acknowledgement, а не замена DB transaction ownership. Managed import promotion
+использует тот же admission после общего recovery barrier.
 
 ## Lazy export composition
 

@@ -11,6 +11,7 @@ import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -29,6 +30,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -73,8 +75,8 @@ class JdbcLifecycleStorageFoundationIT {
         SchemaMigrationResult migration = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
 
         assertThat(migration.previousVersion()).isEqualTo(3);
-        assertThat(migration.currentVersion()).isEqualTo(9);
-        assertThat(migration.appliedVersions()).containsExactly(4, 5, 6, 7, 8, 9);
+        assertThat(migration.currentVersion()).isEqualTo(12);
+        assertThat(migration.appliedVersions()).containsExactly(4, 5, 6, 7, 8, 9, 10, 11, 12);
         assertThat(queryString("SELECT state FROM canonical_lifecycle_control WHERE singleton_id = 1"))
                 .isEqualTo("DISABLED_COMPATIBLE");
         assertThat(queryLong("SELECT id FROM masks WHERE row_key = 'legacy-row'"))
@@ -181,7 +183,7 @@ class JdbcLifecycleStorageFoundationIT {
     }
 
     @Test
-    void projection_acknowledgement_is_generation_cas() throws Exception {
+    void projection_acknowledgement_advances_only_installed_coverage() throws Exception {
         initializeStatic("projection.db");
         execute("""
                 INSERT INTO artifact_projection_state(
@@ -192,6 +194,8 @@ class JdbcLifecycleStorageFoundationIT {
 
         assertThat(store.load("masks").pending()).isTrue();
         assertThat(store.acknowledge(acknowledgement("masks", 2))).isTrue();
+        assertThat(store.acknowledge(acknowledgement("masks", 4))).isFalse();
+        assertThat(store.acknowledge(acknowledgement("masks", 1))).isFalse();
         assertThat(store.load("masks").pending()).isFalse();
         assertThat(queryLong("SELECT projected_at_ms FROM artifact_projection_state WHERE artifact = 'masks'"))
                 .isEqualTo(NOW.toEpochMilli());
@@ -201,10 +205,53 @@ class JdbcLifecycleStorageFoundationIT {
                 SET required_generation = 3, requested_at_ms = 200
                 WHERE artifact = 'masks'
                 """);
-        assertThat(store.acknowledge(acknowledgement("masks", 2))).isFalse();
+        assertThat(store.acknowledge(acknowledgement("masks", 2))).isTrue();
         assertThat(store.load("masks").requiredGeneration()).isEqualTo(new ProjectionGeneration(3));
         assertThat(store.load("masks").projectedGeneration()).isEqualTo(new ProjectionGeneration(2));
+        assertThat(store.load("masks").pending()).isTrue();
+        execute("""
+                UPDATE artifact_projection_state SET required_generation = 4 WHERE artifact = 'masks'
+                """);
+        assertThat(store.acknowledge(acknowledgement("masks", 3))).isTrue();
+        assertThat(store.load("masks").projectedGeneration()).isEqualTo(new ProjectionGeneration(3));
+        assertThat(store.load("masks").pending()).isTrue();
         assertThat(store.load("hashes").pending()).isFalse();
+    }
+
+    @Test
+    @Timeout(15)
+    void projection_acknowledgement_waits_for_shared_writer_admission() throws Exception {
+        initializeStatic("projection-admission.db");
+        execute("""
+                INSERT INTO artifact_projection_state(
+                    artifact, required_generation, projected_generation, requested_at_ms)
+                VALUES ('masks', 2, 0, 100)
+                """);
+        var admission = new JdbcWriterAdmission();
+        var store = new JdbcArtifactProjectionWorkStore(dataSource, CLOCK, admission);
+        CountDownLatch holderEntered = new CountDownLatch(1);
+        CountDownLatch releaseHolder = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            Future<?> holder = executor.submit(() -> admission.execute(() -> {
+                holderEntered.countDown();
+                await(releaseHolder);
+                return null;
+            }));
+            assertThat(holderEntered.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<Boolean> acknowledgement = executor.submit(
+                    () -> store.acknowledge(acknowledgement("masks", 2)));
+            awaitQueuedWriter(admission);
+            assertThat(acknowledgement).isNotDone();
+
+            releaseHolder.countDown();
+            holder.get(5, TimeUnit.SECONDS);
+            assertThat(acknowledgement.get(5, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            releaseHolder.countDown();
+        }
+        assertThat(store.load("masks").pending()).isFalse();
     }
 
     @Test
@@ -524,6 +571,54 @@ class JdbcLifecycleStorageFoundationIT {
     }
 
     @Test
+    void activation_store_reports_legacy_and_rejects_invalid_metadata() throws Exception {
+        initializeArtifact("activation-status.db", 1, 1);
+        var activation = new JdbcLifecycleActivationStore(
+                dataSource, List.of(masksSchema()), CLOCK);
+
+        assertThat(activation.hasLegacyRecords()).isFalse();
+        execute("""
+                INSERT INTO masks(id, mask, row_key, _created_at)
+                VALUES (1, 'legacy.example', 'legacy', '2026-08-16T00:00:00Z')
+                """);
+        assertThat(activation.hasLegacyRecords()).isTrue();
+        execute("""
+                INSERT INTO masks(
+                    id, mask, row_key, _created_at, _lifecycle_id,
+                    _first_confirmed_at_epoch_ms, _last_confirmed_at_epoch_ms,
+                    _valid_until_epoch_ms)
+                VALUES (2, 'partial.example', 'partial', '2026-08-16T00:00:00Z',
+                        2, 10, NULL, 30)
+                """);
+
+        assertThatThrownBy(activation::hasLegacyRecords)
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("partially populated");
+    }
+
+    @Test
+    void empty_legacy_activation_completes_without_projection_work() throws Exception {
+        initializeArtifact("empty-activation.db", 1, 1);
+        var control = new JdbcLifecycleControlStore(dataSource, List.of(masksSchema()));
+        LifecycleControlState disabled = control.load();
+        assertThat(control.compareAndSet(
+                disabled, disabled.beginActivation("record-validity:fixed:v1"))).isTrue();
+        var activation = new JdbcLifecycleActivationStore(
+                dataSource, List.of(masksSchema()), CLOCK);
+
+        var result = activation.expireLegacyBatch("masks", EffectiveTime.at(NOW), 10);
+
+        assertThat(result.expired()).isZero();
+        assertThat(result.moreLegacyRows()).isFalse();
+        assertThat(queryLong("SELECT COUNT(*) FROM artifact_projection_state")).isZero();
+        assertThat(queryLong("""
+                SELECT COUNT(*) FROM lifecycle_activation_progress
+                WHERE artifact = 'masks' AND after_row_id IS NULL
+                  AND expired_count = 0 AND completed = 1
+                """)).isOne();
+    }
+
+    @Test
     void resumed_activation_rejects_partially_populated_lifecycle_metadata() throws Exception {
         initializeArtifact("invalid-activation.db", 1, 1);
         execute("""
@@ -592,7 +687,7 @@ class JdbcLifecycleStorageFoundationIT {
 
     private ProjectionAcknowledgement acknowledgement(String artifact, long generation) {
         var value = new ProjectionGeneration(generation);
-        return new ProjectionAcknowledgement(artifact, value, value);
+        return new ProjectionAcknowledgement(artifact, value);
     }
 
     private void initializeStatic(String fileName) {
@@ -657,6 +752,25 @@ class JdbcLifecycleStorageFoundationIT {
             }
             return details.toString();
         }
+    }
+
+    private void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("Timed out waiting for projection admission test release");
+            }
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        }
+    }
+
+    private void awaitQueuedWriter(JdbcWriterAdmission admission) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (admission.queuedWriters() == 0 && System.nanoTime() < deadline) {
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+        }
+        assertThat(admission.queuedWriters()).isPositive();
     }
 
     private List<Long> longRange(long start, long endInclusive) {

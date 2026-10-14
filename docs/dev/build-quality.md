@@ -103,7 +103,7 @@ runs only after the applicable modules.
 | Maven Enforcer | Toolchain and POM metadata | Violations block every ordinary build |
 | JUnit/Surefire/Failsafe contracts | Fast, integration, architecture, golden and documentation suites | Surefire owns `*Test`; Failsafe owns `*IT`; failures and lifecycle/report-union drift block `verify` |
 | ArchUnit | Compiled production classes | Dependency or package-boundary violation blocks `verify` |
-| JaCoCo | Test execution data and 19 production JARs | Exact universe/report integrity, aggregate/per-module no-regression ratchets and fixed aggregate/domain/application floors block `verify` |
+| JaCoCo | Test execution data and 21 production JARs | Exact universe/report integrity, aggregate/per-module no-regression ratchets and fixed aggregate/domain/application floors block `verify` |
 | Codecov | The verified reactor aggregate JaCoCo XML | Informational project/base-relative/patch reporting only; external upload failure never changes the local gate result |
 | SpotBugs | Applicable production bytecode | New, stale, moved or metadata-drifted findings block the exact ratchet; analyzer/report failures also block |
 | PMD CPD | Applicable checked-in production Java sources | Every duplicate stays visible; analyzer/scope/report failure or a change from the reviewed group-count snapshot blocks `verify` |
@@ -283,6 +283,21 @@ fields or modify the tracked baseline. It also fails when module raw reports are
 missing or unhealthy. Run it before a focused Maven command, because focused
 lifecycles may delete or replace only part of the reactor report set.
 
+The `NATIVE-TEMP-SQL-ISOLATION` review (2026-10-14) refreshed seven bytecode
+anchors in `JdbcExportSlotRegistry` after explicitly qualifying TEMP identifiers
+and adding SQL-backed preferred-request scratch. Raw hashes, occurrences,
+members, severities and suppression selectors stayed unchanged: 137 accepted
+findings and 133 selectors. Each query still validates/quotes artifact names and
+binds business values. Same-named main tables are preserved by integration
+regressions. This is an identity refresh of existing SQL false positives, not
+permission to accept additional findings.
+
+The same review extracted shared failure-preserving cleanup and connection
+restoration. The CPD snapshot decreased from 23 to 22 groups after review of the
+complete report. The former `DoNotThrowExceptionInFinally` finding disappeared,
+so its nonzero PMD count was removed; the rule now has zero tolerance. No
+analyzer rule, selector, scope or coverage threshold was relaxed.
+
 ### Toolchain and analyzer upgrades
 
 Plugin and engine versions are pinned independently in the root POM. Treat a
@@ -360,8 +375,8 @@ The separate
 [`pmd-watchlist-ruleset.xml`](../../build-support/pmd-report/pmd-watchlist-ruleset.xml)
 contains exactly `PreserveStackTrace`, `CloseResource` and `NcssCount`. The first
 two currently mostly report framework/lifecycle ownership that PMD cannot see;
-the third is retained as a high-size observation but currently produces no
-finding. Keeping them executable preserves future detection without pretending
+the third reports large methods for explicit review. Keeping them executable
+preserves future detection without pretending
 that their present signal has adoption quality.
 
 Rule disposition is about routine execution, not whether a rule happened to
@@ -462,10 +477,10 @@ coverage module combines the applicable production universe under
 `build-support/coverage-report/target/site/jacoco-aggregate/`.
 
 The reusable TCK is not part of the production coverage denominator. The
-fail-closed `coverage-scope.tsv` registry gives all 25 reactor projects an
+fail-closed `coverage-scope.tsv` registry gives all 27 reactor projects an
 explicit disposition and must match both the root module list and the coverage
-report POM dependencies. Nineteen production JARs are covered with no class or
-package exclusions. Eighteen must produce non-empty module XML/HTML plus
+report POM dependencies. Twenty-one production JARs are covered with no class or
+package exclusions. Twenty must produce non-empty module XML/HTML plus
 execution data. `ioc-platform-errors` is explicitly aggregate-only because it
 has no local test JVM; it must still be present in the aggregate through
 downstream execution. Root, TCK and build-only outputs are rejected if they
@@ -474,7 +489,7 @@ unexpectedly appear as coverage evidence.
 Root `validate` compiles the JDK-only `CoverageVerifier`, runs its synthetic
 reactor matrix and checks the scope, snapshot and Maven wiring. The final
 coverage-report execution requires current aggregate XML/HTML, checks the exact
-19-group union and counter sums, validates expected local reports and applies
+21-group union and counter sums, validates expected local reports and applies
 `coverage-ratchets.tsv`. Line and branch ratios use exact cross-multiplied
 integer fractions, so decimal rounding cannot hide a drop. An increased absolute
 missed-branch count also fails; small modules additionally reject increased
@@ -563,6 +578,14 @@ signal/noise disposition first. Before adoption, provide:
 
 Do not reuse SpotBugs acceptance as a generic suppression framework. Each tool
 has different identity, noise and failure semantics.
+
+## Capacity evidence boundary
+
+Native operational smoke/load commands remain opt-in developer tools and do not
+replace deterministic reactor gates or provisioned external transport tests.
+The retained implementation, historical measurements and their limits are in
+[native capacity](native-capacity.md). Closed experiment drivers and temporary
+release bundles are not part of the supported quality lifecycle.
 
 ## Sources of truth
 

@@ -47,4 +47,16 @@ public final class ReplacementRefanger implements Refanger {
         }
         return count;
     }
+
+    @Override
+    public List<RefangDecision> refang(TextRewrite text) {
+        if (text.isEmpty()) { return List.of(); }
+        var decisions = new ArrayList<RefangDecision>();
+        for (int index = 0; index < rules.size(); index++) {
+            var rule = rules.get(index);
+            int count = text.replace(rule);
+            if (count > 0) { decisions.add(new RefangDecision(index, rule, count)); }
+        }
+        return List.copyOf(decisions);
+    }
 }

@@ -3,9 +3,9 @@
 ## Назначение
 
 CSV integration-family adapter providing strict inbound record streaming,
-artifact row mapping, canonical CSV projection and immutable artifact slices.
+artifact preparation, canonical CSV projection and immutable artifact slices.
 
-**Правило слоя:** owns Commons CSV parsing/writing, artifact row mapping and
+**Правило слоя:** owns Commons CSV parsing/writing, artifact preparation and
 local atomic publication; domain/application do not depend on Commons CSV or
 filesystem mechanics. Import/export orchestration remains in application ports.
 
@@ -15,18 +15,20 @@ filesystem mechanics. Import/export orchestration remains in application ports.
 |---|---|
 | `pom.xml` | Maven module descriptor |
 | `src/main/java/com/iocextractor/adapter/in/csv/` | Strict decoder, exact-header validation and callback-streaming CSV reader |
-| `src/main/java/com/iocextractor/adapter/out/sink/csv/` | CSV projection, export slice writers and mapping components |
+| `src/main/java/com/iocextractor/adapter/out/sink/csv/` | CSV projection, artifact preparer and export slice writers |
 
 ## Зависимости
 
-**Зависит от:** `ioc-application`, `ioc-domain`, platform
+**Зависит от:** `ioc-application`, `ioc-processing`, `ioc-domain`, platform
 errors/diagnostics/observability, Commons CSV, SLF4J API.
 
 **Не импортируется:** bootstrap and sibling adapters.
 
 ## Контракты
 
-- legacy/current projection path формирует CSV из canonical repository;
+- mutable projection path формирует CSV из canonical repository только через
+  общий application owner; результат содержит поколение прочитанного снимка.
+  Поток проверяет отмену по строкам и перед atomic rename;
   parentless relative leaf поддерживается через current directory, filesystem
   root отклоняется как path без имени файла и в bootstrap preflight, и на
   adapter boundary;
@@ -34,16 +36,17 @@ errors/diagnostics/observability, Commons CSV, SLF4J API.
   charset replacement возвращает одну `SINK.CHARSET_UNMAPPABLE` diagnostic с
   точными counts; diagnostic доставляет application orchestration, не adapter;
 - `CsvArtifactPreparer` выполняет config-driven filtering/mapping до policy
-  checkpoint; provider/transform может явно вернуть data-dependent failure
-  только через `MappingValueException`. `ConfigurableRowMapper` локализует его
+  checkpoint; provider/transform из `ioc-processing` может явно вернуть data-dependent failure
+  только через `MappingValueException`. Общий `ConfigurableRowMapper` локализует его
   как `RowMappingException` (column + component kind/name), а preparer создаёт
   element diagnostic. Остальные mapper defects останавливают run;
   route/filter/mapping decisions передаются в gated application TRACE port без
-  повторной классификации;
-- `CsvProcessedImportRowPreparer` подключает explicit `processed` import mode к
-  обычным refang/extract/classify и CSV artifact policies. Он требует ровно один
-  whole-cell IOC для каждого semantic carrier, сохраняет compound-row
-  correlation и никогда не подменяет `processed` режим поведением `as-is`;
+  повторной классификации. Метод `prepareRouted` готовит одну выбранную ветку
+  с отдельными представлениями колонок и сохраняет позицию управляемых полей;
+  та же настройка фильтра, mapper и диагностик используется повторно;
+- processed import использует только Router adapter в bootstrap с явно
+  объявленными input/output bindings; CSV adapter отвечает за parsing и
+  declarative artifact field mapping. Provider-name inference удалён;
 - public id остаётся deferred slot до commit; `from: id` не допускает
   `when-type` или transforms, что проверяется bootstrap config preflight;
   mapping SPI не получает временный id, а id-provider возвращает пустой slot;
@@ -54,3 +57,7 @@ errors/diagnostics/observability, Commons CSV, SLF4J API.
 - JSON codec внедряется через `SliceManifestCodec`: compile-time зависимости на
   sibling Jackson adapter нет;
 - service DB, export-run transitions и delivery в модуль не входят.
+
+Export formation/recovery uses profile-scoped NIO leases (ADR-0037). CSV slice
+materialization owns its state per invocation and allows unrelated profiles to
+stream concurrently under the shared reader budget.

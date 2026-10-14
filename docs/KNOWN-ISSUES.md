@@ -22,8 +22,84 @@
 | ING-2 | **Tail-режим для источников** (растущие append-фиды: offset/rotation/checkpoint). **Descoped:** вне домена document-ingest — источники дискретны (Word/HTML, скрейпинг даёт целые документы). При появлении стриминг-источника — новый режим/`SourceReader` тогда. | descoped | L | dev/0001 #1, dev/0006 |
 | ING-7 | **Инкрементальная запись локальных датафреймов** — `CsvArtifactProjection` всё ещё полностью перечитывает артефакт из БД и переписывает мутабельный `*_generated.csv` (atomic temp→move) на каждый write. Immutable export из 0012 уже cadence-driven и не зависит от этой проекции, но локальный always-fresh путь остаётся O(N). Остаётся: дельта/кэш либо отказ от per-write projection. | seam | M | review, dev/0012 |
 | ING-8 | **Web driving-adapter** — HTTP как третья точка входа рядом с CLI/file-poll: ops (ING-3) → REST-ингест/запросы → TAXII/STIX-сервер (синергия с EXP-1) + BFF под фронтенд. Эндпоинты живут в отдельном `adapter-web`. **Требование:** REST-эндпоинты, дёргающие use-cases, обязаны открывать `MdcScope` (run-id), как CLI/демон, иначе прогоны теряют корреляцию в логах. **Связка с актуатором:** при выносе web за loopback `management.endpoint.health.show-details` нужно закрыть auth / перевести в `when-authorized` (сейчас `always` безопасен только из-за loopback-бинда). | seam | L | review |
-| ING-11 | **Retry × run-ledger: нет resume-протокола.** Retry в `FileSourceMessageHandler` оборачивает весь `useCase.ingest()`; `processClaimed` безусловно `startIngest` на каждой попытке; `markFailed` — только при `!dbCommitted` → сбой проекции (диск/права) даёт N `DB_COMMITTED`-ранов одного source; `IngestRunRecoveryService` не синхронизирован с file-ledger (`CLAIMED`) → после рестарта лишняя полная экстракция. Данные целы, платим CPU/diagnostics/проекции + id-gaps; самовосстанавливается. Нужен resume-протокол: после `DB_COMMITTED` повторять только projection/archive (не extraction/commit) + синхронизация run-ledger ↔ file-ledger; требует мини-дизайна (меняется сага ING-4a). **План: 0.3.0.** | открыт | M | стенд-тест 2026-07-14 (pre-retarget RC 0.1.1) |
+| ING-11 | **Retry × run-ledger: нет resume-протокола.** CAP-5 сохраняет attempts/backoff в durable admission, но полный resume-протокол run-ledger ещё отсутствует; новая попытка `DurableDocumentDispatcher` создаёт новый run; `processClaimed` безусловно `startIngest` на каждой попытке; `markFailed` — только при `!dbCommitted` → сбой проекции (диск/права) даёт N `DB_COMMITTED`-ранов одного source; `IngestRunRecoveryService` не синхронизирован с file-ledger (`CLAIMED`) → после рестарта лишняя полная экстракция. Данные целы, платим CPU/diagnostics/проекции + id-gaps; самовосстанавливается. Нужен resume-протокол: после `DB_COMMITTED` повторять только projection/archive (не extraction/commit) + синхронизация run-ledger ↔ file-ledger; требует мини-дизайна (меняется сага ING-4a). **План: 0.3.0.** | открыт | M | стенд-тест 2026-07-14 (pre-retarget RC 0.1.1) |
 | ING-13 | **Failed claim превращает файл в вечный poison.** В candidate-линии 0.2.0 реализована полумера: rejection возвращает `REJECTED/ALREADY_REJECTED`, повторный poll durable `FAILED` завершается без повторного generic/typed лога. Полный дефект остаётся: `markFailed` синтезирует `Path.of("unknown")`, файл остаётся в inbox и не получает явной физической судьбы. Нужен pre-claim dead-letter/quarantine (с реальными path/detectedAt и идемпотентным terminal-фильтром). Поддерживаемой clear/requeue-команды пока нет: source/logs сохраняются для разбора, а recovery выполняется только по reviewed procedure без ручного удаления ledger/SQLite state. **Полный фикс — 0.3.0.** | открыт | M | стенд-тест 2026-07-14 (pre-retarget RC 0.1.1), полумера 2026-07-15 |
+
+**ING-15 — ограничение больших документов и отказ рабочего потока (частично, L).**
+Исторический прогон CAP-6 на 1 млн IOC в HTML при `-Xmx512m` падал с
+`OutOfMemoryError` на чтении Tika до канонической записи; рабочий поток
+завершался при остававшейся активной JVM. CAP-7A заменил полные source buffers
+дисковым workspace и потоковыми cursor: HTML удаляет завершённые поддеревья,
+DOCX использует SAX. В квалификации 2026-10-09 полный сервис успешно проходит
+чтение, refang, извлечение и атрибуцию миллионных HTML и DOCX без прежнего
+source OOM. Оба документа затем отклоняются из-за квоты приватного SQLite
+reducer до канонической записи измеряемого документа; это не исчерпание диска
+хоста и не успешный полный цикл. На 100k все пять выходных артефактов проходят
+проверки содержимого при RSS около 368/374 MiB, однако время локального цикла
+и длительность удержания writer превышают принятые бюджеты.
+
+Фатальный `Error` теперь останавливает dispatcher видимо для health,
+освобождает готовые preparations и сохраняет durable admissions для startup
+recovery. Физические и timed-тесты preparation/promotion/cleanup проверяют
+освобождение и обработку оставшихся документов после restart; это не симуляция
+реального исчерпания heap. Окно ordered dispatch ограничено доступными workspace
+leases. Source-контракт квалифицирован, полная ресурсная приёмка остаётся
+открытой: миллионные failure-window RSS не доказывают память завершённого цикла.
+Владельцы: ingestion/source, private reducer и canonical storage; оставшиеся
+архитектурные треки — CAP-7D/C. Бюджеты не увеличены, стенд не обновлялся.
+Исторические и последующие полные замеры: [Native capacity](dev/native-capacity.md); устройство чтения описано в
+[processing](dev/processing.md) и [ADR 0039](ADR/0039-streamed-document-source-processing.md).
+Позднее Native прошёл полный миллионный DOCX и серию из 100 DOCX на явно
+расширенном профиле (heap 2 GiB, workspace 8 GiB, общий cgroup 6 GiB). Это
+отдельные завершённые измерения; они не отменяют отказ старого профиля и не
+квалифицируют прежние resource defaults для любого миллионного документа.
+
+
+**ING-16 — расхождение UTC и high-water: координация исправлена, причина открыта (M).**
+Квалификация 2026-10-09/11 выявила `SQLITE_CONSTRAINT_CHECK` в import retry и
+`Invalid document admission version or timestamps` после успешного document
+commit/projection. Служебные progress timestamps теперь не убывают относительно
+сохранённого `updated_at`: это применяется к document admission, import retry,
+terminalization и audit. Terminal retention отсчитывается от того же времени;
+retry-after остаётся абсолютным UTC deadline. Регрессии проверяют reopen,
+длительность retention и завершение регистрации при обратном шаге часов.
+Canonical safe-clock остаётся независимой защитой и по-прежнему отклоняет UTC
+вне допустимого skew/clamp. Исторический C5 отказ control при `PT2.061S` сохранён;
+повторная квалификация сохранила три отказа при `PT2.073S`–`PT2.363S`. Причина
+расхождения raw UTC и durable high-water по журналам не установлена; они не
+доказывают перевод часов хоста. Исправление ledger
+не разрешает новую canonical публикацию при небезопасном времени и не закрывает
+нагрузочную приёмку. Владельцы: service ledger / [managed import](dev/dataframe-import.md),
+[ingestion](dev/ingestion.md), эксплуатация часов хоста.
+
+**ING-17 — конкурентная терминализация document admission (закрыт, M).**
+Нагрузочная квалификация 2026-10-13 зарегистрировала
+`INGEST.RECOVERY_FAILED: Document admission changed concurrently` в Native и
+Staged. Обычное завершение документа и reconciliation могут одновременно вызвать
+`DocumentAdmissionService.complete` / `finalizeRegistration`; CAS проверяет
+полное равенство подготовленного состояния, включая timestamp, и отклоняет
+эквивалентное завершение другим участником. Очередь в наблюдаемых случаях
+продолжает двигаться, но возникает лишняя ошибка recovery; исключение после
+архивации также предшествует `runLedger.markCompleted`. Потеря канонических
+данных не установлена. Строго последовательный прогон 1 млн IOC / 100 DOCX
+не завершил все ingest-run и был сохранён как ERROR по часовому таймауту.
+Узкий фикс принимает одинаковые terminal-факты после проигранного CAS,
+проверяет registration даже при finalized retry и сохраняет отказ при
+несовместимых outcome / source / registration. Семь новых регрессий включают
+принудительную перестановку обоих terminal writes и гонку completion/recovery;
+три падают на исходной версии. На исправленной версии прошли все 24 проверки
+admission/registration. Полный повтор 1 млн IOC / 100 DOCX при workers/window
+1/1 завершился за 909,48 с до успешной SMB-публикации: все admissions/runs
+завершены, 2 167 020 строк и receipt/CSV/provenance проверены, ошибок CAS — 0.
+При доведении Native обязательные release gates возобновлены. Дополнительные
+регрессии отклоняют подмену candidate/claim paths, evidence, execution state,
+created-at и устаревшей версии при эквивалентном terminal outcome. Новый малый
+прогон через реальный SMB на обычном Maven JAR проверил 1 000 IOC / 10 DOCX,
+все пять артефактов и receipts: конфликтов терминализации — 0. Подробные границы
+автоматизированной и live-проверки описаны в [ingestion](dev/ingestion.md).
+Закрыт дефект terminal CAS; исторические неуспешные нагрузочные окна не
+переклассифицированы и не становятся ресурсной приёмкой.
+Владельцы: [ingestion](dev/ingestion.md), document admission / reconciliation.
 
 ## 2. Обогащение вывода (`OUT`)
 
@@ -31,6 +107,8 @@
 |---|---|---|---|---|
 | OUT-1 | **Meta-колонки всегда `NULL`** (`score`, `time_last_seen`, `time_first_seen`, `threat_type`, `description`) — провайдеры обогащения не реализованы. Самый заметный пробел по ценности данных. | открыт | M | dev/0002 |
 | OUT-2 | **CSV formula injection — латентный configuration-dependent риск.** `source.label` формируется из нормализованного marker-match недоверенного документа и попадает в CSV; `QuoteMode.ALL_NON_NULL` защищает структуру CSV, но не гарантирует безопасность при открытии в spreadsheet. Для shipped default profile disposition — `not_applicable`: matches начинаются с `БИБ`/`Письмо`, остальные output values ограничены indicator/value/const contract. Универсальной neutralization в коде нет. **Триггер:** marker-regex или новая free-text колонка, допускающие spreadsheet-dangerous prefix после нормализации. Будущий фикс должен выбрать validation/rejection либо отдельную spreadsheet-oriented encoding policy и не менять молча семантику machine-consumed reputation lists. | seam | S | security review; `SEC-OUT-1`; [THREAT-MODEL](THREAT-MODEL.md) |
+| OUT-3 | **Legacy-коллизии при активном lifecycle.** Совместимый KEEP_FIRST preparer сохраняет все принятые mapped rows. Идентичные IOC при `ioc.pipeline.deduplicate=false` и разные retained IOC с одним конечным mapped key приводят к `SINK.WRITE_FAILED`: lifecycle writer отклоняет повторный ключ до резервирования ID и commit. Без lifecycle строки учитываются в provenance, canonical uniqueness сохраняется. Исправление требует явного контракта учёта повторов в lifecycle confirmation либо ограничения конфигурации; предварительное схлопывание в legacy preparer изменит резервирование и occurrences. Оптимизация O3 сохраняет это прежнее поведение. | открыт | M | `GoldenPipelineIT.originalRouteMappedCollisionsPreserveReservationAndProvenanceInBothWritePaths`; [processing](dev/processing.md) |
+| OUT-4 | **Ресурсный бюджет selected processing не принят.** Квалификация 2026-10-03 сохраняет все occurrences и обнаруживает около 4.04× caller allocations против совместимого пути на документе 100k/20 ключей; объединённые серии 50%/0% повторов дают около 1.255×/1.294× sampled heap, превышая историческую границу 1.25×. Build gates и выигрыш против исходного selected-path не закрывают performance acceptance. Нужны согласованные workload/resource limits и дальнейшее измеренное сокращение transient работы с сохранением diagnostics, ID/provenance и import participants. Дополнительная квалификация массового URL→host/IP проверила одинаковую host-policy до/после: distinct URL быстро исчерпывают semantic admission, mapping остаётся occurrence-proportional; большой документ выделяет около 3.67 GB caller allocations. Ресурсная приёмка и concurrent application SLO остаются открыты. | открыт | M | [processing](dev/processing.md); [historical measurements](dev/native-capacity.md); владелец: processing/application |
 
 ## 3. Экстракция / корпус (`EXT`)
 
@@ -123,7 +201,7 @@
 
 ### Критерии закрытия `TOOL-5`
 
-- Для 19 production-analysis модулей зафиксирована admission matrix:
+- Для 21 production-analysis модуля зафиксирована admission matrix:
   `adopt`, `defer` или `reject` с конкретными critical rules, test consumers и
   причиной решения; `ioc-application-tck` не попадает в production
   mutation denominator.

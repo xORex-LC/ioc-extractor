@@ -90,6 +90,116 @@ the service is stopped or after a coordinated SQLite backup.
 | `ioc.pipeline.failure-policy` | `fail-fast`, `collect-and-continue` | `fail-fast` | Use `collect-and-continue` for unattended daemon ingestion; valid rows may commit while the run reports errors. |
 | `ioc.pipeline.max-diagnostics-per-run` | positive integer | `10000` | Bounds memory and output volume. Lower it for small hosts or noisy untrusted inputs. |
 
+## IOC processing plans
+
+Document preparation always uses a private disk workspace. Physical budgets do not change canonical receipt policy identity. Whole-text/extracted-occurrence buffers remain outside this budget.
+
+| Property | Default | Meaning |
+| --- | --- | --- |
+| `ioc.processing.workspace.directory` | `./var/document-preparation` | Private owned root; keep it on local storage. |
+| `ioc.processing.workspace.memory-bytes` | `67108864` | Factory-wide cache/row admission budget; shared across artifacts. |
+| `ioc.processing.workspace.cache-kib` | `4096` | SQLite page-cache target per live workspace; mmap is disabled. |
+| `ioc.processing.workspace.maximum-row-bytes` | `262144` | Maximum encoded prepared row. |
+| `ioc.processing.workspace.maximum-field-bytes` | `65536` | Maximum UTF-8 field size. |
+| `ioc.processing.workspace.workspace-bytes` | `2147483648` | Per-invocation source/database/journal disk quota. |
+| `ioc.processing.workspace.total-disk-bytes` | `8589934592` | Root-wide disk admission quota, including retained pins. |
+| `ioc.processing.workspace.batch-rows` | `128` | Maximum append group between commits/quota checks (1..4096). |
+| `ioc.processing.workspace.retention` | `24h` | Expired inactive pins are pruned on the next admission; live leases are protected. |
+
+
+The `ioc.processing` tree includes a required `document-plan`. Named plans are
+checked at startup and execute when selected by a document or processed-import
+contract. The shipped `original-document` retains full original IOC values;
+missing selections fail admission. A policy change affects new observations;
+existing canonical rows are not rewritten. In daemon mode, changing a selected
+document policy requires all unfinished document admissions and processing files
+to drain under the previous policy before the service starts with the new one.
+For a complete activation example and drain procedure, see the
+[IOC processing routes guide](ioc-processing-routes.md).
+An unchanged policy can recover its own unfinished work. A pinned import delivery
+with no sealed stage blocks recovery if its old contract is unavailable; restore
+the old configuration to finish it. The document gate uses the complete processing
+fingerprint, so a change to another declared plan can also require a drain.
+Run only one active daemon per service database during a policy change. Committed
+imports finalize from receipts.
+
+- `ioc.dataframe-import.contracts[].processed-route.plan` selects a named IOC
+  plan for one `processed` contract. This binding is required even when intake is
+  disabled. `as-is` contracts cannot select a route.
+  `ioc.dataframe-import.contracts[].processed-route.inputs` is an ordered list
+  of source cells; each `ioc.dataframe-import.contracts[].processed-route.inputs[].artifact`
+  and `ioc.dataframe-import.contracts[].processed-route.inputs[].target` must
+  name a mapped contract cell. `ioc.dataframe-import.contracts[].processed-route.outputs`
+  lists the authorized final fields. Each
+  `ioc.dataframe-import.contracts[].processed-route.outputs[].artifact` must
+  match exactly one route branch, and
+  `ioc.dataframe-import.contracts[].processed-route.outputs[].targets` names
+  mapped target fields. Source authority fields cannot be replaced.
+
+- `ioc.processing.document-plan` selects one entry in `ioc.processing.plans` by
+  `ioc.processing.plans[].name`. A selected document plan must route each
+  enabled artifact or list it in `ioc.processing.plans[].omitted-artifacts`.
+- `ioc.processing.plans[].observation-selection` accepts `retained-observations`
+  or `final-key` (the default for a newly declared plan). The shipped document
+  plan uses `retained-observations`: KEEP_FIRST preserves source-level selection,
+  mapped-collision multiplicity and ID/provenance accounting; LAST_NONEMPTY still
+  examines every occurrence. `final-key` selects whole-row winners per artifact
+  after routing, including derived host/IP collapse.
+- `ioc.processing.plans[].views` declares unary derived values. Each entry has
+  `ioc.processing.plans[].views[].name`,
+  `ioc.processing.plans[].views[].operation` and
+  `ioc.processing.plans[].views[].input`. `network.host` derives a bare host;
+  `network.without-scheme` removes only HTTP(S), preserving host spelling, port,
+  path, query and fragment. Both validate the entire network address and retain
+  source attribution. The scheme-free result is URL when it has address details,
+  otherwise DOMAIN or IPV4. Operations take no arguments.
+  `view.recover` requires
+  `ioc.processing.plans[].views[].arguments.on-reasons` and
+  `ioc.processing.plans[].views[].arguments.use-view`. Recovery creates a
+  separate view and accepts only `empty`, `unsupported-scheme`,
+  `invalid-authority`, `invalid-host`, `invalid-port` or
+  `unsupported-address-form` as input-dependent reasons.
+- `ioc.processing.plans[].classifications` binds
+  `ioc.processing.plans[].classifications[].view` to
+  `ioc.processing.plans[].classifications[].policy`. The only policy is
+  `configured`, which uses the existing `ioc.classify.rules`.
+- `ioc.processing.plans[].routing.mode` accepts `first`, `all` or `exclusive`.
+  `ioc.processing.plans[].routing.on-unmatched.action` is `skip`, `reject` or
+  `route`; `ioc.processing.plans[].routing.on-unmatched.branch` names the
+  default branch only for `route`.
+- `ioc.processing.plans[].routing.branches` is ordered. Each entry has
+  `ioc.processing.plans[].routing.branches[].id`,
+  `ioc.processing.plans[].routing.branches[].artifact` and
+  `ioc.processing.plans[].routing.branches[].default-view`.
+  `ioc.processing.plans[].routing.branches[].field-views` maps an existing
+  output column to a declared view. Source and ID columns cannot be overridden.
+- The optional leaf condition uses
+  `ioc.processing.plans[].routing.branches[].eligibility.on` and
+  `ioc.processing.plans[].routing.branches[].eligibility.predicate`.
+  `type-in` requires enum values in
+  `ioc.processing.plans[].routing.branches[].eligibility.arguments.types`;
+  feature predicates accept no arguments. Conditions have exactly one shape:
+  `ioc.processing.plans[].routing.branches[].eligibility.all` with ordered
+  `ioc.processing.plans[].routing.branches[].eligibility.all[]` children,
+  `ioc.processing.plans[].routing.branches[].eligibility.any` with ordered
+  `ioc.processing.plans[].routing.branches[].eligibility.any[]` children, or
+  `ioc.processing.plans[].routing.branches[].eligibility.not` with one child.
+- For no-match routing, `ioc.processing.plans[].routing.default-branch.id`,
+  `ioc.processing.plans[].routing.default-branch.artifact`,
+  `ioc.processing.plans[].routing.default-branch.default-view` and
+  `ioc.processing.plans[].routing.default-branch.field-views` use the same
+  bindings as an ordinary branch. A default must have no eligibility; the
+  structurally bindable paths
+  `ioc.processing.plans[].routing.default-branch.eligibility.on`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.predicate`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.arguments.types`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.all`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.all[]`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.any`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.any[]` and
+  `ioc.processing.plans[].routing.default-branch.eligibility.not` are rejected
+  by semantic admission.
+
 ## Source reading
 
 | Property | Type / accepted values | Built-in default | Guidance |
@@ -137,7 +247,7 @@ contract and must be tested against existing databases and consumers.
 | `ioc.sink.csv.quote` | one-character string | `"` | Must differ from delimiter. |
 | `ioc.sink.csv.null-literal` | non-blank string | `NULL` | Serialized value for absent cells. |
 | `ioc.sink.csv.charset` | Java charset name | `UTF-8` | Unmappable characters are replaced and reported, not fatal. |
-| `ioc.sink.artifacts` | non-empty list | masks, ip_list, address_blacklist, hashes | Override complete list elements, not isolated indexes. |
+| `ioc.sink.artifacts` | non-empty list | masks, ip_list, address_blacklist, hashes, ioc_aggregate | Override complete list elements, not isolated indexes. See the [IOC aggregate guide](ioc-aggregate.md) before first activation. |
 | `ioc.sink.artifacts[].name` | unique string | required | Stable artifact identity referenced by export and row-key configuration. |
 | `ioc.sink.artifacts[].enabled` | boolean | required | Disabled artifacts are not prepared or projected. |
 | `ioc.sink.artifacts[].path` | path | required | Mutable projection output path. |
@@ -153,7 +263,16 @@ contract and must be tested against existing databases and consumers.
 | `ioc.sink.artifacts[].columns[].value` | string or null | optional | Literal used by `const`. |
 | `ioc.sink.artifacts[].columns[].type` | `TEXT`, `INTEGER`, `REAL`, `BLOB`, `NUMERIC` | inferred/text | SQLite affinity, mainly for constant columns. |
 | `ioc.sink.artifacts[].columns[].when-type` | IOC type | optional | Emits the provider only for the selected IOC type. |
+| `ioc.sink.artifacts[].columns[].when-types` | non-empty list of IOC types | optional | Emits for any listed type; cannot be combined with `when-type`. List order has no effect. |
+| `ioc.sink.artifacts[].columns[].when` | list of filter names | optional | All conditions must match. `is-clean-host` selects a bare domain; `is-address-with-detail` selects an address with a scheme, path, query, or port. Conditions are evaluated after classification and can be combined with a type gate. |
 | `ioc.sink.artifacts[].columns[].transform` | ordered list | optional | Registered keys are `lower`, `lower-host`, `upper`, and `strip-prefix`; the parameterized form is `strip-prefix:<text>`. Not allowed on deferred `id`. |
+| `ioc.sink.artifacts[].write-policy` | object | optional | Per-artifact duplicate selection and field mutation; absent preserves keep-first behavior. |
+| `ioc.sink.artifacts[].write-policy.duplicate-selection` | `keep-first`, `last-nonempty` | `keep-first` when absent | `last-nonempty` selects one whole mapped occurrence with a nonblank selection-column value. |
+| `ioc.sink.artifacts[].write-policy.selection-column` | output column | optional | Required for `last-nonempty`; cannot be an identity or ID column. |
+| `ioc.sink.artifacts[].write-policy.fields` | list | optional | Non-key output fields with an ordered update policy. |
+| `ioc.sink.artifacts[].write-policy.fields[].name` | output column | required within field rule | Cannot be an identity or ID column. |
+| `ioc.sink.artifacts[].write-policy.fields[].update` | `latest-registered` | required within field rule | Uses durable delivery registration, independent of worker completion. |
+| `ioc.sink.artifacts[].write-policy.fields[].empty` | `keep-existing` | required within field rule | Blank input preserves stored value and its origin. |
 
 ## Canonical artifact identity
 
@@ -177,12 +296,14 @@ During the v0.2.0 rollback overlap, the 0.3.0 binary accepts only the four exact
 built-in identity entries from the v0.2.0 packaged template without
 `record-key`, `match-keys`, or `epoch`. It resolves them to the shipped current
 definitions and logs `CONFIG.LEGACY_ARTIFACT_IDENTITY`. A custom or modified
-entry missing `record-key` fails semantic validation. Once v0.2.0 is no longer
-a rollback target, merge the explicit current definitions from
-`application.yml.new` through `ioc-config apply`; do not keep the compatibility
-shape as a template for new artifacts. This adapter is release-transition code,
-not a permanent alternate schema: it is removed once direct v0.2.0
-upgrade/rollback is no longer supported.
+entry missing `record-key` fails semantic validation. While the shipped
+aggregate sink is present, the complete four-entry legacy base also resolves
+the shipped `ioc_aggregate` identity; partial or modified legacy definitions do
+not receive this compatibility. Once v0.2.0 is no longer a rollback target,
+merge all explicit current definitions from `application.yml.new` through
+`ioc-config apply`; do not keep the compatibility shape as a template for new
+artifacts. This adapter is release-transition code, not a permanent alternate
+schema: it is removed once direct v0.2.0 upgrade/rollback is no longer supported.
 
 ## Managed dataframe import
 
@@ -260,7 +381,8 @@ longest producer-side non-atomic copy interval.
 | `ioc.dataframe-import.contracts[].mode` | `as-is`, `processed` | required | No implicit preprocessing in `as-is`. |
 | `ioc.dataframe-import.contracts[].routing` | `target-only`, `related-artifacts` | required | Related mappings also require source authority. |
 | `ioc.dataframe-import.contracts[].row-failure-policy` | `accept-valid`, `reject-delivery` | required | Selects row isolation versus whole-delivery rejection. |
-| `ioc.dataframe-import.contracts[].duplicate-policy` | `coalesce`, `keep-first` | required | Deterministic within-delivery duplicate handling. |
+| `ioc.dataframe-import.contracts[].duplicate-policy` | `coalesce`, `keep-first`, `last-nonempty` | required | Deterministic within-delivery duplicate handling; `last-nonempty` keeps the last logical CSV record with a nonblank selection value. |
+| `ioc.dataframe-import.contracts[].duplicate-selection-column` | recognized header | required for `last-nonempty` | Column used only to select the winning whole record; it does not merge cells across duplicate rows. |
 | `ioc.dataframe-import.contracts[].renew-unchanged` | boolean | required | Whether an accepted exact no-op confirms lifecycle validity. |
 | `ioc.dataframe-import.contracts[].formula-policy` | `reject`, `machine-only-preserve` | required | Preservation requires explicit source authority. |
 | `ioc.dataframe-import.contracts[].merge-default` | `keep-existing`, `fill-missing`, `replace-non-null`, `authoritative`, `reject-conflict` | required | Column/artifact overrides cannot exceed the source ceiling. |
@@ -270,11 +392,14 @@ longest producer-side non-atomic copy interval.
 | `ioc.dataframe-import.contracts[].artifacts[].record-key` | identity definition ID | required | Must equal the artifact's active declared record key. |
 | `ioc.dataframe-import.contracts[].artifacts[].match-keys` | identity definition ID list | required | Every name must exist for that artifact. |
 | `ioc.dataframe-import.contracts[].artifacts[].merge-default` | merge policy | optional | Artifact override below the source ceiling. |
+| `ioc.dataframe-import.contracts[].artifacts[].source-label-target` | target column | optional | Receives the configured managed-source label for processed imports; the target must be mapped by this branch. |
+| `ioc.dataframe-import.contracts[].artifacts[].exactly-one-nonempty` | target-column list | empty | Requires exactly one listed carrier after mapping; used to reject ambiguous or all-empty IOC aggregate rows. |
 | `ioc.dataframe-import.contracts[].artifacts[].columns` | mapping list | required | Target/source and ordered registered transforms; arbitrary code or SQL is not allowed. |
 | `ioc.dataframe-import.contracts[].artifacts[].columns[].target` | artifact column | required | Unique target within the artifact branch. |
 | `ioc.dataframe-import.contracts[].artifacts[].columns[].source` | recognized header | required | Required or optional canonical input header. |
 | `ioc.dataframe-import.contracts[].artifacts[].columns[].transforms` | ordered transform list | empty | Registered transform specifications only. |
 | `ioc.dataframe-import.contracts[].artifacts[].columns[].merge-policy` | merge policy | optional | Column override below the source ceiling. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns[].validation` | registered validator | optional | After transforms: `bare-ip`, `url-address`, `clean-domain`, `network-address`, `hash`, `md5`, `sha1`, `sha256`, or `canonical-integer`. Checks values without rewriting cells; NULL/ABSENT bypass value validation. |
 | `ioc.dataframe-import.contracts[].requested-slot` | optional mapping | omitted | Only artifacts with an external ID and a containing stable-slot export profile may use it. |
 | `ioc.dataframe-import.contracts[].requested-slot.source-column` | recognized header | required when present | Positive requested external slot, never canonical identity. |
 | `ioc.dataframe-import.contracts[].requested-slot.profile` | export profile | required when present | Scopes the external slot. |
@@ -363,11 +488,15 @@ baseline for SQLite and deterministic file handling.
 | `ioc.ingestion.detect.reconcile-interval` | positive duration | `30s` | Full directory scan cadence with the default polling mode; with WatchService it is the event/retry-queue poll cadence. Lower values reduce latency but increase scanning or wakeups. |
 | `ioc.ingestion.detect.max-messages-per-poll` | positive integer | `50` | Bounds work claimed per detection cycle. |
 | `ioc.ingestion.stability.quiet-period` | positive duration | `10s` | Increase for slow copies; too small risks reading an incomplete file. |
-| `ioc.ingestion.retry.max-attempts` | positive integer | `3` | Attempts before moving a file to failed. |
+| `ioc.ingestion.retry.max-attempts` | positive integer | `3` | Verified-key failures become rejected after exhaustion; pre-hash failures retain blocked ownership for investigation. |
 | `ioc.ingestion.retry.backoff` | positive duration | `5s` | Delay between local ingestion retries. |
 | `ioc.ingestion.ledger.type` | `file`, `jdbc` | `file` | Use `jdbc` when durable run-ledger integration is required; follow the deployment baseline. |
 | `ioc.ingestion.ledger.path` | path | `./var/ledger` | Filesystem ledger location when type is `file`. |
-| `ioc.ingestion.concurrency` | integer, exactly `1` | `1` | Parallel ingestion is not supported in 0.3.0. Startup rejects any other value instead of silently ignoring it. |
+| `ioc.ingestion.concurrency` | integer, exactly `1` | `1` | Single detection/claim path. Bounded parallel preparation is configured separately below; canonical promotion stays serial. |
+
+Document execution admission (`ioc.ingestion.execution`) bounds private work: `ioc.ingestion.execution.preparation-workers` (1–2), `ioc.ingestion.execution.window` (queued/running/ready preparations), `ioc.ingestion.execution.max-pending-documents`, `ioc.ingestion.execution.max-pending-source-bytes`, and `ioc.ingestion.execution.max-source-bytes`. Saturated input stays in the inbox for a later complete listing. Defaults are 2 workers, 4 preparations, 64 pending documents, 4 GiB pending source bytes and 512 MiB per source. Canonical promotion remains serial in durable admission order.
+
+Preparation and claim sealing enforce the admitted byte allowance during copying. The `dataProcessingCapacity` health view reports saturation, blocked ownership and writer/readers. Exhausted pre-hash work remains owned in processing; preserve its token, journal and databases for investigation rather than moving it back into intake. Service schema v14 requires a stopped-service backup of both databases and owned files before upgrade; rollback requires restoring that backup.
 
 ## Canonical lifecycle runtime safety
 

@@ -1,6 +1,8 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import com.iocextractor.common.IocExtractorException;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -10,10 +12,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Timeout(20)
 class JdbcWriterAdmissionTest {
 
     @Test
@@ -80,6 +84,98 @@ class JdbcWriterAdmissionTest {
 
         assertThat(admission.fair()).isTrue();
         assertThat(admitted).containsExactlyElementsOf(families);
+    }
+
+    @Test
+    void interruptedWaiterNeverRunsWorkAndDoesNotPreventFreshAdmission() throws Exception {
+        JdbcWriterAdmission admission = new JdbcWriterAdmission();
+        CountDownLatch holderEntered = new CountDownLatch(1);
+        CountDownLatch releaseHolder = new CountDownLatch(1);
+        AtomicReference<Thread> waitingThread = new AtomicReference<>();
+        AtomicInteger cancelledWork = new AtomicInteger();
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> holder = executor.submit(() -> admission.execute(() -> {
+                holderEntered.countDown();
+                await(releaseHolder);
+                return null;
+            }));
+            assertThat(holderEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<Boolean> waiter = executor.submit(() -> {
+                waitingThread.set(Thread.currentThread());
+                try {
+                    admission.execute(cancelledWork::incrementAndGet);
+                    throw new AssertionError("Interrupted waiter was admitted");
+                } catch (IocExtractorException failure) {
+                    assertThat(failure).hasCauseInstanceOf(InterruptedException.class);
+                    return Thread.currentThread().isInterrupted();
+                }
+            });
+            awaitQueueDepth(admission, 1);
+            waitingThread.get().interrupt();
+            assertThat(waiter.get(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(cancelledWork).hasValue(0);
+            releaseHolder.countDown();
+            holder.get(5, TimeUnit.SECONDS);
+            assertThat(admission.execute(() -> "fresh attempt")).isEqualTo("fresh attempt");
+        } finally {
+            releaseHolder.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    @Test
+    void agedMaintenanceRunsBeforeFreshControlAndFreshPriorityAppliesAtBoundaries() throws Exception {
+        var time = new java.util.concurrent.atomic.AtomicLong();
+        var admission = new JdbcWriterAdmission(time::get);
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        List<String> order = Collections.synchronizedList(new ArrayList<>());
+        var workers = Executors.newFixedThreadPool(6);
+        try {
+            var holder = workers.submit(() -> admission.execute(() -> { entered.countDown(); await(release); return null; }));
+            assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+            var old = workers.submit(() -> admission.execute(JdbcWriterAdmission.OperationClass.MAINTENANCE,
+                    () -> { order.add("aged"); return null; }));
+            awaitQueueDepth(admission, 1);
+            time.set(TimeUnit.MILLISECONDS.toNanos(101));
+            var promotion = workers.submit(() -> admission.execute(JdbcWriterAdmission.OperationClass.PROMOTION,
+                    () -> { order.add("promotion"); return null; }));
+            awaitQueueDepth(admission, 2);
+            var control = workers.submit(() -> admission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
+                    () -> { order.add("control"); return null; }));
+            awaitQueueDepth(admission, 3);
+            var slots = workers.submit(() -> admission.execute(JdbcWriterAdmission.OperationClass.EXPORT_SLOTS,
+                    () -> { order.add("slots"); return null; }));
+            awaitQueueDepth(admission, 4);
+            var expiry = workers.submit(() -> admission.execute(JdbcWriterAdmission.OperationClass.EXPIRY,
+                    () -> { order.add("expiry"); return null; }));
+            awaitQueueDepth(admission, 5);
+            release.countDown();
+            for (var task : List.of(holder, old, promotion, control, slots, expiry)) { task.get(5, TimeUnit.SECONDS); }
+            assertThat(order).containsExactly("aged", "control", "expiry", "slots", "promotion");
+            assertThat(admission.snapshot().get(JdbcWriterAdmission.OperationClass.MAINTENANCE).maximumWaitNanos())
+                    .isEqualTo(TimeUnit.MILLISECONDS.toNanos(101));
+        } finally {
+            release.countDown();
+            workers.shutdownNow();
+            assertThat(workers.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    @Test
+    void nestedControlAndFailedWorkReleaseTheAtomicOwnerWithOneOuterMeasurement() {
+        var admission = new JdbcWriterAdmission();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> admission.execute(() ->
+                admission.execute(JdbcWriterAdmission.OperationClass.CONTROL, () -> {
+                    throw new IllegalStateException("rollback");
+                }))).hasMessage("rollback");
+        assertThat(admission.execute(JdbcWriterAdmission.OperationClass.CONTROL, () -> "available"))
+                .isEqualTo("available");
+        assertThat(admission.queuedWriters()).isZero();
+        assertThat(admission.snapshot().get(JdbcWriterAdmission.OperationClass.PROMOTION).completed()).isOne();
+        assertThat(admission.snapshot().get(JdbcWriterAdmission.OperationClass.CONTROL).completed()).isOne();
     }
 
     private Void admitted(JdbcWriterAdmission admission,

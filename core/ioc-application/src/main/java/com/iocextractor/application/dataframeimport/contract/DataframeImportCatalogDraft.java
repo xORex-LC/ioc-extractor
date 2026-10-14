@@ -124,6 +124,7 @@ public record DataframeImportCatalogDraft(
      * @param routing target-only or related-artifact routing
      * @param rowFailurePolicy partial/strict row failure behavior
      * @param duplicatePolicy within-delivery duplicate behavior
+     * @param duplicateSelectionColumn target column used by last-nonempty selection
      * @param renewUnchanged whether accepted unchanged observations renew lifecycle validity
      * @param formulaPolicy spreadsheet-formula policy
      * @param mergeDefault default field merge policy
@@ -139,14 +140,41 @@ public record DataframeImportCatalogDraft(
                            ImportRoutingPolicy routing,
                            ImportRowFailurePolicy rowFailurePolicy,
                            ImportDuplicatePolicy duplicatePolicy,
+                           String duplicateSelectionColumn,
                            boolean renewUnchanged,
                            ImportFormulaPolicy formulaPolicy,
                            ImportMergePolicy mergeDefault,
                            List<Artifact> artifacts,
-                           RequestedSlot requestedSlot) {
+                           RequestedSlot requestedSlot,
+                           ProcessedRoute processedRoute) {
         /** Snapshots artifact mappings. */
         public Contract {
             artifacts = snapshotList(artifacts);
+        }
+
+        /** Compatibility constructor for contracts without an explicit IOC route. */
+        public Contract(String id, int version, String charset, Dialect dialect,
+                        Recognition recognition, ImportProcessingMode mode,
+                        ImportRoutingPolicy routing, ImportRowFailurePolicy rowFailurePolicy,
+                        ImportDuplicatePolicy duplicatePolicy, String duplicateSelectionColumn,
+                        boolean renewUnchanged, ImportFormulaPolicy formulaPolicy,
+                        ImportMergePolicy mergeDefault, List<Artifact> artifacts,
+                        RequestedSlot requestedSlot) {
+            this(id, version, charset, dialect, recognition, mode, routing, rowFailurePolicy,
+                    duplicatePolicy, duplicateSelectionColumn, renewUnchanged, formulaPolicy,
+                    mergeDefault, artifacts, requestedSlot, null);
+        }
+
+        /** Compatibility constructor for contracts using coalesce or keep-first. */
+        public Contract(String id, int version, String charset, Dialect dialect,
+                        Recognition recognition, ImportProcessingMode mode,
+                        ImportRoutingPolicy routing, ImportRowFailurePolicy rowFailurePolicy,
+                        ImportDuplicatePolicy duplicatePolicy, boolean renewUnchanged,
+                        ImportFormulaPolicy formulaPolicy, ImportMergePolicy mergeDefault,
+                        List<Artifact> artifacts, RequestedSlot requestedSlot) {
+            this(id, version, charset, dialect, recognition, mode, routing, rowFailurePolicy,
+                    duplicatePolicy, null, renewUnchanged, formulaPolicy, mergeDefault,
+                    artifacts, requestedSlot, null);
         }
 
         /** Returns the immutable artifact-mapping snapshot. */
@@ -154,6 +182,23 @@ public record DataframeImportCatalogDraft(
         public List<Artifact> artifacts() {
             return readOnly(artifacts);
         }
+    }
+
+    /** Compiled-contract source and destination bindings for processed IOC input. */
+    public record ProcessedRoute(String plan, List<RouteInput> inputs, List<RouteOutput> outputs) {
+        public ProcessedRoute {
+            inputs = snapshotList(inputs);
+            outputs = snapshotList(outputs);
+        }
+        @Override public List<RouteInput> inputs() { return readOnly(inputs); }
+        @Override public List<RouteOutput> outputs() { return readOnly(outputs); }
+    }
+
+    public record RouteInput(String artifact, String target) { }
+
+    public record RouteOutput(String artifact, List<String> targets) {
+        public RouteOutput { targets = snapshotList(targets); }
+        @Override public List<String> targets() { return readOnly(targets); }
     }
 
     /**
@@ -242,17 +287,33 @@ public record DataframeImportCatalogDraft(
                            String recordKey,
                            List<String> matchKeys,
                            ImportMergePolicy mergeDefault,
+                           String sourceLabelTarget,
+                           List<String> exactlyOneNonempty,
                            List<Column> columns) {
         /** Snapshots match keys and column mappings. */
         public Artifact {
             matchKeys = snapshotList(matchKeys);
+            exactlyOneNonempty = snapshotList(exactlyOneNonempty);
             columns = snapshotList(columns);
+        }
+
+        /** Compatibility constructor for contracts without processed binding or row shape. */
+        public Artifact(String name, ImportArtifactRole role, String recordKey,
+                        List<String> matchKeys, ImportMergePolicy mergeDefault,
+                        List<Column> columns) {
+            this(name, role, recordKey, matchKeys, mergeDefault, null, null, columns);
         }
 
         /** Returns the immutable match-key snapshot. */
         @Override
         public List<String> matchKeys() {
             return readOnly(matchKeys);
+        }
+
+        /** Returns the immutable nonempty-cardinality target group. */
+        @Override
+        public List<String> exactlyOneNonempty() {
+            return readOnly(exactlyOneNonempty);
         }
 
         /** Returns the immutable column-mapping snapshot. */
@@ -273,10 +334,17 @@ public record DataframeImportCatalogDraft(
     public record Column(String target,
                          String source,
                          List<String> transforms,
-                         ImportMergePolicy mergePolicy) {
+                         ImportMergePolicy mergePolicy,
+                         String validation) {
         /** Snapshots ordered transforms. */
         public Column {
             transforms = snapshotList(transforms);
+        }
+
+        /** Compatibility constructor for columns without value validation. */
+        public Column(String target, String source, List<String> transforms,
+                      ImportMergePolicy mergePolicy) {
+            this(target, source, transforms, mergePolicy, null);
         }
 
         /** Returns the immutable ordered transform snapshot. */

@@ -9,4 +9,9 @@ public interface IndicatorExtractor {
 
     /** Extracts indicators and exposes accepted and dropped match decisions. */
     ExtractionOutcome extract(String text);
+
+    /** Streams priority-ordered decisions into admitted global overlap state. */
+    default void extract(CharSequence text, int maximumMatchCharacters, ExtractionClaims claims) {
+        throw new UnsupportedOperationException("Streaming extraction is required for document processing");
+    }
 }

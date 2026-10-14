@@ -1,5 +1,16 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
+import com.iocextractor.processing.model.ClassifiedIndicator;
+import com.iocextractor.domain.classify.ClassificationDecision;
+import com.iocextractor.domain.feature.HostKind;
+import com.iocextractor.domain.feature.DefaultIndicatorFeatureExtractor;
+import com.iocextractor.domain.feature.DefaultIndicatorNormalizer;
+import com.iocextractor.domain.feature.IndicatorFeatures;
+import com.iocextractor.domain.model.Indicator;
+import com.iocextractor.domain.model.IndicatorType;
+import com.iocextractor.domain.model.MaskMatch;
+import com.iocextractor.domain.model.SourceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.boot.context.properties.bind.Bindable;
@@ -10,11 +21,36 @@ import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.io.ClassPathResource;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class IocPropertiesTest {
+
+    @Test
+    void parserAndFieldLimitsInvalidatePreparationIdentityWhileOperationalBudgetsDoNot() throws Exception {
+        IocProperties defaults = bind(Map.of());
+        IocProperties constrained = bind(Map.of(
+                "ioc.processing.workspace.memory-bytes", "2097152",
+                "ioc.processing.workspace.cache-kib", "64",
+                "ioc.processing.workspace.maximum-row-bytes", "4096",
+                "ioc.processing.workspace.maximum-field-bytes", "2048",
+                "ioc.processing.workspace.batch-rows", "2",
+                "ioc.processing.workspace.retention", "2h"));
+        assertThat(constrained.processing().workspace().cacheKib()).isEqualTo(64);
+        assertThat(constrained.processing().workspace().retention()).isEqualTo(java.time.Duration.ofHours(2));
+        assertThat(constrained.processing().workspace().isBudgetValid()).isTrue();
+        assertThat(ProcessingPolicyFingerprint.from(constrained)).isNotEqualTo(ProcessingPolicyFingerprint.from(defaults));
+        IocProperties operational = bind(Map.of("ioc.processing.workspace.cache-kib", "2048",
+                "ioc.processing.workspace.batch-rows", "2", "ioc.processing.workspace.retention", "2h"));
+        assertThat(ProcessingPolicyFingerprint.from(operational)).isEqualTo(ProcessingPolicyFingerprint.from(defaults));
+        IocProperties invalid = bind(Map.of("ioc.processing.workspace.memory-bytes", "1"));
+        assertThat(invalid.processing().workspace().isBudgetValid()).isFalse();
+    }
 
     @Test
     void defaultConfigurationBindsPipelineDedup() throws Exception {
@@ -24,6 +60,265 @@ class IocPropertiesTest {
         assertThat(properties.pipeline().failurePolicy()).isEqualTo(PipelineFailurePolicy.FAIL_FAST);
         assertThat(properties.pipeline().maxDiagnosticsPerRun()).isEqualTo(10_000);
         assertThat(properties.ingestion().detect().useWatchService()).isFalse();
+    }
+
+    @Test
+    void artifactPoliciesCompileLegacyAndLatestRegisteredBehavior() throws Exception {
+        IocProperties defaults = bind(Map.of());
+
+        assertThat(ArtifactPolicyCatalog.hasEnabledOrderedFields(defaults)).isTrue();
+        assertThat(ArtifactPolicyCatalog.compile(defaults).get("masks"))
+                .isEqualTo(ArtifactWritePolicy.keepFirst());
+        assertThat(ArtifactPolicyCatalog.compile(defaults).get("ioc_aggregate"))
+                .satisfies(policy -> {
+                    assertThat(policy.duplicateSelection())
+                            .isEqualTo(ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY);
+                    assertThat(policy.selectionColumn()).isEqualTo("name");
+                    assertThat(policy.fields()).containsEntry(
+                            "name", ArtifactWritePolicy.FieldUpdatePolicy.LATEST_REGISTERED_KEEP_EXISTING);
+                });
+
+        var field = new IocProperties.Sink.Artifact.WritePolicy.Field(
+                "source", "latest-registered", "keep-existing");
+        var configured = new IocProperties.Sink.Artifact.WritePolicy(
+                "last-nonempty", "source", List.of(field));
+        IocProperties properties = withMasksPolicy(defaults, configured);
+
+        assertThat(ArtifactPolicyCatalog.compile(properties).get("masks"))
+                .satisfies(policy -> {
+                    assertThat(policy.duplicateSelection())
+                            .isEqualTo(ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY);
+                    assertThat(policy.selectionColumn()).isEqualTo("source");
+                    assertThat(policy.fields()).containsEntry(
+                            "source", ArtifactWritePolicy.FieldUpdatePolicy.LATEST_REGISTERED_KEEP_EXISTING);
+                });
+    }
+
+    @Test
+    void disabledOrderedArtifactLeavesLegacyAdmissionAvailable() throws Exception {
+        IocProperties defaults = bind(Map.of());
+        List<IocProperties.Sink.Artifact> artifacts = defaults.sink().artifacts().stream()
+                .map(artifact -> "ioc_aggregate".equals(artifact.name())
+                        ? new IocProperties.Sink.Artifact(
+                                artifact.name(), false, artifact.path(), artifact.accepts(),
+                                artifact.include(), artifact.exclude(), artifact.id(),
+                                artifact.columns(), artifact.writePolicy())
+                        : artifact)
+                .toList();
+        IocProperties disabled = withCatalogs(defaults,
+                new IocProperties.Sink(defaults.sink().csv(), artifacts),
+                defaults.artifactIdentity());
+
+        assertThat(ArtifactPolicyCatalog.hasEnabledOrderedFields(disabled)).isFalse();
+        assertThat(ArtifactPolicyCatalog.hasEnabledOrderedFields(
+                withCatalogs(defaults, null, defaults.artifactIdentity()))).isFalse();
+    }
+
+    @Test
+    void artifactPolicyCompilationReportsEveryInvalidOperatorChoice() throws Exception {
+        IocProperties defaults = bind(Map.of());
+        var invalidField = new IocProperties.Sink.Artifact.WritePolicy.Field(
+                "mask", "replace", "erase");
+        var invalid = new IocProperties.Sink.Artifact.WritePolicy(
+                "newest", "mask", List.of(invalidField, invalidField));
+
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(withMasksPolicy(defaults, invalid)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContainingAll(
+                        "duplicate-selection must be keep-first or last-nonempty",
+                        "selection-column cannot be an identity",
+                        "fields[0].name cannot be an identity",
+                        "fields[0].update must be latest-registered",
+                        "fields[0].empty must be keep-existing",
+                        "fields[1].name is duplicated");
+    }
+
+    @Test
+    void artifactPolicyCompilationRejectsSelectionAndFieldBoundaryCases() throws Exception {
+        IocProperties defaults = bind(Map.of());
+        var keepFirstWithSelection = new IocProperties.Sink.Artifact.WritePolicy(
+                "keep-first", "source", null);
+        var lastNonemptyWithoutSelection = new IocProperties.Sink.Artifact.WritePolicy(
+                "last-nonempty", null, null);
+        var unknownField = new IocProperties.Sink.Artifact.WritePolicy(
+                "keep-first", null, List.of(new IocProperties.Sink.Artifact.WritePolicy.Field(
+                "unknown", "latest-registered", "keep-existing")));
+
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(
+                withMasksPolicy(defaults, keepFirstWithSelection)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("selection-column is only valid for last-nonempty");
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(
+                withMasksPolicy(defaults, lastNonemptyWithoutSelection)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("selection-column must name an output column");
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(
+                withMasksPolicy(defaults, unknownField)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("fields[0].name must name an output column");
+    }
+
+    @Test
+    void occurrenceOrFieldPolicyRequiresCanonicalIdentity() throws Exception {
+        IocProperties defaults = bind(Map.of());
+        var field = new IocProperties.Sink.Artifact.WritePolicy.Field(
+                "source", "latest-registered", "keep-existing");
+        var policy = new IocProperties.Sink.Artifact.WritePolicy(
+                "last-nonempty", "source", List.of(field));
+        IocProperties configured = withMasksPolicy(defaults, policy);
+        IocProperties withoutIdentities = withCatalogs(
+                configured,
+                configured.sink(),
+                new IocProperties.ArtifactIdentity(List.of()));
+
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(withoutIdentities))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires a nonempty artifact identity");
+    }
+
+    @Test
+    void aggregateNetworkConditionsSeparateCleanHostsFromDetailedAddresses() {
+        var conditions = ConfigRegistryCatalog.artifactFilters();
+        var cleanDomain = classified("example.org", IndicatorType.DOMAIN, false, false, false);
+        var domainPath = classified("example.org/file", IndicatorType.DOMAIN, false, true, false);
+        var fullUrl = classified("https://example.org/file", IndicatorType.URL, false, true, false);
+        var ipPort = classified("192.0.2.1:8443", IndicatorType.IPV4, true, false, false);
+        var domainQuery = classified("example.org?id=1", IndicatorType.DOMAIN, false, false, true);
+        var hashWithDetailFeatures = classified("deadbeef", IndicatorType.MD5, true, true, true);
+        var fragmentIp = new Indicator("192.0.2.44#section", IndicatorType.IPV4,
+                new SourceContext(null, null));
+        var fragmentFeatures = new DefaultIndicatorFeatureExtractor(new DefaultIndicatorNormalizer(),
+                host -> HostKind.IP).extract(fragmentIp);
+        var fragmentClassified = new ClassifiedIndicator(fragmentIp,
+                new ClassificationDecision(fragmentFeatures, 0, List.of(), new MaskMatch(null, null)));
+
+        assertThat(conditions.get("is-clean-host").test(cleanDomain)).isTrue();
+        assertThat(conditions.get("is-clean-host").test(domainPath)).isFalse();
+        assertThat(conditions.get("is-clean-host").test(fullUrl)).isFalse();
+        assertThat(conditions.get("is-address-with-detail").test(fullUrl)).isTrue();
+        assertThat(conditions.get("is-address-with-detail").test(domainPath)).isTrue();
+        assertThat(conditions.get("is-address-with-detail").test(ipPort)).isTrue();
+        assertThat(conditions.get("is-address-with-detail").test(domainQuery)).isTrue();
+        assertThat(conditions.get("is-address-with-detail").test(cleanDomain)).isFalse();
+        assertThat(conditions.get("is-address-with-detail").test(hashWithDetailFeatures)).isFalse();
+        assertThat(conditions.get("is-bare-ip").test(fragmentClassified)).isFalse();
+        assertThat(conditions.get("is-address-with-detail").test(fragmentClassified)).isTrue();
+        assertThat(ConfigRegistryCatalog.valueProviders().get("address.ip").provide(fragmentClassified))
+                .isNull();
+        assertThat(ConfigRegistryCatalog.valueProviders().get("address.url").provide(fragmentClassified))
+                .isEqualTo("192.0.2.44#section");
+    }
+
+    @Test
+    void artifactPolicyCatalogHandlesAbsentOptionalCatalogSections() throws Exception {
+        IocProperties defaults = bind(Map.of());
+
+        assertThat(ArtifactPolicyCatalog.compile(withCatalogs(defaults, null, defaults.artifactIdentity())))
+                .isEmpty();
+        assertThat(ArtifactPolicyCatalog.compile(withCatalogs(defaults,
+                new IocProperties.Sink(defaults.sink().csv(), null), defaults.artifactIdentity())))
+                .isEmpty();
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(
+                withCatalogs(defaults, defaults.sink(), null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires a nonempty artifact identity");
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(withCatalogs(defaults, defaults.sink(),
+                new IocProperties.ArtifactIdentity(null))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires a nonempty artifact identity");
+    }
+
+    @Test
+    void artifactPolicyCatalogHandlesPartiallyInvalidCollectAllModels() throws Exception {
+        IocProperties defaults = bind(Map.of());
+        IocProperties.Sink.Artifact masks = defaults.sink().artifacts().getFirst();
+        var keepFirst = new IocProperties.Sink.Artifact.WritePolicy("keep-first", null, null);
+
+        var incompleteArtifacts = Arrays.asList(
+                (IocProperties.Sink.Artifact) null,
+                artifactCopy(masks, null, masks.columns(), null),
+                artifactCopy(masks, "missing-columns", null, null));
+        assertThat(ArtifactPolicyCatalog.compile(withCatalogs(defaults,
+                new IocProperties.Sink(defaults.sink().csv(), incompleteArtifacts),
+                defaults.artifactIdentity())))
+                .isEmpty();
+
+        var columnsWithNull = new ArrayList<IocProperties.Sink.Artifact.Column>();
+        columnsWithNull.add(null);
+        columnsWithNull.add(masks.columns().get(1));
+        var nullColumnArtifact = artifactCopy(masks, "null-column", columnsWithNull, keepFirst);
+        assertThat(ArtifactPolicyCatalog.compile(withCatalogs(defaults,
+                new IocProperties.Sink(defaults.sink().csv(), List.of(nullColumnArtifact)), null)))
+                .containsKey("null-column");
+
+        var incompleteIdentities = Arrays.asList(
+                (IocProperties.ArtifactIdentity.Artifact) null,
+                new IocProperties.ArtifactIdentity.Artifact(null, List.of("mask"), null, null, null, null),
+                new IocProperties.ArtifactIdentity.Artifact(
+                        "missing-keys", null, null, null, null, null));
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(withCatalogs(defaults, defaults.sink(),
+                new IocProperties.ArtifactIdentity(incompleteIdentities))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires a nonempty artifact identity");
+
+        var fieldsWithMissingNames = Arrays.asList(
+                (IocProperties.Sink.Artifact.WritePolicy.Field) null,
+                new IocProperties.Sink.Artifact.WritePolicy.Field(
+                        null, "latest-registered", "keep-existing"));
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(withMasksPolicy(defaults,
+                new IocProperties.Sink.Artifact.WritePolicy(
+                        "keep-first", null, fieldsWithMissingNames))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("name must name an output column");
+
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(withMasksPolicy(defaults,
+                new IocProperties.Sink.Artifact.WritePolicy(
+                        "last-nonempty", "unknown", null))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("selection-column must name an output column");
+
+        var idField = new IocProperties.Sink.Artifact.WritePolicy.Field(
+                "id", "latest-registered", "keep-existing");
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(withMasksPolicy(defaults,
+                new IocProperties.Sink.Artifact.WritePolicy(
+                        "last-nonempty", "id", List.of(idField)))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("identity or public ID column");
+    }
+
+    private IocProperties withMasksPolicy(
+            IocProperties source,
+            IocProperties.Sink.Artifact.WritePolicy writePolicy) {
+        List<IocProperties.Sink.Artifact> artifacts = new ArrayList<>(source.sink().artifacts());
+        IocProperties.Sink.Artifact masks = artifacts.getFirst();
+        artifacts.set(0, new IocProperties.Sink.Artifact(
+                masks.name(), masks.enabled(), masks.path(), masks.accepts(), masks.include(),
+                masks.exclude(), masks.id(), masks.columns(), writePolicy));
+        return new IocProperties(
+                source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
+                source.patterns(), source.classify(), new IocProperties.Sink(source.sink().csv(), artifacts),
+                source.pipeline(), source.ingestion(), source.artifactIdentity(), source.dataframeImport(),
+                source.export(), source.sync(), source.maintenance(), source.lifecycle(), source.observability(), source.processing());
+    }
+
+    private IocProperties withCatalogs(IocProperties source,
+                                       IocProperties.Sink sink,
+                                       IocProperties.ArtifactIdentity artifactIdentity) {
+        return new IocProperties(
+                source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
+                source.patterns(), source.classify(), sink, source.pipeline(), source.ingestion(),
+                artifactIdentity, source.dataframeImport(), source.export(), source.sync(), source.maintenance(),
+                source.lifecycle(), source.observability(), source.processing());
+    }
+
+    private IocProperties.Sink.Artifact artifactCopy(
+            IocProperties.Sink.Artifact source,
+            String name,
+            List<IocProperties.Sink.Artifact.Column> columns,
+            IocProperties.Sink.Artifact.WritePolicy writePolicy) {
+        return new IocProperties.Sink.Artifact(
+                name, source.enabled(), source.path(), source.accepts(), source.include(), source.exclude(),
+                source.id(), columns, writePolicy);
     }
 
     private IocProperties bind(Map<String, Object> overrides) throws Exception {
@@ -38,5 +333,14 @@ class IocPropertiesTest {
         return new Binder(ConfigurationPropertySources.from(sources), null, conversionService)
                 .bind("ioc", Bindable.of(IocProperties.class))
                 .orElseThrow(() -> new IllegalStateException("default ioc properties did not bind"));
+    }
+
+    private ClassifiedIndicator classified(String value, IndicatorType type,
+                                            boolean hasPort, boolean hasPath, boolean hasQuery) {
+        var indicator = new Indicator(value, type, new SourceContext(null, null));
+        HostKind hostKind = type == IndicatorType.IPV4 ? HostKind.IP : HostKind.REGISTRABLE;
+        var features = new IndicatorFeatures(value, value, hasPort, hasPath, hasQuery, hostKind);
+        return new ClassifiedIndicator(indicator,
+                new ClassificationDecision(features, -1, List.of(), new MaskMatch(null, null)));
     }
 }

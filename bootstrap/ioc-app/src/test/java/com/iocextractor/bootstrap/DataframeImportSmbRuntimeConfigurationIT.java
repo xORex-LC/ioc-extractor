@@ -62,6 +62,47 @@ class DataframeImportSmbRuntimeConfigurationIT {
                 });
     }
 
+    @Test
+    void admitsConfiguredImportValidatorsAndRejectsUnknownReferences() {
+        new ApplicationContextRunner()
+                .withInitializer(DataframeImportSmbRuntimeConfigurationIT::addDefaultYaml)
+                .withUserConfiguration(TestConfig.class)
+                .withPropertyValues(properties(tempDir))
+                .withPropertyValues("ioc.dataframe-import.contracts[0].artifacts[0].columns[0].validation=network-address")
+                .run(context -> assertThat(context).hasNotFailed());
+        new ApplicationContextRunner()
+                .withInitializer(DataframeImportSmbRuntimeConfigurationIT::addDefaultYaml)
+                .withUserConfiguration(TestConfig.class)
+                .withPropertyValues(properties(tempDir))
+                .withPropertyValues("ioc.dataframe-import.contracts[0].artifacts[0].columns[0].validation=unknown")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void pinsImportValueValidationRevisionSeparatelyFromDocumentPolicy() {
+        new ApplicationContextRunner()
+                .withInitializer(DataframeImportSmbRuntimeConfigurationIT::addDefaultYaml)
+                .withUserConfiguration(TestConfig.class)
+                .withPropertyValues(properties(tempDir))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    var properties = context.getBean(IocProperties.class);
+                    var current = DataframeImportPropertyMapper.environment(properties);
+                    var previous = new com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogEnvironment(
+                            current.artifacts(), current.transforms(), current.validators(), current.endpoints(),
+                            ProcessingPolicyFingerprint.from(properties));
+                    var compiler = new com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogCompiler();
+                    var draft = DataframeImportPropertyMapper.draft(properties.dataframeImport());
+                    var currentCatalog = context.getBean(DataframeImportCatalog.class);
+                    var previousCatalog = compiler.compile(draft, previous).catalog().orElseThrow();
+
+                    assertThat(currentCatalog.fingerprint()).isNotEqualTo(previousCatalog.fingerprint());
+                    assertThat(currentCatalog.contracts()).allSatisfy((id, contract) ->
+                            assertThat(contract.fingerprint())
+                                    .isNotEqualTo(previousCatalog.contracts().get(id).fingerprint()));
+                });
+    }
+
     private String[] properties(Path root) {
         return new String[] {
                 "ioc.dataframe-import.enabled=true",
@@ -91,12 +132,16 @@ class DataframeImportSmbRuntimeConfigurationIT {
                 "ioc.dataframe-import.contracts[0].formula-policy=reject",
                 "ioc.dataframe-import.contracts[0].merge-default=fill-missing",
                 "ioc.dataframe-import.contracts[0].recognition.required-columns[0]=ip",
+                "ioc.dataframe-import.contracts[0].recognition.required-columns[1]=score",
                 "ioc.dataframe-import.contracts[0].artifacts[0].name=ip_list",
                 "ioc.dataframe-import.contracts[0].artifacts[0].role=primary",
                 "ioc.dataframe-import.contracts[0].artifacts[0].record-key=ip-row-v1",
                 "ioc.dataframe-import.contracts[0].artifacts[0].match-keys[0]=ip-v1",
                 "ioc.dataframe-import.contracts[0].artifacts[0].columns[0].target=ip",
                 "ioc.dataframe-import.contracts[0].artifacts[0].columns[0].source=ip",
+                "ioc.dataframe-import.contracts[0].artifacts[0].columns[1].target=score",
+                "ioc.dataframe-import.contracts[0].artifacts[0].columns[1].source=score",
+                "ioc.dataframe-import.contracts[0].artifacts[0].columns[1].validation=canonical-integer",
                 "ioc.sync.enabled=false",
                 "ioc.sync.endpoints[0].name=primary",
                 "ioc.sync.endpoints[0].transport=smb",

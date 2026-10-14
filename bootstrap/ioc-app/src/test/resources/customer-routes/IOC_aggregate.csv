@@ -1,0 +1,5 @@
+"name";"ip_address";"url_match";"host_match";"hash"
+NULL;NULL;"https://best-malware.com/troyan.exe";NULL;NULL
+NULL;NULL;"https://best-malware.com/other.exe";NULL;NULL
+NULL;NULL;"10.93.12.187:9090/clean-prometheus/noe-virus/true";NULL;NULL
+NULL;NULL;NULL;NULL;"D41D8CD98F00B204E9800998ECF8427E"

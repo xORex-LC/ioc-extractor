@@ -1,7 +1,9 @@
 package com.iocextractor.application.dataframeimport;
 
+
 import com.iocextractor.application.dataframeimport.contract.CompiledDataframeImportContract;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportRecognizer;
+import com.iocextractor.application.dataframeimport.contract.ImportRecognitionException;
 import com.iocextractor.application.dataframeimport.mapping.DataframeImportRowMapper;
 import com.iocextractor.application.dataframeimport.mapping.ImportRowMappingResult;
 import com.iocextractor.application.dataframeimport.model.ImportContractPin;
@@ -47,19 +49,47 @@ public final class DataframeImportStagingService implements DataframeImportStage
     /** Strictly recognizes, maps and disk-stages one immutable delivery snapshot. */
     @Override
     public ImportStagingResult stage(ImportStagingCommand command) {
+        return stageRecognized(command, recognize(command), null);
+    }
+
+    @Override
+    public ImportStagingResult stagePinned(ImportStagingCommand command, ImportContractPin expected) {
+        Objects.requireNonNull(expected, "expected");
+        CompiledDataframeImportContract contract;
+        try {
+            contract = recognize(command);
+        } catch (ImportRecognitionException failure) {
+            throw new DataframeImportConsistencyException(
+                    "Pinned import contract is unavailable after restart", failure);
+        }
+        return stageRecognized(command, contract, expected);
+    }
+
+    private CompiledDataframeImportContract recognize(ImportStagingCommand command) {
         Objects.requireNonNull(command, "command");
-        CompiledDataframeImportContract contract = recognizer.recognize(
+        return recognizer.recognize(
                 command.sourceId(), command.snapshot().reference(), limits.inputLimits());
+    }
+
+    private ImportStagingResult stageRecognized(ImportStagingCommand command,
+            CompiledDataframeImportContract contract, ImportContractPin expected) {
         ImportContractPin pin = new ImportContractPin(
                 contract.id(), contract.version(), contract.fingerprint());
+        if (expected != null && !pin.equals(expected)) {
+            throw new DataframeImportConsistencyException(
+                    "Pinned import contract is unavailable after restart");
+        }
         CreateImportWorkspaceCommand workspaceCommand = new CreateImportWorkspaceCommand(
                 command.deliveryId(), command.snapshot(), pin, contract.definition().duplicatePolicy(),
+                contract.definition().duplicateSelectionColumn(),
                 promotionPolicy(contract));
         try (ImportWorkspaceWriter writer = workspace.rebuild(workspaceCommand)) {
-            reader.read(new DelimitedReadCommand(
+            try (var session = mapper.openSession(contract)) {
+                reader.read(new DelimitedReadCommand(
                             command.snapshot().reference(), contract.definition().charset(), contract.dialect(),
                             contract.definition().recognition(), limits.inputLimits()),
-                    record -> append(writer, mapper.map(contract, record)));
+                        record -> append(writer, session.map(record)));
+            }
             ImportStage stage = writer.seal();
             workspace.verifySealed(workspaceCommand, stage);
             return new ImportStagingResult(pin, stage);
@@ -79,7 +109,7 @@ public final class DataframeImportStagingService implements DataframeImportStage
     }
 
     private void append(ImportWorkspaceWriter writer, ImportRowMappingResult result) {
-        result.row().ifPresentOrElse(writer::append,
+        result.row().ifPresentOrElse(row -> writer.append(row, result.warnings()),
                 () -> writer.reject(new ImportRejectedLogicalRow(
                         result.issues().getFirst().sourceRowNumber(), result.issues())));
     }

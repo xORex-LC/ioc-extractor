@@ -2,6 +2,7 @@ package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalog;
+import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
 import com.iocextractor.application.dataframeimport.model.ImportProcessingMode;
 import com.iocextractor.domain.model.IndicatorType;
 import org.junit.jupiter.api.Test;
@@ -10,6 +11,9 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.context.properties.bind.UnboundConfigurationPropertiesException;
+import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
 import org.springframework.boot.context.properties.bind.validation.BindValidationException;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -44,6 +48,24 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class IocPropertiesBindingIT {
 
     @Test
+    void documentWorkspaceConfigurationRejectsEveryInconsistentPhysicalBudgetAtStartup() {
+        for (String property : List.of(
+                "retention=0s", "retention=-1s", "maximum-row-bytes=65535",
+                "maximum-row-bytes=16777217", "workspace-bytes=65535", "total-disk-bytes=1",
+                "memory-bytes=1", "cache-kib=63", "maximum-field-bytes=0",
+                "batch-rows=0", "batch-rows=4097", "directory=")) {
+            contextRunner("ioc.processing.workspace." + property).run(context -> {
+                assertThat(context).hasFailed();
+                assertThat(fieldErrors(context.getStartupFailure()))
+                        .anySatisfy(error -> assertThat(error.getField()).startsWith("processing.workspace."));
+            });
+        }
+        var missingRetention = new IocProcessingProperties.Workspace("workspace", 67108864, 4096,
+                262144, 65536, 2147483648L, 8589934592L, 128, null);
+        assertThat(missingRetention.isBudgetValid()).isFalse();
+    }
+
+    @Test
     void defaultConfigurationBindsThroughBootValidation() {
         contextRunner().run(context -> {
             assertThat(context).hasSingleBean(IocProperties.class);
@@ -67,6 +89,25 @@ class IocPropertiesBindingIT {
             assertThat(importRetention.successful().action()).isEqualTo(RetentionActionType.DELETE);
             assertThat(context).doesNotHaveBean(DataframeImportCatalog.class);
         });
+    }
+
+    @Test
+    void bindsProcessedRouteThroughTheSharedImportContractShape() {
+        var source = new MapConfigurationPropertySource(Map.of(
+                "ioc.dataframe-import.contracts[0].processed-route.plan", "host-plan",
+                "ioc.dataframe-import.contracts[0].processed-route.inputs[0].artifact", "ip_list",
+                "ioc.dataframe-import.contracts[0].processed-route.inputs[0].target", "ip",
+                "ioc.dataframe-import.contracts[0].processed-route.outputs[0].artifact", "ip_list",
+                "ioc.dataframe-import.contracts[0].processed-route.outputs[0].targets[0]", "ip"));
+        var route = new Binder(source).bind(
+                "ioc.dataframe-import.contracts[0].processed-route",
+                Bindable.of(DataframeImportCatalogDraft.ProcessedRoute.class))
+                .orElseThrow(() -> new IllegalStateException("Processed route did not bind"));
+
+        assertThat(route.plan()).isEqualTo("host-plan");
+        assertThat(route.inputs()).containsExactly(new DataframeImportCatalogDraft.RouteInput("ip_list", "ip"));
+        assertThat(route.outputs()).containsExactly(
+                new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip")));
     }
 
     @Test
@@ -180,6 +221,31 @@ class IocPropertiesBindingIT {
     }
 
     @Test
+    void processing_fingerprint_tracks_selected_plan_and_ordered_plan_bindings() {
+        contextRunner().run(context -> {
+            IocProperties source = context.getBean(IocProperties.class);
+            var first = new IocProcessingProperties.Plan("first", List.of(), List.of(), null, List.of());
+            var second = new IocProcessingProperties.Plan("second", List.of(), List.of(), null, List.of());
+            String baseline = ProcessingPolicyFingerprint.from(source);
+            String ordered = ProcessingPolicyFingerprint.from(withProcessing(source,
+                    new IocProcessingProperties("first", List.of(first, second))));
+            String reversed = ProcessingPolicyFingerprint.from(withProcessing(source,
+                    new IocProcessingProperties("first", List.of(second, first))));
+            String selected = ProcessingPolicyFingerprint.from(withProcessing(source,
+                    new IocProcessingProperties("second", List.of(first, second))));
+
+            assertThat(ordered).isNotEqualTo(baseline).isNotEqualTo(reversed).isNotEqualTo(selected);
+        });
+    }
+
+    private static IocProperties withProcessing(IocProperties source, IocProcessingProperties processing) {
+        return new IocProperties(source.engine(), source.runtime(), source.storage(), source.source(),
+                source.refang(), source.patterns(), source.classify(), source.sink(), source.pipeline(),
+                source.ingestion(), source.artifactIdentity(), source.dataframeImport(), source.export(),
+                source.sync(), source.maintenance(), source.lifecycle(), source.observability(), processing);
+    }
+
+    @Test
     void boundConfigurationCollectionsAreImmutableSnapshots() {
         contextRunner().run(context -> {
             IocProperties properties = context.getBean(IocProperties.class);
@@ -227,7 +293,7 @@ class IocPropertiesBindingIT {
                     source.engine(), source.runtime(), source.storage(), source.source(), source.refang(), patterns,
                     source.classify(), source.sink(), source.pipeline(), source.ingestion(),
                     source.artifactIdentity(), source.dataframeImport(), source.export(), source.sync(), source.maintenance(),
-                    source.lifecycle(), source.observability());
+                    source.lifecycle(), source.observability(), source.processing());
 
             patterns.clear();
 
@@ -372,14 +438,14 @@ class IocPropertiesBindingIT {
     }
 
     @Test
-    void rejectsUnsupportedIngestionConcurrency() {
+    void rejectsParallelDetectorConcurrency() {
         contextRunner("ioc.ingestion.concurrency=2")
                 .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
                         .filteredOn(error -> "ingestion.concurrency".equals(error.getField()))
                         .singleElement()
                         .satisfies(error -> assertThat(error.getDefaultMessage())
                                 .contains("keep it at 1")
-                                .contains("parallel ingestion is not supported")));
+                                .contains("canonical promotion remains serial")));
     }
 
     @Test
@@ -508,6 +574,109 @@ class IocPropertiesBindingIT {
                 "ioc.sync.endpoints[0].smb.unknown-timeout=45s")
                 .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
                         .containsExactly("ioc.sync.endpoints[0].smb.unknown-timeout"));
+    }
+
+    @Test
+    void bindsTypedProcessingPredicateArgumentsAndFieldViews() {
+        contextRunner(
+                "ioc.processing.document-plan=network",
+                "ioc.processing.plans[0].omitted-artifacts[0]=ip_list",
+                "ioc.processing.plans[0].omitted-artifacts[1]=address_blacklist",
+                "ioc.processing.plans[0].omitted-artifacts[2]=hashes",
+                "ioc.processing.plans[0].omitted-artifacts[3]=ioc_aggregate",
+                "ioc.processing.plans[0].name=network",
+                "ioc.processing.plans[0].views[0].name=host",
+                "ioc.processing.plans[0].views[0].operation=network.host",
+                "ioc.processing.plans[0].views[0].input=original",
+                "ioc.processing.plans[0].classifications[0].view=original",
+                "ioc.processing.plans[0].classifications[0].policy=configured",
+                "ioc.processing.plans[0].classifications[1].view=host",
+                "ioc.processing.plans[0].classifications[1].policy=configured",
+                "ioc.processing.plans[0].routing.mode=all",
+                "ioc.processing.plans[0].routing.on-unmatched.action=skip",
+                "ioc.processing.plans[0].routing.branches[0].id=masks-host",
+                "ioc.processing.plans[0].routing.branches[0].artifact=masks",
+                "ioc.processing.plans[0].routing.branches[0].default-view=original",
+                "ioc.processing.plans[0].routing.branches[0].eligibility.on=original",
+                "ioc.processing.plans[0].routing.branches[0].eligibility.predicate=type-in",
+                "ioc.processing.plans[0].routing.branches[0].eligibility.arguments.types[0]=DOMAIN",
+                "ioc.processing.plans[0].routing.branches[0].field-views.mask=host")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    var branch = context.getBean(IocProperties.class).processing().plans().getFirst()
+                            .routing().branches().getFirst();
+                    assertThat(branch.eligibility().arguments().types()).containsExactly(IndicatorType.DOMAIN);
+                    assertThat(branch.fieldViews()).containsEntry("mask", "host");
+                });
+    }
+
+    @Test
+    void rejectsUnknownProcessingArgumentOnPropertySystemEnvironmentAndCliChannels() {
+        String property = "ioc.processing.plans[0].routing.branches[0].eligibility.arguments.typez";
+        contextRunner(property + "=DOMAIN")
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure())).containsExactly(property));
+        contextRunner().withSystemProperties(property + "=DOMAIN")
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure())).containsExactly(property));
+        contextRunnerWithEnvironment(Map.of("IOC_PROCESSING_DOCUMENT_PLANN", "network"))
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
+                        .containsExactly("ioc.processing.document.plann"));
+        assertThatThrownBy(() -> springApplication().run("--" + property + "=DOMAIN"))
+                .satisfies(failure -> assertThat(unboundKeys(failure)).containsExactly(property));
+    }
+
+    @Test
+    void rejectsUnknownProcessingArgumentFromYamlOverlay(@TempDir Path tempDir) throws IOException {
+        Path overlay = tempDir.resolve("application.yml");
+        Files.writeString(overlay, """
+                ioc:
+                  processing:
+                    plans:
+                      - routing:
+                          branches:
+                            - eligibility:
+                                arguments:
+                                  typez: [DOMAIN]
+                """);
+        contextRunnerWithYamlOverlay(overlay)
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
+                        .containsExactly("ioc.processing.plans[0].routing.branches[0].eligibility.arguments.typez[0]"));
+    }
+
+    @Test
+    void processingPlanListElementOverlayRequiresTheWholeReplacement(@TempDir Path tempDir)
+            throws IOException {
+        Path lower = tempDir.resolve("lower.yml");
+        Path higher = tempDir.resolve("higher.yml");
+        Files.writeString(lower, """
+                ioc:
+                  processing:
+                    plans:
+                      - name: base
+                        views: []
+                        classifications:
+                          - { view: original, policy: configured }
+                        routing:
+                          mode: all
+                          on-unmatched: { action: skip }
+                          branches:
+                            - { id: masks-original, artifact: masks, default-view: original }
+                """);
+        Files.writeString(higher, """
+                ioc:
+                  processing:
+                    plans:
+                      - name: replacement
+                """);
+
+        new ApplicationContextRunner()
+                .withInitializer(context -> {
+                    addYaml(context, "lower", new FileSystemResource(lower), false);
+                    addYaml(context, "higher", new FileSystemResource(higher), true);
+                    addDefaultApplicationYaml(context);
+                })
+                .withUserConfiguration(TestConfig.class)
+                .run(context -> assertThat(causeMessages(context.getStartupFailure()))
+                        .contains("CONFIG.REGISTRY", "ioc.processing.plans[0].routing requires"));
     }
 
     @Test
@@ -751,8 +920,11 @@ class IocPropertiesBindingIT {
     @Test
     void acceptsIdentityForDisabledButExistingArtifact() {
         contextRunner(concat(
-                sinkArtifact(0, "legacy_list", false, "value"),
-                identity(0, "legacy_list", "value")))
+                sinkArtifact(0, "masks", true, "value"),
+                sinkArtifact(1, "legacy_list", false, "value"),
+                originalDocumentPlan("masks"),
+                identity(0, "masks", "value"),
+                identity(1, "legacy_list", "value")))
                 .run(context -> assertThat(context).hasSingleBean(IocProperties.class));
     }
 
@@ -1074,9 +1246,27 @@ class IocPropertiesBindingIT {
         };
     }
 
+    private static String[] originalDocumentPlan(String artifact) {
+        String[] base = {
+                "ioc.processing.document-plan=fixture",
+                "ioc.processing.plans[0].name=fixture",
+                "ioc.processing.plans[0].views=",
+                "ioc.processing.plans[0].classifications[0].view=original",
+                "ioc.processing.plans[0].classifications[0].policy=configured",
+                "ioc.processing.plans[0].routing.mode=all",
+                "ioc.processing.plans[0].routing.on-unmatched.action=skip"
+        };
+        return concat(base, new String[] {
+                "ioc.processing.plans[0].routing.branches[0].id=fixture-output",
+                "ioc.processing.plans[0].routing.branches[0].artifact=" + artifact,
+                "ioc.processing.plans[0].routing.branches[0].default-view=original"
+        });
+    }
+
     private static String[] artifactWithIdStart(String start) {
         return concat(
                 sinkArtifact(0, "custom_list", true, "id", "value"),
+                originalDocumentPlan("custom_list"),
                 new String[] {
                         "ioc.sink.artifacts[0].id.strategy=ascending",
                         "ioc.sink.artifacts[0].id.start=" + start

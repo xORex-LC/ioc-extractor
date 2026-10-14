@@ -1,9 +1,13 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
+
 import org.springframework.beans.factory.InitializingBean;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -13,6 +17,7 @@ import java.util.stream.Collectors;
 final class ConfigRegistryPreflight implements InitializingBean {
 
     private final IocProperties props;
+    private Map<String, ProcessingPlanCatalog.CompiledPlan> processingPlans = Map.of();
 
     ConfigRegistryPreflight(IocProperties props) {
         this.props = props;
@@ -23,9 +28,64 @@ final class ConfigRegistryPreflight implements InitializingBean {
         List<String> errors = new ArrayList<>();
         validateClassifyPredicates(errors);
         validateSinkArtifacts(errors);
+        ArtifactPolicyCatalog.compile(props, errors);
+        processingPlans = ProcessingPlanCatalog.compile(props, errors);
+        if (props.processing().documentPlan() == null || props.processing().documentPlan().isBlank()) {
+            errors.add("ioc.processing.document-plan is required; configure an explicit Router plan");
+        }
+        validateImportProcessingPlans(errors);
         if (!errors.isEmpty()) {
             throw new IllegalStateException("CONFIG.REGISTRY invalid IOC configuration:\n- "
                     + String.join("\n- ", errors));
+        }
+    }
+
+    ProcessingPlanBindings processingPlanBindings() {
+        return new ProcessingPlanBindings(props.processing().documentPlan(), processingPlans);
+    }
+
+    private void validateImportProcessingPlans(List<String> errors) {
+        if (props.dataframeImport().contracts() == null) {
+            return;
+        }
+        for (int index = 0; index < props.dataframeImport().contracts().size(); index++) {
+            validateImportProcessingPlan(props.dataframeImport().contracts().get(index), index, errors);
+        }
+    }
+
+    private void validateImportProcessingPlan(IocProperties.DataframeImport.Contract contract,
+                                              int index, List<String> errors) {
+        if (contract == null) {
+            return;
+        }
+        String path = "ioc.dataframe-import.contracts[" + index + "].processed-route";
+        var route = contract.processedRoute();
+        if (route == null) {
+            if (contract.mode() == com.iocextractor.application.dataframeimport.model.ImportProcessingMode.PROCESSED) {
+                errors.add(path + " is required for mode processed; configure a named Router plan");
+            }
+            return;
+        }
+        var plan = route.plan() == null ? null : processingPlans.get(route.plan());
+        if (plan == null) {
+            errors.add(path + ".plan must reference a valid named IOC plan");
+            return;
+        }
+        if (route.outputs() == null) {
+            return;
+        }
+        Set<String> outputs = route.outputs().stream().filter(Objects::nonNull)
+                .map(DataframeImportCatalogDraft.RouteOutput::artifact)
+                .collect(Collectors.toSet());
+        List<String> destinations = plan.router().routing().branches().stream()
+                .map(com.iocextractor.adapter.processing.camel.contract.PlanDescriptor.Branch::destination)
+                .collect(Collectors.toCollection(ArrayList::new));
+        if (plan.router().routing().defaultBranch() != null) {
+            destinations.add(plan.router().routing().defaultBranch().destination());
+        }
+        if (destinations.size() != Set.copyOf(destinations).size()
+                || !Set.copyOf(destinations).equals(outputs)) {
+            errors.add(path + " must bind exactly one branch per authorized output artifact");
         }
     }
 
@@ -68,7 +128,25 @@ final class ConfigRegistryPreflight implements InitializingBean {
             validateArtifactFilters(errors, artifactFilters, artifact.exclude(),
                     "ioc.sink.artifacts[%d].exclude".formatted(artifactIndex),
                     "use a registered artifact exclude predicate");
-            validateColumns(errors, valueProviders, transforms, artifact.columns(), artifactIndex);
+            validateColumns(errors, valueProviders, transforms, artifactFilters,
+                    artifact.columns(), artifactIndex);
+            validateSourceLabelBinding(errors, artifact.columns(), artifactIndex);
+        }
+    }
+
+    private void validateSourceLabelBinding(List<String> errors,
+                                            List<IocProperties.Sink.Artifact.Column> columns,
+                                            int artifactIndex) {
+        if (columns == null) {
+            return;
+        }
+        long bindings = columns.stream()
+                .filter(Objects::nonNull)
+                .filter(column -> "source.label".equals(column.from()))
+                .count();
+        if (bindings > 1) {
+            errors.add("ioc.sink.artifacts[%d].columns has multiple source.label bindings"
+                    .formatted(artifactIndex));
         }
     }
 
@@ -88,6 +166,7 @@ final class ConfigRegistryPreflight implements InitializingBean {
     private void validateColumns(List<String> errors,
                                  Set<String> valueProviders,
                                  Set<String> transforms,
+                                 Set<String> conditions,
                                  List<IocProperties.Sink.Artifact.Column> columns,
                                  int artifactIndex) {
         if (columns == null) {
@@ -101,6 +180,7 @@ final class ConfigRegistryPreflight implements InitializingBean {
             }
             validateColumnProvider(errors, valueProviders, column, artifactIndex, columnIndex);
             validateColumnTransforms(errors, transforms, column, artifactIndex, columnIndex);
+            validateColumnGates(errors, conditions, column, artifactIndex, columnIndex);
             if ("id".equals(column.from())) {
                 idColumns++;
                 validateDeferredIdColumn(errors, column, artifactIndex, columnIndex);
@@ -120,8 +200,44 @@ final class ConfigRegistryPreflight implements InitializingBean {
         if (column.whenType() != null) {
             errors.add(path + ".when-type is not supported for the deferred 'id' provider; remove the gate");
         }
+        if (column.whenTypes() != null) {
+            errors.add(path + ".when-types is not supported for the deferred 'id' provider; remove the gate");
+        }
+        if (column.when() != null) {
+            errors.add(path + ".when is not supported for the deferred 'id' provider; remove the condition");
+        }
         if (column.transform() != null && !column.transform().isEmpty()) {
             errors.add(path + ".transform is not supported for the deferred 'id' provider; remove transforms");
+        }
+    }
+
+    private void validateColumnGates(List<String> errors,
+                                     Set<String> conditions,
+                                     IocProperties.Sink.Artifact.Column column,
+                                     int artifactIndex,
+                                     int columnIndex) {
+        String path = "ioc.sink.artifacts[%d].columns[%d]".formatted(artifactIndex, columnIndex);
+        if (column.whenType() != null && column.whenTypes() != null) {
+            errors.add(path + " cannot combine when-type with when-types");
+        }
+        if (column.whenTypes() != null) {
+            if (column.whenTypes().isEmpty() || column.whenTypes().contains(null)
+                    || Set.copyOf(column.whenTypes()).size() != column.whenTypes().size()) {
+                errors.add(path + ".when-types must be a nonempty list without nulls or duplicates");
+            }
+        }
+        if (column.when() != null) {
+            if (column.when().isEmpty()) {
+                errors.add(path + ".when must be nonempty when supplied");
+            }
+            if (!column.when().contains(null)
+                    && Set.copyOf(column.when()).size() != column.when().size()) {
+                errors.add(path + ".when must not contain duplicates");
+            }
+            for (int index = 0; index < column.when().size(); index++) {
+                rejectUnknown(errors, conditions, column.when().get(index),
+                        path + ".when[" + index + "]", "use a registered column condition");
+            }
         }
     }
 

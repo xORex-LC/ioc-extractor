@@ -68,6 +68,8 @@ smoke_oneshot() {
     [[ -s "${workspace}/dataframe/${artifact}_generated.csv" ]] \
       || dev_die "oneshot smoke did not create ${artifact}_generated.csv"
   done
+  [[ -s "${workspace}/dataframe/IOC_aggregate_generated.csv" ]] \
+    || dev_die "oneshot smoke did not create IOC_aggregate_generated.csv"
   find "${workspace}/var/export/reputation-lists" -type f -name _SUCCESS -print -quit \
     | grep -q . || dev_die "oneshot smoke did not complete an export slice"
   dev_log "oneshot storage/export smoke passed"
@@ -99,7 +101,7 @@ smoke_daemon() {
 
   for ((attempt = 1; attempt <= 30; attempt++)); do
     done_file="$(find "${workspace}/var/done" -maxdepth 1 -type f \
-      -name '*-smoke.html' -print -quit 2>/dev/null || true)"
+      -name '*smoke.html*' -print -quit 2>/dev/null || true)"
     [[ -n "${done_file}" ]] && break
     sleep 1
   done
@@ -107,6 +109,8 @@ smoke_daemon() {
     || dev_die "daemon did not archive the smoke source within 30 seconds"
   [[ -s "${workspace}/dataframe/hashes_list_generated.csv" ]] \
     || dev_die "daemon ingest did not refresh canonical projections"
+  [[ -s "${workspace}/dataframe/IOC_aggregate_generated.csv" ]] \
+    || dev_die "daemon ingest did not refresh the IOC aggregate projection"
   dev_health_ready "${port}" || dev_die "daemon became unhealthy after ingest"
   "${SCRIPT_DIR}/runtime.sh" --workspace "${workspace}" down >/dev/null
   DAEMON_SMOKE_WORKSPACE=""

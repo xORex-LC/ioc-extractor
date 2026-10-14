@@ -14,6 +14,7 @@ import com.iocextractor.application.dataframeimport.model.ImportRowFailurePolicy
 import com.iocextractor.application.dataframeimport.model.ImportSourceTransport;
 import com.iocextractor.adapter.out.store.jdbc.SqliteTuningPreset;
 import com.iocextractor.domain.classify.FeaturePredicates;
+import com.iocextractor.domain.feature.NetworkAddressParser;
 import com.iocextractor.domain.model.IndicatorType;
 import jakarta.validation.Validation;
 import org.junit.jupiter.api.Test;
@@ -78,6 +79,14 @@ class ConfigurationDocumentationContractTest {
     @Test
     void productionTemplateBindsAndPassesConfigurationPreflights() throws Exception {
         IocProperties properties = bindProductionTemplate();
+        assertThat(properties.processing().documentPlan()).isEqualTo("original-document");
+        assertThat(properties.processing().plans().getFirst().observationSelection())
+                .isEqualTo(IocProcessingProperties.ObservationSelection.RETAINED_OBSERVATIONS);
+        assertThat(properties.dataframeImport().contracts()).allSatisfy(contract -> {
+            assertThat(contract.processedRoute()).isNotNull();
+            assertThat(contract.processedRoute().plan()).isEqualTo("original-aggregate-import");
+            assertThat(contract.processedRoute().inputs()).hasSize(4);
+        });
 
         try (var validatorFactory = Validation.buildDefaultValidatorFactory()) {
             assertThat(validatorFactory.getValidator().validate(properties))
@@ -116,6 +125,14 @@ class ConfigurationDocumentationContractTest {
         assertThat(missing)
                 .as("typed fields absent from the full production template")
                 .isEmpty();
+    }
+
+    @Test
+    void optionalHostPlanIllustrationBindsAndPassesRealRegistryAdmission() throws Exception {
+        var properties = bindProductionTemplate(true);
+        var preflight = new ConfigRegistryPreflight(properties);
+        assertThatNoException().isThrownBy(preflight::afterPropertiesSet);
+        assertThat(preflight.processingPlanBindings().plans()).containsKey("masks-host-example");
     }
 
     @Test
@@ -185,6 +202,15 @@ class ConfigurationDocumentationContractTest {
         values.addAll(ConfigRegistryCatalog.valueProviderKeys());
         values.add(ConfigRegistryCatalog.CONST_VALUE_PROVIDER);
         values.addAll(ConfigRegistryCatalog.transformKeys());
+        values.addAll(ConfigRegistryCatalog.viewOperationKeys());
+        values.addAll(Set.of("view.recover", "type-in", "configured"));
+        Arrays.stream(IocProcessingProperties.Mode.values())
+                .map(mode -> mode.name().toLowerCase(java.util.Locale.ROOT)).forEach(values::add);
+        Arrays.stream(IocProcessingProperties.Action.values())
+                .map(action -> action.name().toLowerCase(java.util.Locale.ROOT)).forEach(values::add);
+        Arrays.stream(NetworkAddressParser.FailureReason.values())
+                .map(reason -> reason.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-'))
+                .forEach(values::add);
         Arrays.stream(IndicatorType.values()).map(Enum::name).forEach(values::add);
         addSelectorTokens(values, ArtifactIdStrategy.values());
         addSelectorTokens(values, ArtifactKeyMode.values());
@@ -224,10 +250,22 @@ class ConfigurationDocumentationContractTest {
     }
 
     private IocProperties bindProductionTemplate() throws Exception {
+        return bindProductionTemplate(false);
+    }
+
+    private IocProperties bindProductionTemplate(boolean activateExample) throws Exception {
         var loader = new YamlPropertySourceLoader();
         var sources = new MutablePropertySources();
         Path template = reactorRoot().resolve("packaging/templates/application.yml");
-        sources.addFirst(loader.load("production-template", new FileSystemResource(template)).getFirst());
+        String yaml = java.nio.file.Files.readString(template);
+        if (activateExample) {
+            int start = yaml.indexOf("  #     - name: masks-host-example");
+            int end = yaml.indexOf("  # Keep durable SQLite state", start);
+            String example = yaml.substring(start, end);
+            yaml = yaml.substring(0, start) + example.replace("  # ", "  ") + yaml.substring(end);
+        }
+        sources.addFirst(loader.load("production-template", new org.springframework.core.io.ByteArrayResource(
+                yaml.getBytes(java.nio.charset.StandardCharsets.UTF_8))).getFirst());
         sources.addLast(loader.load("packaged-defaults", new ClassPathResource("application.yml")).getFirst());
 
         ApplicationConversionService conversionService = new ApplicationConversionService();
@@ -239,18 +277,33 @@ class ConfigurationDocumentationContractTest {
     }
 
     private static void collectRecordPaths(Class<?> recordType, String prefix, Set<String> paths) {
+        collectRecordPaths(recordType, prefix, paths, Set.of());
+    }
+
+    private static void collectRecordPaths(Class<?> recordType, String prefix, Set<String> paths,
+                                           Set<Class<?>> ancestors) {
+        Set<Class<?>> visited = new LinkedHashSet<>(ancestors);
+        visited.add(recordType);
         for (RecordComponent component : recordType.getRecordComponents()) {
             String path = prefix + "." + kebabCase(component.getName());
             Class<?> componentType = component.getType();
             Type genericType = component.getGenericType();
             if (componentType.isRecord()) {
-                collectRecordPaths(componentType, path, paths);
+                if (visited.contains(componentType)) {
+                    paths.add(path);
+                } else {
+                    collectRecordPaths(componentType, path, paths, visited);
+                }
             } else if (Collection.class.isAssignableFrom(componentType)
                     && genericType instanceof ParameterizedType parameterized) {
                 paths.add(path);
                 Type element = parameterized.getActualTypeArguments()[0];
                 if (element instanceof Class<?> elementClass && elementClass.isRecord()) {
-                    collectRecordPaths(elementClass, path + "[]", paths);
+                    if (visited.contains(elementClass)) {
+                        paths.add(path + "[]");
+                    } else {
+                        collectRecordPaths(elementClass, path + "[]", paths, visited);
+                    }
                 }
             } else {
                 paths.add(path);
@@ -259,6 +312,13 @@ class ConfigurationDocumentationContractTest {
     }
 
     private static void collectCompatibilityAliases(Class<?> recordType, String prefix, Set<String> paths) {
+        collectCompatibilityAliases(recordType, prefix, paths, Set.of());
+    }
+
+    private static void collectCompatibilityAliases(Class<?> recordType, String prefix,
+                                                    Set<String> paths, Set<Class<?>> ancestors) {
+        Set<Class<?>> visited = new LinkedHashSet<>(ancestors);
+        visited.add(recordType);
         for (RecordComponent component : recordType.getRecordComponents()) {
             String path = prefix + "." + kebabCase(component.getName());
             Class<?> componentType = component.getType();
@@ -266,13 +326,14 @@ class ConfigurationDocumentationContractTest {
             if (component.isAnnotationPresent(ConfigurationCompatibilityAlias.class)) {
                 paths.add(path);
             }
-            if (componentType.isRecord()) {
-                collectCompatibilityAliases(componentType, path, paths);
+            if (componentType.isRecord() && !visited.contains(componentType)) {
+                collectCompatibilityAliases(componentType, path, paths, visited);
             } else if (Collection.class.isAssignableFrom(componentType)
                     && genericType instanceof ParameterizedType parameterized) {
                 Type element = parameterized.getActualTypeArguments()[0];
-                if (element instanceof Class<?> elementClass && elementClass.isRecord()) {
-                    collectCompatibilityAliases(elementClass, path + "[]", paths);
+                if (element instanceof Class<?> elementClass && elementClass.isRecord()
+                        && !visited.contains(elementClass)) {
+                    collectCompatibilityAliases(elementClass, path + "[]", paths, visited);
                 }
             }
         }
@@ -295,7 +356,7 @@ class ConfigurationDocumentationContractTest {
 
     private static boolean containsYamlField(String yaml, String field) {
         return Pattern.compile("(?m)(?:^\\s*#?\\s*(?:-\\s*)?|[,{]\\s*)"
-                        + Pattern.quote(field) + "\\s*:")
+                        + "[\"']?" + Pattern.quote(field) + "[\"']?\\s*:")
                 .matcher(yaml)
                 .find();
     }

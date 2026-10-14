@@ -6,6 +6,7 @@ import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.ArtifactRowKey;
 import com.iocextractor.application.artifact.ArtifactWritePlan;
 import com.iocextractor.application.artifact.CanonicalArtifact;
+import com.iocextractor.application.artifact.CanonicalWriteCommand;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.artifact.PreparedArtifactRow;
 import com.iocextractor.application.artifact.lifecycle.CanonicalArtifactConfirmation;
@@ -57,6 +58,30 @@ class WriteArtifactsStageTest {
     }
 
     @Test
+    void public_field_update_is_reported_as_changed_without_inflating_insert_count() {
+        var projected = new ArrayList<String>();
+        CanonicalArtifactRepository repository = new RecordingRepository() {
+            @Override
+            public CanonicalWriteResult write(CanonicalWriteCommand command) {
+                names.add(command.artifactName());
+                artifacts.add(command.artifact());
+                return new CanonicalWriteResult(0, 1, 0, 2);
+            }
+        };
+        var stage = new WriteArtifactsStage(repository, request -> {
+            projected.add(request.artifactName());
+            return ArtifactProjectionResult.clean(1);
+        }, StageTestSupport.DIAGNOSTICS);
+
+        var output = stage.process(StageTestSupport.envelope(
+                new PreparedArtifacts(1, 1, List.of(plan("masks"))), false));
+
+        assertThat(output.payload().writtenPerArtifact()).containsEntry("masks", 0);
+        assertThat(output.payload().changedArtifacts()).containsExactly("masks");
+        assertThat(projected).containsExactly("masks");
+    }
+
+    @Test
     void dry_run_does_not_reserve_ids_write_or_project() {
         var repository = new RecordingRepository();
         var projected = new ArrayList<String>();
@@ -86,7 +111,7 @@ class WriteArtifactsStageTest {
         var requests = new ArrayList<String>();
         var stage = new WriteArtifactsStage(new RecordingRepository(), request -> {
             requests.add(request.runId() + ":" + request.artifactName());
-            return new ArtifactProjectionResult(1, List.of(warning));
+            return new ArtifactProjectionResult(1, List.of(warning), new com.iocextractor.application.artifact.lifecycle.ProjectionGeneration(0));
         }, StageTestSupport.DIAGNOSTICS);
 
         var output = stage.process(StageTestSupport.envelope(
@@ -156,7 +181,7 @@ class WriteArtifactsStageTest {
         assertThat(confirmations).singleElement().satisfies(confirmation -> {
             assertThat(confirmation.observationId()).isEqualTo(context.observationId());
             assertThat(confirmation.sourceKey()).isEqualTo("source-key");
-            assertThat(confirmation.records()).singleElement()
+            assertThat(confirmation.records().snapshot()).singleElement()
                     .satisfies(record -> assertThat(record.rowKey().value()).isEqualTo("masks:masks"));
         });
     }
@@ -273,9 +298,9 @@ class WriteArtifactsStageTest {
                         java.util.Map.of("id", "0", "value", name)), Optional.of("id"))), ids);
     }
 
-    private static final class RecordingRepository implements CanonicalArtifactRepository {
-        private final List<String> names = new ArrayList<>();
-        private final List<CanonicalArtifact> artifacts = new ArrayList<>();
+    private static class RecordingRepository implements CanonicalArtifactRepository {
+        protected final List<String> names = new ArrayList<>();
+        protected final List<CanonicalArtifact> artifacts = new ArrayList<>();
 
         @Override
         public CanonicalArtifact load(String artifactName) {

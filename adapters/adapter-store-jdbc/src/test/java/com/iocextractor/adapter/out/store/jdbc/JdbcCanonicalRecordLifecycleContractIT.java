@@ -60,18 +60,10 @@ class JdbcCanonicalRecordLifecycleContractIT extends CanonicalRecordLifecycleCon
         activate(dataSource, schemas);
 
         Clock allocatorClock = Clock.fixed(START, ZoneOffset.UTC);
-        var writer = new JdbcCanonicalLifecycleWriter(
-                dataSource,
-                schemas,
-                List.of(new ArtifactIdAllocatorDefinition(
-                        ARTIFACT, ArtifactIdStrategy.ASCENDING, 1, 1)),
-                timeSource,
-                policy,
-                allocatorClock,
-                List.of(identityDefinition));
-        return new LifecycleFixture(
-                writer,
-                new JdbcActiveArtifactReader(dataSource, schemas),
+        var writer = new JdbcCanonicalLifecycleWriter(dataSource, schemas,
+                List.of(new ArtifactIdAllocatorDefinition(ARTIFACT, ArtifactIdStrategy.ASCENDING, 1, 1)),
+                timeSource, policy, allocatorClock, List.of(identityDefinition));
+        return new LifecycleFixture(writer, new JdbcActiveArtifactReader(dataSource, schemas),
                 new JdbcExpiredArtifactStore(dataSource, schemas));
     }
 

@@ -8,12 +8,14 @@ platform/platform-concurrency	ioc-platform-concurrency	covered	required	Producti
 platform/platform-observability	ioc-platform-observability	covered	required	Production platform module with its own test execution data.
 platform/platform-diagnostics-logging	ioc-platform-diagnostics-logging	covered	required	Production platform module with its own test execution data.
 core/ioc-domain	ioc-domain	covered	required	Production core module with downstream execution retained by the aggregate.
+core/ioc-processing	ioc-processing	covered	required	Pure IOC preparation module with local contract tests and aggregate coverage.
 core/ioc-application	ioc-application	covered	required	Production core module with downstream execution retained by the aggregate.
 core/ioc-application-tck	ioc-application-tck	excluded	none	Reusable test support is evaluated through its consumer contract executions.
 adapters/adapter-regex-re2j	ioc-adapter-regex-re2j	covered	required	Production regex adapter with its own shared engine contract execution data.
 adapters/adapter-psl	ioc-adapter-psl	covered	required	Production adapter with its own test execution data.
 adapters/adapter-source-tika	ioc-adapter-source-tika	covered	required	Production adapter with its own test execution data.
 adapters/adapter-csv	ioc-adapter-csv	covered	required	Production adapter with its own test execution data.
+adapters/adapter-processing-camel	ioc-adapter-processing-camel	covered	required	Production Camel adapter with its own test execution data.
 adapters/adapter-manifest-json-jackson	ioc-adapter-manifest-json-jackson	covered	required	Production adapter with its own test execution data.
 adapters/adapter-store-jdbc	ioc-adapter-store-jdbc	covered	required	Production adapter with its own test execution data.
 adapters/adapter-transport-smb	ioc-adapter-transport-smb	covered	required	Production adapter with its own test execution data.

@@ -1,9 +1,10 @@
 package com.iocextractor.adapter.in.ingest;
 
-import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
+import com.iocextractor.application.port.in.ingest.PrepareIngestionUseCase;
 import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
+import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -60,6 +61,16 @@ public class IngestFlowConfiguration {
     }
 
     @Bean
+    public OrderedDocumentAdmissionHandler orderedDocumentAdmissionHandler(
+            DocumentAdmissionService admissions,
+            SourceLifecycle sources,
+            FileSourceHasher hasher,
+            IngestionLedger ledger) {
+        return new OrderedDocumentAdmissionHandler(
+                admissions, sources, new FileDocumentCandidateEvidenceReader(), hasher, ledger);
+    }
+
+    @Bean
     @ConditionalOnProperty(prefix = "ioc.ingestion.ledger", name = "type", havingValue = "file",
             matchIfMissing = true)
     public IngestionLedger ingestionLedger(IngestAdapterProperties properties, Clock ingestClock) {
@@ -67,19 +78,20 @@ public class IngestFlowConfiguration {
     }
 
     @Bean
-    public FileSourceMessageHandler fileSourceMessageHandler(FileSourceHasher hasher,
-                                                             IngestSourceUseCase useCase,
+    public DurableDocumentDispatcher fileSourceMessageHandler(PrepareIngestionUseCase useCase,
                                                              RejectIngestionUseCase rejectUseCase,
                                                              com.iocextractor.diagnostics.sink.DiagnosticSink diagnosticSink,
                                                              IngestAdapterProperties properties,
-                                                             Clock ingestClock) {
-        return new FileSourceMessageHandler(hasher, useCase, rejectUseCase, ingestClock,
-                properties.retry().maxAttempts(), properties.retry().backoff(), diagnosticSink);
+                                                             Clock ingestClock,
+                                                             OrderedDocumentAdmissionHandler orderedAdmissions,
+                                                             com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspaceFactory workspaces) {
+        return new DurableDocumentDispatcher(orderedAdmissions, useCase, rejectUseCase,
+                properties, ingestClock, diagnosticSink, workspaces.maximumConcurrentWorkspaces());
     }
 
     @Bean
     public IntegrationFlow iocIngestionFlow(IngestAdapterProperties properties,
-                                            FileSourceMessageHandler handler,
+                                            DurableDocumentDispatcher handler,
                                             Clock ingestClock) {
         FileReadingMessageSource source = new FileReadingMessageSource();
         source.setDirectory(ensureDirectory(Path.of(properties.dirs().inbox())).toFile());
@@ -91,7 +103,7 @@ public class IngestFlowConfiguration {
                 ingestClock));
 
         Duration interval = properties.detect().reconcileInterval();
-        FileSourceMessageHandler messageHandler = Objects.requireNonNull(handler, "handler");
+        DurableDocumentDispatcher messageHandler = Objects.requireNonNull(handler, "handler");
         return IntegrationFlow.from(source, spec -> spec
                         .autoStartup(false)
                         .poller(Pollers

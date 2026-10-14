@@ -15,6 +15,7 @@ public enum EventAction {
     STAGE_START("stage_start", "pipeline", "Pipeline stage execution started."),
     STAGE_COMPLETE("stage_complete", "pipeline", "Pipeline stage execution completed or failed."),
     PIPELINE_ITEM_DECISION("pipeline_item_decision", "pipeline", "One explicitly enabled per-item pipeline decision was traced."),
+    ROUTER_PLAN_ADMITTED("router_plan_admitted", "router", "One admitted routing plan became ready."),
     SOURCE_READ("source_read", "source", "Source document text was read."),
     SOURCE_INGEST("source_ingest", "source", "Source ingestion reached a terminal handled outcome."),
     INGEST_RECOVER("ingest_recover", "source", "Daemon startup ingestion recovery progressed or failed."),

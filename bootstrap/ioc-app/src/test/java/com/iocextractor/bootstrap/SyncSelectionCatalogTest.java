@@ -83,7 +83,7 @@ class SyncSelectionCatalogTest {
                 defaults.engine(), defaults.runtime(), defaults.storage(), defaults.source(), defaults.refang(),
                 defaults.patterns(), defaults.classify(), defaults.sink(), defaults.pipeline(), defaults.ingestion(),
                 defaults.artifactIdentity(), defaults.dataframeImport(), defaults.export(), sync, defaults.maintenance(),
-                defaults.lifecycle(), defaults.observability());
+                defaults.lifecycle(), defaults.observability(), defaults.processing());
         return new SyncSelectionCatalog(properties);
     }
 

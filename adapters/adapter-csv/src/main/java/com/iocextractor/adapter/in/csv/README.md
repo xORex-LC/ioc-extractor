@@ -23,3 +23,13 @@ Strictly decode and stream configured CSV deliveries behind the application
 `CommonsCsvImportValueTransformRegistry` exposes the existing validated export
 transform family through the framework-free import port; it does not duplicate
 transform implementations.
+
+`CsvImportValueValidatorRegistry` checks whole-cell IOC types through shared
+refang/extraction/classification collaborators without rewriting imported cells.
+Network cells additionally pass the shared address parser: recognizing a network
+category does not by itself prove valid IP octets, host syntax or port range.
+It supports general network addresses, clean domains, bare IPv4, detailed
+addresses, generic or algorithm-specific hashes, and canonical signed 64-bit
+integers. Its public rule-key catalog is also the composition root's preflight
+authority. Integer validation prevents textual keys from diverging from INTEGER
+storage values; these checks are opt-in per contract column.

@@ -6,6 +6,7 @@ import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.diagnostics.result.FailurePolicy;
+import com.iocextractor.diagnostics.result.BoundedNotification;
 import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import org.junit.jupiter.api.Test;
 
@@ -91,6 +92,76 @@ class PipelineRunnerTest {
     }
 
     @Test
+    void diagnostic_budget_limits_high_cardinality_sink_delivery() {
+        var first = diagnostic(DiagnosticSeverity.WARN);
+        var second = diagnostic(DiagnosticSeverity.WARN);
+        var third = diagnostic(DiagnosticSeverity.WARN);
+        var diagnostics = new CollectingDiagnosticSink();
+        var pipeline = Pipeline.<String>start()
+                .then(new DiagnosticStage(first))
+                .then(new DiagnosticStage(second))
+                .then(new DiagnosticStage(third));
+        var runner = new PipelineRunner(FailurePolicy.collectAndContinue(),
+                new NoopPipelineObserver(), diagnostics, new DiagnosticFactory(CLOCK), 1);
+
+        var result = runner.runWithOutcome(Envelope.of("start", meta()), pipeline);
+
+        assertThat(diagnostics.diagnostics()).containsExactly(
+                first, result.envelope().diagnostics().getLast());
+        assertThat(result.diagnosticSummary().total()).isEqualTo(3);
+        assertThat(result.diagnosticSummary().suppressed()).isEqualTo(2);
+    }
+
+    @Test
+    void resumedEnvelopePreservesOmittedCountsWithoutCountingItsSyntheticSummary() {
+        var warning = diagnostic(DiagnosticSeverity.WARN);
+        var retained = new BoundedNotification(1, new DiagnosticFactory(CLOCK));
+        retained.addAll(List.of(warning, warning));
+        var input = new Envelope<>("start", meta(), retained.diagnostics(), retained.summary());
+        var sink = new CollectingDiagnosticSink();
+        var pipeline = Pipeline.<String>start()
+                .then(new RecordingStage(new StageId("NEXT"), "-next", new ArrayList<>()));
+        var runner = new PipelineRunner(FailurePolicy.collectAndContinue(), new NoopPipelineObserver(),
+                sink, new DiagnosticFactory(CLOCK), 1);
+
+        var result = runner.runWithOutcome(input, pipeline);
+
+        assertThat(result.envelope().payload()).isEqualTo("start-next");
+        assertThat(result.diagnosticSummary()).isEqualTo(retained.summary());
+        assertThat(result.envelope().diagnostics()).containsExactlyElementsOf(input.diagnostics());
+        assertThat(sink.diagnostics()).containsExactly(result.envelope().diagnostics().getLast());
+    }
+
+    @Test
+    void stagesCannotRemoveOrReplacePreviouslyObservedDiagnostics() {
+        var original = diagnostic(DiagnosticSeverity.WARN);
+        var replacement = new DiagnosticFactory(CLOCK).create(PipelineDiagnosticCodes.STAGE_FAILED)
+                .severity(DiagnosticSeverity.WARN)
+                .with("stage", "test").with("reason", "replacement").build();
+        var input = Envelope.of("start", meta()).withDiagnostic(original);
+        for (var modified : List.of(List.<Diagnostic>of(), List.of(replacement))) {
+            Stage<String, String> invalidStage = new Stage<>() {
+                @Override
+                public StageId name() {
+                    return new StageId("INVALID");
+                }
+
+                @Override
+                public Envelope<String> process(Envelope<String> envelope) {
+                    return new Envelope<>(envelope.payload(), envelope.meta(), modified);
+                }
+            };
+            var sink = new CollectingDiagnosticSink();
+
+            assertThatThrownBy(() -> runner(FailurePolicy.collectAndContinue(), sink)
+                    .run(input, Pipeline.<String>start().then(invalidStage)))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("Stage diagnostics must be append-only");
+            assertThat(sink.diagnostics()).isEmpty();
+        }
+    }
+
+    @Test
     void failFastStillEmitsSuppressionSummaryBeforeStopping() {
         var warning = diagnostic(DiagnosticSeverity.WARN);
         var error = diagnostic(DiagnosticSeverity.ERROR);
@@ -172,6 +243,24 @@ class PipelineRunnerTest {
 
         assertThat(events).containsSubsequence("close-stage", "summary", "close-run");
         assertThat(events).containsOnlyOnce("summary");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void preparedDiagnosticsFinishOnceOnContinuationOrCancellation(boolean continueRun) {
+        var diagnostics = new CollectingDiagnosticSink();
+        var pipeline = Pipeline.<String>start()
+                .then(new DiagnosticStage(diagnostic(DiagnosticSeverity.WARN)))
+                .then(new DiagnosticStage(diagnostic(DiagnosticSeverity.WARN)));
+        var runner = new PipelineRunner(FailurePolicy.collectAndContinue(),
+                new NoopPipelineObserver(), diagnostics, new DiagnosticFactory(CLOCK), 1);
+        var prepared = runner.runPreparation(Envelope.of("start", meta()), pipeline);
+        assertThat(diagnostics.diagnostics()).noneMatch(
+                diagnostic -> diagnostic.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED);
+        if (continueRun) { runner.runWithOutcome(prepared.envelope(), Pipeline.<String>start()); }
+        else { runner.finishPreparation(prepared.envelope()); }
+        assertThat(diagnostics.diagnostics()).filteredOn(
+                diagnostic -> diagnostic.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED).hasSize(1);
     }
 
     @Test

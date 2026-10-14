@@ -1,0 +1,42 @@
+# Real Native composition; the test replaces only the SMB wire boundary and UTC source.
+ioc:
+  storage:
+    service:
+      url: "jdbc:sqlite:${native.delivery.root}/service.db"
+  ingestion:
+    dirs:
+      inbox: "${native.delivery.root}/inbox"
+  lifecycle:
+    validity:
+      mode: fixed
+      fixed-ttl: 1h
+  export:
+    root: "${native.delivery.root}/export"
+  sync:
+    enabled: true
+    retry:
+      max-attempts: 1
+      jitter: false
+    endpoints:
+      - name: fixture
+        transport: smb
+        smb:
+          host: localhost
+          share: fixture
+          username: fixture
+          password: unused-test-credential
+    fetch:
+      enabled: true
+      sources:
+        - name: fixture-input
+          endpoint: fixture
+          remote-path: incoming
+          include: ["*.html"]
+          exclude: []
+    publish:
+      enabled: true
+      targets:
+        - name: fixture-output
+          endpoint: fixture
+          remote-path: outgoing
+          export-profile: reputation-lists

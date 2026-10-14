@@ -5,6 +5,7 @@ import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactStreamReader;
+import com.iocextractor.application.port.out.artifact.CanonicalArtifactStreamResult;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticContextKeys;
@@ -35,7 +36,7 @@ import java.util.Objects;
 /**
  * Writes CSV projections from the canonical artifact repository. CSV is a
  * derived artifact here; the repository behind the port remains the source of
- * truth.
+ * truth. This raw installer must be called only through the shared generation owner.
  */
 public final class CsvArtifactProjection implements ArtifactProjection {
 
@@ -79,7 +80,8 @@ public final class CsvArtifactProjection implements ArtifactProjection {
         List<Diagnostic> outcomeDiagnostics = encodingLoss.detected()
                 ? List.of(charsetDiagnostic(request, path, encodingLoss))
                 : List.of();
-        return new ArtifactProjectionResult(writeResult.rows(), outcomeDiagnostics);
+        return new ArtifactProjectionResult(writeResult.snapshot().rows(), outcomeDiagnostics,
+                writeResult.snapshot().generation());
     }
 
     private ProjectionWriteResult write(String artifactName, Path path, List<String> header) {
@@ -93,10 +95,11 @@ public final class CsvArtifactProjection implements ArtifactProjection {
             var inspector = new CsvValueEncodingInspector(charset);
             inspector.inspectHeader(header);
             var writer = CsvIo.newWriter(temp, charset);
-            int rows;
+            CanonicalArtifactStreamResult snapshot;
             try (CSVPrinter printer = new CSVPrinter(writer, format)) {
                 printer.printRecord(header);
-                rows = reader.stream(artifactName, row -> {
+                snapshot = reader.stream(artifactName, row -> {
+                    checkCancellation();
                     var values = new ArrayList<String>(header.size());
                     header.forEach(column -> values.add(row.value(column)));
                     inspector.inspectRow(values, format.getNullString());
@@ -107,16 +110,17 @@ public final class CsvArtifactProjection implements ArtifactProjection {
                     }
                 });
             }
+            checkCancellation();
             moveIntoPlace(temp, path);
             LogEvents.info(log)
                     .action(EventAction.ARTIFACT_PROJECT)
                     .outcome(EventOutcome.SUCCESS)
                     .field(LogField.IOC_ARTIFACT_NAME, artifactName)
                     .field(LogField.FILE_PATH, path)
-                    .field(LogField.IOC_ROWS, rows)
+                    .field(LogField.IOC_ROWS, snapshot.rows())
                     .message("artifact projection written")
                     .log();
-            return new ProjectionWriteResult(rows, inspector.loss());
+            return new ProjectionWriteResult(snapshot, inspector.loss());
         } catch (IOException | UncheckedIOException e) {
             deleteIncomplete(temp, e);
             throw new IocExtractorException("Failed to write artifact projection '" + artifactName + "' to "
@@ -124,6 +128,13 @@ public final class CsvArtifactProjection implements ArtifactProjection {
         } catch (RuntimeException e) {
             deleteIncomplete(temp, e);
             throw e;
+        }
+    }
+
+    private void checkCancellation() {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new IocExtractorException("Artifact projection cancelled",
+                    new InterruptedException("Projection caller interrupted"));
         }
     }
 
@@ -212,6 +223,7 @@ public final class CsvArtifactProjection implements ArtifactProjection {
         }
     }
 
-    private record ProjectionWriteResult(int rows, CsvValueEncodingInspector.CsvEncodingLoss encodingLoss) {
+    private record ProjectionWriteResult(CanonicalArtifactStreamResult snapshot,
+                                         CsvValueEncodingInspector.CsvEncodingLoss encodingLoss) {
     }
 }

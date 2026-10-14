@@ -112,6 +112,10 @@ boundary.
 
 ## Configure and validate
 
+For a million-input workload, declare the host, JVM, workspace and execution
+envelope using [bulk resource sizing](bulk-resource-sizing.md). The packaged
+small-service defaults are not a million-input capacity guarantee.
+
 Prepare a separate YAML candidate using the
 [configuration reference](configuration.md). Put secrets in
 `<prefix>/etc/ioc-extractor.env`, not in YAML. Do not edit the live file in

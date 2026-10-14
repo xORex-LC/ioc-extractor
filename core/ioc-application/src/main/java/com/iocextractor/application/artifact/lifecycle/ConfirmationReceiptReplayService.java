@@ -24,6 +24,14 @@ public final class ConfirmationReceiptReplayService implements ReplayConfirmatio
     }
 
     @Override
+    public boolean hasReusableReceipt(ConfirmationReceiptReplayCommand command) {
+        Objects.requireNonNull(command, "command");
+        var context = command.writeContext();
+        return receipts.findComplete(context.sourceKey(), context.receipt().processingPolicyFingerprint(),
+                timeSource.now()).isPresent();
+    }
+
+    @Override
     public Optional<ConfirmationReceiptReplayResult> replay(ConfirmationReceiptReplayCommand command) {
         Objects.requireNonNull(command, "command");
         LifecycleWriteContext context = command.writeContext();
@@ -43,7 +51,8 @@ public final class ConfirmationReceiptReplayService implements ReplayConfirmatio
                     context.receipt(),
                     artifact.artifactName(),
                     artifact.header(),
-                    artifact.records()));
+                    artifact.records(),
+                    context.registration()));
             outcomes.put(artifact.artifactName(), outcome);
         }
         return new ConfirmationReceiptReplayResult(outcomes);

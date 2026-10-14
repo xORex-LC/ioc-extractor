@@ -4,6 +4,7 @@ import com.iocextractor.application.dataframeimport.model.ImportSourceId;
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.common.IocExtractorException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
@@ -12,11 +13,13 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @IntegrationTest
+@Timeout(15)
 class LocalImportChangeSignalSourceIT {
 
     @TempDir
@@ -30,9 +33,11 @@ class LocalImportChangeSignalSourceIT {
         AtomicInteger signals = new AtomicInteger();
         CountDownLatch first = new CountDownLatch(1);
         CountDownLatch second = new CountDownLatch(1);
+        AtomicReference<Thread> worker = new AtomicReference<>();
 
         try {
             source.start(actual -> {
+                worker.set(Thread.currentThread());
                 assertThat(actual).isEqualTo(sourceId);
                 int signal = signals.incrementAndGet();
                 if (signal == 1) {
@@ -56,6 +61,47 @@ class LocalImportChangeSignalSourceIT {
         } finally {
             source.close();
             source.close();
+            if (worker.get() != null) {
+                worker.get().join(5_000);
+                assertThat(worker.get().isAlive()).as("watch worker terminates after close").isFalse();
+            }
+        }
+    }
+
+    @Test
+    void closeDuringNotificationTerminatesWorkerWithoutAnotherDoorbell() throws Exception {
+        var source = new LocalImportChangeSignalSource(List.of(
+                new LocalImportSourceDefinition(new ImportSourceId("local-a"), tempDir)));
+        var worker = new AtomicReference<Thread>();
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var signals = new AtomicInteger();
+        try {
+            source.start(ignored -> {
+                worker.set(Thread.currentThread());
+                signals.incrementAndGet();
+                entered.countDown();
+                try {
+                    release.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            Files.writeString(tempDir.resolve("in-flight.csv"), "first");
+            assertThat(entered.await(5, TimeUnit.SECONDS)).as("in-flight doorbell callback").isTrue();
+            source.close();
+            release.countDown();
+            worker.get().join(5_000);
+            assertThat(worker.get().isAlive()).as("closed watch worker terminates").isFalse();
+            Files.writeString(tempDir.resolve("after-close.csv"), "second");
+            assertThat(signals).hasValue(1);
+        } finally {
+            source.close();
+            release.countDown();
+            if (worker.get() != null) {
+                worker.get().join(5_000);
+                assertThat(worker.get().isAlive()).as("watch worker cleanup").isFalse();
+            }
         }
     }
 

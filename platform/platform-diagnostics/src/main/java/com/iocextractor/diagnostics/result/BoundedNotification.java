@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * Per-run diagnostic accumulator with a retained-item budget for element and run occurrences.
@@ -46,19 +47,50 @@ public final class BoundedNotification {
         Objects.requireNonNull(diagnostics, "diagnostics").forEach(this::add);
     }
 
+    /** Merges an independently bounded batch without treating its omitted details as lost counts. */
+    public void addAll(DiagnosticBatch batch) {
+        addAll(batch, diagnostic -> { });
+    }
+
+    /** Merges a batch and delivers each newly retained occurrence once. Collector failures propagate. */
+    public void addAll(DiagnosticBatch batch, Consumer<Diagnostic> delivery) {
+        Objects.requireNonNull(batch, "batch");
+        Objects.requireNonNull(delivery, "delivery");
+        for (Diagnostic diagnostic : batch.retained()) {
+            if (offer(diagnostic)) {
+                delivery.accept(diagnostic);
+            }
+        }
+        batch.suppressedBySeverity().forEach((severity, count) -> {
+            suppressed += count;
+            suppressedBySeverity.merge(severity, count, Long::sum);
+        });
+    }
+
     /** Adds one diagnostic while preserving the first error and fatal signals. */
     public void add(Diagnostic diagnostic) {
+        offer(diagnostic);
+    }
+
+    /**
+     * Adds one diagnostic and reports whether this occurrence was retained.
+     *
+     * <p>A caller may use the result to apply the same high-cardinality budget
+     * to an external delivery sink. A first error or fatal occurrence that
+     * displaces a lower-severity item is reported as retained.</p>
+     */
+    public boolean offer(Diagnostic diagnostic) {
         Objects.requireNonNull(diagnostic, "diagnostic");
         if (diagnostic.code().impact() == DiagnosticImpact.OPERATION) {
             retained.add(diagnostic);
             trackRetained(diagnostic);
-            return;
+            return true;
         }
         if (budgetedRetained < limit) {
             retained.add(diagnostic);
             budgetedRetained++;
             trackRetained(diagnostic);
-            return;
+            return true;
         }
         boolean firstError = diagnostic.severity() == DiagnosticSeverity.ERROR && !hasErrorOrWorse;
         boolean firstFatal = diagnostic.severity() == DiagnosticSeverity.FATAL && !hasFatal;
@@ -67,9 +99,10 @@ public final class BoundedNotification {
             Diagnostic displaced = retained.set(replacement, diagnostic);
             trackRetained(diagnostic);
             suppress(displaced);
-            return;
+            return true;
         }
         suppress(diagnostic);
+        return false;
     }
 
     /** Returns the bounded high-cardinality snapshot, operation occurrences and suppression summary. */
@@ -90,6 +123,11 @@ public final class BoundedNotification {
     /** Returns counts for all observed diagnostics, including suppressed ones. */
     public DiagnosticSummary summary() {
         return DiagnosticSummary.of(retained, suppressedBySeverity);
+    }
+
+    /** Snapshots exact observed facts and retained detail without a synthetic summary occurrence. */
+    public DiagnosticBatch batch() {
+        return new DiagnosticBatch(retained, summary());
     }
 
     private void suppress(Diagnostic diagnostic) {

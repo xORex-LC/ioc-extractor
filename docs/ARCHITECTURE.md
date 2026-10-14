@@ -76,9 +76,7 @@ read (SourceReader)
   → refang (Refanger)
   → extract (IndicatorExtractor / PatternEngine)
   → attribute source (SourceAttributor)
-  → de-duplicate (within-batch)
-  → classify NETWORK (один materialized ClassificationDecision на retained IOC)
-  → prepare rows (ArtifactPreparer, без IO и финальных id)
+  → route and prepare (именованный план → private workspace, без canonical id)
   → failure-policy checkpoint
   → commit canonical rows → project derived CSV
 ```
@@ -89,7 +87,24 @@ read (SourceReader)
 Конвейер — цепочка независимых стадий: новую стадию/реализацию добавляем, не
 трогая остальные (OCP). Маршрутизация по типу индикатора и декларативным
 `include`/`exclude`-фильтрам позволяет одному прогону наполнять несколько
-артефактов: сетевые маски, bare-IP list, address blacklist и файловые хэши.
+артефактов: сетевые маски, bare-IP list, address blacklist, файловые хэши и
+standalone IOC aggregate.
+
+Подготовка документа использует один private SQLite workspace с общим бюджетом
+памяти для всех артефактов. Он закрепляет исходный файл и identity наблюдения,
+выполняет глобальный выбор целых строк и запечатывается до failure-policy
+checkpoint. Writer и receipts читают повторяемые курсоры с ограниченными
+буферами; каноническая атомарность остаётся на уровне артефакта. Владение,
+квоты и восстановление описаны в
+[ADR-0036](ADR/0036-sealed-document-preparation-workspace.md).
+
+Исходный и refanged текст также принадлежат document workspace: UTF-16 файлы
+и фиксированный page cache заменяют полные строки и списки occurrences.
+Domain определяет lazy regex/marker cursors и протоколы refang/overlap;
+application владеет порядком стадий, adapters — файлами, parser и SQLite scratch.
+Scratch удаляется до seal и при отказе. Fatal worker error останавливает dispatcher
+видимо для health; durable admissions восстанавливаются после restart через
+общий recovery barrier. Контракт: [ADR-0039](ADR/0039-streamed-document-source-processing.md).
 
 ## Порты (контракты)
 
@@ -98,11 +113,13 @@ read (SourceReader)
 | `ExtractIocsUseCase` | driving (in) | Единая точка входа прикладного ядра |
 | `SourceReader` | driven (out) | Формат-независимая граница извлечения текста из документа |
 | `ArtifactPreparer` | driven (out) | Side-effect-free routing/mapping одного артефакта до policy checkpoint |
+| `DocumentPreparationWorkspaceFactory` / `DocumentPreparationWorkspace` / `RowSource` | driven (out) | Private preparation, seal и повторяемые owned-курсоры; JDBC остаётся в адаптере |
 | `PipelineDecisionTracer` | driven (out) | Gated TRACE уже вычисленных per-item outcomes без logging dependency в application/domain |
 | `ArtifactIdBaseline` | driven (out) | Чтение текущего public `max(id)` из canonical storage для продолжения id-последовательностей |
 | `CanonicalArtifactRepository` / `ArtifactProjection` | driven (out) | Canonical write/read с provenance и генерация CSV-проекций |
 | `PatternEngine` | domain SPI | Движок regex (RE2/J по умолчанию, JDK — замена) |
 | `IngestSourceUseCase` | driving (in) | Обработка одного daemon source unit |
+| `PrepareIngestionUseCase` / `PreparedIngestion` / `PreparedExtraction` | driving (in) | Подготовка sealed workspace отдельно от ordered canonical promotion; отмена освобождает owned handle |
 | `RunRetentionUseCase` / `RetentionStore` | driving (in) / driven (out) | Reaper растущих каталогов по возрасту/количеству (delete/archive) |
 | `RemoteFetchUseCase` / `ArtifactPublishUseCase` | driving (in) | Remote → inbox и verified export slice → targets |
 | `ControlEventPublisher` | platform driving port | Publish-only control-plane notification; delivery adapter живёт в bootstrap |
@@ -111,7 +128,10 @@ read (SourceReader)
 
 Pipeline возвращает `ExtractionResult` с `CompletionStatus`, bounded diagnostics и
 `DiagnosticSummary`. `fail-fast`/`collect-and-continue` применяются до canonical
-commit после preparation stage. Saga-контуры ingest/export/sync остаются
+commit после preparation stage. Extraction/preparation ограничивают diagnostic
+details внутри своих циклов: `DiagnosticBatch` передаёт выборку и точные
+severity counts через `Envelope`; runner сохраняет поздние ERROR/FATAL и
+доставляет один итоговый suppression summary. Saga-контуры ingest/export/sync остаются
 ledger-first: diagnostic наблюдает final transition, но не заменяет его.
 
 Remote sync не меняет extraction pipeline: fetch заканчивается в штатном inbox, а
@@ -149,6 +169,11 @@ publish начинается только после локального export
 
 Колонки и правила заполнения артефактов **декларативны в конфиге**, не в коде
 (provider/transform-модель). Детали — [processing.md](dev/processing.md).
+Обязательный именованный план выбирает представление и артефакт для новых
+document/processed-import наблюдений; ограниченный Camel-адаптер исполняет
+маршрут, а canonical identity, commit и recovery остаются за application и
+storage. Порядок включения описан в
+[руководстве по маршрутам](guides/ioc-processing-routes.md).
 
 Текущие артефакты:
 
@@ -158,6 +183,7 @@ publish начинается только после локального export
 | `ip_list` | только голые IPv4 | свой, baseline из canonical SQLite `max(id)` |
 | `address_blacklist` | простой список `forbidden_url` / `forbidden_ip`; без id | нет id |
 | `hashes` | MD5/SHA1/SHA256 по разным колонкам | свой, baseline из canonical SQLite `max(id)` |
+| `ioc_aggregate` | один carrier на строку: IPv4, URL, FQDN или hash; `name` обновляется по durable admission order | без public id; identity по четырём carrier-колонкам |
 
 **Словарь колонок (masks):**
 
@@ -182,7 +208,8 @@ publish начинается только после локального export
 Fixed TTL является свойством одной lifecycle canonical DB-записи, а не IOC type
 или source provenance. Успешная canonical transaction атомарно создаёт либо
 продлевает lifecycle с абсолютным UTC `valid_until`; подтверждение после
-deadline архивирует прежнюю lifecycle и создаёт новую с новым service-owned ID.
+deadline архивирует прежнюю lifecycle и создаёт новую с новым внутренним
+dataframe-owned lifecycle ID.
 Все active reads используют half-open predicate `valid_until > asOf`.
 
 Expiry обслуживается aggregate nearest-deadline scheduler: event hint и
@@ -190,6 +217,11 @@ five-second read-only backstop обновляют один timer из deadline i
 due timer запускает bounded SQLite batches. Последний реальный reconcile
 хранится в constant-cardinality checkpoint; typed history удаляется independent
 hourly scheduler-ом, а mutable CSV сходится через durable projection generation.
+Единый владелец в application сериализует чтение/сборку/установку/подтверждение
+по артефакту для oneshot, ingest, recovery и lifecycle. Поколение и строки
+читаются из одной SQLite snapshot; подтверждается только установленное покрытие,
+а появившееся новое поколение остаётся pending. Решение закреплено в
+[ADR 0035](ADR/0035-generation-owned-mutable-projections.md).
 Timer/job на каждую IOC отсутствует. Expiry не меняет insert-driven `artifact_revision`, поэтому сам
 по себе не формирует immutable export slice; следующий обычный new-row trigger
 читает уже актуальный active snapshot. Lifecycle SQL/history остаются в
@@ -214,8 +246,8 @@ export-shaped CSV как отдельные occurrences по versioned contracts
 вторую систему записи. После ownership claim создаётся immutable local snapshot;
 exact-one recognition, streaming tri-state mapping и sealed staging завершаются
 одной cross-artifact dataframe transaction. `as-is` использует объявленные
-source values, `processed` переиспользует обычные refang/extract/classify и
-artifact policies. Только active rows участвуют в matching; отсутствующие в
+source values, `processed` требует явный `processed-route` и применяет обычные
+refang/extract/classify и artifact policies через Router. Только active rows участвуют в matching; отсутствующие в
 delivery rows не меняются. Service ledger + dataframe receipt являются truth,
 а WatchService/SMB `CHANGE_NOTIFY` — только latency hints. Детали:
 [dev/dataframe-import.md](dev/dataframe-import.md) и

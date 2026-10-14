@@ -10,47 +10,71 @@ import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.Objects;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.locks.ReentrantLock;
 
-/** Cross-process formation/recovery exclusion backed by a local NIO file lock. */
+/** Cross-process profile formation/recovery exclusion backed by local NIO file locks. */
 public final class NioExportOperationGuard implements ExportOperationGuard {
 
-    private static final String LOCK_FILE = ".formation.lock";
-
     private final Path root;
-    private final ReentrantLock local = new ReentrantLock();
+    private final Set<String> activeProfiles = new HashSet<>();
 
     public NioExportOperationGuard(Path root) {
         this.root = Objects.requireNonNull(root, "root").toAbsolutePath().normalize();
     }
 
     @Override
-    public Lease acquire() {
-        if (!local.tryLock()) {
+    public synchronized Lease acquire(String profile) {
+        Objects.requireNonNull(profile, "profile");
+        if (profile.isBlank()) {
+            throw new IllegalArgumentException("Export profile must not be blank");
+        }
+        if (!activeProfiles.add(profile)) {
             throw busy(null);
         }
         FileChannel channel = null;
         try {
             Files.createDirectories(root);
-            channel = FileChannel.open(root.resolve(LOCK_FILE),
+            channel = FileChannel.open(root.resolve(".formation-" + lockName(profile) + ".lock"),
                     StandardOpenOption.CREATE, StandardOpenOption.WRITE);
             FileLock lock = channel.tryLock();
             if (lock == null) {
                 NioExportOperationGuard.close(channel, null);
-                local.unlock();
+                activeProfiles.remove(profile);
                 throw busy(null);
             }
-            return new FileLease(channel, lock, local);
+            return new FileLease(channel, lock, () -> released(profile));
         } catch (OverlappingFileLockException conflict) {
             close(channel, conflict);
-            local.unlock();
+            activeProfiles.remove(profile);
             throw busy(conflict);
+        } catch (RuntimeException failure) {
+            close(channel, failure);
+            activeProfiles.remove(profile);
+            throw failure;
         } catch (IOException failure) {
             close(channel, failure);
-            local.unlock();
+            activeProfiles.remove(profile);
             throw new IocExtractorException("Cannot acquire export operation lock at " + root, failure);
+        }
+    }
+
+    private synchronized void released(String profile) {
+        activeProfiles.remove(profile);
+    }
+
+    private static String lockName(String profile) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(profile.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("Required SHA-256 algorithm is unavailable", impossible);
         }
     }
 
@@ -74,13 +98,13 @@ public final class NioExportOperationGuard implements ExportOperationGuard {
     private static final class FileLease implements Lease {
         private final FileChannel channel;
         private final FileLock lock;
-        private final ReentrantLock local;
+        private final Runnable releaseLocal;
         private final AtomicBoolean closed = new AtomicBoolean();
 
-        private FileLease(FileChannel channel, FileLock lock, ReentrantLock local) {
+        private FileLease(FileChannel channel, FileLock lock, Runnable releaseLocal) {
             this.channel = channel;
             this.lock = lock;
-            this.local = local;
+            this.releaseLocal = releaseLocal;
         }
 
         @Override
@@ -94,7 +118,7 @@ public final class NioExportOperationGuard implements ExportOperationGuard {
                 throw new IocExtractorException("Cannot release export operation lock", failure);
             } finally {
                 NioExportOperationGuard.close(channel, null);
-                local.unlock();
+                releaseLocal.run();
             }
         }
     }

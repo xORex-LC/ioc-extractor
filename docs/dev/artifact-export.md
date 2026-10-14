@@ -34,6 +34,9 @@ Daemon export scheduler до открытия этого barrier не выпол
 
 1. **Profile — неделимая ordered единица.** В v1 поддерживается только полный
    (`COMPLETE`) output; artifacts и columns имеют значимый порядок.
+   Defaults публикуют `ioc_aggregate` отдельным профилем `ioc-aggregate`, чтобы
+   его без-ID schema и cadence/delivery membership не меняли существующие
+   `reputation-lists` и `address-blacklist` contracts.
 2. **Public bytes детерминированы plan-ом.** Schema, identity, active mapping и
    CSV format входят в hashes/fingerprints; runtime timestamp/run id не меняют
    смысл plan.
@@ -61,6 +64,27 @@ Daemon export scheduler до открытия этого barrier не выпол
    lifecycle, назначает новым lifecycle минимальные положительные holes, а при
    их отсутствии продвигает durable high-water. Canonical row id и
    `_lifecycle_id` не публикуются как этот slot и никогда не переиспользуются.
+
+## Независимое продвижение профилей
+
+[ADR-0037](../ADR/0037-profile-scoped-export-execution.md) разделяет formation и
+recovery по профилю. Service schema v13 допускает один active run на профиль;
+NIO lease исключает параллельное выполнение того же профиля между процессами.
+Startup recovery обходит все incomplete profiles до открытия scheduler, а recovery
+перед formation затрагивает только профиль, lease которого удерживает caller.
+CSV writer хранит materialization state внутри invocation и не удерживает общий
+монитор на время streaming.
+
+Daemon использует два worker-потока и не более одной queued/running попытки на
+настроенный профиль. Полный reconcile остаётся backstop для потерянных hints;
+quiet/max-cap cadence применяется отдельно. Число snapshot read transactions
+ограничено `ioc.storage.dataframe.pool.read-max`; clock/slot transactions не
+удерживают reader permit. Для одновременного продвижения двух профилей требуется
+как минимум два reader slots. Долгий snapshot удерживает WAL checkpoint, даже
+когда другой профиль может завершиться.
+
+Перед обновлением нужно остановить предыдущий процесс и сохранить согласованные
+backups. Старый binary не открывает service schema v13; rollback требует restore.
 
 ## Stable reusable export slots
 
@@ -122,11 +146,22 @@ CLI запускает named profile вручную. Daemon поддержива
 quiet-period/max-cap policy; ingest event только вызывает coalesced `nudge()`, а
 periodic cadence остаётся backstop.
 
+Остановка scheduler отменяет новые проверки и завершает timer и profile workers.
+Ошибка остановки одного executor не отменяет попытку остановить второй;
+последующие ошибки сохраняются как suppressed. Пока завершение не подтверждено,
+ссылки на executors сохраняются и повторный старт запрещён. Поздний admission
+после остановки не открывает scheduler заново.
+
 Managed import с public mutation публикует тот же artifact-level
 `CanonicalArtifactsChanged` только после общей dataframe transaction. Поэтому
 delivery из сотен тысяч rows создаёт один quiet-period burst, а не slice после
 каждой row. Import no-op и TTL-only confirmation не продвигают artifact revision
 и сами по себе immutable slice не создают.
+
+Для `ioc_aggregate` изменение только `name` является public mutation: оно
+продвигает revision, обновляет mutable projection и попадает в обычный
+`ioc-aggregate` immutable slice/delivery path. Продвижение только field-origin
+при совпадающем `name` остаётся metadata-only и не создаёт новый slice.
 
 Lifecycle expiry отдельно восстанавливает mutable `*_generated.csv`, но не
 вызывает `DaemonExportScheduler.nudge()`. Поэтому истечение само по себе не

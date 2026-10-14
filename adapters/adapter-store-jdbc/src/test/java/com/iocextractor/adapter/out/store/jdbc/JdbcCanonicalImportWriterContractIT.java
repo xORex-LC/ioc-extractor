@@ -12,6 +12,8 @@ import com.iocextractor.application.artifact.CanonicalKeyMode;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
 import com.iocextractor.application.artifact.lifecycle.LifecycleClockPolicy;
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
+import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportArtifactBranch;
 import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
 import com.iocextractor.application.dataframeimport.model.ImportCell;
@@ -34,6 +36,7 @@ import com.iocextractor.application.dataframeimport.model.ImportRejectedLogicalR
 import com.iocextractor.application.dataframeimport.model.ImportRequestedSlotPolicy;
 import com.iocextractor.application.dataframeimport.model.ImportRowFailurePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportRowIssue;
+import com.iocextractor.application.dataframeimport.model.ImportRowWarning;
 import com.iocextractor.application.dataframeimport.model.ImportSha256;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshot;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshotReference;
@@ -43,12 +46,16 @@ import com.iocextractor.application.dataframeimport.model.ImportWorkspaceLimits;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportCommand;
 import com.iocextractor.application.port.out.dataframeimport.CreateImportWorkspaceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ImportWorkspaceWriter;
+import com.iocextractor.application.observation.ObservationOrigin;
+import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.application.tck.dataframeimport.CanonicalImportWriterContractTest;
 import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -81,6 +88,7 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
 
     private static final Instant NOW = Instant.parse("2026-08-24T12:00:00Z");
     private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
+
     private static final Duration TTL = Duration.ofHours(12);
     private static final String DIGEST = "a".repeat(64);
     private static final String FINGERPRINT = "b".repeat(64);
@@ -105,7 +113,7 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                 List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
                         values("mask", "evil.example", "source", "feed-a"), OptionalLong.empty()))),
                 List.of());
-        JdbcCanonicalImportWriter writer = environment.writer(JdbcCanonicalImportObserver.NOOP);
+        var writer = environment.writer(JdbcCanonicalImportObserver.NOOP);
         return new Fixture(writer, command, () -> {
             assertThat(environment.count("masks")).isOne();
             assertThat(environment.count("masks_sources")).isOne();
@@ -115,6 +123,86 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                     "SELECT revision FROM artifact_revision WHERE artifact = 'masks'"))
                     .isOne();
         });
+    }
+
+    @Test
+    void acceptedWarningSurvivesCanonicalCommitAndReceiptReplay() {
+        Environment environment = environment("accepted-warning");
+        ImportRowWarning warning = new ImportRowWarning(2, "masks", "IMPORT.VIEW_FALLBACK");
+        CanonicalImportCommand command = environment.stage(
+                "delivery-accepted-warning", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "evil.example"), OptionalLong.empty()))),
+                List.of(), List.of(warning));
+
+        environment.writer(JdbcCanonicalImportObserver.NOOP).promote(command);
+        var evidence = new JdbcImportCommitEvidenceStore(environment.dataSource).find(command.deliveryId());
+
+        assertThat(evidence).hasValueSatisfying(receipt -> {
+            assertThat(receipt.acceptedRows()).isOne();
+            assertThat(receipt.rejectedRows()).isZero();
+            assertThat(receipt.issues()).isEmpty();
+            assertThat(receipt.warnings()).containsExactly(warning);
+        });
+        assertThat(environment.count("import_row_rejection")).isZero();
+        assertThat(environment.count("import_row_warning")).isOne();
+    }
+
+    @Test
+    void coalescedMemberWarningSurvivesCanonicalCommitAndReceiptReplay() {
+        Environment environment = environment("coalesced-warning");
+        ImportRowWarning warning = new ImportRowWarning(3, "masks", "IMPORT.VIEW_FALLBACK");
+        CanonicalImportCommand command = environment.stage(
+                "delivery-coalesced-warning", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                                cells("mask", ImportCell.value("evil.example"),
+                                        "source", ImportCell.absent()), OptionalLong.empty())),
+                        row(3, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                                values("mask", "evil.example", "source", "second-feed"),
+                                OptionalLong.empty()))),
+                List.of(), List.of(warning));
+
+        environment.writer(JdbcCanonicalImportObserver.NOOP).promote(command);
+        environment.deleteStage(command);
+        var evidence = new JdbcImportCommitEvidenceStore(environment.dataSource).find(command.deliveryId());
+
+        assertThat(evidence).hasValueSatisfying(receipt -> {
+            assertThat(receipt.acceptedRows()).isOne();
+            assertThat(receipt.warnings()).containsExactly(warning);
+        });
+        assertThat(environment.queryLong("SELECT COUNT(*) FROM masks WHERE source = 'second-feed'"))
+                .isOne();
+        assertThat(environment.count("import_row_warning")).isOne();
+    }
+
+    @Test
+    void promotesPinnedVersionTwoStageWithoutAWarningTable() throws Exception {
+        Environment environment = environment("version-two-stage");
+        CanonicalImportCommand command = environment.stage(
+                "delivery-version-two", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "old.example"), OptionalLong.empty()))), List.of());
+        Path sealed = environment.stagePath(command);
+        try (Connection connection = java.sql.DriverManager.getConnection("jdbc:sqlite:" + sealed);
+             var statement = connection.createStatement()) {
+            statement.execute("DROP TABLE stage_row_warning");
+            statement.execute("PRAGMA user_version=2");
+            statement.execute("""
+                    UPDATE stage_meta SET schema_version=2,
+                    plan_hash='9ab1998b7e0d179935dfedf374f6011d609d6db6bafed535deee771626524d64'
+                    """);
+        }
+        ImportStage oldStage = new ImportStage(command.stage().reference(),
+                ImportFileDigests.sha256(sealed), command.stage().sourceRows(),
+                command.stage().acceptedRows(), command.stage().rejectedRows());
+        CanonicalImportCommand resumed = new CanonicalImportCommand(
+                command.deliveryId(), command.sequence(), command.sourceId(),
+                command.snapshot(), command.contract(), oldStage);
+
+        environment.writer(JdbcCanonicalImportObserver.NOOP).promote(resumed);
+
+        assertThat(environment.count("masks")).isOne();
+        assertThat(environment.count("import_row_warning")).isZero();
     }
 
     @Test
@@ -188,6 +276,41 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
 
         assertThat(environment.count("masks")).isOne();
         assertThat(environment.count("import_commit")).isOne();
+    }
+
+    @Test
+    void orderedImportFieldUsesSharedRegistrationRankAcrossReverseCompletion() {
+        Environment environment = environment("ordered-import");
+        JdbcObservationRegistrationStore registrations =
+                new JdbcObservationRegistrationStore(environment.dataSource, CLOCK);
+        CanonicalImportCommand older = environment.stage(
+                "ordered-older", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "ordered.example", "source", "older"),
+                        OptionalLong.empty()))), List.of());
+        CanonicalImportCommand newer = environment.stage(
+                "ordered-newer", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "ordered.example", "source", "newer"),
+                        OptionalLong.empty()))), List.of());
+        RegisteredObservation olderRegistration = registrations.registerNew(
+                new ObservationId(older.deliveryId().value()), ObservationOrigin.MANAGED_IMPORT);
+        RegisteredObservation newerRegistration = registrations.registerNew(
+                new ObservationId(newer.deliveryId().value()), ObservationOrigin.MANAGED_IMPORT);
+        JdbcCanonicalImportWriter writer = environment.orderedWriter();
+
+        writer.promote(withRegistration(newer, newerRegistration));
+        writer.promote(withRegistration(older, olderRegistration));
+
+        assertThat(environment.queryString("SELECT source FROM masks"))
+                .isEqualTo("newer");
+        assertThat(environment.queryLong("""
+                SELECT admission_order FROM canonical_lifecycle_field_origin
+                WHERE artifact = 'masks' AND field_name = 'source'
+                """)).isEqualTo(newerRegistration.admissionOrder().value());
+        assertThat(environment.queryLong(
+                "SELECT revision FROM artifact_revision WHERE artifact = 'masks'"))
+                .isOne();
     }
 
     @Test
@@ -634,16 +757,218 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                 command.deliveryId(), command.sequence(), command.sourceId(), snapshot, contract, stage);
     }
 
+    private CanonicalImportCommand withRegistration(
+            CanonicalImportCommand command, RegisteredObservation registration) {
+        return new CanonicalImportCommand(
+                command.deliveryId(), command.sequence(), command.sourceId(), command.snapshot(),
+                command.contract(), command.stage(), registration);
+    }
+
+    @ParameterizedTest
+    @EnumSource(ImportRowFailurePolicy.class)
+    void sharedNewRelatedKeyRejectsCompleteFanOutBeforeMutation(ImportRowFailurePolicy failurePolicy) {
+        Environment environment = environment("new-related-collision");
+        ImportPromotionPolicy policy = new ImportPromotionPolicy(failurePolicy, false, Optional.empty());
+        CanonicalImportCommand command = environment.stage("delivery-new-related", policy, List.of(
+                row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                                values("mask", "one.example"), OptionalLong.empty()),
+                        branch(environment, "hashes", ImportArtifactRole.RELATED,
+                                values("hash", "SHARED"), OptionalLong.empty())),
+                row(3, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                                values("mask", "two.example"), OptionalLong.empty()),
+                        branch(environment, "hashes", ImportArtifactRole.RELATED,
+                                values("hash", "SHARED"), OptionalLong.empty())),
+                row(4, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "valid.example"), OptionalLong.empty()))), List.of());
+
+        var result = environment.writer(JdbcCanonicalImportObserver.NOOP).promote(command);
+
+        long accepted = failurePolicy == ImportRowFailurePolicy.ACCEPT_VALID ? 1 : 0;
+        assertThat(result.acceptedRows()).isEqualTo(accepted);
+        assertThat(result.rejectedRows()).isEqualTo(3 - accepted);
+        assertThat(environment.count("masks")).isEqualTo(accepted);
+        assertThat(environment.count("masks_sources")).isEqualTo(accepted);
+        assertThat(environment.count("hashes")).isZero();
+        assertThat(environment.count("canonical_match_alias")).isEqualTo(accepted);
+        assertThat(environment.count("import_commit")).isOne();
+        assertThat(environment.queryLong("SELECT COUNT(*) FROM import_row_rejection"
+                + " WHERE diagnostic_code = 'IMPORT.DUPLICATE_NEW_TARGET'")).isEqualTo(2);
+        environment.deleteStage(command);
+        assertThat(environment.writer(JdbcCanonicalImportObserver.NOOP).promote(command).outcome().name())
+                .isEqualTo("ALREADY_COMMITTED");
+    }
+
+    @ParameterizedTest
+    @EnumSource(ImportExistingSlotPolicy.class)
+    void initializedRegistryRejectsUnassignedSurvivorAsRowFailure(ImportExistingSlotPolicy existingPolicy) {
+        Environment environment = environment("unassigned-survivor");
+        ImportPromotionPolicy policy = new ImportPromotionPolicy(ImportRowFailurePolicy.ACCEPT_VALID, false,
+                Optional.of(new ImportRequestedSlotPolicy("reputation", existingPolicy)));
+        var writer = environment.writer(JdbcCanonicalImportObserver.NOOP);
+        writer.promote(environment.stage("delivery-slot-seed", policy, List.of(row(2,
+                branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "seed.example"), OptionalLong.of(7)))), List.of()));
+        writer.promote(environment.stage("delivery-without-slot", ImportPromotionPolicy.defaults(), List.of(row(2,
+                branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "late.example", "description", "old"), OptionalLong.empty()))), List.of()));
+        long publicId = environment.queryLong("SELECT id FROM masks WHERE mask = 'late.example'");
+        CanonicalImportCommand command = environment.stage("delivery-unassigned", policy, List.of(
+                row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "late.example", "description", "new"), OptionalLong.of(publicId))),
+                row(3, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "valid.example"), OptionalLong.empty()))), List.of());
+
+        var result = writer.promote(command);
+
+        assertThat(result.acceptedRows()).isOne();
+        assertThat(result.rejectedRows()).isOne();
+        assertThat(environment.queryString("SELECT description FROM masks WHERE mask = 'late.example'"))
+                .isEqualTo("old");
+        assertThat(environment.count("export_slot_assignment")).isOne();
+        assertThat(environment.queryLong("SELECT slot FROM export_slot_assignment")).isEqualTo(7);
+        assertThat(environment.queryString("SELECT diagnostic_code FROM import_row_rejection"
+                + " WHERE delivery_id = 'delivery-unassigned'")).isEqualTo("IMPORT.EXISTING_SLOT_UNASSIGNED");
+        assertThat(environment.queryLong("SELECT COUNT(*) FROM import_slot_resolution"
+                + " WHERE delivery_id = 'delivery-unassigned'")).isZero();
+        environment.deleteStage(command);
+        assertThat(writer.promote(command).outcome().name()).isEqualTo("ALREADY_COMMITTED");
+    }
+
+    @ParameterizedTest
+    @EnumSource(ImportExistingSlotPolicy.class)
+    void matchingLargeSurvivorSlotWorksDuringFirstSeedAndLaterImports(ImportExistingSlotPolicy existingPolicy) {
+        Environment environment = environment("survivor-first-seed");
+        var writer = environment.writer(JdbcCanonicalImportObserver.NOOP);
+        List<ImportLogicalRow> rows = new ArrayList<>();
+        int seedRows = 128;
+        for (int index = 0; index < seedRows; index++) {
+            rows.add(row(index + 2L, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                    values("mask", "seed-" + index + ".example"), OptionalLong.empty())));
+        }
+        writer.promote(environment.stage("delivery-before-seed", ImportPromotionPolicy.defaults(), rows, List.of()));
+        String survivor = "seed-" + (seedRows - 1) + ".example";
+        long slot = environment.queryLong("SELECT id FROM masks WHERE mask = '" + survivor + "'");
+        assertThat(slot).isGreaterThan(127); // Compare values outside Long's small-value cache.
+        ImportPromotionPolicy policy = new ImportPromotionPolicy(ImportRowFailurePolicy.ACCEPT_VALID, false,
+                Optional.of(new ImportRequestedSlotPolicy("reputation", existingPolicy)));
+        for (int update = 0; update < 2; update++) {
+            CanonicalImportCommand command = environment.stage("delivery-seed-update-" + update, policy,
+                    List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                            values("mask", survivor, "description", "update-" + update), OptionalLong.of(slot)))), List.of());
+
+            var result = writer.promote(command);
+
+            assertThat(result.acceptedRows()).isOne();
+            assertThat(result.rejectedRows()).isZero();
+            assertThat(environment.queryLong("SELECT COUNT(*) FROM export_slot_assignment")).isEqualTo(seedRows);
+            assertThat(environment.queryLong("SELECT slot FROM export_slot_assignment WHERE lifecycle_id = "
+                    + "(SELECT _lifecycle_id FROM masks WHERE mask = '" + survivor + "')")).isEqualTo(slot);
+            assertThat(environment.queryString("SELECT description FROM masks WHERE mask = '" + survivor + "'"))
+                    .isEqualTo("update-" + update);
+            assertThat(environment.queryString("SELECT outcome FROM import_slot_resolution WHERE delivery_id = '"
+                    + command.deliveryId().value() + "'")).isEqualTo("SURVIVOR_MATCH");
+        }
+    }
+
+    @Test
+    void slotPreferencesAndEvidenceKeepInputOrderAcrossBatchBoundaries() {
+        Environment environment = environment("streamed-slots");
+        ImportPromotionPolicy policy = new ImportPromotionPolicy(ImportRowFailurePolicy.ACCEPT_VALID, false,
+                Optional.of(new ImportRequestedSlotPolicy("reputation", ImportExistingSlotPolicy.PRESERVE_EXISTING)));
+        List<ImportLogicalRow> rows = new ArrayList<>();
+        // Three batches exercise the complete-set validation and sparse preference ordering.
+        int rowCount = 257;
+        for (int index = 0; index < rowCount; index++) {
+            rows.add(row(index + 2L, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                    values("mask", "host-" + index + ".example"), OptionalLong.of(10_000L + index * 2L))));
+        }
+        CanonicalImportCommand command = environment.stage("delivery-streamed", policy, rows, List.of());
+
+        var result = environment.writer(JdbcCanonicalImportObserver.NOOP).promote(command);
+
+        assertThat(result.acceptedRows()).isEqualTo(rowCount);
+        assertThat(result.rejectedRows()).isZero();
+        assertThat(environment.count("export_slot_assignment")).isEqualTo(rowCount);
+        assertThat(environment.count("import_slot_resolution")).isEqualTo(rowCount);
+        assertThat(environment.queryLong("SELECT COUNT(*) FROM import_slot_resolution"
+                + " WHERE assigned_slot <> requested_slot OR outcome <> 'EXACT'"
+                + " OR source_row_number <> resolution_ordinal + 1")).isZero();
+        environment.deleteStage(command);
+        assertThat(environment.writer(JdbcCanonicalImportObserver.NOOP).promote(command).outcome().name())
+                .isEqualTo("ALREADY_COMMITTED");
+        assertThat(environment.count("import_slot_resolution")).isEqualTo(rowCount);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = JdbcCanonicalImportObserver.Phase.class,
+            names = {"CANONICAL_MUTATIONS_APPLIED", "RECEIPT_WRITTEN", "AFTER_COMMIT"})
+    void fatalFailurePreservesAtomicityAndCommittedRecovery(JdbcCanonicalImportObserver.Phase failingPhase) {
+        Environment environment = environment("fatal-import");
+        CanonicalImportCommand command = environment.stage("delivery-fatal", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "fatal.example"), OptionalLong.empty()))), List.of());
+        AssertionError failure = new AssertionError("injected fatal failure");
+        var writer = environment.writer(phase -> { if (phase == failingPhase) { throw failure; } });
+
+        assertThatThrownBy(() -> writer.promote(command)).isSameAs(failure);
+
+        boolean committed = failingPhase == JdbcCanonicalImportObserver.Phase.AFTER_COMMIT;
+        assertThat(environment.count("masks")).isEqualTo(committed ? 1 : 0);
+        assertThat(environment.count("masks_sources")).isEqualTo(committed ? 1 : 0);
+        assertThat(environment.count("import_commit")).isEqualTo(committed ? 1 : 0);
+        if (committed) {
+            environment.deleteStage(command);
+            assertThat(environment.writer(JdbcCanonicalImportObserver.NOOP).promote(command).outcome().name())
+                    .isEqualTo("ALREADY_COMMITTED");
+        }
+        assertThat(environment.dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = JdbcCanonicalImportObserver.Phase.class,
+            names = {"BEFORE_COMMIT", "AFTER_COMMIT"})
+    void pooledConnectionReleasesPlanningPayloadAndPreservesSameNamedMainTable(
+            JdbcCanonicalImportObserver.Phase failingPhase) throws SQLException {
+        Environment environment = environment("planning-cleanup");
+        environment.dataSource.setMinimumIdle(1);
+        environment.dataSource.setMaximumPoolSize(1);
+        environment.dataSource.getHikariPoolMXBean().softEvictConnections();
+        try (Connection connection = environment.dataSource.getConnection();
+             var statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE main.temp_import_plan(sentinel TEXT)");
+            statement.execute("INSERT INTO main.temp_import_plan VALUES ('keep')");
+        }
+        CanonicalImportCommand command = environment.stage("delivery-cleanup", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "cleanup.example"), OptionalLong.empty()))), List.of());
+        var writer = environment.writer(phase -> { if (phase == failingPhase) { throw new AssertionError("stop"); } });
+
+        assertThatThrownBy(() -> writer.promote(command)).isInstanceOf(AssertionError.class);
+
+        assertThat(environment.queryString("SELECT sentinel FROM main.temp_import_plan")).isEqualTo("keep");
+        assertThat(environment.queryLong("SELECT COUNT(*) FROM sqlite_temp_master"
+                + " WHERE name LIKE 'temp_import_%' OR name LIKE 'temp_export_slot_%'")).isZero();
+        assertThat(environment.queryLong("SELECT COUNT(*) FROM pragma_database_list WHERE name = 'import_stage'"))
+                .isZero();
+        if (failingPhase == JdbcCanonicalImportObserver.Phase.BEFORE_COMMIT) {
+            environment.writer(JdbcCanonicalImportObserver.NOOP).promote(command);
+            assertThat(environment.queryString("SELECT sentinel FROM main.temp_import_plan")).isEqualTo("keep");
+            assertThat(environment.queryLong("SELECT COUNT(*) FROM sqlite_temp_master"
+                    + " WHERE name LIKE 'temp_import_%'")).isZero();
+        }
+    }
+
     private Environment environment(String name) {
+        return environment(name, List.of(schema("masks", "mask"), schema("hashes", "hash")),
+                List.of(identity("masks", "mask"), identity("hashes", "hash")));
+    }
+
+    private Environment environment(String name, List<DataframeArtifactSchema> schemas, List<ArtifactIdentityDefinition> identities) {
         Path database = tempDir.resolve(databases.incrementAndGet() + "-" + name + ".db");
         HikariDataSource dataSource = new SqliteDataSourceFactory(new SqlitePragmaPolicy()).create(
                 new SqliteDataSourceSettings(
                         "dataframe", "jdbc:sqlite:" + database, "low-memory", 4, 4));
         dataSources.add(dataSource);
-        List<DataframeArtifactSchema> schemas = List.of(
-                schema("masks", "mask"), schema("hashes", "hash"));
-        List<ArtifactIdentityDefinition> identities = List.of(
-                identity("masks", "mask"), identity("hashes", "hash"));
         new SqliteUserVersionSchemaMigrator(dataSource, DataframeFormatMigrations.sqlite()).migrate();
         new DataframeSchemaReconciler(dataSource).reconcile(schemas);
         new JdbcArtifactIdentityStore(dataSource, CLOCK).ensureAll(identities);
@@ -820,6 +1145,30 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                     new FixedRecordValidityPolicy(TTL), CLOCK, new JdbcWriterAdmission());
         }
 
+        private JdbcCanonicalImportWriter orderedWriter() {
+            ArtifactWritePolicy policy = new ArtifactWritePolicy(
+                    ArtifactWritePolicy.DuplicateSelection.KEEP_FIRST,
+                    null,
+                    Map.of("source",
+                            ArtifactWritePolicy.FieldUpdatePolicy.LATEST_REGISTERED_KEEP_EXISTING));
+            return policyWriter(Map.of("masks", policy));
+        }
+
+        private JdbcCanonicalImportWriter policyWriter(Map<String, ArtifactWritePolicy> policies) {
+            return new JdbcCanonicalImportWriter(
+                    dataSource, schemas,
+                    List.of(
+                            new ArtifactIdAllocatorDefinition(
+                                    "masks", ArtifactIdStrategy.ASCENDING, 1, 1),
+                            new ArtifactIdAllocatorDefinition(
+                                    "hashes", ArtifactIdStrategy.ASCENDING, 1, 1)),
+                    identities, workspaceRoot,
+                    ignored -> EffectiveTime.at(NOW),
+                    new FixedRecordValidityPolicy(TTL), CLOCK,
+                    new JdbcWriterAdmission(), JdbcCanonicalImportObserver.NOOP,
+                    Duration.ofDays(90), policies);
+        }
+
         private void deleteStage(CanonicalImportCommand command) {
             try {
                 Files.delete(stagePath(command));
@@ -836,6 +1185,14 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                                              ImportPromotionPolicy policy,
                                              List<ImportLogicalRow> rows,
                                              List<ImportRejectedLogicalRow> rejectedRows) {
+            return stage(delivery, policy, rows, rejectedRows, List.of());
+        }
+
+        private CanonicalImportCommand stage(String delivery,
+                                             ImportPromotionPolicy policy,
+                                             List<ImportLogicalRow> rows,
+                                             List<ImportRejectedLogicalRow> rejectedRows,
+                                             List<ImportRowWarning> warnings) {
             ImportDeliveryId deliveryId = new ImportDeliveryId(delivery);
             ImportSnapshot snapshot = new ImportSnapshot(
                     new ImportSnapshotReference("snapshot:" + delivery),
@@ -849,7 +1206,9 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                     workspaceRoot, workspaceLimits(), CLOCK);
             ImportStage stage;
             try (ImportWorkspaceWriter writer = workspace.create(create)) {
-                rows.forEach(writer::append);
+                rows.forEach(row -> writer.append(row,
+                        warnings.stream().filter(warning -> warning.sourceRowNumber() == row.sourceRowNumber())
+                                .toList()));
                 rejectedRows.forEach(writer::reject);
                 stage = writer.seal();
             }

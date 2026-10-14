@@ -363,4 +363,5 @@ UNPINNED_ACTIONS="$(
 [[ -z "${UNPINNED_ACTIONS}" ]] \
   || fail "GitHub Actions must use a local path or full commit SHA: ${UNPINNED_ACTIONS}"
 
+
 printf '[tools-contract] PASS\n'

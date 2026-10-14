@@ -20,6 +20,7 @@ import com.iocextractor.application.port.out.dataframeimport.ImportReplaySnapsho
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
 import com.iocextractor.diagnostics.codes.ImportDiagnosticCodes;
 import com.iocextractor.platform.events.ControlEventPublisher;
+import com.iocextractor.application.observation.ManagedImportObservationAdmission;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -43,6 +44,7 @@ public final class DataframeImportAdmissionService
     private final DataframeImportObserver observer;
     private final Clock clock;
     private final Duration retryDelay;
+    private final ManagedImportObservationAdmission observationAdmission;
 
     /** Creates one admission service over shared durable order and source ownership. */
     public DataframeImportAdmissionService(ImportDeliveryLedger ledger,
@@ -53,7 +55,7 @@ public final class DataframeImportAdmissionService
         this(ledger, sources, events, clock, retryDelay,
                 (terminalDeliveryId, replayDeliveryId) -> {
                     throw new IllegalStateException("Import replay snapshot store is not configured");
-                }, NoopDataframeImportObserver.INSTANCE);
+                }, NoopDataframeImportObserver.INSTANCE, null);
     }
 
     /** Creates admission with protected terminal replay materialization. */
@@ -64,7 +66,7 @@ public final class DataframeImportAdmissionService
                                            Duration retryDelay,
                                            ImportReplaySnapshotStore replays) {
         this(ledger, sources, events, clock, retryDelay, replays,
-                NoopDataframeImportObserver.INSTANCE);
+                NoopDataframeImportObserver.INSTANCE, null);
     }
 
     /** Creates admission with protected replay materialization and operational observation. */
@@ -75,6 +77,18 @@ public final class DataframeImportAdmissionService
                                            Duration retryDelay,
                                            ImportReplaySnapshotStore replays,
                                            DataframeImportObserver observer) {
+        this(ledger, sources, events, clock, retryDelay, replays, observer, null);
+    }
+
+    /** Creates admission with a shared document/import precedence authority. */
+    public DataframeImportAdmissionService(ImportDeliveryLedger ledger,
+                                           ManagedImportSourceLifecycle sources,
+                                           ControlEventPublisher events,
+                                           Clock clock,
+                                           Duration retryDelay,
+                                           ImportReplaySnapshotStore replays,
+                                           DataframeImportObserver observer,
+                                           ManagedImportObservationAdmission observationAdmission) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.sources = Objects.requireNonNull(sources, "sources");
         this.events = Objects.requireNonNull(events, "events");
@@ -82,6 +96,7 @@ public final class DataframeImportAdmissionService
         this.observer = new ResilientDataframeImportObserver(observer);
         this.clock = Objects.requireNonNull(clock, "clock");
         this.retryDelay = Objects.requireNonNull(retryDelay, "retryDelay");
+        this.observationAdmission = observationAdmission;
         if (retryDelay.isNegative()) {
             throw new IllegalArgumentException("Import retry delay must not be negative");
         }
@@ -92,6 +107,7 @@ public final class DataframeImportAdmissionService
         Objects.requireNonNull(command, "command");
         ImportClaimReservation reservation = command.reservation();
         ImportDelivery reserved = ledger.reserveClaim(reservation);
+        ensureObservation(reserved);
         boolean newlyReserved = reserved.id().equals(reservation.deliveryId());
         if (!newlyReserved) {
             return new AdmitDataframeImportResult(reserved, false);
@@ -127,6 +143,7 @@ public final class DataframeImportAdmissionService
     }
 
     private ImportDelivery advanceClaim(ImportDelivery initial) {
+        ensureObservation(initial);
         Instant startedAt = clock.instant();
         ImportDelivery current = initial;
         if (current.state() == ImportDeliveryState.DETECTED) {
@@ -154,6 +171,12 @@ public final class DataframeImportAdmissionService
             }
         }
         return current;
+    }
+
+    private void ensureObservation(ImportDelivery delivery) {
+        if (observationAdmission != null) {
+            observationAdmission.register(delivery.id());
+        }
     }
 
     private ImportSnapshot claim(ImportDelivery delivery) {

@@ -38,6 +38,7 @@ replay_pid*
 source/*
 !source/README.md
 dataframe/*
+!dataframe/README.md
 !dataframe/hashes_list.csv
 !dataframe/masks_list.csv
 !dataframe/ip_list.csv
@@ -59,6 +60,8 @@ CLAUDE.md
 AGENTS.md
 .claude
 .codex
+**/__pycache__/
+*.py[cod]
 
 # Local design/work notes are scratch context, not published project documentation.
 /docs/worknote/*
@@ -67,3 +70,18 @@ AGENTS.md
 # planning and evidence. Other worknotes remain local by default.
 !/docs/worknote/0.3.0/
 !/docs/worknote/0.3.0/**
+# The release worknote may contain isolated Maven qualification probes.
+# Keep their reproducible sources, but never version their generated output.
+/docs/worknote/0.3.0/**/target/
+
+# Qualification measurements stay local; summaries and reproducible probes are versioned.
+/docs/worknote/0.3.0/**/qualification/**/*.csv
+/docs/worknote/0.3.0/**/qualification/**/*.gz
+/docs/worknote/0.3.0/**/qualification/**/*.jfr
+/docs/worknote/0.3.0/**/qualification/**/*.json
+/docs/worknote/0.3.0/**/qualification/**/*.jsonl
+/docs/worknote/0.3.0/**/qualification/**/*.metadata
+/docs/worknote/0.3.0/**/qualification/**/*.txt
+/docs/worknote/0.3.0/**/qualification/**/*-focused.xml
+# Per-sample rendered policies are generated measurement state, not source fixtures.
+/docs/worknote/0.3.0/**/qualification/**/[0-9]*/application.yml

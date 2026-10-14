@@ -6,8 +6,13 @@ import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
+import com.iocextractor.application.artifact.CanonicalWriteCommand;
+import com.iocextractor.application.artifact.CanonicalWriteRow;
 import com.iocextractor.application.export.ArtifactRevision;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
+import com.iocextractor.application.observation.ObservationOrigin;
+import com.iocextractor.application.observation.OccurrencePosition;
 import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
@@ -19,6 +24,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -253,11 +259,128 @@ class JdbcArtifactRepositoriesIT {
                 .hasMessageContaining("Legacy canonical writer is disabled");
     }
 
+    @Test
+    void compatibility_writer_orders_mutable_fields_without_losing_insert_counts() throws Exception {
+        var schema = schema("masks", "id", "mask", "source");
+        var repository = canonicalRepository(List.of(schema), List.of(
+                new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1)));
+        var registrations = new JdbcObservationRegistrationStore(dataSource, CLOCK);
+        var older = registrations.registerNew(
+                new ObservationId("compat-older"), ObservationOrigin.DOCUMENT);
+        var newer = registrations.registerNew(
+                new ObservationId("compat-newer"), ObservationOrigin.DOCUMENT);
+
+        CanonicalWriteResult inserted = repository.write(orderedCommand(
+                newer, "2", "newer", new OccurrencePosition(20)));
+        CanonicalWriteResult stale = repository.write(orderedCommand(
+                older, "3", "older", new OccurrencePosition(10)));
+        var newest = registrations.registerNew(
+                new ObservationId("compat-newest"), ObservationOrigin.DOCUMENT);
+        CanonicalWriteResult updated = repository.write(orderedCommand(
+                newest, "4", "latest", new OccurrencePosition(30)));
+
+        assertThat(inserted.inserted()).isOne();
+        assertThat(stale.inserted()).isZero();
+        assertThat(stale.publicRowsUpdated()).isZero();
+        assertThat(updated.inserted()).isZero();
+        assertThat(updated.publicRowsUpdated()).isOne();
+        assertThat(updated.revision()).isEqualTo(inserted.revision() + 1);
+        assertThat(repository.load("masks").rows()).singleElement().satisfies(value -> {
+            assertThat(value.value("id")).isEqualTo("2");
+            assertThat(value.value("mask")).isEqualTo("example.com");
+            assertThat(value.value("source")).isEqualTo("latest");
+        });
+        assertThat(queryLong("SELECT admission_order FROM canonical_compat_field_origin "
+                + "WHERE artifact = 'masks' AND field_name = 'source'"))
+                .isEqualTo(newest.admissionOrder().value());
+    }
+
+    @Test
+    void streamedCompatibilityWriteKeepsAllObservationContributionsAndSourceFallbacks() {
+        var schema = schema("masks", "id", "mask", "source");
+        var repository = canonicalRepository(List.of(schema), List.of(
+                new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1)));
+        var command = new CanonicalWriteCommand("masks", List.of("id", "mask", "source"), List.of(
+                new CanonicalWriteRow(row("id", null, "mask", "example.test", "source", "public",
+                        "_source_key", "private"), Map.of()),
+                new CanonicalWriteRow(row("id", " ", "mask", "example.test", "source", "public",
+                        "_source_key", " "), Map.of()),
+                new CanonicalWriteRow(row("mask", "other.test", "source", " ", "_source_key", " "), Map.of())), null);
+
+        var result = repository.write(command);
+        var duplicate = repository.write(command);
+
+        assertThat(result.inserted()).isEqualTo(2);
+        assertThat(duplicate.inserted()).isZero();
+        assertThat(duplicate.revision()).isEqualTo(result.revision());
+        assertThat(sourceRows("masks")).containsExactlyInAnyOrder("1:private:2", "1:public:2", "3:unknown:2");
+        assertThat(repository.load("masks").rows()).extracting(value -> value.value("mask"))
+                .containsExactly("example.test", "other.test");
+    }
+
+    @Test
+    void compatibilityCommandRejectsWrongSchemaAndMissingIdentityBeforeAnyDurableEffect() {
+        var schema = schema("masks", "id", "mask", "source");
+        var repository = canonicalRepository(List.of(schema), List.of(
+                new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1)));
+        var value = new CanonicalWriteRow(row("mask", "example.test"), Map.of());
+        assertThatThrownBy(() -> repository.write(new CanonicalWriteCommand(
+                "masks", List.of("id", "mask"), List.of(value), null)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("header");
+        assertThatThrownBy(() -> repository.write(new CanonicalWriteCommand(
+                "missing", List.of("id", "mask", "source"), List.of(value), null)))
+                .isInstanceOf(IocExtractorException.class).hasMessageContaining("Unknown dataframe artifact");
+        assertThatThrownBy(() -> repository.write(new CanonicalWriteCommand(
+                "masks", List.of("id", "mask", "source"), List.of(value,
+                        new CanonicalWriteRow(row("mask", null), Map.of())), null)))
+                .isInstanceOf(IocExtractorException.class).hasMessageContaining("Cannot resolve row_key");
+        assertThat(repository.load("masks").rows()).isEmpty();
+        assertThat(sourceRows("masks")).isEmpty();
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @Test
+    void newerEqualFieldUpdatesOnlyPrecedenceMetadataAndPreservesRevision() throws Exception {
+        var schema = schema("masks", "id", "mask", "source");
+        var repository = canonicalRepository(List.of(schema), List.of(
+                new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1)));
+        var registrations = new JdbcObservationRegistrationStore(dataSource, CLOCK);
+        var first = registrations.registerNew(new ObservationId("equal-first"), ObservationOrigin.DOCUMENT);
+        var next = registrations.registerNew(new ObservationId("equal-next"), ObservationOrigin.DOCUMENT);
+        var inserted = repository.write(orderedCommand(first, "1", "same", new OccurrencePosition(1)));
+
+        var metadata = repository.write(orderedCommand(next, "2", "same", new OccurrencePosition(2)));
+
+        assertThat(metadata.inserted()).isZero();
+        assertThat(metadata.publicRowsUpdated()).isZero();
+        assertThat(metadata.metadataOnlyRows()).isOne();
+        assertThat(metadata.revision()).isEqualTo(inserted.revision());
+        assertThat(queryLong("SELECT admission_order FROM canonical_compat_field_origin "
+                + "WHERE artifact='masks' AND field_name='source'"))
+                .isEqualTo(next.admissionOrder().value());
+        assertThat(sourceRows("masks")).containsExactly("1:same:2");
+    }
+
+    private CanonicalWriteCommand orderedCommand(
+            com.iocextractor.application.observation.RegisteredObservation registration,
+            String id,
+            String source,
+            OccurrencePosition position) {
+        return new CanonicalWriteCommand(
+                "masks",
+                List.of("id", "mask", "source"),
+                List.of(new CanonicalWriteRow(
+                        row("id", id, "mask", "example.com", "source", source),
+                        Map.of("source", position))),
+                registration);
+    }
+
     private JdbcCanonicalArtifactRepository canonicalRepository(List<DataframeArtifactSchema> schemas,
                                                                 List<ArtifactIdentityDefinition> identities) {
         dataSource = dataSource("artifacts-" + System.nanoTime() + ".db");
         new SqliteUserVersionSchemaMigrator(dataSource, DataframeFormatMigrations.sqlite()).migrate();
         new DataframeSchemaReconciler(dataSource).reconcile(schemas);
+        new JdbcArtifactIdentityStore(dataSource, CLOCK).ensureAll(identities);
         return new JdbcCanonicalArtifactRepository(
                 dataSource,
                 schemas,
@@ -303,5 +426,14 @@ class JdbcArtifactRepositoriesIT {
         Path db = tempDir.resolve(fileName);
         return new SqliteDataSourceFactory(new SqlitePragmaPolicy()).create(
                 new SqliteDataSourceSettings("dataframe", "jdbc:sqlite:" + db, "low-memory", 1, 1));
+    }
+
+    private long queryLong(String sql) throws Exception {
+        try (var connection = dataSource.getConnection();
+             var statement = connection.createStatement();
+             var resultSet = statement.executeQuery(sql)) {
+            assertThat(resultSet.next()).isTrue();
+            return resultSet.getLong(1);
+        }
     }
 }

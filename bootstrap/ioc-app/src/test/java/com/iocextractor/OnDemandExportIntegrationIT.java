@@ -8,6 +8,7 @@ import com.iocextractor.adapter.out.store.jdbc.JdbcPublishLedger;
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.export.ExportPlan;
+import com.iocextractor.application.export.ExportProfile;
 import com.iocextractor.application.export.ExportRunStatus;
 import com.iocextractor.application.export.ExportRunRecoveryService;
 import com.iocextractor.application.export.ExportService;
@@ -39,6 +40,7 @@ import com.iocextractor.bootstrap.ExportPlanCatalog;
 import com.iocextractor.bootstrap.LazyServiceStorage;
 import com.iocextractor.consumer.ReferenceArtifactConsumer;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -68,6 +70,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Full artifact-emission path from canonical JDBC writes to verified immutable slices. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @IntegrationTest
+@Timeout(60)
 class OnDemandExportIntegrationIT {
 
     private static final Path TEST_ROOT = Path.of("target", "export-e2e-" + UUID.randomUUID());
@@ -75,6 +78,8 @@ class OnDemandExportIntegrationIT {
     private static final List<String> MASKS_HEADER = List.of(
             "id", "mask", "url_match", "host_match", "score", "time_last_seen",
             "time_first_seen", "threat_type", "source", "description");
+    private static final List<String> AGGREGATE_HEADER = List.of(
+            "name", "ip_address", "url_match", "host_match", "hash");
 
     private final ReferenceArtifactConsumer consumer = new ReferenceArtifactConsumer();
 
@@ -88,6 +93,9 @@ class OnDemandExportIntegrationIT {
         registry.add("ioc.export.profiles[0].name", () -> "e2e-reputation");
         registry.add("ioc.export.profiles[0].output-mode", () -> "complete");
         registry.add("ioc.export.profiles[0].artifacts[0]", () -> "masks");
+        registry.add("ioc.export.profiles[1].name", () -> "ioc-aggregate");
+        registry.add("ioc.export.profiles[1].output-mode", () -> "complete");
+        registry.add("ioc.export.profiles[1].artifacts[0]", () -> "ioc_aggregate");
         registry.add("spring.main.banner-mode", () -> "off");
     }
 
@@ -219,6 +227,82 @@ class OnDemandExportIntegrationIT {
         assertThat(catchUpManifest.artifacts().getFirst().coverage().revision()).isEqualTo(3);
         assertThat(Files.readString(catchUpSlice.resolve("masks_list_generated.csv")))
                 .contains("after-snapshot.example");
+
+        assertAggregateImmutableSlice();
+        assertIndependentProfiles(plan);
+    }
+
+    private void assertIndependentProfiles(ExportPlan template) throws Exception {
+        ExportPlan slow = withProfile(template, "cap-five-slow");
+        ExportPlan fast = withProfile(template, "cap-five-fast");
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        SnapshotSliceReader reader = (request, rows) -> request.plan().profile().name().equals(slow.profile().name())
+                ? blockingReader(entered, release).stream(request, rows)
+                : snapshotReader.stream(request, rows);
+        var service = new ExportService(List.of(slow, fast), revisionReader, progressStore, runLedger,
+                reader, sliceWriter, recoveryService, operationGuard, clock);
+
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var blocked = executor.submit(() -> service.export(new ExportArtifactsCommand(slow.profile().name())));
+            assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+            try {
+                var independent = executor.submit(() -> service.export(new ExportArtifactsCommand(fast.profile().name())));
+                assertThat(independent.get(5, TimeUnit.SECONDS).status()).isEqualTo(ExportRunStatus.COMPLETED);
+                assertThat(blocked.isDone()).isFalse();
+                assertThat(runLedger.findIncomplete()).singleElement()
+                        .extracting(run -> run.profile()).isEqualTo(slow.profile().name());
+            } finally {
+                release.countDown();
+            }
+            assertThat(blocked.get(5, TimeUnit.SECONDS).status()).isEqualTo(ExportRunStatus.COMPLETED);
+            assertThat(runLedger.findIncomplete()).isEmpty();
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    private ExportPlan withProfile(ExportPlan template, String name) {
+        return new ExportPlan(template.manifestVersion(),
+                new ExportProfile(name, template.profile().mode(), template.profile().artifacts()),
+                template.format(), template.artifacts());
+    }
+
+    private void assertAggregateImmutableSlice() throws Exception {
+        plans.requireProfile("ioc-aggregate");
+        ExportPlan plan = plans.plans().stream()
+                .filter(candidate -> candidate.profile().name().equals("ioc-aggregate"))
+                .findFirst().orElseThrow();
+        var artifact = plan.artifacts().getFirst();
+        LinkedHashMap<String, String> values = new LinkedHashMap<>();
+        artifact.columns().forEach(column -> values.put(column, null));
+        values.put("name", "Feed A");
+        values.put("url_match", "https://example.org/drop.exe");
+        canonical.write("ioc_aggregate", new CanonicalArtifact(
+                "ioc_aggregate", artifact.columns(), List.of(ArtifactRow.ordered(values))));
+
+        int exit = new CommandLine(rootCommand, commandFactory)
+                .execute("export", "--profile", "ioc-aggregate");
+
+        assertThat(exit).isZero();
+        List<Path> slices;
+        try (var paths = Files.list(EXPORT_ROOT.resolve("ioc-aggregate"))) {
+            slices = paths.filter(Files::isDirectory).toList();
+        }
+        assertThat(slices).singleElement().satisfies(slice -> {
+            Path csv = slice.resolve("IOC_aggregate_generated.csv");
+            assertThat(Files.readAllBytes(csv))
+                    .containsExactly(goldenCsvBytes("golden/expected-export-ioc-aggregate.csv"));
+            assertThat(consumer.readSlice(slice, Map.of("ioc_aggregate", AGGREGATE_HEADER))
+                    .artifacts().get("ioc_aggregate").rows())
+                    .singleElement()
+                    .satisfies(row -> assertThat(row)
+                            .containsEntry("name", "Feed A")
+                            .containsEntry("url_match", "https://example.org/drop.exe"));
+        });
     }
 
     private void publishSliceIsIdempotentAndReleasesRetention(Path slice, SliceManifest manifest)

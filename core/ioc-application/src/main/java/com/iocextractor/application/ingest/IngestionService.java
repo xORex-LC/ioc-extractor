@@ -19,6 +19,9 @@ import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.port.out.ingest.SourcePreparerFactory;
 import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptReplayCommand;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
+import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
+import com.iocextractor.application.ingest.admission.DocumentTerminalOutcome;
+import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
 import com.iocextractor.platform.concurrent.KeyedExecutionGuard;
 import com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard;
@@ -40,6 +43,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Application orchestration for whole-file ingest. It coordinates source
@@ -49,7 +53,8 @@ import java.util.Optional;
  * one {@link KeyedExecutionGuard}. Convenience constructors create a private
  * guard and therefore provide exclusion only among calls to that service instance.
  */
-public final class IngestionService implements IngestSourceUseCase, RecoverIngestionUseCase, RejectIngestionUseCase {
+public final class IngestionService implements IngestSourceUseCase, RecoverIngestionUseCase, RejectIngestionUseCase,
+        com.iocextractor.application.port.in.ingest.PrepareIngestionUseCase {
 
     private final IngestionLedger ledger;
     private final SourceLifecycle sourceLifecycle;
@@ -63,6 +68,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     private final DiagnosticFactory diagnostics;
     private final KeyedExecutionGuard executionGuard;
     private final IngestionLifecycleSupport lifecycleSupport;
+    private final DocumentAdmissionService documentAdmissions;
 
     public IngestionService(IngestionLedger ledger,
                             SourceLifecycle sourceLifecycle,
@@ -123,7 +129,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                             DiagnosticSink diagnosticSink,
                             KeyedExecutionGuard executionGuard) {
         this(ledger, sourceLifecycle, sourcePreparerFactory, extractionFactory,
-                runLedger, projection, eventPublisher, clock, diagnosticSink, executionGuard, null);
+                runLedger, projection, eventPublisher, clock, diagnosticSink, executionGuard, null, null);
     }
 
     /** Creates a fully wired service with optional fixed-validity receipt replay. */
@@ -138,6 +144,24 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                             DiagnosticSink diagnosticSink,
                             KeyedExecutionGuard executionGuard,
                             IngestionLifecycleSupport lifecycleSupport) {
+        this(ledger, sourceLifecycle, sourcePreparerFactory, extractionFactory,
+                runLedger, projection, eventPublisher, clock, diagnosticSink,
+                executionGuard, lifecycleSupport, null);
+    }
+
+    /** Creates a fully wired service with optional ordered-document recovery. */
+    public IngestionService(IngestionLedger ledger,
+                            SourceLifecycle sourceLifecycle,
+                            SourcePreparerFactory sourcePreparerFactory,
+                            IocExtractionServiceFactory extractionFactory,
+                            RunLedger runLedger,
+                            ArtifactProjection projection,
+                            ControlEventPublisher eventPublisher,
+                            Clock clock,
+                            DiagnosticSink diagnosticSink,
+                            KeyedExecutionGuard executionGuard,
+                            IngestionLifecycleSupport lifecycleSupport,
+                            DocumentAdmissionService documentAdmissions) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.sourceLifecycle = Objects.requireNonNull(sourceLifecycle, "sourceLifecycle");
         this.sourcePreparerFactory = Objects.requireNonNull(sourcePreparerFactory, "sourcePreparerFactory");
@@ -150,6 +174,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         this.diagnostics = new DiagnosticFactory(clock);
         this.executionGuard = Objects.requireNonNull(executionGuard, "executionGuard");
         this.lifecycleSupport = lifecycleSupport;
+        this.documentAdmissions = documentAdmissions;
     }
 
     @Override
@@ -158,9 +183,71 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         return executionGuard.execute(workKey(command.key()), () -> ingestGuarded(command));
     }
 
+    @Override
+    public com.iocextractor.application.port.in.ingest.PreparedIngestion prepare(IngestSourceCommand command) {
+        Objects.requireNonNull(command, "command");
+        SourceUnit unit = command.claimedSourceOptional().orElseThrow(
+                () -> new IllegalArgumentException("Parallel preparation requires a durable claimed source"));
+        var preparers = sourcePreparerFactory.createFor(unit);
+        var run = runLedger.startIngest(unit.key().value(), preparers.artifactNames());
+        try {
+            // A null context means lifecycle is disabled. A null extraction below means
+            // the committed receipt supplies preparation during replay; PreparedDocument handles both.
+            var context = lifecycleSupport == null ? null : lifecycleSupport.context(unit, preparers.artifactNames().size());
+            boolean reusable = lifecycleSupport != null && lifecycleSupport.receiptReplay()
+                    .hasReusableReceipt(new ConfirmationReceiptReplayCommand(context));
+            var extraction = reusable ? null : extractionFactory.create(preparers.preparers(), NoopArtifactProjection.INSTANCE)
+                    .prepare(new ExtractionCommand(run.runId(), unit.processingPath(), false, context, command.registration()));
+            return new PreparedDocument(command, run, extraction);
+        } catch (RuntimeException failure) {
+            try { runLedger.markFailed(run.runId(), failure.getMessage()); }
+            catch (RuntimeException accounting) { failure.addSuppressed(accounting); }
+            throw failure;
+        }
+    }
+
+    private final class PreparedDocument implements com.iocextractor.application.port.in.ingest.PreparedIngestion {
+        private final IngestSourceCommand command;
+        private final com.iocextractor.application.artifact.IngestRun run;
+        private final com.iocextractor.application.port.in.PreparedExtraction extraction;
+        private boolean attempted;
+        private boolean closed;
+
+        private PreparedDocument(IngestSourceCommand command, com.iocextractor.application.artifact.IngestRun run,
+                                 com.iocextractor.application.port.in.PreparedExtraction extraction) {
+            this.command = command;
+            this.run = run;
+            this.extraction = extraction;
+        }
+
+        @Override
+        public IngestSourceResult promote() {
+            if (attempted || closed) { throw new IllegalStateException("Prepared document is already consumed"); }
+            attempted = true;
+            return executionGuard.execute(workKey(command.key()), () -> ingestGuarded(command, this));
+        }
+
+        @Override
+        public void close() {
+            if (closed) { return; }
+            closed = true;
+            try {
+                if (!attempted) { runLedger.markFailed(run.runId(), "Preparation cancelled before promotion"); }
+            } finally { if (extraction != null) { extraction.close(); } }
+        }
+    }
+
     private IngestSourceResult ingestGuarded(IngestSourceCommand command) {
+        return ingestGuarded(command, null);
+    }
+
+    private IngestSourceResult ingestGuarded(IngestSourceCommand command, PreparedDocument prepared) {
         var existing = ledger.find(command.observationId());
         if (existing.isPresent()) {
+            if (prepared != null && existing.orElseThrow().status() == IngestionStatus.CLAIMED) {
+                return processClaimed(prepared.command.claimedSource(), command.registration(), prepared);
+            }
+            if (prepared != null) { runLedger.markFailed(prepared.run.runId(), "Occurrence was already terminal"); }
             return handleExisting(command, existing.get());
         }
 
@@ -186,7 +273,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
             }
             throw failure;
         }
-        return processClaimed(unit);
+        return processClaimed(unit, command.registration(), prepared);
     }
 
     @Override
@@ -259,6 +346,13 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
             }
         }
         try {
+            if (record.isEmpty()) {
+                for (var owned : sourceLifecycle.findProcessingSources()) {
+                    if (owned.observationId().equals(observationId)) {
+                        sourceLifecycle.fail(owned, reason);
+                    }
+                }
+            }
             requireCompleted(key, "mark-failed", ledger.markFailed(observationId, key, reason));
         } catch (RuntimeException failure) {
             throw ledgerFailure(key, "mark-failed", failure);
@@ -268,11 +362,11 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     }
 
     private void markTerminalAfterFinalDisposition(ObservationId observationId, SourceKey key) {
-        if (lifecycleSupport == null) {
-            return;
-        }
         try {
-            lifecycleSupport.markTerminal(observationId);
+            if (lifecycleSupport != null) {
+                lifecycleSupport.markTerminal(observationId);
+            }
+            completeDocument(observationId, DocumentTerminalOutcome.REJECTED);
         } catch (RuntimeException failure) {
             throw new DiagnosticException(diagnostics.create(IngestDiagnosticCodes.DEAD_LETTER_FAILED)
                     .with("source", key.value())
@@ -289,15 +383,20 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     private IngestSourceResult handleExisting(IngestSourceCommand command, IngestionRecord record) {
         if (record.status() == IngestionStatus.SOURCE_ARCHIVED) {
             sourceLifecycle.archiveDuplicate(command.source(), command.key());
+            completeDocument(command.observationId(), DocumentTerminalOutcome.SUCCEEDED);
             return new IngestSourceResult(command.key(), record.status(), true, null);
         }
         if (record.status() == IngestionStatus.FAILED) {
+            completeDocument(command.observationId(), DocumentTerminalOutcome.REJECTED);
             return new IngestSourceResult(command.key(), IngestionStatus.FAILED, false, null);
         }
-        return recover(record);
+        return recover(record, command.registration());
     }
 
     private SourceUnit claim(IngestSourceCommand command) {
+        if (command.claimedSourceOptional().isPresent()) {
+            return command.claimedSourceOptional().orElseThrow();
+        }
         try {
             return sourceLifecycle.claim(
                     command.source(), command.observationId(), command.key(), command.detectedAt());
@@ -376,21 +475,47 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     }
 
     private IngestSourceResult recover(IngestionRecord record) {
+        RegisteredObservation registration = documentAdmissions == null
+                ? null : resumeOrderedDocument(record);
+        return recover(record, registration);
+    }
+
+    private RegisteredObservation resumeOrderedDocument(IngestionRecord record) {
+        try {
+            return documentAdmissions.resume(record.observationId());
+        } catch (IllegalStateException missingAdmission) {
+            if (missingAdmission.getMessage() == null
+                    || !missingAdmission.getMessage().contains("Missing document admission")) {
+                throw missingAdmission;
+            }
+            throw new IllegalStateException(
+                    "Ordered observation recovery found legacy unranked ingestion work; "
+                            + "disable enabled latest-registered field policies, drain legacy work, "
+                            + "then re-enable them, or restore coordinated pre-upgrade state",
+                    missingAdmission);
+        }
+    }
+
+    private IngestSourceResult recover(IngestionRecord record, RegisteredObservation registration) {
         return switch (record.status()) {
             case CLAIMED -> processClaimed(new SourceUnit(
                     record.observationId(), record.key(), record.originalPath(),
-                    record.processingPath(), record.detectedAt()));
+                    record.processingPath(), record.detectedAt()), registration);
             case FAILED, SOURCE_ARCHIVED -> new IngestSourceResult(record.key(), record.status(), false, null);
         };
     }
 
-    private IngestSourceResult processClaimed(SourceUnit unit) {
+    private IngestSourceResult processClaimed(SourceUnit unit, RegisteredObservation registration) {
+        return processClaimed(unit, registration, null);
+    }
+
+    private IngestSourceResult processClaimed(SourceUnit unit, RegisteredObservation registration, PreparedDocument prepared) {
         var sourcePreparers = sourcePreparerFactory.createFor(unit);
-        var run = runLedger.startIngest(unit.key().value(), sourcePreparers.artifactNames());
+        var run = prepared == null ? runLedger.startIngest(unit.key().value(), sourcePreparers.artifactNames()) : prepared.run;
         boolean dbCommitted = false;
         ExtractionResult extraction = null;
         boolean receiptReplayed = false;
-        Map<String, Integer> insertedPerArtifact;
+        Set<String> changedArtifacts;
         try {
             var lifecycleContext = lifecycleSupport == null
                     ? null : lifecycleSupport.context(unit, sourcePreparers.artifactNames().size());
@@ -400,20 +525,18 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                             new ConfirmationReceiptReplayCommand(lifecycleContext));
             if (replay.isPresent()) {
                 receiptReplayed = true;
-                insertedPerArtifact = replay.orElseThrow().insertedPerArtifact();
+                changedArtifacts = replay.orElseThrow().changedArtifacts();
             } else {
-                extraction = extractionFactory.create(
-                                sourcePreparers.preparers(), NoopArtifactProjection.INSTANCE)
-                        .extract(new ExtractionCommand(
-                                run.runId(), unit.processingPath(), false, lifecycleContext));
-                insertedPerArtifact = extraction.writtenPerArtifact();
+                extraction = extractClaimed(prepared, sourcePreparers, new ExtractionCommand(
+                        run.runId(), unit.processingPath(), false, lifecycleContext, registration));
+                changedArtifacts = extraction.changedArtifacts();
             }
             runLedger.markDbCommitted(run.runId());
             dbCommitted = true;
             var projectionDiagnostics = new ArrayList<Diagnostic>();
             List<String> artifactsToProject = lifecycleSupport == null
                     ? sourcePreparers.artifactNames()
-                    : insertedArtifacts(insertedPerArtifact);
+                    : List.copyOf(changedArtifacts);
             for (String artifactName : artifactsToProject) {
                 var outcome = projection.project(new ArtifactProjectionCommand(run.runId(), artifactName));
                 outcome.diagnostics().forEach(diagnosticSink::emit);
@@ -439,20 +562,25 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         Path archived = sourceLifecycle.archive(unit);
         requireCompleted(unit.key(), "mark-source-archived",
                 ledger.markSourceArchived(unit.observationId(), archived));
+        completeDocument(unit.observationId(), DocumentTerminalOutcome.SUCCEEDED);
         runLedger.markCompleted(run.runId());
-        publishArtifactsChanged(run.runId(), insertedArtifacts(insertedPerArtifact));
+        publishArtifactsChanged(run.runId(), List.copyOf(changedArtifacts));
         return new IngestSourceResult(
                 unit.key(), IngestionStatus.SOURCE_ARCHIVED, receiptReplayed, extraction);
     }
 
-    private List<String> insertedArtifacts(Map<String, Integer> insertedPerArtifact) {
-        var artifacts = new ArrayList<String>();
-        insertedPerArtifact.forEach((artifact, inserted) -> {
-            if (inserted != null && inserted > 0) {
-                artifacts.add(artifact);
-            }
-        });
-        return List.copyOf(artifacts);
+    private ExtractionResult extractClaimed(PreparedDocument prepared, SourcePreparers sourcePreparers,
+            ExtractionCommand command) {
+        if (prepared != null && prepared.extraction != null) {
+            return prepared.extraction.promote();
+        }
+        return extractionFactory.create(sourcePreparers.preparers(), NoopArtifactProjection.INSTANCE).extract(command);
+    }
+
+    private void completeDocument(ObservationId observationId, DocumentTerminalOutcome outcome) {
+        if (documentAdmissions != null && documentAdmissions.find(observationId).isPresent()) {
+            documentAdmissions.complete(observationId, outcome);
+        }
     }
 
     private void publishArtifactsChanged(String runId, List<String> artifactNames) {

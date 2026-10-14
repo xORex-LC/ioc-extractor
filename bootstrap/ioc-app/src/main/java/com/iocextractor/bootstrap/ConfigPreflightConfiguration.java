@@ -34,6 +34,11 @@ class ConfigPreflightConfiguration {
         return new ConfigRegistryPreflight(props);
     }
 
+    @Bean
+    static ProcessingPlanBindings processingPlanBindings(ConfigRegistryPreflight preflight) {
+        return preflight.processingPlanBindings();
+    }
+
     // Converters below are anonymous classes on purpose: a lambda erases the
     // Converter's generic parameters and the binder cannot resolve its
     // source/target types at runtime. Do not rewrite them to lambdas.

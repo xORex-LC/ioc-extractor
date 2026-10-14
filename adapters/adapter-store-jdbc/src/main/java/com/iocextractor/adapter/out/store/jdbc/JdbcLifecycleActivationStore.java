@@ -113,7 +113,7 @@ public final class JdbcLifecycleActivationStore implements LifecycleActivationSt
             throws SQLException {
         boolean previousAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
-        Exception failure = null;
+        Throwable failure = null;
         try {
             JdbcLifecycleTransactions.acquireActivatingWriteOwnership(
                     connection, schema.artifactName());
@@ -138,7 +138,7 @@ public final class JdbcLifecycleActivationStore implements LifecycleActivationSt
             updateProgress(connection, schema.artifactName(), afterRowId, expiredTotal, !more, activationAsOf);
             connection.commit();
             return new LifecycleActivationBatchResult(schema.artifactName(), rows.size(), more);
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | RuntimeException | Error e) {
             failure = e;
             JdbcLifecycleTransactions.rollback(connection, e);
             throw e;

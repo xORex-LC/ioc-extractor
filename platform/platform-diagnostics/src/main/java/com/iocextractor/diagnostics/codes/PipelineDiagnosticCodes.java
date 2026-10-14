@@ -14,7 +14,11 @@ public enum PipelineDiagnosticCodes implements DiagnosticCode {
     DIAGNOSTICS_SUPPRESSED(DiagnosticSeverity.WARN, DiagnosticImpact.RUN, "pipeline.diagnostics-suppressed",
             "Suppressed {suppressedCount} diagnostics after reaching the run budget of {limit}"),
     ITEM_SKIPPED(DiagnosticSeverity.WARN, DiagnosticImpact.ELEMENT, "pipeline.item-skipped",
-            "Pipeline item {item} was skipped at stage {stage}: {reason}");
+            "Pipeline item {item} was skipped at stage {stage}: {reason}"),
+    ROUTING_REJECTED(DiagnosticSeverity.ERROR, DiagnosticImpact.ELEMENT, "pipeline.routing-rejected",
+            "Processing plan {plan} rejected indicator {indicator}: {reason}"),
+    VIEW_UNAVAILABLE(DiagnosticSeverity.ERROR, DiagnosticImpact.ELEMENT, "pipeline.view-unavailable",
+            "Processing view {view} is unavailable for indicator {indicator}: {reason}");
 
     private final DiagnosticSeverity defaultSeverity;
     private final DiagnosticImpact impact;

@@ -12,7 +12,7 @@ import java.util.Optional;
  */
 public interface ExportRunLedger {
 
-    /** Attempts to acquire global export single-flight with a STARTED run. */
+    /** Attempts to acquire per-profile export single-flight with a STARTED run. */
     Optional<ExportRun> tryStart(ExportRun startedRun);
 
     /** Advances one non-terminal checkpoint when the current status equals {@code expected}. */

@@ -21,13 +21,14 @@ import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.artifact.PreparedArtifactRow;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
+import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptReplayCommand;
 import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptReplayResult;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.LifecycleWriteResult;
 import com.iocextractor.application.artifact.lifecycle.ProjectionGeneration;
 import com.iocextractor.diagnostics.result.FailurePolicy;
 import com.iocextractor.diagnostics.result.Result;
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
@@ -77,6 +78,43 @@ class IngestionServiceTest {
     private static final Instant EVENT_TIME = Instant.parse("2026-06-22T00:00:05Z");
 
     private final Clock clock = Clock.fixed(EVENT_TIME, ZoneOffset.UTC);
+
+    @Test
+    void orderedRecoveryRejectsLegacyUnrankedWorkBeforeCreatingAnotherRun() {
+        var ledger = new MemoryLedger();
+        var record = new IngestionRecord(new SourceKey("legacy"), IngestionStatus.CLAIMED,
+                Path.of("inbox/legacy.html"), Path.of("processing/legacy.html"), null,
+                Instant.EPOCH, Instant.EPOCH, null);
+        ledger.record = record;
+        ledger.incompleteRecords = List.of(record);
+        var journal = new com.iocextractor.application.port.out.ingest.DocumentAdmissionJournal() {
+            public Optional<com.iocextractor.application.ingest.admission.DocumentAdmission> find(ObservationId id) { return Optional.empty(); }
+            public com.iocextractor.application.ingest.admission.DocumentAdmission reserve(
+                    com.iocextractor.application.ingest.admission.DocumentAdmissionReservation reservation) { throw new AssertionError("recovery must not reserve"); }
+            public boolean replace(com.iocextractor.application.ingest.admission.DocumentAdmission before,
+                    com.iocextractor.application.ingest.admission.DocumentAdmission after) { throw new AssertionError("recovery must not mutate"); }
+            public List<com.iocextractor.application.ingest.admission.DocumentAdmission> findRecoverable(int limit) { return List.of(); }
+            public List<com.iocextractor.application.ingest.admission.DocumentAdmission> findTerminalBefore(Instant cutoff, int limit) { return List.of(); }
+            public boolean purgeTerminal(ObservationId id, long version) { throw new AssertionError("recovery must not purge"); }
+        };
+        var registrations = (com.iocextractor.application.port.out.observation.ObservationRegistrationStore)
+                java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),
+                        new Class<?>[]{com.iocextractor.application.port.out.observation.ObservationRegistrationStore.class},
+                        (proxy, method, arguments) -> { throw new AssertionError("unranked work must not obtain a new rank"); });
+        var runs = new MemoryRunLedger();
+        var lifecycle = new MemoryLifecycle();
+        var service = new IngestionService(ledger, lifecycle,
+                source -> { throw new AssertionError("unranked work must not extract"); }, extractionFactory(),
+                runs, new CollectingProjection(), new RecordingControlEventPublisher(), clock,
+                NoopDiagnosticSink.INSTANCE, new SynchronousKeyedExecutionGuard(), null,
+                new com.iocextractor.application.ingest.admission.DocumentAdmissionService(journal, registrations, clock));
+        assertThatThrownBy(service::recoverIncomplete).isInstanceOfSatisfying(DiagnosticException.class,
+                failure -> assertThat(failure.diagnostic().context().get("reason").toString())
+                        .contains("legacy unranked ingestion work", "drain legacy work"));
+        assertThat(runs.starts).isZero();
+        assertThat(lifecycle.events).isEmpty();
+        assertThat(ledger.record).isEqualTo(record);
+    }
 
     @Test
     void processes_claimed_source_into_canonical_storage_projects_and_archives_it() {
@@ -146,7 +184,7 @@ class IngestionServiceTest {
                 .with("source", "run-1")
                 .with("reason", "lossy projection")
                 .build();
-        var projection = new CollectingProjection(new ArtifactProjectionResult(1, List.of(diagnostic)));
+        var projection = new CollectingProjection(new ArtifactProjectionResult(1, List.of(diagnostic), new com.iocextractor.application.artifact.lifecycle.ProjectionGeneration(0)));
         var diagnosticSink = new CollectingDiagnosticSink();
         var service = new IngestionService(
                 ledger,
@@ -843,6 +881,148 @@ class IngestionServiceTest {
     }
 
     @Test
+    void complete_receipt_reprojects_and_publishes_a_public_field_update() {
+        var key = new SourceKey("ABC123");
+        var observation = new ObservationId("delivery-current");
+        var ledger = new MemoryLedger();
+        var lifecycle = new MemoryLifecycle();
+        var preparer = new CountingPreparer();
+        var projection = new CollectingProjection();
+        var events = new RecordingControlEventPublisher();
+        var lifecycleSupport = new IngestionLifecycleSupport(
+                command -> Optional.of(new ConfirmationReceiptReplayResult(java.util.Map.of(
+                        "masks", new LifecycleWriteResult(
+                                observation,
+                                "masks",
+                                EffectiveTime.at(EVENT_TIME),
+                                0, 0, 0, 1, 0, 4,
+                                new ProjectionGeneration(2), true)))),
+                (observationId, completedAt, retention) -> { },
+                () -> EffectiveTime.at(EVENT_TIME),
+                "processing-policy-v1",
+                java.time.Duration.ofDays(30));
+        var service = new IngestionService(
+                ledger,
+                lifecycle,
+                source -> new SourcePreparers(List.of(preparer)),
+                failingExtractionFactory(),
+                new MemoryRunLedger(),
+                projection,
+                events,
+                clock,
+                NoopDiagnosticSink.INSTANCE,
+                new SynchronousKeyedExecutionGuard(),
+                lifecycleSupport);
+
+        IngestSourceResult result = service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source.html"), observation, key, Instant.EPOCH));
+
+        assertThat(result.duplicate()).isTrue();
+        assertThat(result.extractionResultOptional()).isEmpty();
+        assertThat(preparer.written).isZero();
+        assertThat(projection.requests).singleElement().satisfies(request -> {
+            assertThat(request.runId()).isEqualTo("run-1");
+            assertThat(request.artifactName()).isEqualTo("masks");
+        });
+        assertArtifactsChanged(events, "run-1", List.of("masks"));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void preparedReceiptIsReadOnlyUntilPromotionAndRevalidatedBeforeReuse(boolean stillAvailable) {
+        var key = new SourceKey("ABC123");
+        var observation = new ObservationId("prepared-delivery");
+        var ledger = new MemoryLedger();
+        var lifecycle = new MemoryLifecycle();
+        var runLedger = new MemoryRunLedger();
+        var preparer = new CountingPreparer();
+        var replays = new java.util.concurrent.atomic.AtomicInteger();
+        var replay = new com.iocextractor.application.port.in.artifact.lifecycle.ReplayConfirmationReceiptUseCase() {
+            public boolean hasReusableReceipt(ConfirmationReceiptReplayCommand command) { return true; }
+            public Optional<ConfirmationReceiptReplayResult> replay(ConfirmationReceiptReplayCommand command) {
+                replays.incrementAndGet();
+                return stillAvailable ? Optional.of(new ConfirmationReceiptReplayResult(java.util.Map.of(
+                        "masks", new LifecycleWriteResult(observation, "masks", EffectiveTime.at(EVENT_TIME),
+                                0, 1, 0, 4, new ProjectionGeneration(1), false)))) : Optional.empty();
+            }
+        };
+        var service = new IngestionService(ledger, lifecycle,
+                source -> new SourcePreparers(List.of(preparer)),
+                stillAvailable ? failingExtractionFactory() : extractionFactory(confirmation ->
+                        new LifecycleWriteResult(observation, confirmation.artifactName(), EffectiveTime.at(EVENT_TIME),
+                                1, 0, 0, 1, new ProjectionGeneration(1), true)), runLedger,
+                new CollectingProjection(), new RecordingControlEventPublisher(), clock,
+                NoopDiagnosticSink.INSTANCE, new SynchronousKeyedExecutionGuard(),
+                new IngestionLifecycleSupport(replay, (id, at, retention) -> { },
+                        () -> EffectiveTime.at(EVENT_TIME), "processing-policy-v1", java.time.Duration.ofDays(30)));
+        var source = new SourceUnit(observation, key, Path.of("inbox/source.html"),
+                Path.of("processing/source.html"), Instant.EPOCH);
+        try (var prepared = service.prepare(new IngestSourceCommand(source, null))) {
+            assertThat(replays).hasValue(0);
+            assertThat(ledger.find(observation)).isEmpty();
+            assertThat(preparer.written).isZero();
+            var result = prepared.promote();
+            assertThat(result.duplicate()).isEqualTo(stillAvailable);
+            assertThat(result.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
+            assertThat(preparer.written).isEqualTo(stillAvailable ? 0 : 1);
+            assertThatThrownBy(prepared::promote).hasMessage("Prepared document is already consumed");
+        }
+        assertThat(replays).hasValue(1);
+        assertThat(lifecycle.events).containsExactly("archive");
+        assertThat(runLedger.status).isEqualTo(IngestRunStatus.COMPLETED);
+    }
+
+    @Test
+    void preparedRetryResumesOwnedClaimWithoutReclaimingOrPreparingTwice() {
+        var observation = new ObservationId("prepared-retry");
+        var source = new SourceUnit(observation, new SourceKey("ABC123"),
+                Path.of("inbox/source.html"), Path.of("processing/source.html"), Instant.EPOCH);
+        var ledger = new MemoryLedger();
+        ledger.markClaimed(source);
+        ledger.claimFailure = new IllegalStateException("An owned retry must not claim again");
+        var lifecycle = new MemoryLifecycle();
+        var runLedger = new MemoryRunLedger();
+        var preparer = new CountingPreparer();
+        var service = new IngestionService(ledger, lifecycle,
+                unit -> new SourcePreparers(List.of(preparer)), extractionFactory(),
+                runLedger, new CollectingProjection(), new RecordingControlEventPublisher(), clock);
+
+        try (var prepared = service.prepare(new IngestSourceCommand(source, null))) {
+            assertThat(preparer.written).isEqualTo(1);
+            var result = prepared.promote();
+            assertThat(result.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
+            assertThat(result.extractionResultOptional()).hasValueSatisfying(extraction ->
+                    assertThat(extraction.writtenPerArtifact()).containsEntry("masks", 1));
+        }
+        assertThat(preparer.written).isEqualTo(1);
+        assertThat(lifecycle.events).containsExactly("archive");
+        assertThat(runLedger.status).isEqualTo(IngestRunStatus.COMPLETED);
+    }
+
+    @Test
+    void cancellingPreparedDocumentClosesRunWithoutClaimingOrWritingCanonicalStorage() {
+        var key = new SourceKey("ABC123");
+        var observation = new ObservationId("cancelled-delivery");
+        var ledger = new MemoryLedger();
+        var lifecycle = new MemoryLifecycle();
+        var runLedger = new MemoryRunLedger();
+        var projection = new CollectingProjection();
+        var service = new IngestionService(ledger, lifecycle,
+                source -> new SourcePreparers(List.of(new CountingPreparer())), extractionFactory(),
+                runLedger, projection, new RecordingControlEventPublisher(), clock);
+        var source = new SourceUnit(observation, key, Path.of("inbox/source.html"),
+                Path.of("processing/source.html"), Instant.EPOCH);
+        var prepared = service.prepare(new IngestSourceCommand(source, null));
+        prepared.close();
+        prepared.close();
+        assertThat(runLedger.status).isEqualTo(IngestRunStatus.FAILED);
+        assertThat(ledger.find(observation)).isEmpty();
+        assertThat(lifecycle.events).isEmpty();
+        assertThat(projection.requests).isEmpty();
+        assertThatThrownBy(prepared::promote).hasMessage("Prepared document is already consumed");
+    }
+
+    @Test
     void recovery_marks_processing_orphans_as_failed() {
         var key = new SourceKey("ABC123");
         var ledger = new MemoryLedger();
@@ -979,39 +1159,66 @@ class IngestionServiceTest {
     }
 
     private IocExtractionServiceFactory extractionFactory() {
+        return extractionFactory(null);
+    }
+
+    private IocExtractionServiceFactory extractionFactory(
+            com.iocextractor.application.port.out.artifact.lifecycle.CanonicalArtifactWriter writer) {
         return new IocExtractionServiceFactory(
-                source -> "example.com",
-                text -> new RefangOutcome(text, List.of()),
-                text -> new ExtractionOutcome(
-                        List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of()),
-                (text, indicators) -> new AttributionOutcome(List.of(),
-                        List.of(new AttributionDecision(indicators.getFirst(), Optional.empty()))),
-                indicator -> classificationDecision(indicator),
+                com.iocextractor.application.TestDocumentSourceWorkspace.reader(source -> "example.com"),
+                new com.iocextractor.domain.refang.ReplacementRefanger(List.of()),
+                com.iocextractor.application.TestDocumentSourceWorkspace.extractor(text -> new ExtractionOutcome(
+                        List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of())),
+                com.iocextractor.application.TestDocumentSourceWorkspace.noMarkers(),
                 false,
                 "daemon",
                 new NoopPipelineObserver(),
                 NoopDiagnosticSink.INSTANCE,
-                FailurePolicy.failFast(), 10_000, new MemoryRepository(),
-                NoopPipelineDecisionTracer.INSTANCE);
+                FailurePolicy.failFast(), 10_000, new MemoryRepository(), writer,
+                (artifact, row) -> Optional.of(new com.iocextractor.application.artifact.ArtifactRowKey(row.value("value"))),
+                NoopPipelineDecisionTracer.INSTANCE,
+                preparers -> occurrence -> {
+                    var classified = new ClassifiedIndicator(occurrence.indicator(),
+                            classificationDecision(occurrence.indicator()));
+                    return Result.success(preparers.stream().flatMap(preparer ->
+                            preparer.prepare(List.of(classified)).value().rows().snapshot().stream().map(row ->
+                                    new com.iocextractor.application.artifact.RoutedArtifactCandidate(preparer.name(), row)))
+                            .toList());
+                }, java.util.Map.of("masks", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst(),
+                        "hashes", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst(),
+                        "ip_list", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst()),
+                com.iocextractor.application.TestDocumentWorkspace.factory((artifact, row) -> Optional.of(
+                        new com.iocextractor.application.artifact.ArtifactRowKey(row.value("value")))));
     }
 
     private IocExtractionServiceFactory failingExtractionFactory() {
         return new IocExtractionServiceFactory(
-                source -> {
+                com.iocextractor.application.TestDocumentSourceWorkspace.reader(source -> {
                     throw new IllegalStateException("read failed");
-                },
-                text -> new RefangOutcome(text, List.of()),
-                text -> new ExtractionOutcome(
-                        List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of()),
-                (text, indicators) -> new AttributionOutcome(List.of(),
-                        List.of(new AttributionDecision(indicators.getFirst(), Optional.empty()))),
-                indicator -> classificationDecision(indicator),
+                }),
+                new com.iocextractor.domain.refang.ReplacementRefanger(List.of()),
+                com.iocextractor.application.TestDocumentSourceWorkspace.extractor(text -> new ExtractionOutcome(
+                        List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of())),
+                com.iocextractor.application.TestDocumentSourceWorkspace.noMarkers(),
                 false,
                 "daemon",
                 new NoopPipelineObserver(),
                 NoopDiagnosticSink.INSTANCE,
-                FailurePolicy.failFast(), 10_000, new MemoryRepository(),
-                NoopPipelineDecisionTracer.INSTANCE);
+                FailurePolicy.failFast(), 10_000, new MemoryRepository(), null,
+                (artifact, row) -> Optional.of(new com.iocextractor.application.artifact.ArtifactRowKey(row.value("value"))),
+                NoopPipelineDecisionTracer.INSTANCE,
+                preparers -> occurrence -> {
+                    var classified = new ClassifiedIndicator(occurrence.indicator(),
+                            classificationDecision(occurrence.indicator()));
+                    return Result.success(preparers.stream().flatMap(preparer ->
+                            preparer.prepare(List.of(classified)).value().rows().snapshot().stream().map(row ->
+                                    new com.iocextractor.application.artifact.RoutedArtifactCandidate(preparer.name(), row)))
+                            .toList());
+                }, java.util.Map.of("masks", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst(),
+                        "hashes", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst(),
+                        "ip_list", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst()),
+                com.iocextractor.application.TestDocumentWorkspace.factory((artifact, row) -> Optional.of(
+                        new com.iocextractor.application.artifact.ArtifactRowKey(row.value("value")))));
     }
 
     private ClassificationDecision classificationDecision(Indicator indicator) {

@@ -20,6 +20,12 @@ public final class ServiceSchemaMigrations {
     private static final String V7 = "com/iocextractor/adapter/out/store/jdbc/service/v7__publish_reconcile_index.sql";
     private static final String V8 = "com/iocextractor/adapter/out/store/jdbc/service/v8__ingestion_observation_identity.sql";
     private static final String V9 = "com/iocextractor/adapter/out/store/jdbc/service/v9__managed_dataframe_import.sql";
+    private static final String V10 = "com/iocextractor/adapter/out/store/jdbc/service/v10__document_admission_journal.sql";
+    private static final String V11 = "com/iocextractor/adapter/out/store/jdbc/service/v11__import_observation_reservation.sql";
+    private static final String V12 = "com/iocextractor/adapter/out/store/jdbc/service/v12__document_processing_policy.sql";
+    private static final String V13 = "com/iocextractor/adapter/out/store/jdbc/service/v13__export_profile_single_flight.sql";
+
+    private static final String V14 = "com/iocextractor/adapter/out/store/jdbc/service/v14__document_execution_admission.sql";
 
     private ServiceSchemaMigrations() {
     }
@@ -34,7 +40,12 @@ public final class ServiceSchemaMigrations {
                 new SqliteSchemaMigration(6, "sync ledgers", resource(V6)),
                 new SqliteSchemaMigration(7, "publish reconcile index", resource(V7)),
                 new SqliteSchemaMigration(8, "ingestion observation identity", resource(V8)),
-                new SqliteSchemaMigration(9, "managed dataframe import", resource(V9)));
+                new SqliteSchemaMigration(9, "managed dataframe import", resource(V9)),
+                new SqliteSchemaMigration(10, "document admission journal", resource(V10)),
+                new SqliteSchemaMigration(11, "import observation reservation", resource(V11)),
+                new SqliteSchemaMigration(12, "document processing policy", resource(V12)),
+                new SqliteSchemaMigration(13, "export profile single-flight", resource(V13)),
+                new SqliteSchemaMigration(14, "document execution admission", resource(V14)));
     }
 
     private static String resource(String name) {

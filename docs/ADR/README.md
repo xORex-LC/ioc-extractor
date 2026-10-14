@@ -46,6 +46,20 @@
 
 | `0028-pilot-library-publication.md` | Пилотная JDK-only concurrency-библиотека: отдельные Maven-координаты, независимый consumer POM, Central и GitHub Packages, однократная сборка/подпись и восстановление публикации из неизменного bundle. **Принято 2026-09-07; live qualification pending.** |
 | `0029-release-branch-library-publication.md` | Публикация concurrency-библиотеки из `release-X.Y.Z` по отдельному component-тегу при общей версии с продуктом; default branch содержит workflow только для регистрации ручного запуска. Узко supersede'ит branch/tag selection из ADR-0028. **Принято 2026-09-08; live qualification pending.** |
+| `0030-registered-observation-order-for-artifact-fields.md` | Dataframe-owned monotonic observation order resolves mutable artifact fields independently of completion order; document/import/oneshot coordination retains occurrence identity across retry and recovery, with file and JDBC daemon journals behind one port. **Принято 2026-09-26; реализовано и квалифицировано для 0.3.0.** |
+| [0031-bounded-camel-preparation-runtime.md](0031-bounded-camel-preparation-runtime.md) | Embedded Camel for bounded preparation behind inward ports; selected document/import integration is active and P6 qualification is recorded in the dated implementation note. |
+
+| [0032-invocation-owned-ioc-semantic-reuse.md](0032-invocation-owned-ioc-semantic-reuse.md) | Ограниченное переиспользование семантики IOC в документной сессии и одной строке импорта; полный ключ классификации, текущий source при host reuse и явное закрытие до checkpoint. |
+
+| [0033-bounded-semantic-reuse-during-import-staging.md](0033-bounded-semantic-reuse-during-import-staging.md) | Bounded LRU partitions and application-owned processed-import staging sessions; unchanged row participation and canonical authority. |
+
+| [0034-required-router-processing-plans.md](0034-required-router-processing-plans.md) | Required document/processed-import Router plans, original-value production defaults and explicit observation selection; supersedes optional dispatch in ADR 0031. |
+
+| [0039-streamed-document-source-processing.md](0039-streamed-document-source-processing.md) | Workspace-owned source streaming, lazy extraction/attribution, bounded parser admission and fatal-worker recovery. |
+| [0040-native-sequential-preparation-dispatch.md](0040-native-sequential-preparation-dispatch.md) | Native sequential branch consumers with isolated UnitOfWork; remove redundant dispatch/aggregation without a second runtime. |
+| [0041-sqlite-staged-publication-experiment.md](0041-sqlite-staged-publication-experiment.md) | Historical isolated versioned SQLite experiment; concluded without activation under ADR 0042. |
+
+| [0042-native-sqlite-production-storage.md](0042-native-sqlite-production-storage.md) | Retain improved Native SQLite as the sole production backend; remove isolated versioned storage and experiment tooling while preserving shared preparation and recovery. |
 
 ## Формат
 

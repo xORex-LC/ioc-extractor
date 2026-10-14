@@ -22,6 +22,10 @@
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-processing</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
             <artifactId>ioc-platform-etl</artifactId>
         </dependency>
         <dependency>

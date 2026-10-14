@@ -2,6 +2,7 @@ package com.iocextractor.bootstrap;
 
 import com.iocextractor.adapter.in.ingest.IngestionLifecycleState;
 import com.iocextractor.adapter.in.ingest.IngestionStartupObserver;
+import com.iocextractor.adapter.in.ingest.DurableDocumentDispatcher;
 import com.iocextractor.application.artifact.IngestRunRecoveryService;
 import com.iocextractor.application.port.in.artifact.lifecycle.PrepareLifecycleAdmissionUseCase;
 import com.iocextractor.application.port.in.ingest.RecoverIngestionUseCase;
@@ -24,7 +25,14 @@ final class CanonicalIntakeStartupCoordinator implements ApplicationRunner, Orde
     private final DataframeImportRuntimeLifecycle importRuntime;
     private final IngestionLifecycleState lifecycleState;
     private final IngestionStartupObserver observer;
+    private final OrderedDocumentStartupRecovery documentRecovery;
     private final Clock clock;
+    private DurableDocumentDispatcher documents;
+
+    CanonicalIntakeStartupCoordinator withDocuments(DurableDocumentDispatcher dispatcher) {
+        documents = Objects.requireNonNull(dispatcher, "dispatcher");
+        return this;
+    }
 
     CanonicalIntakeStartupCoordinator(
             IngestRunRecoveryService runRecovery,
@@ -35,6 +43,20 @@ final class CanonicalIntakeStartupCoordinator implements ApplicationRunner, Orde
             IngestionLifecycleState lifecycleState,
             IngestionStartupObserver observer,
             Clock clock) {
+        this(runRecovery, sourceRecovery, lifecycleAdmission, intakeFlow, importRuntime,
+                lifecycleState, observer, clock, null);
+    }
+
+    CanonicalIntakeStartupCoordinator(
+            IngestRunRecoveryService runRecovery,
+            RecoverIngestionUseCase sourceRecovery,
+            PrepareLifecycleAdmissionUseCase lifecycleAdmission,
+            Lifecycle intakeFlow,
+            DataframeImportRuntimeLifecycle importRuntime,
+            IngestionLifecycleState lifecycleState,
+            IngestionStartupObserver observer,
+            Clock clock,
+            OrderedDocumentStartupRecovery documentRecovery) {
         this.runRecovery = Objects.requireNonNull(runRecovery, "runRecovery");
         this.sourceRecovery = Objects.requireNonNull(sourceRecovery, "sourceRecovery");
         this.lifecycleAdmission = Objects.requireNonNull(lifecycleAdmission, "lifecycleAdmission");
@@ -43,6 +65,7 @@ final class CanonicalIntakeStartupCoordinator implements ApplicationRunner, Orde
         this.lifecycleState = Objects.requireNonNull(lifecycleState, "lifecycleState");
         this.observer = Objects.requireNonNull(observer, "observer");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.documentRecovery = documentRecovery;
     }
 
     @Override
@@ -58,12 +81,15 @@ final class CanonicalIntakeStartupCoordinator implements ApplicationRunner, Orde
         try {
             requireClosedIntake();
             int recoveredRuns = runRecovery.recover();
-            int recoveredSources = sourceRecovery.recoverIncomplete().size();
+            int recoveredDocuments = documentRecovery == null ? 0 : documentRecovery.recover();
+            int recoveredSources = Math.addExact(
+                    recoveredDocuments, sourceRecovery.recoverIncomplete().size());
             lifecycleAdmission.prepare();
             if (importRuntime != null) {
                 importRuntime.recoverBeforeIntake();
                 importRuntime.start();
             }
+            if (documents != null) { documents.start(); }
             intakeFlow.start();
             if (!intakeFlow.isRunning()) {
                 throw new IllegalStateException("Ingestion intake did not start after successful recovery");
@@ -92,6 +118,10 @@ final class CanonicalIntakeStartupCoordinator implements ApplicationRunner, Orde
             intakeFlow.stop();
         } catch (RuntimeException stopFailure) {
             failure.addSuppressed(stopFailure);
+        }
+        if (documents != null) {
+            try { documents.close(); }
+            catch (RuntimeException stopFailure) { failure.addSuppressed(stopFailure); }
         }
         if (importRuntime != null) {
             try {

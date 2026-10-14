@@ -1,5 +1,6 @@
 package com.iocextractor.application.dataframeimport.contract;
 
+
 import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
 import com.iocextractor.application.dataframeimport.model.ImportDuplicatePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportExistingSlotPolicy;
@@ -29,6 +30,189 @@ class DataframeImportCatalogCompilerValidationTest {
     private final DataframeImportCatalogCompiler compiler = new DataframeImportCatalogCompiler();
 
     @Test
+    void processed_route_bindings_are_validated_and_change_the_compiled_contract_pin() {
+        var artifact = processedArtifact(null, null,
+                new DataframeImportCatalogDraft.Column("ip", "ip", List.of(), null));
+        var plain = contract("processed-route", ImportProcessingMode.PROCESSED, artifact);
+        var first = withProcessedRoute(plain, new DataframeImportCatalogDraft.ProcessedRoute(
+                "host-plan", List.of(new DataframeImportCatalogDraft.RouteInput("ip_list", "ip")),
+                List.of(new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip")))));
+        var second = withProcessedRoute(plain, new DataframeImportCatalogDraft.ProcessedRoute(
+                "other-plan", List.of(new DataframeImportCatalogDraft.RouteInput("ip_list", "ip")),
+                List.of(new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip")))));
+        var ordered = withProcessedRoute(plain, new DataframeImportCatalogDraft.ProcessedRoute(
+                "host-plan", List.of(new DataframeImportCatalogDraft.RouteInput("ip_list", "ip"),
+                        new DataframeImportCatalogDraft.RouteInput("ip_list", "name")),
+                List.of(new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip")))));
+        var reversed = withProcessedRoute(plain, new DataframeImportCatalogDraft.ProcessedRoute(
+                "host-plan", List.of(new DataframeImportCatalogDraft.RouteInput("ip_list", "name"),
+                        new DataframeImportCatalogDraft.RouteInput("ip_list", "ip")),
+                List.of(new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip")))));
+        var invalid = withProcessedRoute(plain, new DataframeImportCatalogDraft.ProcessedRoute(
+                "host-plan", List.of(new DataframeImportCatalogDraft.RouteInput("ip_list", "missing")),
+                List.of(new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip")))));
+
+        String firstPin = compiler.compile(disabledDraft(List.of(), List.of(), List.of(first)),
+                processedEnvironment(Set.of())).catalogOrThrow().contracts().values()
+                .iterator().next().fingerprint().value();
+        String secondPin = compiler.compile(disabledDraft(List.of(), List.of(), List.of(second)),
+                processedEnvironment(Set.of())).catalogOrThrow().contracts().values()
+                .iterator().next().fingerprint().value();
+        String orderedPin = compiler.compile(disabledDraft(List.of(), List.of(), List.of(ordered)),
+                processedEnvironment(Set.of())).catalogOrThrow().contracts().values()
+                .iterator().next().fingerprint().value();
+        String reversedPin = compiler.compile(disabledDraft(List.of(), List.of(), List.of(reversed)),
+                processedEnvironment(Set.of())).catalogOrThrow().contracts().values()
+                .iterator().next().fingerprint().value();
+
+        assertThat(firstPin).isNotEqualTo(secondPin);
+        assertThat(orderedPin).isNotEqualTo(reversedPin);
+        assertThat(compiler.compile(disabledDraft(List.of(), List.of(), List.of(invalid)),
+                processedEnvironment(Set.of())).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("inputs must be unique mapped artifact targets");
+    }
+
+    @Test
+    void processed_route_rejects_incomplete_and_unbounded_bindings() {
+        var input = new DataframeImportCatalogDraft.RouteInput("ip_list", "ip");
+        var output = new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip"));
+        var tooManyInputs = java.util.stream.IntStream.range(0, 33)
+                .mapToObj(index -> input).toList();
+        List<InvalidRoute> invalid = List.of(
+                new InvalidRoute(new DataframeImportCatalogDraft.ProcessedRoute(" ",
+                        List.of(input), List.of(output)), "processed route requires mode processed and a named plan"),
+                new InvalidRoute(new DataframeImportCatalogDraft.ProcessedRoute("host-plan",
+                        null, List.of(output)), "processed route requires bounded inputs and outputs"),
+                new InvalidRoute(new DataframeImportCatalogDraft.ProcessedRoute("host-plan",
+                        List.of(), List.of(output)), "processed route requires bounded inputs and outputs"),
+                new InvalidRoute(new DataframeImportCatalogDraft.ProcessedRoute("host-plan",
+                        tooManyInputs, List.of(output)), "processed route requires bounded inputs and outputs"),
+                new InvalidRoute(new DataframeImportCatalogDraft.ProcessedRoute("host-plan",
+                        List.of(input), null), "processed route requires bounded inputs and outputs"),
+                new InvalidRoute(new DataframeImportCatalogDraft.ProcessedRoute("host-plan",
+                        List.of(input), List.of()), "processed route requires bounded inputs and outputs"));
+        invalid.forEach(this::assertInvalidRoute);
+
+        var asIs = contract("route-in-as-is", ImportProcessingMode.AS_IS,
+                processedArtifact(null, null, new DataframeImportCatalogDraft.Column("ip", "ip", List.of(), null)));
+        assertThat(compiler.compile(disabledDraft(List.of(), List.of(), List.of(withProcessedRoute(asIs,
+                new DataframeImportCatalogDraft.ProcessedRoute("host-plan", List.of(input), List.of(output))))),
+                processedEnvironment(Set.of())).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("processed route requires mode processed and a named plan");
+    }
+
+    @Test
+    void processed_route_rejects_ambiguous_or_unmapped_input_cells() {
+        var output = new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip"));
+        List<InvalidRoute> invalid = List.of(
+                new InvalidRoute(route(Arrays.asList((DataframeImportCatalogDraft.RouteInput) null),
+                        List.of(output)), "inputs must be unique mapped artifact targets"),
+                new InvalidRoute(route(List.of(new DataframeImportCatalogDraft.RouteInput(" ", "ip")),
+                        List.of(output)), "inputs must be unique mapped artifact targets"),
+                new InvalidRoute(route(List.of(new DataframeImportCatalogDraft.RouteInput("ip_list", " ")),
+                        List.of(output)), "inputs must be unique mapped artifact targets"),
+                new InvalidRoute(route(List.of(new DataframeImportCatalogDraft.RouteInput("ip_list", "missing")),
+                        List.of(output)), "inputs must be unique mapped artifact targets"),
+                new InvalidRoute(route(List.of(new DataframeImportCatalogDraft.RouteInput("ip_list", "ip"),
+                        new DataframeImportCatalogDraft.RouteInput("ip_list", "ip")), List.of(output)),
+                        "inputs must be unique mapped artifact targets"));
+        invalid.forEach(this::assertInvalidRoute);
+    }
+
+    @Test
+    void processed_route_rejects_ambiguous_or_unauthorized_outputs() {
+        var input = new DataframeImportCatalogDraft.RouteInput("ip_list", "ip");
+        var valid = new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip"));
+        List<InvalidRoute> invalid = List.of(
+                new InvalidRoute(route(List.of(input), Arrays.asList((DataframeImportCatalogDraft.RouteOutput) null)),
+                        "outputs require unique artifacts and targets"),
+                new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
+                        " ", List.of("ip")))), "outputs require unique artifacts and targets"),
+                new InvalidRoute(route(List.of(input), List.of(valid, valid)),
+                        "outputs require unique artifacts and targets"),
+                new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
+                        "ip_list", null))), "outputs require unique artifacts and targets"),
+                new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
+                        "ip_list", List.of()))), "outputs require unique artifacts and targets"),
+                new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
+                        "ip_list", Arrays.asList("ip", null)))), "outputs require unique artifacts and targets"),
+                new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
+                        "ip_list", List.of("ip", "ip")))), "outputs require unique artifacts and targets"),
+                new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
+                        "missing", List.of("ip")))), "output target must be mapped and cannot replace source authority"),
+                new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
+                        "ip_list", List.of(" ")))), "output target must be mapped and cannot replace source authority"),
+                new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
+                        "ip_list", List.of("missing")))), "output target must be mapped and cannot replace source authority"));
+        invalid.forEach(this::assertInvalidRoute);
+
+        var withoutArtifacts = withProcessedRoute(withArtifacts(contract("empty-route-artifacts",
+                ImportProcessingMode.PROCESSED, processedArtifact(null, null,
+                        new DataframeImportCatalogDraft.Column("ip", "ip", List.of(), null))), null),
+                route(List.of(input), List.of(valid)));
+        assertThat(compiler.compile(disabledDraft(List.of(), List.of(), List.of(withoutArtifacts)),
+                processedEnvironment(Set.of())).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("inputs must be unique mapped artifact targets",
+                        "output target must be mapped and cannot replace source authority");
+
+        var withoutColumns = processedArtifact(null, null,
+                new DataframeImportCatalogDraft.Column("ip", "ip", List.of(), null));
+        withoutColumns = new DataframeImportCatalogDraft.Artifact(withoutColumns.name(), withoutColumns.role(),
+                withoutColumns.recordKey(), withoutColumns.matchKeys(), withoutColumns.mergeDefault(),
+                withoutColumns.sourceLabelTarget(), withoutColumns.exactlyOneNonempty(), null);
+        var missingColumns = withProcessedRoute(contract("empty-route-columns", ImportProcessingMode.PROCESSED,
+                withoutColumns), route(List.of(input), List.of(valid)));
+        assertThat(compiler.compile(disabledDraft(List.of(), List.of(), List.of(missingColumns)),
+                processedEnvironment(Set.of())).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("inputs must be unique mapped artifact targets",
+                        "output target must be mapped and cannot replace source authority");
+
+        var sourceArtifact = processedArtifact("name", null,
+                new DataframeImportCatalogDraft.Column("ip", "ip", List.of(), null));
+        var contract = withProcessedRoute(contract("source-authority-route", ImportProcessingMode.PROCESSED,
+                sourceArtifact), route(List.of(input), List.of(
+                new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("name")))));
+        assertThat(compiler.compile(disabledDraft(List.of(), List.of(), List.of(contract)),
+                processedEnvironment(Set.of("name"))).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("output target must be mapped and cannot replace source authority");
+    }
+
+    private static DataframeImportCatalogDraft.ProcessedRoute route(
+            List<DataframeImportCatalogDraft.RouteInput> inputs,
+            List<DataframeImportCatalogDraft.RouteOutput> outputs) {
+        return new DataframeImportCatalogDraft.ProcessedRoute("host-plan", inputs, outputs);
+    }
+
+    private void assertInvalidRoute(InvalidRoute invalid) {
+        var artifact = processedArtifact(null, null,
+                new DataframeImportCatalogDraft.Column("ip", "ip", List.of(), null));
+        var contract = withProcessedRoute(contract("invalid-route", ImportProcessingMode.PROCESSED, artifact),
+                invalid.route());
+        assertThat(compiler.compile(disabledDraft(List.of(), List.of(), List.of(contract)),
+                processedEnvironment(Set.of())).violations())
+                .extracting(ImportContractViolation::message)
+                .contains(invalid.message());
+    }
+
+    private record InvalidRoute(DataframeImportCatalogDraft.ProcessedRoute route, String message) { }
+
+    private static DataframeImportCatalogDraft.Contract withProcessedRoute(
+            DataframeImportCatalogDraft.Contract original,
+            DataframeImportCatalogDraft.ProcessedRoute route) {
+        return new DataframeImportCatalogDraft.Contract(original.id(), original.version(),
+                original.charset(), original.dialect(), original.recognition(), original.mode(),
+                original.routing(), original.rowFailurePolicy(), original.duplicatePolicy(),
+                original.duplicateSelectionColumn(), original.renewUnchanged(),
+                original.formulaPolicy(), original.mergeDefault(), original.artifacts(),
+                original.requestedSlot(), route);
+    }
+
+    @Test
     void rejectsAbsentCatalogAndEveryIncompleteEnvironmentShape() {
         assertThat(compiler.compile(null, environment()).violations())
                 .extracting(ImportContractViolation::message)
@@ -38,6 +222,8 @@ class DataframeImportCatalogCompilerValidationTest {
                 null,
                 new DataframeImportCatalogEnvironment(null, Set.of("lower"), Set.of("upstream")),
                 new DataframeImportCatalogEnvironment(Map.of(), null, Set.of("upstream")),
+                new DataframeImportCatalogEnvironment(
+                        Map.of(), Set.of("lower"), null, Set.of("upstream"), null),
                 new DataframeImportCatalogEnvironment(Map.of(), Set.of("lower"), null));
 
         assertThat(incompleteEnvironments)
@@ -163,6 +349,126 @@ class DataframeImportCatalogCompilerValidationTest {
                         "header aliases must have non-blank source and target",
                         "header alias target must be a declared canonical column",
                         "multiple aliases must not collapse onto one canonical header");
+    }
+
+    @Test
+    void validatesLastNonemptySelectionAgainstThePrimaryTargetSchema() {
+        DataframeImportCatalogDraft.Contract base = validContract(IP_LIST_CONTRACT);
+        DataframeImportCatalogDraft.Contract missingSelection = new DataframeImportCatalogDraft.Contract(
+                base.id(), base.version(), base.charset(), base.dialect(), base.recognition(),
+                base.mode(), base.routing(), base.rowFailurePolicy(), ImportDuplicatePolicy.LAST_NONEMPTY,
+                null, base.renewUnchanged(), base.formulaPolicy(), base.mergeDefault(),
+                base.artifacts(), base.requestedSlot());
+        DataframeImportCatalogDraft.Contract unknownSelection = new DataframeImportCatalogDraft.Contract(
+                base.id(), base.version(), base.charset(), base.dialect(), base.recognition(),
+                base.mode(), base.routing(), base.rowFailurePolicy(), ImportDuplicatePolicy.LAST_NONEMPTY,
+                "name", base.renewUnchanged(), base.formulaPolicy(), base.mergeDefault(),
+                base.artifacts(), base.requestedSlot());
+        DataframeImportCatalogDraft.Contract unnecessarySelection = new DataframeImportCatalogDraft.Contract(
+                base.id(), base.version(), base.charset(), base.dialect(), base.recognition(),
+                base.mode(), base.routing(), base.rowFailurePolicy(), ImportDuplicatePolicy.KEEP_FIRST,
+                "ip", base.renewUnchanged(), base.formulaPolicy(), base.mergeDefault(),
+                base.artifacts(), base.requestedSlot());
+
+        assertThat(compiler.compile(disabledDraft(
+                List.of(), List.of(), List.of(missingSelection)), environment()).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("last-nonempty duplicate policy requires a target selection column");
+        assertThat(compiler.compile(disabledDraft(
+                List.of(), List.of(), List.of(unknownSelection)), environment()).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("selection column must name a mapped primary artifact target");
+        assertThat(compiler.compile(disabledDraft(
+                List.of(), List.of(), List.of(unnecessarySelection)), environment()).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("selection column is only valid for last-nonempty duplicate policy");
+    }
+
+    @Test
+    void validatesProcessedShapeValueRulesAndSourceLabelBinding() {
+        DataframeImportCatalogEnvironment environment = processedEnvironment(
+                Set.of("name", "description"));
+        DataframeImportCatalogDraft.Artifact malformed = processedArtifact(
+                null,
+                List.of("ip", "", "ip", "missing"),
+                new DataframeImportCatalogDraft.Column(
+                        "ip", "ip", List.of("lower"), null, "missing-rule"));
+        DataframeImportCatalogDraft.Artifact wrongMode = processedArtifact(
+                "name", null,
+                new DataframeImportCatalogDraft.Column(
+                        "ip", "ip", List.of("lower"), null, "bare-ip"));
+        DataframeImportCatalogDraft.Artifact invalidBinding = processedArtifact(
+                "missing", List.of("ip"),
+                new DataframeImportCatalogDraft.Column(
+                        "ip", "ip", List.of("lower"), null, "bare-ip"));
+
+        DataframeImportCatalogCompilation compilation = compiler.compile(
+                disabledDraft(List.of(), List.of(), List.of(
+                        contract("processed-malformed", ImportProcessingMode.PROCESSED, malformed),
+                        contract("ordinary-binding", ImportProcessingMode.AS_IS, wrongMode),
+                        contract("processed-binding", ImportProcessingMode.PROCESSED, invalidBinding))),
+                environment);
+
+        assertThat(compilation.violations()).extracting(ImportContractViolation::message)
+                .contains(
+                        "validation must reference a registered value rule",
+                        "group entry must name a unique mapped target column",
+                        "source label binding is only valid for processed mode",
+                        "source label target must name a mapped source.label output column");
+
+        DataframeImportCatalogDraft.Artifact undersized = processedArtifact(
+                null, List.of("ip"),
+                new DataframeImportCatalogDraft.Column(
+                        "ip", "ip", List.of("lower"), null, "bare-ip"));
+        assertThat(compiler.compile(
+                disabledDraft(List.of(), List.of(), List.of(
+                        contract("processed-undersized", ImportProcessingMode.PROCESSED, undersized))),
+                environment).violations())
+                .extracting(ImportContractViolation::message)
+                .contains(
+                        "exactly-one group must contain at least two target columns",
+                        "ambiguous processed source.label mapping requires an explicit target");
+    }
+
+    @Test
+    void acceptsRegisteredValueRuleAndUnambiguousProcessedSourceBinding() {
+        DataframeImportCatalogDraft.Artifact artifact = processedArtifact(
+                "name", List.of("ip", "name"),
+                new DataframeImportCatalogDraft.Column(
+                        "ip", "ip", List.of("lower"), null, "bare-ip"));
+
+        DataframeImportCatalogCompilation compilation = compiler.compile(
+                disabledDraft(List.of(), List.of(), List.of(
+                        contract("processed-valid", ImportProcessingMode.PROCESSED, artifact))),
+                processedEnvironment(Set.of("name")));
+
+        assertThat(compilation.valid()).isTrue();
+
+        DataframeImportCatalogDraft.Artifact implicit = processedArtifact(
+                null, List.of("ip", "name"),
+                new DataframeImportCatalogDraft.Column(
+                        "ip", "ip", List.of("lower"), null, "bare-ip"));
+        DataframeImportCatalogEnvironment withoutSourceBindings = new DataframeImportCatalogEnvironment(
+                Map.of("ip_list", new DataframeImportCatalogEnvironment.ArtifactSchema(
+                        Set.of("ip", "name"), "ip-row-v1", Set.of("ip-v1"),
+                        Set.of("ioc-aggregate"), false, null)),
+                Set.of("lower"), Set.of("bare-ip"), Set.of(), "processing-policy-v1");
+        assertThat(compiler.compile(
+                disabledDraft(List.of(), List.of(), List.of(
+                        contract("processed-without-binding", ImportProcessingMode.PROCESSED, implicit))),
+                withoutSourceBindings).valid()).isTrue();
+
+        DataframeImportCatalogDraft.Artifact unknown = new DataframeImportCatalogDraft.Artifact(
+                "unknown", ImportArtifactRole.PRIMARY, "unknown-row", List.of("unknown-match"), null,
+                null, null,
+                List.of(new DataframeImportCatalogDraft.Column(
+                        "ip", "ip", List.of("lower"), null, "bare-ip")));
+        assertThat(compiler.compile(
+                disabledDraft(List.of(), List.of(), List.of(
+                        contract("processed-without-schema", ImportProcessingMode.PROCESSED, unknown))),
+                processedEnvironment(Set.of("name"))).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("artifact must reference a configured canonical schema");
     }
 
     @Test
@@ -539,6 +845,46 @@ class DataframeImportCatalogCompilerValidationTest {
                 List.of(
                         new DataframeImportCatalogDraft.Column("ip", "ip", List.of("lower"), null),
                         new DataframeImportCatalogDraft.Column("score", "score", List.of(), null)));
+    }
+
+    private static DataframeImportCatalogDraft.Artifact processedArtifact(
+            String sourceLabelTarget,
+            List<String> exactlyOneNonempty,
+            DataframeImportCatalogDraft.Column ipColumn) {
+        return new DataframeImportCatalogDraft.Artifact(
+                "ip_list", ImportArtifactRole.PRIMARY, "ip-row-v1", List.of("ip-v1"), null,
+                sourceLabelTarget, exactlyOneNonempty,
+                List.of(
+                        ipColumn,
+                        new DataframeImportCatalogDraft.Column(
+                                "name", "name", List.of(), null)));
+    }
+
+    private static DataframeImportCatalogDraft.Contract contract(
+            String id,
+            ImportProcessingMode mode,
+            DataframeImportCatalogDraft.Artifact artifact) {
+        return new DataframeImportCatalogDraft.Contract(
+                id, 1, "UTF-8", validDialect(),
+                new DataframeImportCatalogDraft.Recognition(
+                        List.of("ip", "name"), List.of(), List.of(), Map.of()),
+                mode, ImportRoutingPolicy.TARGET_ONLY,
+                ImportRowFailurePolicy.ACCEPT_VALID, ImportDuplicatePolicy.COALESCE, null, true,
+                ImportFormulaPolicy.REJECT, ImportMergePolicy.AUTHORITATIVE,
+                List.of(artifact), null, mode == ImportProcessingMode.PROCESSED
+                        ? new DataframeImportCatalogDraft.ProcessedRoute("original-import",
+                                List.of(new DataframeImportCatalogDraft.RouteInput(artifact.name(), "ip")),
+                                List.of(new DataframeImportCatalogDraft.RouteOutput(artifact.name(), List.of("ip"))))
+                        : null);
+    }
+
+    private static DataframeImportCatalogEnvironment processedEnvironment(
+            Set<String> sourceLabelTargets) {
+        return new DataframeImportCatalogEnvironment(
+                Map.of("ip_list", new DataframeImportCatalogEnvironment.ArtifactSchema(
+                        Set.of("ip", "name"), "ip-row-v1", Set.of("ip-v1"),
+                        Set.of("ioc-aggregate"), false, sourceLabelTargets)),
+                Set.of("lower"), Set.of("bare-ip"), Set.of(), "processing-policy-v1");
     }
 
     private static DataframeImportCatalogDraft.Contract copyContract(

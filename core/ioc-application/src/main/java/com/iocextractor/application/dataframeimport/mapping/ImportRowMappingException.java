@@ -1,5 +1,6 @@
 package com.iocextractor.application.dataframeimport.mapping;
 
+
 import com.iocextractor.common.IocExtractorException;
 
 import java.util.Objects;

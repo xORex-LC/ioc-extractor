@@ -21,6 +21,11 @@ public final class CanonicalArtifactIdentityResolver implements ArtifactIdentity
     }
 
     @Override
+    public Optional<CanonicalKeyMaterial> materialOf(String artifactName, ArtifactRow row) {
+        return resolver.recordKeyOf(artifactName, row);
+    }
+
+    @Override
     public Optional<ArtifactRowKey> keyOf(String artifactName, ArtifactRow row) {
         return resolver.recordKeyOf(artifactName, row)
                 .map(CanonicalKeyMaterial::keyHash)

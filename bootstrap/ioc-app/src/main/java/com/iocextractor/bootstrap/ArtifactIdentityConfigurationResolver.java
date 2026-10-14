@@ -4,6 +4,7 @@ import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.CanonicalKeyDefinition;
 import com.iocextractor.application.artifact.CanonicalKeyMode;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -17,6 +18,20 @@ final class ArtifactIdentityConfigurationResolver {
         Objects.requireNonNull(artifact, "artifact");
         return V020ArtifactIdentityCompatibility.resolve(artifact)
                 .orElseGet(() -> resolveCurrent(artifact));
+    }
+
+    static List<ArtifactIdentityDefinition> resolveAll(
+            List<IocProperties.ArtifactIdentity.Artifact> artifacts,
+            boolean includeShippedAggregate) {
+        Objects.requireNonNull(artifacts, "artifacts");
+        List<ArtifactIdentityDefinition> resolved = new ArrayList<>(artifacts.size() + 1);
+        artifacts.stream().map(ArtifactIdentityConfigurationResolver::resolve).forEach(resolved::add);
+        if (includeShippedAggregate
+                && artifacts.stream().noneMatch(artifact -> "ioc_aggregate".equals(artifact.name()))
+                && V020ArtifactIdentityCompatibility.containsCompleteLegacyBase(artifacts)) {
+            resolved.add(V020ArtifactIdentityCompatibility.aggregateDefinition());
+        }
+        return List.copyOf(resolved);
     }
 
     private static ArtifactIdentityDefinition resolveCurrent(

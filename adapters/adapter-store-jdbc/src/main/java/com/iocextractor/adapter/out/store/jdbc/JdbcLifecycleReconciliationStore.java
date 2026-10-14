@@ -16,13 +16,23 @@ import java.util.Objects;
 public final class JdbcLifecycleReconciliationStore implements LifecycleReconciliationStore {
 
     private final DataSource dataSource;
+    private final JdbcWriterAdmission writerAdmission;
 
     public JdbcLifecycleReconciliationStore(DataSource dataSource) {
+        this(dataSource, new JdbcWriterAdmission());
+    }
+
+    public JdbcLifecycleReconciliationStore(DataSource dataSource, JdbcWriterAdmission writerAdmission) {
+        this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
     }
 
     @Override
     public int failInterrupted(EffectiveTime recoveredAt, String failureCode) {
+        return writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL, () -> failInterruptedAdmitted(recoveredAt, failureCode));
+    }
+
+    private int failInterruptedAdmitted(EffectiveTime recoveredAt, String failureCode) {
         requireFailureCode(failureCode);
         String sql = """
                 UPDATE lifecycle_reconcile_state
@@ -41,6 +51,10 @@ public final class JdbcLifecycleReconciliationStore implements LifecycleReconcil
 
     @Override
     public LifecycleReconcileCycleId start(EffectiveTime cycleAsOf) {
+        return writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL, () -> startAdmitted(cycleAsOf));
+    }
+
+    private LifecycleReconcileCycleId startAdmitted(EffectiveTime cycleAsOf) {
         try (Connection connection = dataSource.getConnection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
@@ -128,6 +142,13 @@ public final class JdbcLifecycleReconciliationStore implements LifecycleReconcil
     }
 
     private void updateStarted(String sql, StatementBinder binder, String action) {
+        writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL, () -> {
+            updateStartedAdmitted(sql, binder, action);
+            return null;
+        });
+    }
+
+    private void updateStartedAdmitted(String sql, StatementBinder binder, String action) {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             binder.bind(statement);

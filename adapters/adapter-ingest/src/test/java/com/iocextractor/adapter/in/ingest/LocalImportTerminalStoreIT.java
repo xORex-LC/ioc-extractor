@@ -5,6 +5,7 @@ import com.iocextractor.application.dataframeimport.model.ImportContractId;
 import com.iocextractor.application.dataframeimport.model.ImportContractPin;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
 import com.iocextractor.application.dataframeimport.model.ImportRowIssue;
+import com.iocextractor.application.dataframeimport.model.ImportRowWarning;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshotReference;
 import com.iocextractor.application.dataframeimport.model.ImportSourceId;
 import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
@@ -116,6 +117,27 @@ class LocalImportTerminalStoreIT {
                 .startsWith(LocalFilesystemImportSnapshotStore.REFERENCE_PREFIX);
         store.delete(terminal);
         assertThat(temporaryDirectory.resolve("terminal")).isEmptyDirectory();
+    }
+
+    @Test
+    void publishesAcceptedRowWarningsWithoutRejectingTheDelivery() throws Exception {
+        Path source = temporaryDirectory.resolve("warnings.csv");
+        Files.writeString(source, "ip\n192.0.2.1\n");
+        LocalImportTerminalStore store = store(ignored -> source, 1024);
+        store.publish(new PublishImportReportCommand(
+                new ImportDeliveryId("delivery-warnings"), new ImportSourceId("source-a"),
+                new ImportSnapshotReference("snapshot:warnings"), Optional.empty(),
+                ImportTerminalOutcome.SUCCEEDED, 1, 0, 1, Set.of("ip_list"),
+                List.of(), List.of(), List.of(new ImportRowWarning(
+                        2, "ip_list", "IMPORT.PROCESSED_VIEW_FALLBACK"))));
+
+        String report = Files.readString(onlyChild(temporaryDirectory.resolve("terminal"))
+                .resolve("report.json"));
+        assertThat(report).contains("\"outcome\":\"SUCCEEDED\"")
+                .contains("\"rejectedRows\":0")
+                .contains("\"issues\":[]")
+                .contains("\"warnings\":[{\"row\":2,\"artifact\":\"ip_list\","
+                        + "\"code\":\"IMPORT.PROCESSED_VIEW_FALLBACK\"}]");
     }
 
     @Test

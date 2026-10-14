@@ -20,7 +20,7 @@ class ArtifactProjectionResultTest {
         var source = new ArrayList<>(java.util.List.of(
                 diagnostics.create(SourceDiagnosticCodes.EMPTY_TEXT).build()));
 
-        var outcome = new ArtifactProjectionResult(3, source);
+        var outcome = new ArtifactProjectionResult(3, source, new com.iocextractor.application.artifact.lifecycle.ProjectionGeneration(0));
         source.clear();
 
         assertThat(outcome.projectedRows()).isEqualTo(3);
@@ -31,7 +31,7 @@ class ArtifactProjectionResultTest {
     void rejects_error_diagnostic_after_canonical_commit() {
         var error = diagnostics.create(SinkDiagnosticCodes.ROW_MAPPING_FAILED).build();
 
-        assertThatThrownBy(() -> new ArtifactProjectionResult(0, java.util.List.of(error)))
+        assertThatThrownBy(() -> new ArtifactProjectionResult(0, java.util.List.of(error), new com.iocextractor.application.artifact.lifecycle.ProjectionGeneration(0)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("must be advisory");
     }

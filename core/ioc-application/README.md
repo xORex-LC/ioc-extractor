@@ -18,6 +18,26 @@ decisions материализуются один раз; application stages и�
 `ExtractionCommand.runId` обязателен и задаётся driving boundary: oneshot CLI
 создаёт новый correlation id, daemon передаёт durable `ingest_run.run_id`.
 `ExtractionResult` возвращает тот же id из terminal envelope.
+Каждый документ использует обязательный `DocumentProcessingPlan` port и
+`PrepareRoutedArtifactsStage`. Stage закрывает собственную сессию до checkpoint
+и при исключениях; application не знает Camel и CSV. Поставляемый план сохраняет
+исходные наблюдения `keep-first` после source-дедупликации, включая кратность
+mapped-коллизий. Для `last-nonempty` и планов с выбором по конечному ключу
+победитель выбирается глобально в `DocumentPreparationWorkspace`. Invocation
+владеет закреплённым исходным документом и закрывает workspace на каждом пути.
+`ArtifactWritePlan`, canonical confirmations и typed receipts передают
+повторяемый `RowSource`, а вызывающий код закрывает каждый `RowCursor`.
+Framework-free ports задают контракт; дисковый reducer, квоты и SQLite
+соединения принадлежат JDBC adapter.
+`DocumentSourceWorkspace` этого же invocation предоставляет decoded/refanged
+текст и source cursors. Стадии `ReadSourceStreamStage`, `RefangSourceStreamStage`,
+`ExtractSourceStreamStage`, `AttributeSourceStreamStage` передают Router поток
+атрибутированных occurrences без полного списка. Source scratch закрывается
+перед seal; fatal errors проходят через cleanup и driving fail-stop boundary.
+Альтернативного dedup/classify/prepare dispatcher нет.
+`ArtifactRow` владеет единственным упорядоченным защитным снимком колонок:
+фабрика `ordered` использует снимок конструктора, сохраняет `null` и порядок
+колонок, не раскрывает изменяемую карту вызывающего кода.
 Terminal ingestion rejection идемпотентен: driving adapter различает впервые
 записанный `REJECTED` и уже durable `ALREADY_REJECTED`, не читая ledger напрямую.
 `ObservationId` идентифицирует одну delivery/retry цепочку, а повторяемый
@@ -45,8 +65,11 @@ revision сохраняет delivery significance даже для byte-identical
 
 Canonical lifecycle следует той же границе. `LifecycleReconciliationService`
 держит один cycle `asOf` и coalesce-ит lossy projection hints по artifact;
-`ArtifactProjectionConvergenceService` подтверждает только наблюдённое durable
-generation; `LifecycleAdmissionService` сериализует idempotent pre-stateful-work
+`ArtifactProjectionConvergenceService` обнаруживает pending work, а общий
+`GenerationOwnedArtifactProjection` сериализует snapshot/build/install/ack по
+артефакту и подтверждает фактически установленное поколение. Повторные запросы
+могут использовать уже подтверждённый результат с сохранением предупреждений;
+`LifecycleAdmissionService` сериализует idempotent pre-stateful-work
 barrier. Events ускоряют работу, но deadline/projection state и periodic
 reconcile остаются authority.
 `LifecycleActivationService` возобновляет bounded `existing-records: expire`
@@ -72,11 +95,37 @@ Terminal retention использует общую семантику
 сначала очищает transport-managed terminal source, затем local terminal unit,
 snapshot/stage/receipt и только последним CAS удаляет ledger row.
 
+Ordered field policies используют framework-free `ObservationOrder`,
+`OccurrencePosition` и `FieldValueOrigin`. `DocumentAdmissionService`,
+`ManagedImportObservationAdmission` и `ObservationOrderedExtractionDecorator`
+координируют dataframe registration с transport/service recovery references
+короткими последовательными операциями, без cross-database transaction.
+Recovery всегда вызывает `resume` с сохранённым namespace и не имеет права
+выделить новый rank. Terminal retention запрашивает безопасное удаление точной
+registration и оставляет recovery reference, пока её удерживает provenance или
+receipt; после `PURGED` либо доказанного `MISSING` удаляется service/file
+reference. Это делает crash между двумя локальными удалениями идемпотентным.
+
+`LatestRegisteredValuePolicy` является pure strategy без clock/storage access.
+`ArtifactWritePlan` сохраняет positions управляемых полей до commit, а
+`WriteArtifactsStage` передаёт registration через storage-neutral command либо
+lifecycle confirmation. Результат записи различает inserted, public-updated и
+metadata-only rows; наружу публикуется ordered set artifacts с изменившимся
+public представлением, чтобы projection и recovery не теряли name-only update.
+Managed import использует ту же registration через `CanonicalImportCommand`,
+поэтому document и CSV delivery сравниваются одним dataframe-owned order, а
+service sequence остаётся только FIFO authority самого import-контура.
+
 ## Зависимости
 
-**Зависит внутрь от:** domain и framework-free platform contracts для ETL,
+**Зависит внутрь от:** domain, чистого `ioc-processing` и framework-free platform contracts для ETL,
 diagnostics, control events и keyed concurrency. Точный прямой Maven-граф
 задаёт [pom.xml](pom.xml); README описывает роли, но не дублирует dependency
 inventory.
 
 **Не импортируется:** adapters, bootstrap, Spring, Tika, CSV, picocli, Logback.
+
+Processed-import staging owns an optional preparation session after contract-pin
+validation and closes it before sealing on all exit paths. Every input still
+participates in ordinary admission, source authority and workspace accounting.
+See [ADR 0033](../../docs/ADR/0033-bounded-semantic-reuse-during-import-staging.md).

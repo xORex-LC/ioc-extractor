@@ -37,7 +37,7 @@ class IocSemanticConfigurationCheckTest {
         int result = IocSemanticConfigurationCheck.validate(
                 candidate, List.of("--ioc.runtime.mode=daemon"), writer(output), writer(errors));
 
-        assertThat(result).isZero();
+        assertThat(result).withFailMessage(errors.toString()).isZero();
         assertThat(output.toString()).contains("CONFIG.SEMANTIC_VALID");
         assertThat(errors.toString()).isEmpty();
     }
@@ -59,7 +59,7 @@ class IocSemanticConfigurationCheckTest {
         int result = IocSemanticConfigurationCheck.validate(
                 candidate, List.of(), writer(output), writer(errors));
 
-        assertThat(result).isZero();
+        assertThat(result).withFailMessage(errors.toString()).isZero();
         assertThat(output.toString()).contains("CONFIG.SEMANTIC_VALID");
         assertThat(errors.toString()).isEmpty();
     }

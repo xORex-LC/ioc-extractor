@@ -1,5 +1,6 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.adapter.in.csv.CsvImportValueValidatorRegistry;
 import com.iocextractor.application.artifact.FingerprintFraming;
 
 import java.lang.reflect.InvocationTargetException;
@@ -16,7 +17,11 @@ import java.util.Objects;
 /** Stable identity of every configured input that can alter prepared canonical rows. */
 final class ProcessingPolicyFingerprint {
 
-    private static final String POLICY_EPOCH = "processing-policy:v1";
+    private static final String POLICY_EPOCH = "processing-policy:v4";
+    private static final String DOCUMENT_ROUTE_SEMANTICS = "document-route:v1";
+    private static final String PROCESSED_IMPORT_ROUTE_SEMANTICS = "processed-import-route:v1";
+    private static final String EXACT_PARSE_SEMANTICS = "exact-indicator-parser:v1";
+    private static final String HOST_DERIVATION_SEMANTICS = "network-host-derivation:v1";
 
     private ProcessingPolicyFingerprint() {
     }
@@ -25,6 +30,13 @@ final class ProcessingPolicyFingerprint {
         Objects.requireNonNull(properties, "properties");
         MessageDigest digest = sha256();
         add(digest, POLICY_EPOCH);
+        add(digest, DOCUMENT_ROUTE_SEMANTICS);
+        add(digest, PROCESSED_IMPORT_ROUTE_SEMANTICS);
+        add(digest, EXACT_PARSE_SEMANTICS);
+        add(digest, HOST_DERIVATION_SEMANTICS);
+        add(digest, "document-source:streamed-html-sax-docx:v1");
+        addValue(digest, properties.processing().workspace().maximumRowBytes());
+        addValue(digest, properties.processing().workspace().maximumFieldBytes());
         addValue(digest, properties.source());
         addValue(digest, properties.refang());
         addValue(digest, properties.engine());
@@ -33,6 +45,14 @@ final class ProcessingPolicyFingerprint {
         addValue(digest, properties.sink());
         addValue(digest, properties.pipeline());
         addValue(digest, properties.artifactIdentity());
+        addValue(digest, properties.processing());
+        return HexFormat.of().formatHex(digest.digest());
+    }
+
+    static String forImport(IocProperties properties) {
+        MessageDigest digest = sha256();
+        add(digest, from(properties));
+        add(digest, CsvImportValueValidatorRegistry.semanticRevision());
         return HexFormat.of().formatHex(digest.digest());
     }
 
@@ -43,6 +63,35 @@ final class ProcessingPolicyFingerprint {
         }
         if (value instanceof IdStart idStart) {
             add(digest, idStart.normalized());
+            return;
+        }
+        if (value instanceof IocProperties.Sink.Artifact.Column column) {
+            add(digest, "column:v2");
+            add(digest, column.name());
+            add(digest, column.from());
+            add(digest, column.value());
+            add(digest, column.type());
+            addValue(digest, column.transform());
+            if (column.whenType() == null && column.whenTypes() == null) {
+                add(digest, "types:any");
+            } else {
+                var types = new ArrayList<String>();
+                if (column.whenType() != null) {
+                    types.add(column.whenType().name());
+                }
+                if (column.whenTypes() != null) {
+                    column.whenTypes().forEach(type -> types.add(type.name()));
+                }
+                types.sort(String::compareTo);
+                addValue(digest, types);
+            }
+            if (column.when() == null) {
+                add(digest, "conditions:any");
+            } else {
+                var conditions = new ArrayList<>(column.when());
+                conditions.sort(String::compareTo);
+                addValue(digest, conditions);
+            }
             return;
         }
         if (value instanceof Enum<?> enumValue) {
@@ -69,6 +118,14 @@ final class ProcessingPolicyFingerprint {
             iterable.forEach(items::add);
             add(digest, "list:" + items.size());
             items.forEach(item -> addValue(digest, item));
+            return;
+        }
+        if (value instanceof IocProcessingProperties processing) {
+            add(digest, value.getClass().getName());
+            add(digest, "documentPlan");
+            addValue(digest, processing.documentPlan());
+            add(digest, "plans");
+            addValue(digest, processing.plans());
             return;
         }
         if (value.getClass().isRecord()) {

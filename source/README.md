@@ -12,5 +12,8 @@
 ## Заметки
 
 Tika определяет формат и кодировку; путь к источнику задаётся флагом
-`--source`. Поддержка новых форматов — без изменения кода (Tika) или новым
-`SourceReader`-адаптером.
+`--source`. Release-контракт тестами закрепляет HTML, PDF, DOCX и XLSX; другие
+форматы установленного parser set обрабатываются best effort, пока для них не
+добавлены corpus/contract tests. Новый parser boundary можно реализовать другим
+`SourceReader`-адаптером. Подробности — в
+[processing](../docs/dev/processing.md).

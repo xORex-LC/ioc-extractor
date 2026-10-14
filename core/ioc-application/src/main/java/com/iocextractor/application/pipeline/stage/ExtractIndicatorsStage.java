@@ -5,21 +5,16 @@ import com.iocextractor.platform.etl.Stage;
 import com.iocextractor.platform.etl.StageId;
 import com.iocextractor.application.pipeline.payload.ExtractedIndicators;
 import com.iocextractor.application.pipeline.payload.RefangedText;
-import com.iocextractor.application.observability.PipelineDecisionKind;
-import com.iocextractor.application.observability.PipelineItemDecision;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
-import com.iocextractor.diagnostics.Diagnostic;
-import com.iocextractor.diagnostics.DiagnosticContextKeys;
 import com.iocextractor.diagnostics.DiagnosticFactory;
-import com.iocextractor.diagnostics.codes.ExtractionDiagnosticCodes;
+import com.iocextractor.diagnostics.result.BoundedDiagnosticCollector;
+import com.iocextractor.diagnostics.result.DiagnosticBatch;
 import com.iocextractor.domain.extract.ExtractionDecision;
 import com.iocextractor.domain.extract.ExtractionDecisionStatus;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -31,6 +26,7 @@ public final class ExtractIndicatorsStage implements Stage<RefangedText, Extract
     private final IndicatorExtractor extractor;
     private final DiagnosticFactory diagnosticFactory;
     private final PipelineDecisionTracer tracer;
+    private final int diagnosticLimit;
 
     /**
      * Creates the stage.
@@ -42,6 +38,17 @@ public final class ExtractIndicatorsStage implements Stage<RefangedText, Extract
     public ExtractIndicatorsStage(IndicatorExtractor extractor,
                                   DiagnosticFactory diagnosticFactory,
                                   PipelineDecisionTracer tracer) {
+        this(extractor, diagnosticFactory, tracer, 10_000);
+    }
+
+    /** Creates the stage with the same retained-occurrence budget as its runner. */
+    public ExtractIndicatorsStage(IndicatorExtractor extractor,
+                                  DiagnosticFactory diagnosticFactory,
+                                  PipelineDecisionTracer tracer, int diagnosticLimit) {
+        if (diagnosticLimit < 1) {
+            throw new IllegalArgumentException("diagnosticLimit must be positive");
+        }
+        this.diagnosticLimit = diagnosticLimit;
         this.extractor = Objects.requireNonNull(extractor, "extractor");
         this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
         this.tracer = Objects.requireNonNull(tracer, "tracer");
@@ -65,16 +72,11 @@ public final class ExtractIndicatorsStage implements Stage<RefangedText, Extract
         if (!tracer.isEnabled()) {
             return;
         }
-        decisions.forEach(decision -> tracer.trace(PipelineItemDecision
-                .builder(PipelineDecisionKind.EXTRACTION, decision.status().name().toLowerCase(Locale.ROOT))
-                .item(decision.type().name(), decision.span().value())
-                .pattern(decision.pattern())
-                .span(decision.span().start(), decision.span().end())
-                .build()));
+        decisions.forEach(decision -> ExtractionDecisionObserver.trace(decision, tracer));
     }
 
-    private List<Diagnostic> diagnostics(List<ExtractionDecision> decisions) {
-        var diagnostics = new ArrayList<Diagnostic>();
+    private DiagnosticBatch diagnostics(List<ExtractionDecision> decisions) {
+        var diagnostics = new BoundedDiagnosticCollector(diagnosticLimit);
         Map<SpanKey, ExtractionDecision> acceptedBySpan = new HashMap<>();
         for (ExtractionDecision decision : decisions) {
             if (decision.status() == ExtractionDecisionStatus.ACCEPTED) {
@@ -86,26 +88,10 @@ public final class ExtractIndicatorsStage implements Stage<RefangedText, Extract
                 continue;
             }
             ExtractionDecision accepted = acceptedBySpan.get(SpanKey.from(decision));
-            if (accepted != null) {
-                diagnostics.add(diagnosticFactory.create(ExtractionDiagnosticCodes.AMBIGUOUS_VALUE)
-                        .with(DiagnosticContextKeys.VALUE, decision.span().value())
-                        .with(DiagnosticContextKeys.TYPE, decision.type())
-                        .with("spanStart", decision.span().start())
-                        .with("spanEnd", decision.span().end())
-                        .with("reason", "also matched higher-priority type " + accepted.type())
-                        .build());
-                continue;
-            }
-            diagnostics.add(diagnosticFactory.create(ExtractionDiagnosticCodes.INDICATOR_SKIPPED)
-                    .with(DiagnosticContextKeys.INDICATOR, decision.span().value())
-                    .with(DiagnosticContextKeys.TYPE, decision.type())
-                    .with("pattern", decision.pattern())
-                    .with("spanStart", decision.span().start())
-                    .with("spanEnd", decision.span().end())
-                    .with("reason", "overlaps a higher-priority match")
-                    .build());
+            diagnostics.add(ExtractionDecisionObserver.dropped(decision,
+                    accepted == null ? null : accepted.type(), diagnosticFactory));
         }
-        return diagnostics;
+        return diagnostics.batch();
     }
 
     private record SpanKey(int start, int end) {

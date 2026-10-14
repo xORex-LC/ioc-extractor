@@ -19,17 +19,25 @@ final class JdbcCanonicalSourceRecorder {
                        long rowId,
                        String sourceKey,
                        String observedAt) throws SQLException {
-        String sql = "INSERT INTO " + quote(artifact + "_sources") + " ("
+        try (PreparedStatement statement = connection.prepareStatement(sql(artifact))) {
+            record(statement, rowId, sourceKey, observedAt);
+        }
+    }
+
+    static String sql(String artifact) {
+        return "INSERT INTO " + quote(artifact + "_sources") + " ("
                 + joinedQuoted(List.of("row_id", "source_key", "first_seen_at", "last_seen_at", "occurrences"))
                 + ") VALUES (?, ?, ?, ?, 1) ON CONFLICT(" + quote("row_id") + ", " + quote("source_key")
                 + ") DO UPDATE SET " + quote("last_seen_at") + " = excluded." + quote("last_seen_at")
                 + ", " + quote("occurrences") + " = " + quote("occurrences") + " + 1";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setLong(1, rowId);
-            statement.setString(2, sourceKey);
-            statement.setString(3, observedAt);
-            statement.setString(4, observedAt);
-            statement.executeUpdate();
-        }
+    }
+
+    static void record(PreparedStatement statement, long rowId, String sourceKey, String observedAt)
+            throws SQLException {
+        statement.setLong(1, rowId);
+        statement.setString(2, sourceKey);
+        statement.setString(3, observedAt);
+        statement.setString(4, observedAt);
+        statement.executeUpdate();
     }
 }

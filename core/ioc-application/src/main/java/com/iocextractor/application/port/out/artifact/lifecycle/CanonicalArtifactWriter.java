@@ -12,6 +12,10 @@ import com.iocextractor.application.artifact.lifecycle.LifecycleWriteResult;
  * commit marker, revision and projection generation. Replaying the same
  * observation/artifact pair returns its durable prior outcome without renewing
  * records or sampling a new effective time.
+ *
+ * <p>Observation identity belongs to one pinned ingestion event, never a mutable
+ * command key. Committed replay deliberately does not reopen or compare the
+ * original payload.</p>
  */
 public interface CanonicalArtifactWriter {
 

@@ -11,6 +11,7 @@ import com.iocextractor.application.dataframeimport.model.ImportDeliveryTransiti
 import com.iocextractor.application.dataframeimport.model.ImportLedgerTransitionResult;
 import com.iocextractor.application.dataframeimport.model.ImportRetrySchedule;
 import com.iocextractor.application.dataframeimport.model.ImportRowIssue;
+import com.iocextractor.application.dataframeimport.model.ImportRowWarning;
 import com.iocextractor.application.dataframeimport.model.ImportStage;
 import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
 import com.iocextractor.application.port.in.dataframeimport.ProcessNextDataframeImportResult;
@@ -23,6 +24,7 @@ import com.iocextractor.application.port.out.dataframeimport.ImportReportStore;
 import com.iocextractor.application.port.out.dataframeimport.ImportWorkspace;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
 import com.iocextractor.application.port.out.dataframeimport.PublishImportReportCommand;
+import com.iocextractor.application.observation.ManagedImportObservationAdmission;
 import com.iocextractor.diagnostics.codes.ImportDiagnosticCodes;
 
 import java.time.Clock;
@@ -50,6 +52,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
     private final Clock clock;
     private final Duration retryDelay;
     private final DataframeImportObserver observer;
+    private final ManagedImportObservationAdmission observationAdmission;
 
     /** Creates one framework-free global-head processor. */
     public DataframeImportProcessingService(
@@ -63,7 +66,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             Clock clock,
             Duration retryDelay) {
         this(ledger, staging, promotion, workspace, commits, reports, sources, clock,
-                retryDelay, NoopDataframeImportObserver.INSTANCE);
+                retryDelay, NoopDataframeImportObserver.INSTANCE, null);
     }
 
     /** Creates one framework-free global-head processor with operational observation. */
@@ -78,6 +81,23 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             Clock clock,
             Duration retryDelay,
             DataframeImportObserver observer) {
+        this(ledger, staging, promotion, workspace, commits, reports, sources, clock,
+                retryDelay, observer, null);
+    }
+
+    /** Creates the processor with terminal registration handshakes. */
+    public DataframeImportProcessingService(
+            ImportDeliveryLedger ledger,
+            DataframeImportStager staging,
+            ProcessNextDataframeImportUseCase promotion,
+            ImportWorkspace workspace,
+            ImportCommitEvidenceStore commits,
+            ImportReportStore reports,
+            ManagedImportSourceLifecycle sources,
+            Clock clock,
+            Duration retryDelay,
+            DataframeImportObserver observer,
+            ManagedImportObservationAdmission observationAdmission) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.staging = Objects.requireNonNull(staging, "staging");
         this.promotion = Objects.requireNonNull(promotion, "promotion");
@@ -88,6 +108,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
         this.clock = Objects.requireNonNull(clock, "clock");
         this.retryDelay = Objects.requireNonNull(retryDelay, "retryDelay");
         this.observer = new ResilientDataframeImportObserver(observer);
+        this.observationAdmission = observationAdmission;
         if (retryDelay.isNegative()) {
             throw new IllegalArgumentException("Import processing retry delay must not be negative");
         }
@@ -118,15 +139,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
                 current = transition(current, ImportDeliveryState.CONTRACT_PINNED,
                         ImportDeliveryCheckpoint.contract(result.contract()));
             } else {
-                ImportContractPin pinned = current.contract().orElseThrow(
-                        () -> contradiction("Import staging state has no pinned contract"));
-                Optional<ImportStage> adopted = workspace.adoptSealed(
-                        current.id(), current.snapshot().orElseThrow(), pinned);
-                if (adopted.isPresent()) {
-                    result = new ImportStagingResult(pinned, adopted.orElseThrow());
-                } else {
-                    result = requirePinned(staging.stage(stagingCommand(current)), pinned);
-                }
+                result = recoverPinnedStage(current);
             }
             if (current.state() == ImportDeliveryState.CONTRACT_PINNED) {
                 current = transition(current, ImportDeliveryState.STAGING, ImportDeliveryCheckpoint.none());
@@ -138,6 +151,9 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             observer.stagingCompleted(current, elapsedSince(startedAt));
             return performed(initial);
         } catch (ImportRecognitionException failure) {
+            if (initial.contract().isPresent()) {
+                throw contradiction("Pinned import contract is unavailable after restart", failure);
+            }
             return reject(initial, List.of(recognitionCode(failure)), startedAt);
         } catch (DelimitedInputReadException failure) {
             return reject(initial, List.of(
@@ -151,6 +167,21 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
                     Optional.of(failure.getClass().getName()));
             return performed(initial);
         }
+    }
+
+    private ImportStagingResult recoverPinnedStage(ImportDelivery current) {
+        ImportContractPin pinned = current.contract().orElseThrow(
+                () -> contradiction("Import staging state has no pinned contract"));
+        Optional<ImportStage> adopted = workspace.adoptSealed(
+                current.id(), current.snapshot().orElseThrow(), pinned);
+        if (adopted.isPresent()) {
+            return new ImportStagingResult(pinned, adopted.orElseThrow());
+        }
+        ImportStagingResult result = staging.stagePinned(stagingCommand(current), pinned);
+        if (!result.contract().equals(pinned)) {
+            throw contradiction("Pinned import contract is unavailable after restart");
+        }
+        return result;
     }
 
     private ProcessNextDataframeImportResult promote(ImportDelivery delivery) {
@@ -186,9 +217,11 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             ImportTerminalOutcome outcome = evidence.terminalOutcome();
             PublishImportReportCommand report = report(
                     current, outcome, evidence.acceptedRows(), evidence.rejectedRows(),
-                    evidence.publicMutations(), evidence.affectedArtifacts(), List.of(), evidence.issues());
+                    evidence.publicMutations(), evidence.affectedArtifacts(), List.of(),
+                    evidence.issues(), evidence.warnings());
             reports.publish(report);
             dispositionForwardSource(current, outcome);
+            completeObservation(current, outcome);
             current = transition(
                     current, ImportDeliveryState.TERMINAL, ImportDeliveryCheckpoint.none(), outcome);
             observer.deliveryCompleted(current, report, elapsedSince(startedAt));
@@ -219,6 +252,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
                     0, 0, 0, Set.of(), codes, List.of());
             reports.publish(report);
             dispositionForwardSource(current, ImportTerminalOutcome.REJECTED);
+            completeObservation(current, ImportTerminalOutcome.REJECTED);
             current = transition(current, ImportDeliveryState.TERMINAL,
                     ImportDeliveryCheckpoint.none(), ImportTerminalOutcome.REJECTED);
             observer.deliveryCompleted(current, report, elapsedSince(startedAt));
@@ -256,17 +290,16 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
         };
     }
 
+    private void completeObservation(ImportDelivery delivery, ImportTerminalOutcome outcome) {
+        if (observationAdmission != null) {
+            observationAdmission.complete(delivery.id(), outcome.name());
+        }
+    }
+
     private ImportStagingCommand stagingCommand(ImportDelivery delivery) {
         return new ImportStagingCommand(
                 delivery.id(), delivery.sourceId(), delivery.snapshot().orElseThrow(
                         () -> contradiction("Import staging state has no pinned snapshot")));
-    }
-
-    private ImportStagingResult requirePinned(ImportStagingResult result, ImportContractPin pinned) {
-        if (!result.contract().equals(pinned)) {
-            throw contradiction("Pinned import contract is unavailable after restart");
-        }
-        return result;
     }
 
     private PublishImportReportCommand report(
@@ -278,12 +311,26 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             Set<String> affectedArtifacts,
             List<String> deliveryCodes,
             List<ImportRowIssue> issues) {
+        return report(delivery, outcome, acceptedRows, rejectedRows, publicMutations,
+                affectedArtifacts, deliveryCodes, issues, List.of());
+    }
+
+    private PublishImportReportCommand report(
+            ImportDelivery delivery,
+            ImportTerminalOutcome outcome,
+            long acceptedRows,
+            long rejectedRows,
+            long publicMutations,
+            Set<String> affectedArtifacts,
+            List<String> deliveryCodes,
+            List<ImportRowIssue> issues,
+            List<ImportRowWarning> warnings) {
         return new PublishImportReportCommand(
                 delivery.id(), delivery.sourceId(),
                 delivery.snapshot().orElseThrow(
                         () -> contradiction("Import finalization has no pinned snapshot")).reference(),
                 delivery.contract(), outcome, acceptedRows, rejectedRows, publicMutations,
-                affectedArtifacts, deliveryCodes, issues);
+                affectedArtifacts, deliveryCodes, issues, warnings);
     }
 
     private void dispositionForwardSource(

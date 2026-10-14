@@ -1,5 +1,7 @@
 package com.iocextractor.application.artifact.lifecycle;
 
+import com.iocextractor.application.observation.RegisteredObservation;
+
 import java.util.Objects;
 
 /**
@@ -8,7 +10,8 @@ import java.util.Objects;
  */
 public record LifecycleWriteContext(ObservationId observationId,
                                     String sourceKey,
-                                    ConfirmationReceiptContext receipt) {
+                                    ConfirmationReceiptContext receipt,
+                                    RegisteredObservation registration) {
 
     public LifecycleWriteContext {
         Objects.requireNonNull(observationId, "observationId");
@@ -17,5 +20,11 @@ public record LifecycleWriteContext(ObservationId observationId,
         if (sourceKey.isBlank()) {
             throw new IllegalArgumentException("Source key must not be blank");
         }
+    }
+
+    public LifecycleWriteContext(ObservationId observationId,
+                                 String sourceKey,
+                                 ConfirmationReceiptContext receipt) {
+        this(observationId, sourceKey, receipt, null);
     }
 }

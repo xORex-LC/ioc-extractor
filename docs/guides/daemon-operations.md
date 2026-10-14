@@ -27,8 +27,10 @@ prefix when different.
 
 ### Planned restart safety
 
-Until ING-10 is fixed, schedule a planned restart only in an idle maintenance
-window:
+Startup recovery completes before the ordinary poller admits new work, and
+source-key serialization prevents recovery and polling from processing one
+source concurrently. For a consistent backup or configuration recovery point,
+still schedule a planned restart in an idle maintenance window:
 
 1. pause local and remote producers so no new source can arrive;
 2. wait for the current source to complete and for both `var/inbox` and
@@ -36,10 +38,10 @@ window:
 3. confirm local health and review recent `INGEST.*` diagnostics;
 4. restart the service, confirm health, then resume producers.
 
-This reduces exposure to the startup recovery/poller race; it is not a recovery
-procedure and does not make an existing `FAILED` identity retryable. If an idle
-window cannot be established, preserve state and use a reviewed maintenance
-procedure instead of deleting ledger records.
+This is an operational consistency procedure, not a way to make an existing
+`FAILED` identity retryable. If an idle window cannot be established, preserve
+state and use a reviewed maintenance procedure instead of deleting ledger
+records.
 
 ## Submit a source document
 
@@ -81,7 +83,7 @@ reviewed even when the source reaches `done`.
 
 After bounded retries following a successful claim, a terminal source failure is
 moved to `var/failed` and a durable terminal ledger state is recorded. A pre-claim
-failure may remain in `var/inbox` because of ING-13. Version 0.2.0 has no supported
+failure may remain in `var/inbox` because of ING-13. The current release has no supported
 command that clears or requeues either terminal identity. Do not move the source
 for resubmission or edit ledger files/SQLite tables manually. Preserve the source
 where it was left together with its logs, correct the cause, and use a reviewed

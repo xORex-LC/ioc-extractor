@@ -30,9 +30,10 @@ class TikaSourceReaderDiagnosticIT {
     @TempDir
     Path tempDir;
 
-    @Test
-    void preserves_unsupported_format_as_typed_run_failure() throws Exception {
-        Path source = Files.writeString(tempDir.resolve("sample.unknown"), "data");
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"sample.unknown", "sample"})
+    void preserves_unsupported_format_as_typed_run_failure(String name) throws Exception {
+        Path source = Files.writeString(tempDir.resolve(name), "data");
         var failure = new UnsupportedFormatException("unsupported");
         var reader = new TikaSourceReader(new FailingParser(failure), null,
                 new DiagnosticFactory(Clock.systemUTC()));
@@ -81,7 +82,22 @@ class TikaSourceReaderDiagnosticIT {
                 });
     }
 
-    private record FailingParser(UnsupportedFormatException failure) implements Parser {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.NullAndEmptySource
+    @org.junit.jupiter.params.provider.ValueSource(strings = " ")
+    void messageLessParserFailureStillHasAUsefulTypedReason(String message) throws Exception {
+        Path source = Files.writeString(tempDir.resolve("broken.html"), "data");
+        var failure = new org.apache.tika.exception.TikaException(message);
+        var reader = new TikaSourceReader(new FailingParser(failure), null, new DiagnosticFactory(Clock.systemUTC()));
+        assertThatThrownBy(() -> reader.readText(source)).satisfies(thrown -> {
+            var diagnostic = (DiagnosticException) thrown;
+            assertThat(diagnostic.diagnostic().code()).isEqualTo(SourceDiagnosticCodes.READ_FAILED);
+            assertThat(diagnostic.diagnostic().context()).containsEntry("reason", "TikaException");
+            assertThat(diagnostic.getCause()).isSameAs(failure);
+        });
+    }
+
+    private record FailingParser(org.apache.tika.exception.TikaException failure) implements Parser {
 
         @Override
         public Set<MediaType> getSupportedTypes(ParseContext context) {
@@ -90,7 +106,7 @@ class TikaSourceReaderDiagnosticIT {
 
         @Override
         public void parse(InputStream stream, ContentHandler handler, Metadata metadata, ParseContext context)
-                throws IOException, SAXException, UnsupportedFormatException {
+                throws IOException, SAXException, org.apache.tika.exception.TikaException {
             throw failure;
         }
     }

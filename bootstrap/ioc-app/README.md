@@ -72,6 +72,30 @@ application core.
 обоих проверок, пишет safe short identity и маскирует URL query. Application
 stages передают ему только уже вычисленные решения.
 
+`RouterRuntimeConfiguration` активирует отдельный Camel runtime лишь при наличии
+`RouterPlanRegistration`, проверяет план до готовности контекста и передаёт
+владение остановкой Spring. В daemon mode условный health indicator сообщает
+готовность маршрутов. `RouterMdcScopes` ограничивает поля plan/view/branch
+временем локальной операции и возвращает родительский MDC. `RouterTraceBridge`
+отправляет технические решения без значений IOC в уже существующий
+`PipelineDecisionTracer`; итоговые диагностики остаются у application.
+`IocRouterConfiguration` регистрирует проверенные IOC-планы в одном Camel
+runtime. `DocumentProcessingAdapter` переводит результат в application port и
+использует preparer конкретного запуска. Обязательный `document-plan`
+задаёт этот путь для oneshot и daemon; отсутствие выбора отклоняется preflight.
+`IocProcessingOperations` и `IocProcessingRouteAdapter` общие для document и
+processed-import seams. `RouterProcessedImportRowPreparer` собирает одну
+логическую import-строку из явно названных IOC-входов и выходных колонок;
+каждый processed-контракт обязан выбрать путь через явный `processed-route`,
+даже при выключенном intake. Поставляемый документный план использует исходные
+значения и `retained-observations`; очистка host/IP требует явного нового плана.
+`IocProcessingProperties` связывает операторские планы типизированно, а
+`ProcessingPlanCatalog` при старте проверяет ссылки и формирует
+`ProcessingPlanBindings` для document/import точек входа. Отпечаток политики
+включает план и версию семантики. В daemon service schema v12 запрещает смену
+политики документа при незавершённом intake; закреплённый import contract
+сверяется до повторного staging.
+
 Composition root выбирает typed `PipelineFailurePolicy`, diagnostic budget и
 non-throwing diagnostics bridge. Default application config — `fail-fast`; production
 daemon template явно задаёт `collect-and-continue` и budget 10 000.
@@ -127,6 +151,22 @@ facts, aggregate source-readiness counts и lane depth. Incompatible source
 Shutdown сначала закрывает watches/new hints, затем scheduler и ждёт уже
 принятую lane work до typed timeout.
 
+## Ordered observation operations
+
+Composition включает cross-delivery ordering только при наличии enabled
+`latest-registered` artifact field. Oneshot использует registration decorator;
+daemon document intake выбирает JDBC либо file-backed admission journal;
+managed import резервирует admission atomарно с service delivery и передаёт тот
+же rank в canonical promotion. Startup восстанавливает pre-hash document
+admissions до ordinary source ledger и отказывается re-rank-ить legacy work.
+
+`ObservationRegistrationRetentionScheduler` выполняет bounded cleanup по
+существующему receipt/history horizon. Он не удаляет unresolved oneshot rows.
+`ObservationRegistrationHealthIndicator` публикует safe aggregate counts и
+переводит health в `DOWN`, если crashed oneshot registration остаётся без
+terminal disposition. Rollback schema v11 требует coordinated restore обеих DB,
+configuration и service-owned files; composition не поддерживает schema strip.
+
 ## Зависимости
 
 **Зависит от:** selected platform/core/adapters modules, Spring Boot and its
@@ -134,3 +174,7 @@ Logback `StructuredLogEncoder`; `IocEcsStructuredLogEncoder` сохраняет 
 `event.dataset` внутри nested ECS context-pair object Boot 4.
 
 **Не импортируется:** no inner module depends on `ioc-app`.
+
+Mutable CSV устанавливается только через общий `GenerationOwnedArtifactProjection`:
+composition root не публикует raw `CsvArtifactProjection` как bean. Oneshot, ingest,
+run recovery и lifecycle convergence получают один `ArtifactProjection`.

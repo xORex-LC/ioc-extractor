@@ -1,6 +1,7 @@
 package com.iocextractor.application.artifact.lifecycle;
 
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 
@@ -20,5 +21,16 @@ public record ConfirmationReceiptReplayResult(Map<String, LifecycleWriteResult> 
         var inserted = new LinkedHashMap<String, Integer>();
         artifacts.forEach((artifact, result) -> inserted.put(artifact, result.publicRowsInserted()));
         return java.util.Collections.unmodifiableMap(inserted);
+    }
+
+    /** Artifacts whose public projection changed during the original commit. */
+    public java.util.Set<String> changedArtifacts() {
+        var changed = new LinkedHashSet<String>();
+        artifacts.forEach((artifact, result) -> {
+            if (result.publicRowsChanged() > 0) {
+                changed.add(artifact);
+            }
+        });
+        return java.util.Collections.unmodifiableSet(changed);
     }
 }

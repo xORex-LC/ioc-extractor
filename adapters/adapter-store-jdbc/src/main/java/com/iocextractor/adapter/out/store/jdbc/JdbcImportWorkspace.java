@@ -259,7 +259,7 @@ public final class JdbcImportWorkspace implements ImportWorkspace {
             statement.setString(1, command.deliveryId().value());
             try (ResultSet resultSet = statement.executeQuery()) {
                 boolean valid = resultSet.next()
-                        && resultSet.getInt("schema_version") == ImportWorkspaceSchema.VERSION
+                        && ImportWorkspaceSchema.readable(resultSet.getInt("schema_version"))
                         && command.snapshot().digest().value().equals(resultSet.getString("snapshot_sha256"))
                         && command.snapshot().size() == resultSet.getLong("snapshot_size")
                         && command.contract().id().value().equals(resultSet.getString("contract_id"))
@@ -282,7 +282,8 @@ public final class JdbcImportWorkspace implements ImportWorkspace {
                         && expected.sourceRows() == resultSet.getLong("source_row_count")
                         && expected.acceptedRows() == resultSet.getLong("accepted_count")
                         && expected.rejectedRows() == resultSet.getLong("rejected_count")
-                        && planHash(command).equals(resultSet.getString("plan_hash"))
+                        && planHash(command, resultSet.getInt("schema_version"))
+                                .equals(resultSet.getString("plan_hash"))
                         && resultSet.getObject("sealed_at_ms") != null
                         && !resultSet.next();
                 if (!valid) {
@@ -357,8 +358,12 @@ public final class JdbcImportWorkspace implements ImportWorkspace {
     }
 
     private String planHash(CreateImportWorkspaceCommand command) {
+        return planHash(command, ImportWorkspaceSchema.VERSION);
+    }
+
+    private String planHash(CreateImportWorkspaceCommand command, int stageVersion) {
         String descriptor = String.join("\u001f",
-                "stage-v" + ImportWorkspaceSchema.VERSION,
+                "stage-v" + stageVersion,
                 command.snapshot().digest().value(),
                 Long.toString(command.snapshot().size()),
                 command.contract().id().value(),

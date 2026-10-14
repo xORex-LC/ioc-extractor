@@ -69,3 +69,5 @@ Generated from `DiagnosticCatalogs`.
 | `PIPELINE.STAGE_FAILED` | PIPELINE | ERROR | RUN | `pipeline.stage-failed` | Pipeline stage {stage} failed: {reason} |
 | `PIPELINE.DIAGNOSTICS_SUPPRESSED` | PIPELINE | WARN | RUN | `pipeline.diagnostics-suppressed` | Suppressed {suppressedCount} diagnostics after reaching the run budget of {limit} |
 | `PIPELINE.ITEM_SKIPPED` | PIPELINE | WARN | ELEMENT | `pipeline.item-skipped` | Pipeline item {item} was skipped at stage {stage}: {reason} |
+| `PIPELINE.ROUTING_REJECTED` | PIPELINE | ERROR | ELEMENT | `pipeline.routing-rejected` | Processing plan {plan} rejected indicator {indicator}: {reason} |
+| `PIPELINE.VIEW_UNAVAILABLE` | PIPELINE | ERROR | ELEMENT | `pipeline.view-unavailable` | Processing view {view} is unavailable for indicator {indicator}: {reason} |

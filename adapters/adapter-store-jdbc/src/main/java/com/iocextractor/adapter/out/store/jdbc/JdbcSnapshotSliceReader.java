@@ -51,6 +51,8 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
 
     private final DataSource dataSource;
     private final Map<String, DataframeArtifactSchema> schemas;
+    private final java.util.concurrent.Semaphore readers;
+    private final int readerLimit;
     private final Clock clock;
     private final LifecycleTimeSource activeTimeSource;
     private final DiagnosticSink diagnosticSink;
@@ -93,6 +95,18 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                                    DiagnosticSink diagnosticSink,
                                    DiagnosticFactory diagnosticFactory,
                                    JdbcWriterAdmission writerAdmission) {
+        this(dataSource, schemas, clock, activeTimeSource, diagnosticSink, diagnosticFactory,
+                writerAdmission, 2);
+    }
+
+    /** Bounds read transactions while leaving the pool's writer capacity available. */
+    public JdbcSnapshotSliceReader(DataSource dataSource, List<DataframeArtifactSchema> schemas,
+                                  Clock clock, LifecycleTimeSource activeTimeSource,
+                                  DiagnosticSink diagnosticSink, DiagnosticFactory diagnosticFactory,
+                                  JdbcWriterAdmission writerAdmission, int readerLimit) {
+        if (readerLimit < 1) { throw new IllegalArgumentException("readerLimit must be positive"); }
+        this.readerLimit = readerLimit;
+        this.readers = new java.util.concurrent.Semaphore(readerLimit, true);
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -126,9 +140,7 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
             if (expectedState == LifecycleActivationState.ACTIVE) {
                 return streamActive(plan, consumer, expectedState, asOf);
             }
-            try (Connection connection = dataSource.getConnection()) {
-                return stream(connection, plan, consumer, expectedState, asOf);
-            }
+            return streamBounded(plan, consumer, expectedState, asOf);
         } catch (SQLException e) {
             throw snapshotFailure(plan.profile().name(), e);
         }
@@ -141,7 +153,7 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
         JdbcExportSlotRegistry.SnapshotChangedException lastRace = null;
         for (int attempt = 1; attempt <= MAX_SLOT_SNAPSHOT_ATTEMPTS; attempt++) {
             try {
-                writerAdmission.execute(() -> {
+                writerAdmission.execute(JdbcWriterAdmission.OperationClass.EXPORT_SLOTS, () -> {
                     try {
                         reconcileExportSlots(plan, expectedState, asOf);
                         return null;
@@ -152,13 +164,33 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
             } catch (SlotReconciliationFailure failure) {
                 throw failure.sqlCause();
             }
-            try (Connection connection = dataSource.getConnection()) {
-                return stream(connection, plan, consumer, expectedState, asOf);
+            try {
+                return streamBounded(plan, consumer, expectedState, asOf);
             } catch (JdbcExportSlotRegistry.SnapshotChangedException changed) {
                 lastRace = changed;
             }
         }
         throw new SQLException("Canonical data kept changing while opening export-slot snapshot", lastRace);
+    }
+
+    /** Current transaction ownership; no IOC rows are retained by admission. */
+    public int activeReaders() { return readerLimit - readers.availablePermits(); }
+
+    public int queuedReaders() { return readers.getQueueLength(); }
+
+    private SnapshotMetadata streamBounded(ExportPlan plan, SnapshotRowConsumer consumer,
+                                           LifecycleActivationState state, Instant asOf) throws SQLException {
+        try {
+            readers.acquire();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new SQLException("Interrupted while waiting for export reader admission", interrupted);
+        }
+        try (Connection connection = dataSource.getConnection()) {
+            return stream(connection, plan, consumer, state, asOf);
+        } finally {
+            readers.release();
+        }
     }
 
     private static final class SlotReconciliationFailure extends RuntimeException {
@@ -180,7 +212,7 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
         try (Connection connection = dataSource.getConnection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
-            Exception failure = null;
+            Throwable failure = null;
             try {
                 JdbcLifecycleTransactions.acquireActiveWriteOwnership(connection);
                 LifecycleActivationState currentState = JdbcLifecycleTransactions.readActivationState(connection);
@@ -190,12 +222,12 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                 }
                 exportSlots.reconcile(connection, plan, asOf);
                 connection.commit();
-            } catch (SQLException | RuntimeException e) {
+            } catch (SQLException | RuntimeException | Error e) {
                 failure = e;
-                rollback(connection, e);
+                JdbcLifecycleTransactions.rollback(connection, e);
                 throw e;
             } finally {
-                restoreAutoCommit(connection, previousAutoCommit, failure);
+                JdbcLifecycleTransactions.restoreAutoCommit(connection, previousAutoCommit, failure);
             }
         }
     }
@@ -207,7 +239,7 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                                     Instant asOf) throws SQLException {
         boolean previousAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
-        Exception failure = null;
+        Throwable failure = null;
         try {
             LifecycleActivationState lifecycleState = JdbcLifecycleTransactions.readActivationState(connection);
             if (lifecycleState != expectedState) {
@@ -226,12 +258,12 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
             consumer.end();
             connection.commit();
             return metadata;
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | RuntimeException | Error e) {
             failure = e;
-            rollback(connection, e);
+            JdbcLifecycleTransactions.rollback(connection, e);
             throw e;
         } finally {
-            restoreAutoCommit(connection, previousAutoCommit, failure);
+            JdbcLifecycleTransactions.restoreAutoCommit(connection, previousAutoCommit, failure);
         }
     }
 
@@ -431,27 +463,6 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
 
     private String quote(String identifier) {
         return "\"" + DataframeColumn.requireSqlIdentifier(identifier, "identifier") + "\"";
-    }
-
-    private void rollback(Connection connection, Exception original) {
-        try {
-            connection.rollback();
-        } catch (SQLException rollbackFailure) {
-            original.addSuppressed(rollbackFailure);
-        }
-    }
-
-    private void restoreAutoCommit(Connection connection,
-                                   boolean autoCommit,
-                                   Exception original) throws SQLException {
-        try {
-            connection.setAutoCommit(autoCommit);
-        } catch (SQLException restoreFailure) {
-            if (original == null) {
-                throw restoreFailure;
-            }
-            original.addSuppressed(restoreFailure);
-        }
     }
 
     private DiagnosticException snapshotFailure(String profile, SQLException cause) {

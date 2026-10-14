@@ -145,6 +145,7 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
                                 .orElseThrow(() -> new IllegalStateException(
                                         "Import claim reservation was neither inserted nor resolved")));
                 if (affected == 1) {
+                    reserveObservationAdmission(reservation);
                     appendTransition(delivery.id(), ImportDeliveryState.DETECTED,
                             ImportDeliveryState.DETECTED, "IMPORT.CLAIM_RESERVED", reservation.detectedAt());
                 }
@@ -153,6 +154,19 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
             return Objects.requireNonNull(result, "transaction result");
         } catch (DataAccessException failure) {
             throw new IllegalStateException("Import claim reservation failed", failure);
+        }
+    }
+
+    private void reserveObservationAdmission(ImportClaimReservation reservation) {
+        int affected = jdbc.sql("""
+                        INSERT INTO import_observation_reservation(delivery_id, reserved_at_ms)
+                        VALUES (:delivery_id, :reserved_at_ms)
+                        """)
+                .param("delivery_id", reservation.deliveryId().value())
+                .param("reserved_at_ms", reservation.detectedAt().toEpochMilli())
+                .update();
+        if (affected != 1) {
+            throw new IllegalStateException("Import observation reservation changed no rows");
         }
     }
 
@@ -230,7 +244,7 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
                                 attempt_count = attempt_count + :attempt_increment,
                                 next_attempt_at_ms = :next_attempt_at_ms,
                                 last_error_code = :last_error_code,
-                                updated_at_ms = :updated_at_ms
+                                updated_at_ms = MAX(updated_at_ms, :updated_at_ms)
                             WHERE delivery_id = :delivery_id
                               AND state = :expected_state
                               AND state <> 'TERMINAL'
@@ -325,9 +339,10 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
                             stage_rejected_rows = COALESCE(:stage_rejected_rows, stage_rejected_rows),
                             next_attempt_at_ms = NULL,
                             last_error_code = :last_error_code,
-                            updated_at_ms = :updated_at_ms,
-                            terminal_at_ms = CASE WHEN :next_state = 'TERMINAL' THEN :updated_at_ms ELSE NULL END,
-                            purge_after_ms = CASE WHEN :next_state = 'TERMINAL' THEN :purge_after_ms ELSE NULL END
+                            updated_at_ms = MAX(updated_at_ms, :updated_at_ms),
+                            terminal_at_ms = CASE WHEN :next_state = 'TERMINAL' THEN MAX(updated_at_ms, :updated_at_ms) ELSE NULL END,
+                            purge_after_ms = CASE WHEN :next_state = 'TERMINAL'
+                              THEN :purge_after_ms + MAX(0, updated_at_ms - :updated_at_ms) ELSE NULL END
                         WHERE delivery_id = :delivery_id
                           AND state = :expected_state
                           AND version = :expected_version
@@ -399,7 +414,8 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
                             delivery_id, ordinal, from_state, to_state, safe_code, occurred_at_ms)
                         SELECT :delivery_id,
                                COALESCE(MAX(ordinal), 0) + 1,
-                               :from_state, :to_state, :safe_code, :occurred_at_ms
+                               :from_state, :to_state, :safe_code,
+                               (SELECT MAX(updated_at_ms, :occurred_at_ms) FROM import_delivery WHERE delivery_id=:delivery_id)
                         FROM import_delivery_transition
                         WHERE delivery_id = :delivery_id
                         """)

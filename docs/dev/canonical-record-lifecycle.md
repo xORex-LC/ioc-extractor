@@ -30,6 +30,36 @@ and the latest reconciliation checkpoint are the correctness authority after
 lost events or process restarts. An idle deadline refresh is read-only and does
 not create a reconciliation cycle.
 
+## Mutable projection ownership
+
+`GenerationOwnedArtifactProjection` is the shared per-artifact owner for
+oneshot, ingest, run recovery, activation and import/expiry convergence.
+Bootstrap exposes that owner as `ArtifactProjection`; the raw CSV installer is
+not a bean. A fair interruptible artifact lock spans snapshot/build/install/ack.
+Building holds no canonical writer admission; lock order is artifact owner then
+short database admission. Different artifacts can progress independently.
+
+The ordered stream returns both row count and generation from one SQLite read
+transaction. Atomic replacement installs that coverage, and a monotonic guarded
+update acknowledges it. A mutation from g1 to g2 during a g1 build leaves g2
+pending; it never lets g1 acknowledge g2. Runs return only after their installed
+coverage is acknowledged. Convergence may report both covered progress and newer
+pending work in the same pass.
+
+Waiting callers reuse one successful outcome per artifact only if it matches
+current durable coverage. Warning counts survive reuse with caller-specific
+correlation; convergence also emits projection warnings. Generation zero is
+untracked and always rebuilds serially. The owner creates no executor; waiting
+is interruptible and streaming checks cancellation per row and before rename.
+
+Before-rename failure preserves old output and deletes temporary output.
+After-rename or acknowledgement failure leaves work pending, which startup or
+the existing periodic backstop repairs without a new canonical mutation. CSV
+and SQLite do not form one transaction. One service process must own its mutable
+paths; external corruption/deletion of already acknowledged files requires
+operational reprojection. Immutable slice ownership is unchanged. Decision:
+[ADR 0035](../ADR/0035-generation-owned-mutable-projections.md).
+
 ## Boundaries
 
 - `core/ioc-application` owns storage-neutral lifecycle values, the fixed
@@ -46,6 +76,13 @@ not create a reconciliation cycle.
 Lifecycle state stays in the dataframe database because confirmation, active
 membership and history movement must share the business-row transaction. The
 service database continues to hold ingestion/export/sync coordination only.
+
+Transaction owners explicitly roll back unsuccessful work, including fatal
+`Error` paths, before restoring connection mode. Restoring auto-commit never
+implicitly publishes partial canonical rows without their receipt. Cleanup
+failures retain the original cause. Committed replay uses the durable observation
+identity and can succeed without reopening preparation; that identity belongs
+to one pinned ingestion event and must not be reused for a different payload.
 
 ## Invariants
 
@@ -70,6 +107,12 @@ service database continues to hold ingestion/export/sync coordination only.
    transactions; there is no timer, thread or job per IOC.
 
 ## Failure and recovery
+
+Safe UTC is sampled after acquiring write ownership and reading the durable
+high-water snapshot. Read-only inspection likewise reads its snapshot before
+sampling UTC. Pool or ownership waits must not make an older sample appear to
+be a clock rollback. Actual backward skew and prolonged clamping still fail
+closed under the unchanged configured limits.
 
 | Situation | Behavior | Correctness source |
 |---|---|---|
@@ -117,3 +160,11 @@ business fields requires a separate versioned consumer contract.
 - Export behavior: [artifact-export.md](artifact-export.md).
 - Ingestion confirmation point: [ingestion.md](ingestion.md).
 - Module map: [MODULARIZATION.md](../MODULARIZATION.md).
+### Native reservation authority
+
+Row and lifecycle ID ranges are committed independently in the authoritative
+dataframe database before Native canonical mutation. They use the shared writer
+admission and remain burned on failure. Mutation, provenance, lifecycle and
+receipt effects then commit together in the owning artifact transaction; there
+is no alternate mutation database or effect-journal backend. Private source/row
+preparation is described in [processing](processing.md).

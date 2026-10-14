@@ -23,6 +23,10 @@ public interface Stage<I, O> {
      * {@code DiagnosticException}; the same occurrence must never be both
      * attached and thrown.</p>
      *
+     * <p>High-cardinality stages append a construction-bounded
+     * {@code DiagnosticBatch}; exact counts must survive every envelope copy.
+     * The runner owns the single terminal suppression summary.</p>
+     *
      * @param input input envelope
      * @return output envelope
      */

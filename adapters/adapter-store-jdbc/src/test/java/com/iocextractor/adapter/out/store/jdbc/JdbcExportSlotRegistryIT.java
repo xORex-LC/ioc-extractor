@@ -2,6 +2,7 @@ package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.application.dataframeimport.model.ImportExistingSlotPolicy;
+import com.iocextractor.application.port.out.artifact.RowSource;
 import com.iocextractor.application.export.ExportArtifactSpec;
 import com.iocextractor.application.export.ExportFormat;
 import com.iocextractor.application.export.ExportMode;
@@ -311,6 +312,50 @@ class JdbcExportSlotRegistryIT {
         assertThat(queryLong("SELECT COUNT(*) FROM export_slot_free_range")).isZero();
         assertThat(queryLong("SELECT next_slot FROM export_slot_state")).isEqualTo(2);
         assertThat(queryLong("SELECT COUNT(*) FROM masks")).isOne();
+    }
+
+    @Test
+    void streamedDuplicateBeyondFirstBatchIsRejectedBeforeAnyAllocation() throws Exception {
+        List<PreferredExportSlotRequest> requests = new ArrayList<>();
+        int requestCount = 257;
+        for (int index = 0; index < requestCount; index++) {
+            long lifecycleId = 1000L + index;
+            addActive(index + 1L, lifecycleId);
+            requests.add(request(lifecycleId, index == requestCount - 1 ? 10_000L : 10_000L + index, true));
+        }
+        try (Connection connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            assertThatThrownBy(() -> registry.reconcilePreferred(connection, PROFILE, ARTIFACT, NOW,
+                    RowSource.of(requests), result -> { throw new AssertionError("allocation must not start"); }))
+                    .isInstanceOf(PreferredExportSlotConflictException.class);
+            assertThat(count(connection, "export_slot_assignment")).isZero();
+            assertThat(count(connection, "export_slot_state")).isZero();
+            assertThat(count(connection, "sqlite_temp_master")).isZero();
+            connection.rollback();
+        }
+    }
+
+    @Test
+    void resultConsumerFailureKeepsPrimaryCauseAndReleasesOnlyOwnedScratch() throws Exception {
+        addActive(1, 101);
+        try (Connection connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE main.temp_export_slot_preferred(sentinel TEXT)");
+            statement.execute("INSERT INTO main.temp_export_slot_preferred VALUES ('keep')");
+            connection.setAutoCommit(false);
+            AssertionError failure = new AssertionError("consumer failed");
+
+            assertThatThrownBy(() -> registry.reconcilePreferred(connection, PROFILE, ARTIFACT, NOW,
+                    RowSource.of(List.of(request(101, SPARSE_SLOT, true))), result -> { throw failure; }))
+                    .isSameAs(failure);
+
+            assertThat(count(connection, "sqlite_temp_master")).isZero();
+            assertThat(count(connection, "main.temp_export_slot_preferred")).isOne();
+            connection.rollback();
+        }
+        assertThat(queryLong("SELECT COUNT(*) FROM export_slot_assignment")).isZero();
+        assertThat(queryLong("SELECT COUNT(*) FROM export_slot_state")).isZero();
+        assertThat(queryLong("SELECT COUNT(*) FROM main.temp_export_slot_preferred WHERE sentinel = 'keep'"))
+                .isOne();
     }
 
     private PreferredExportSlotRequest request(long lifecycleId, long slot, boolean newLifecycle) {

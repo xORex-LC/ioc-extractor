@@ -1,5 +1,6 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
 import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
 import com.iocextractor.application.dataframeimport.model.ImportDuplicatePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportExistingSlotPolicy;
@@ -57,7 +58,8 @@ public record IocProperties(
         @NotNull @Valid Sync sync,
         @Valid Maintenance maintenance,
         @Valid Lifecycle lifecycle,
-        @NotNull @Valid Observability observability) {
+        @NotNull @Valid Observability observability,
+        @Valid IocProcessingProperties processing) {
 
     @ConstructorBinding
     public IocProperties {
@@ -65,6 +67,7 @@ public record IocProperties(
         pipeline = pipeline == null ? new Pipeline(true, PipelineFailurePolicy.FAIL_FAST, 10_000) : pipeline;
         lifecycle = lifecycle == null ? Lifecycle.defaults() : lifecycle;
         dataframeImport = dataframeImport == null ? DataframeImport.disabled() : dataframeImport;
+        processing = processing == null ? IocProcessingProperties.unconfigured() : processing;
     }
 
     private static <T> List<T> snapshotList(List<T> source) {
@@ -169,13 +172,34 @@ public record IocProperties(
                 List<String> include,
                 List<String> exclude,
                 Id id,
-                @NotEmpty @Valid List<Column> columns) {
+                @NotEmpty @Valid List<Column> columns,
+                WritePolicy writePolicy) {
 
+            @ConstructorBinding
             public Artifact {
                 accepts = snapshotList(accepts);
                 include = snapshotList(include);
                 exclude = snapshotList(exclude);
                 columns = snapshotList(columns);
+            }
+
+            public Artifact(String name, boolean enabled, String path, List<IndicatorType> accepts,
+                            List<String> include, List<String> exclude, Id id, List<Column> columns) {
+                this(name, enabled, path, accepts, include, exclude, id, columns, null);
+            }
+
+            public record WritePolicy(String duplicateSelection, String selectionColumn,
+                                      List<Field> fields) {
+                public WritePolicy {
+                    fields = snapshotList(fields);
+                }
+
+                public List<Field> fields() {
+                    return snapshotList(fields);
+                }
+
+                public record Field(String name, String update, String empty) {
+                }
             }
 
             public record Id(ArtifactIdStrategy strategy, IdStart start) {
@@ -192,10 +216,28 @@ public record IocProperties(
                     String value,
                     String type,
                     IndicatorType whenType,
-                    List<String> transform) {
+                    List<String> transform,
+                    List<IndicatorType> whenTypes,
+                    List<String> when) {
 
+                @ConstructorBinding
                 public Column {
                     transform = snapshotList(transform);
+                    whenTypes = snapshotList(whenTypes);
+                    when = snapshotList(when);
+                }
+
+                public List<IndicatorType> whenTypes() {
+                    return snapshotList(whenTypes);
+                }
+
+                public List<String> when() {
+                    return snapshotList(when);
+                }
+
+                public Column(String name, String from, String value, String type,
+                              IndicatorType whenType, List<String> transform) {
+                    this(name, from, value, type, whenType, transform, null, null);
                 }
             }
         }
@@ -459,12 +501,15 @@ public record IocProperties(
                                ImportRoutingPolicy routing,
                                ImportRowFailurePolicy rowFailurePolicy,
                                ImportDuplicatePolicy duplicatePolicy,
+                               String duplicateSelectionColumn,
                                boolean renewUnchanged,
                                ImportFormulaPolicy formulaPolicy,
                                ImportMergePolicy mergeDefault,
                                @Valid List<Artifact> artifacts,
-                               @Valid RequestedSlot requestedSlot) {
+                               @Valid RequestedSlot requestedSlot,
+                               @Valid DataframeImportCatalogDraft.ProcessedRoute processedRoute) {
 
+            @ConstructorBinding
             public Contract {
                 artifacts = snapshotList(artifacts);
             }
@@ -538,17 +583,33 @@ public record IocProperties(
                                String recordKey,
                                List<String> matchKeys,
                                ImportMergePolicy mergeDefault,
+                               String sourceLabelTarget,
+                               List<String> exactlyOneNonempty,
                                @Valid List<Column> columns) {
 
+            @ConstructorBinding
             public Artifact {
                 matchKeys = snapshotList(matchKeys);
+                exactlyOneNonempty = snapshotList(exactlyOneNonempty);
                 columns = snapshotList(columns);
+            }
+
+            public Artifact(String name, ImportArtifactRole role, String recordKey,
+                            List<String> matchKeys, ImportMergePolicy mergeDefault,
+                            List<Column> columns) {
+                this(name, role, recordKey, matchKeys, mergeDefault, null, null, columns);
             }
 
             /** Returns the immutable match-key snapshot. */
             @Override
             public List<String> matchKeys() {
                 return readOnly(matchKeys);
+            }
+
+            /** Returns the immutable nonempty-cardinality target group. */
+            @Override
+            public List<String> exactlyOneNonempty() {
+                return readOnly(exactlyOneNonempty);
             }
 
             /** Returns the immutable column-mapping snapshot. */
@@ -562,10 +623,17 @@ public record IocProperties(
         public record Column(String target,
                              String source,
                              List<String> transforms,
-                             ImportMergePolicy mergePolicy) {
+                             ImportMergePolicy mergePolicy,
+                             String validation) {
 
+            @ConstructorBinding
             public Column {
                 transforms = transforms == null ? List.of() : snapshotList(transforms);
+            }
+
+            public Column(String target, String source, List<String> transforms,
+                          ImportMergePolicy mergePolicy) {
+                this(target, source, transforms, mergePolicy, null);
             }
 
             /** Returns the immutable ordered transform snapshot. */
@@ -791,7 +859,27 @@ public record IocProperties(
             @NotNull @Valid Stability stability,
             @NotNull @Valid Retry retry,
             @NotNull @Valid Ledger ledger,
-            int concurrency) {
+            int concurrency, @NotNull @Valid Execution execution) {
+
+        @org.springframework.boot.context.properties.bind.ConstructorBinding
+        public Ingestion {
+            execution = execution == null ? Execution.defaults() : execution;
+        }
+
+        public Ingestion(Dirs dirs, Patterns patterns, Detect detect, Stability stability,
+                         Retry retry, Ledger ledger, int concurrency) {
+            this(dirs, patterns, detect, stability, retry, ledger, concurrency, Execution.defaults());
+        }
+
+        public record Execution(int preparationWorkers, int window, int maxPendingDocuments,
+                                long maxPendingSourceBytes, long maxSourceBytes) {
+            public static Execution defaults() {
+                // Bootstrap owns validation; the adapter owns the shared execution defaults.
+                var defaults = com.iocextractor.adapter.in.ingest.IngestAdapterProperties.Execution.defaults();
+                return new Execution(defaults.preparationWorkers(), defaults.window(), defaults.maxPendingDocuments(),
+                        defaults.maxPendingSourceBytes(), defaults.maxSourceBytes());
+            }
+        }
 
         public record Dirs(
                 @NotBlank String inbox,

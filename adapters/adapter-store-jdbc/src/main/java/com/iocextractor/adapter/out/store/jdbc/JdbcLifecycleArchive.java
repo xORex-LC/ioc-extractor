@@ -11,7 +11,9 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
+
+import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.joinedQuoted;
+import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.quote;
 
 /** Atomic typed snapshot, compact provenance copy and active-row deletion. */
 final class JdbcLifecycleArchive {
@@ -30,7 +32,7 @@ final class JdbcLifecycleArchive {
                 quote("id"), quote("row_key"), quote("_lifecycle_id"),
                 quote("_first_confirmed_at_epoch_ms"), quote("_last_confirmed_at_epoch_ms"),
                 quote("_valid_until_epoch_ms"), "?", "?"));
-        selected.addAll(publicHeader(schema).stream().map(this::quote).toList());
+        selected.addAll(publicHeader(schema).stream().map(JdbcSql::quote).toList());
         String sql = "INSERT INTO " + quote(schema.artifactName() + "_history") + " ("
                 + joinedQuoted(historyColumns) + ") SELECT " + String.join(", ", selected)
                 + " FROM " + quote(schema.artifactName()) + " WHERE " + quote("id") + " = ?";
@@ -44,6 +46,7 @@ final class JdbcLifecycleArchive {
         }
         long historyId = lastInsertId(connection);
         copyHistorySources(connection, schema.artifactName(), rowId, historyId);
+        archiveFieldOrigins(connection, schema.artifactName(), rowId, closedAt);
         deleteMatchAliases(connection, schema.artifactName(), rowId);
         try (PreparedStatement statement = connection.prepareStatement(
                 "DELETE FROM " + quote(schema.artifactName()) + " WHERE " + quote("id") + " = ?")) {
@@ -51,6 +54,39 @@ final class JdbcLifecycleArchive {
             if (statement.executeUpdate() != 1) {
                 throw new IocExtractorException("Due lifecycle disappeared before deletion");
             }
+        }
+    }
+
+    private void archiveFieldOrigins(Connection connection,
+                                     String artifact,
+                                     long rowId,
+                                     EffectiveTime closedAt) throws SQLException {
+        String insertSql = """
+                INSERT INTO canonical_lifecycle_field_origin_history(
+                    artifact, lifecycle_id, field_name, admission_order,
+                    occurrence_position, occurrence_id, archived_at_ms)
+                SELECT origin.artifact, origin.lifecycle_id, origin.field_name,
+                       origin.admission_order, origin.occurrence_position,
+                       origin.occurrence_id, ?
+                FROM canonical_lifecycle_field_origin origin
+                JOIN """ + quote(artifact) + " active ON active." + quote("_lifecycle_id")
+                + " = origin.lifecycle_id WHERE origin.artifact = ? AND active."
+                + quote("id") + " = ?";
+        try (PreparedStatement statement = connection.prepareStatement(insertSql)) {
+            statement.setLong(1, closedAt.value().toEpochMilli());
+            statement.setString(2, artifact);
+            statement.setLong(3, rowId);
+            statement.executeUpdate();
+        }
+        String deleteSql = """
+                DELETE FROM canonical_lifecycle_field_origin
+                WHERE artifact = ? AND lifecycle_id = (
+                    SELECT """ + quote("_lifecycle_id") + " FROM " + quote(artifact)
+                + " WHERE " + quote("id") + " = ?)";
+        try (PreparedStatement statement = connection.prepareStatement(deleteSql)) {
+            statement.setString(1, artifact);
+            statement.setLong(2, rowId);
+            statement.executeUpdate();
         }
     }
 
@@ -80,7 +116,7 @@ final class JdbcLifecycleArchive {
 
         List<String> selected = new ArrayList<>(List.of(
                 quote("id"), quote("row_key"), "?", "?", "?", "?", "?", "?"));
-        selected.addAll(publicHeader(schema).stream().map(this::quote).toList());
+        selected.addAll(publicHeader(schema).stream().map(JdbcSql::quote).toList());
         String sql = "INSERT INTO " + quote(schema.artifactName() + "_history") + " ("
                 + joinedQuoted(historyColumns) + ") SELECT " + String.join(", ", selected)
                 + " FROM " + quote(schema.artifactName()) + " WHERE " + quote("id") + " = ?"
@@ -138,11 +174,4 @@ final class JdbcLifecycleArchive {
         return schema.columns().stream().map(DataframeColumn::name).toList();
     }
 
-    private String joinedQuoted(List<String> identifiers) {
-        return identifiers.stream().map(this::quote).collect(Collectors.joining(", "));
-    }
-
-    private String quote(String identifier) {
-        return "\"" + DataframeColumn.requireSqlIdentifier(identifier, "identifier") + "\"";
-    }
 }

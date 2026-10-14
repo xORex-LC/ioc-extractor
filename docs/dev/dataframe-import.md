@@ -21,6 +21,7 @@ positive source capability gate
         |
 stabilized candidate
   -> reserve durable delivery ID and global sequence
+  -> reserve and allocate shared dataframe admission order
   -> claim source ownership
        local: atomic move into the private processing directory
        SMB: server-side rename into inbox/.ioc-managed-import/processing
@@ -38,6 +39,19 @@ its place; executor order, filesystem event order and SMB notification order are
 not business authority. The ledger-first claim reservation and every subsequent
 checkpoint are idempotent, so startup recovery moves an incomplete delivery
 forward from durable evidence rather than restarting it as a new occurrence.
+The import sequence controls FIFO processing; the dataframe admission order is
+the shared document/import precedence authority for configured mutable fields.
+Service schema v11 writes an admission-reservation marker in the same transaction
+that creates a new delivery, so recovery may allocate a missing rank only for a
+proved new reservation. A legacy unranked delivery fails closed instead of being
+re-ranked.
+
+Service-ledger transitions and their audit timestamps use the greater of supplied
+wall UTC and the delivery's durable `updated_at_ms`. Terminal retention starts
+from that same nondecreasing timestamp; a clock step cannot shorten its configured
+duration. Retry deadlines remain literal absolute UTC. Receipt-only finalization
+can advance coordination after commit even when new canonical publication would
+be rejected by the independent safe-clock policy.
 
 `as-is` mapping runs only transforms declared by the pinned contract and retains
 the `ABSENT`, explicit `NULL` and `VALUE` cell states. `processed` delegates the
@@ -46,6 +60,53 @@ artifact mapping policies. Pipeline-owned identity, routing and match fields
 replace imported copies, while operator-owned metadata retains tri-state merge
 semantics. Every populated IOC carrier must contain one whole-cell IOC; compound
 URL/IP or multi-hash fields remain one atomic artifact row.
+Column `validation` is explicit for both modes; AS_IS alone does not validate
+IOC syntax. IOC validators use whole-cell extraction, supported network syntax
+parsing and classification without
+changing the admitted value. `network-address` accepts supported IPv4, domain
+and URL forms; `md5`, `sha1` and `sha256` additionally enforce the hash algorithm
+of the target column. `canonical-integer` accepts only the canonical decimal
+representation of a signed 64-bit integer. This prevents string identities such
+as `10` and `010` from becoming equal public values through INTEGER storage
+affinity. Nullable cells bypass value validation and retain their presence state.
+The import behavior pin includes the validator semantic revision independently
+of the document policy. A validation-semantics upgrade can therefore block
+unsealed restaging under an older contract pin; sealed-stage and committed-receipt
+recovery retain their ordinary boundaries. Drain nonterminal imports before an
+upgrade that changes this revision.
+For a declared `source-label-target`, finalization verifies that the source
+still comes from the admitted cell. Missing and explicit-null source cells
+retain their distinct presence states. A route cannot replace that source target.
+Every `processed` contract requires a `processed-route` selecting a named IOC
+plan with explicit source-cell inputs and authorized final-field outputs.
+A missing binding fails startup even when import intake is disabled; there is no
+provider-inferred preparer or alternate processing path. The route cannot expand
+source authority or produce a second logical row for the same artifact.
+`as-is` remains independent and never invokes IOC routing. The compiled contract
+pin includes the selected plan, binding order and processing semantic epoch.
+See [ADR 0034](../ADR/0034-required-router-processing-plans.md).
+When multiple selected inputs contribute to one artifact row, a null from an
+inapplicable mapping provider is no contribution and cannot conflict with
+another input's value. After all contributions are collected, a routed artifact
+with a non-null output replaces its route-owned targets as a group: a prior
+`VALUE` in an output target with no final contribution is cleared. Thus a URL
+input routed to a cleaned IP does not retain its old URL carrier or path in the
+final key. With no non-null route output, admitted cells remain unchanged.
+`ABSENT` and explicit CSV `NULL` remain distinct instructions; distinct
+non-null contributions to the same target still reject the logical row.
+Warnings from every accepted member of a compatible COALESCE group, including
+members whose cells are folded into the representative, are stored with the
+canonical receipt. Rejected rows do not contribute accepted warnings. Receipt
+recovery reproduces the same warning list without reopening the sealed stage.
+
+Processed staging opens an application-owned preparation session after contract
+pin validation and closes it before sealing, including read/map/append failures.
+Selected routes reuse successful bounded semantics across rows in that attempt;
+all rows still reach ordinary validation, authority checks and staging. Stateless
+preparers forward both mapping and source authority through the session. Restaging
+starts a new session; sealed-stage and receipt recovery open none. Direct mapping
+and advisory validation retain row-local behavior. See
+[ADR 0033](../ADR/0033-bounded-semantic-reuse-during-import-staging.md).
 
 ## Source ownership
 
@@ -92,9 +153,19 @@ continues when notifications are disabled, lost, duplicated or reconnecting.
   storage/transport-neutral ports. It has no CSV, JDBC, SMBJ or Spring imports.
 - `adapter-csv` owns strict charset decoding, Commons CSV dialect construction,
   streaming rows and import transforms.
-- `adapter-store-jdbc` owns service schema v9, private sealed workspaces,
-  active-only canonical matching/mutation, sparse requested slots and the
-  dataframe `import_commit` receipt.
+- `adapter-store-jdbc` owns the v9 delivery foundation, the v11 observation
+  reservation and v12 accepted-row warnings, private sealed workspaces, active-only canonical
+  matching/mutation, sparse requested slots and dataframe `import_commit`
+  receipt.
+- An accepted processed row can carry a bounded, value-free `warnings` list
+  independently of rejection `issues`. The sealed workspace stores it separately;
+  the canonical transaction copies warnings into the dataframe receipt so
+  post-commit report recovery reproduces them without reprocessing input.
+  Warnings from the accepted representative and compatible COALESCED members
+  are published; rejected rows do not contribute warnings. The workspace retains
+  at most `maximum-row-errors` warning details (default 100,000); further warning
+  details are omitted by the current writer. This is a detail cap, not an exact
+  count of every warning observed during preparation.
 - `adapter-ingest` owns local claim/terminal filesystem mechanics, the one
   local-filesystem immutable snapshot-store implementation shared by every
   source transport, and local WatchService hints.
@@ -120,13 +191,22 @@ continues when notifications are disabled, lost, duplicated or reconnecting.
    before unbounded growth.
 5. **One input row is one logical atomic unit.** A rejected branch rejects the
    row's complete deterministic fan-out. Accepted branches promote together.
-6. **Canonical promotion is one transaction.** All public mutations, lifecycle
-   effects, aliases, preferred export slots, revisions and the receipt are
-   before-or-after across every affected artifact.
+6. **Canonical promotion is one transaction.** All public mutations, ordered
+   field origins, lifecycle effects, aliases, preferred export slots, revisions
+   and the receipt are before-or-after across every affected artifact. A newer
+   registered nonempty value wins even when its transaction completes first;
+   an older later completion cannot overwrite it.
+   Independently committed canonical/lifecycle ID reservations remain in the
+   dataframe database under shared writer admission. Failed ranges remain
+   burned; sealed CSV staging cannot become canonical ID or receipt authority.
 7. **Only active rows match.** Missing import rows never delete, modify or renew
    local rows. Historical lifecycles do not participate.
 8. **A sealed stage is immutable evidence.** Snapshot and contract pins, plan
    hash, counts, SQLite integrity and stage digest must agree before promotion.
+   On restart without a sealed stage, the active contract must match the durable
+   pin before any row is remapped. A mismatch blocks the ordered lane until the
+   previous configuration is restored; committed deliveries finalize solely
+   from the dataframe receipt.
 9. **Events are latency hints.** Complete source listing, the service ledger,
    dataframe receipt and periodic reconciliation recover lost process-local
    notifications.
@@ -137,6 +217,33 @@ continues when notifications are disabled, lost, duplicated or reconnecting.
     transport-managed terminal object before local terminal, workspace,
     snapshot and receipt cleanup; the ledger row is deleted last. Replay is
     explicitly source-detached and performs no source disposition or retention.
+12. **Aggregate import is target-only.** The shipped disabled
+    `ioc-aggregate-v1` contract requires exactly one of `ip_address`,
+    `url_match`, `host_match` and `hash`, applies strict structural validators,
+    reduces duplicates by the last nonempty `name`, and cannot route into the
+    four legacy artifacts.
+
+Promotion planning checks the complete delivery before canonical mutation.
+Different primary groups can still share a new related key after workspace
+coalescing. Such groups are all rejected with `IMPORT.DUPLICATE_NEW_TARGET`;
+no branch or provenance from those logical rows is partially applied.
+`ACCEPT_VALID` preserves independent valid rows, while `REJECT_DELIVERY` records
+the rejected delivery without business mutations.
+
+A requested slot for a matched survivor must refer to its stable assignment.
+During the registry's first seed, existing canonical public IDs supply initial
+assignments. Once the registry exists, an active lifecycle without an assignment
+is rejected with `IMPORT.EXISTING_SLOT_UNASSIGNED` under either existing-slot
+policy. The next eligible export can assign that lifecycle a slot; canonical ID
+must not be substituted for an already initialized export namespace.
+
+Slot requests and receipt resolutions are SQL-backed within the same promotion
+transaction. Bounded batches stage the entire set before validation/allocation,
+preserving input order and global sparse-slot preferences. Planning and slot
+scratch are operation-owned TEMP tables, removed before the pooled connection
+returns. The immutable SQLite attachment trusts service ownership of sealed
+bytes; `immutable=1` itself does not prevent another filesystem owner from
+replacing them.
 
 ## Failures and recovery
 
@@ -149,6 +256,7 @@ continues when notifications are disabled, lost, duplicated or reconnecting.
 | invalid logical row | retain only safe row/code evidence; apply configured row-failure policy | sealed stage |
 | crash before dataframe commit | resume/rebuild from the latest service-ledger checkpoint | ledger, snapshot and sealed stage |
 | crash after dataframe commit | observe `import_commit` and finalize without applying mutations twice | dataframe receipt |
+| crash after delivery reservation but before registration link | resume the same reserved occurrence and rank; never allocate from an unproved legacy row | service reservation marker plus dataframe registration |
 | event or notification loss | wait for the next bounded full listing or durable-head reconcile | periodic backstops |
 | missing private SMB namespace or deterministic permission mismatch | close only that source before listing/claim and report incompatible readiness | positive capability probe plus bounded reprobe |
 | temporary SMB capability or terminal-retention failure | keep intake or cleanup authority closed for the affected source and retry | source readiness state or terminal ledger row |
@@ -170,6 +278,9 @@ admission complete.
   transient source unavailability, incompatible source capability and normal
   progress. Source details are aggregate and value-free. Metrics remain
   low-cardinality.
+- The shared `observationRegistration` component reports unresolved rank counts.
+  Terminal import references remain protected until the delivery ledger is
+  terminal and all canonical provenance/receipt references have expired.
 
 ## How to extend
 
@@ -206,5 +317,7 @@ admission complete.
 - [event-coordination.md](event-coordination.md) — events-as-hints doctrine.
 - [operator guide](../guides/dataframe-import.md) — configuration, intake,
   status, replay and incident procedures.
+- [IOC aggregate guide](../guides/ioc-aggregate.md) — shipped contract,
+  empty-start activation and coordinated rollback.
 - [ADR-0015](../ADR/0015-retire-legacy-csv-lookup-storage.md) — legacy CSV
   lookup/seed retirement preserved by managed import.

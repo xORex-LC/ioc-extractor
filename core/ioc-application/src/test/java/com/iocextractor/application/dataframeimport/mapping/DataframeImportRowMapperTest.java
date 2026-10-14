@@ -1,5 +1,6 @@
 package com.iocextractor.application.dataframeimport.mapping;
 
+
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.CanonicalArtifactKeyResolver;
 import com.iocextractor.application.artifact.CanonicalKeyDefinition;
@@ -7,6 +8,7 @@ import com.iocextractor.application.artifact.CanonicalKeyMode;
 import com.iocextractor.application.dataframeimport.contract.CompiledDataframeImportContract;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
 import com.iocextractor.application.dataframeimport.model.DelimitedDialect;
+import com.iocextractor.application.dataframeimport.model.ImportArtifactBranch;
 import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
 import com.iocextractor.application.dataframeimport.model.ImportCell;
 import com.iocextractor.application.dataframeimport.model.ImportContractFingerprint;
@@ -21,12 +23,14 @@ import com.iocextractor.application.dataframeimport.model.ImportRecordSeparator;
 import com.iocextractor.application.dataframeimport.model.ImportRoutingPolicy;
 import com.iocextractor.application.dataframeimport.model.ImportRowFailurePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportRowIssue;
+import com.iocextractor.application.dataframeimport.model.ImportRowWarning;
 import com.iocextractor.application.dataframeimport.model.ImportDelimitedRecord;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.UnaryOperator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -168,11 +172,16 @@ class DataframeImportRowMapperTest {
                 record(12, "192.0.2.12", "", "E".repeat(32), ""));
         ImportRowMappingResult transformedEmptyCell = mapper.map(contract(ImportFormulaPolicy.REJECT),
                 record(13, "192.0.2.13", "   ", "F".repeat(32), "NULL"));
+        DataframeImportRowMapper caseChangingMapper = new DataframeImportRowMapper(
+                (specification, value) -> value.toLowerCase(), keys);
+        ImportRowMappingResult nullBeforeTransform = caseChangingMapper.map(
+                contract(ImportFormulaPolicy.REJECT),
+                record(14, "192.0.2.14", "NULL", "1".repeat(32), "14"));
         ImportRowMappingResult missingSlot = mapper.map(contract(ImportFormulaPolicy.REJECT),
-                new ImportDelimitedRecord(14, Map.of(
-                        "address", "192.0.2.14", "score", "14", "md5", "1".repeat(32))));
+                new ImportDelimitedRecord(15, Map.of(
+                        "address", "192.0.2.15", "score", "15", "md5", "2".repeat(32))));
         ImportRowMappingResult nonPositiveSlot = mapper.map(contract(ImportFormulaPolicy.REJECT),
-                record(15, "192.0.2.15", "15", "2".repeat(32), "0"));
+                record(16, "192.0.2.16", "16", "3".repeat(32), "0"));
 
         assertThat(emptyCell.row()).hasValueSatisfying(row -> {
             assertThat(row.branches().getFirst().cells().get("score")).isEqualTo(ImportCell.nullValue());
@@ -182,6 +191,10 @@ class DataframeImportRowMapperTest {
             assertThat(row.branches().getFirst().cells().get("score")).isEqualTo(ImportCell.nullValue());
             assertThat(row.branches().getFirst().requestedSlot()).isEmpty();
         });
+        assertThat(nullBeforeTransform.issues()).isEmpty();
+        assertThat(nullBeforeTransform.row()).hasValueSatisfying(row ->
+                assertThat(row.branches().getFirst().cells().get("score"))
+                        .isEqualTo(ImportCell.nullValue()));
         assertThat(missingSlot.row()).hasValueSatisfying(row ->
                 assertThat(row.branches().getFirst().requestedSlot()).isEmpty());
         assertThat(nonPositiveSlot.issues()).extracting(ImportRowIssue::code)
@@ -190,7 +203,7 @@ class DataframeImportRowMapperTest {
         DataframeImportCatalogDraft.Contract definition = contract(ImportFormulaPolicy.REJECT).definition();
         ImportRowMappingResult unconfiguredSlot = mapper.map(
                 compiled(copyWith(definition, definition.artifacts(), null)),
-                record(16, "192.0.2.16", "16", "3".repeat(32), "99"));
+                record(17, "192.0.2.17", "17", "4".repeat(32), "99"));
         assertThat(unconfiguredSlot.row()).hasValueSatisfying(row ->
                 assertThat(row.branches().getFirst().requestedSlot()).isEmpty());
     }
@@ -236,8 +249,329 @@ class DataframeImportRowMapperTest {
                 record(20, "192.0.2.20", "20", "4".repeat(32), "20"));
 
         assertThat(result.issues()).isEmpty();
-        assertThat(prepared.get()).isEqualTo(result.row().orElseThrow());
+        assertThat(prepared.get().branches()).allSatisfy(branch -> {
+            assertThat(branch.recordKey()).isEmpty();
+            assertThat(branch.matchKeys()).isEmpty();
+        });
+        assertThat(result.row().orElseThrow().branches()).allSatisfy(branch ->
+                assertThat(branch.recordKey()).isPresent());
         assertThat(prepared.get().branches()).hasSize(2);
+    }
+
+    @Test
+    void resolvesProcessedIdentityFromFinalFieldsAndKeepsAcceptedWarning() {
+        DataframeImportRowMapper mapper = new DataframeImportRowMapper(
+                (specification, value) -> value, keys,
+                (contract, record, admitted) -> {
+                    var branches = new java.util.ArrayList<>(admitted.branches());
+                    var primary = branches.getFirst();
+                    var cells = new java.util.LinkedHashMap<>(primary.cells());
+                    cells.put("ip", ImportCell.value("192.0.2.99"));
+                    branches.set(0, new com.iocextractor.application.dataframeimport.model.ImportArtifactBranch(
+                            primary.artifactName(), primary.role(), cells, primary.mergePolicies(),
+                            primary.requestedSlot(), java.util.Optional.empty(), List.of()));
+                    return ImportRowMappingResult.accepted(
+                            new ImportLogicalRow(record.sourceRowNumber(), branches),
+                            List.of(new ImportRowWarning(record.sourceRowNumber(), "ip_list", "IMPORT.VIEW_FALLBACK")));
+                });
+
+        ImportRowMappingResult result = mapper.map(
+                contract(ImportFormulaPolicy.REJECT, ImportProcessingMode.PROCESSED),
+                record(23, "bad-input", "23", "7".repeat(32), "23"));
+
+        assertThat(result.issues()).isEmpty();
+        assertThat(result.warnings()).extracting(ImportRowWarning::code)
+                .containsExactly("IMPORT.VIEW_FALLBACK");
+        assertThat(result.row()).hasValueSatisfying(row -> {
+            assertThat(row.branches().getFirst().cells().get("ip"))
+                    .isEqualTo(ImportCell.value("192.0.2.99"));
+            assertThat(row.branches().getFirst().recordKey()).isPresent();
+        });
+    }
+
+    @Test
+    void refusesRemovalOfAnAdmittedProcessedCell() {
+        DataframeImportRowMapper mapper = new DataframeImportRowMapper(
+                (specification, value) -> value, keys,
+                (contract, record, admitted) -> {
+                    var branches = new java.util.ArrayList<>(admitted.branches());
+                    var primary = branches.getFirst();
+                    var cells = new java.util.LinkedHashMap<>(primary.cells());
+                    var policies = new java.util.LinkedHashMap<>(primary.mergePolicies());
+                    cells.remove("score");
+                    policies.remove("score");
+                    branches.set(0, new com.iocextractor.application.dataframeimport.model.ImportArtifactBranch(
+                            primary.artifactName(), primary.role(), cells, policies,
+                            primary.requestedSlot(), java.util.Optional.empty(), List.of()));
+                    return ImportRowMappingResult.accepted(
+                            new ImportLogicalRow(record.sourceRowNumber(), branches));
+                });
+
+        assertThatThrownBy(() -> mapper.map(
+                contract(ImportFormulaPolicy.REJECT, ImportProcessingMode.PROCESSED),
+                record(24, "192.0.2.24", "24", "8".repeat(32), "24")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("admitted cells");
+    }
+
+    @Test
+    void processedFinalizationRefusesChangesToRowAndBranchAuthority() {
+        assertProcessedMutationRejected(row ->
+                new ImportLogicalRow(row.sourceRowNumber() + 1, row.branches()),
+                "source row identity");
+        assertProcessedMutationRejected(row ->
+                new ImportLogicalRow(row.sourceRowNumber(), List.of(row.branches().getFirst())),
+                "artifact count");
+        assertProcessedMutationRejected(row -> replacePrimary(row, primary ->
+                new ImportArtifactBranch("other", primary.role(), primary.cells(),
+                        primary.mergePolicies(), primary.requestedSlot(), primary.recordKey(),
+                        primary.matchKeys())), "artifact branches");
+        assertProcessedMutationRejected(row -> {
+            ImportArtifactBranch primary = row.branches().getFirst();
+            ImportArtifactBranch related = row.branches().get(1);
+            return new ImportLogicalRow(row.sourceRowNumber(), List.of(
+                    new ImportArtifactBranch(primary.artifactName(), ImportArtifactRole.RELATED,
+                            primary.cells(), primary.mergePolicies(), java.util.OptionalLong.empty(),
+                            primary.recordKey(), primary.matchKeys()),
+                    new ImportArtifactBranch(related.artifactName(), ImportArtifactRole.PRIMARY,
+                            related.cells(), related.mergePolicies(), primary.requestedSlot(),
+                            related.recordKey(), related.matchKeys())));
+        }, "artifact branches");
+        assertProcessedMutationRejected(row -> replacePrimary(row, primary ->
+                new ImportArtifactBranch(primary.artifactName(), primary.role(), primary.cells(),
+                        primary.mergePolicies(), java.util.OptionalLong.empty(), primary.recordKey(),
+                        primary.matchKeys())), "admitted cells");
+        assertProcessedMutationRejected(row -> replacePrimary(row, primary -> {
+            var policies = new java.util.LinkedHashMap<>(primary.mergePolicies());
+            policies.put("ip", ImportMergePolicy.KEEP_EXISTING);
+            return new ImportArtifactBranch(primary.artifactName(), primary.role(), primary.cells(),
+                    policies, primary.requestedSlot(), primary.recordKey(), primary.matchKeys());
+        }), "admitted cells");
+    }
+
+    @Test
+    void processedFinalizationRefusesSourceLabelReplacement() {
+        DataframeImportCatalogDraft.Contract base = contract(
+                ImportFormulaPolicy.REJECT, ImportProcessingMode.PROCESSED).definition();
+        DataframeImportCatalogDraft.Artifact primary = base.artifacts().getFirst();
+        var sourceBound = new DataframeImportCatalogDraft.Artifact(primary.name(), primary.role(),
+                primary.recordKey(), primary.matchKeys(), primary.mergeDefault(), "description",
+                null, primary.columns());
+        CompiledDataframeImportContract contract = compiled(copyWith(base,
+                List.of(sourceBound, base.artifacts().get(1)), base.requestedSlot()));
+        DataframeImportRowMapper mapper = new DataframeImportRowMapper(
+                (specification, value) -> value, keys,
+                (configured, record, admitted) -> ImportRowMappingResult.accepted(
+                        replacePrimary(admitted, branch -> {
+                            var cells = new java.util.LinkedHashMap<>(branch.cells());
+                            cells.put("description", ImportCell.value("forged source"));
+                            return new ImportArtifactBranch(branch.artifactName(), branch.role(), cells,
+                                    branch.mergePolicies(), branch.requestedSlot(), branch.recordKey(),
+                                    branch.matchKeys());
+                        })));
+
+        assertThatThrownBy(() -> mapper.map(contract, new ImportDelimitedRecord(25, Map.of(
+                "address", "192.0.2.25", "score", "25", "md5", "9".repeat(32),
+                "external_id", "25", "note", "trusted source"))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("source authority");
+    }
+
+    @Test
+    void processedFinalizationRejectsInvalidDerivedValues() {
+        DataframeImportCatalogDraft.Contract base = contract(
+                ImportFormulaPolicy.REJECT, ImportProcessingMode.PROCESSED).definition();
+        DataframeImportCatalogDraft.Artifact primary = base.artifacts().getFirst();
+        var validated = new DataframeImportCatalogDraft.Artifact(primary.name(), primary.role(),
+                primary.recordKey(), primary.matchKeys(), primary.mergeDefault(),
+                List.of(new DataframeImportCatalogDraft.Column("ip", "address", List.of(), null, "bare-ip"),
+                        primary.columns().get(1), primary.columns().get(2)));
+        CompiledDataframeImportContract contract = compiled(copyWith(base,
+                List.of(validated, base.artifacts().get(1)), base.requestedSlot()));
+        DataframeImportRowMapper mapper = new DataframeImportRowMapper(
+                (specification, value) -> value,
+                (rule, value) -> !"bare-ip".equals(rule) || !value.startsWith("999."),
+                keys,
+                (configured, record, admitted) -> ImportRowMappingResult.accepted(
+                        replacePrimary(admitted, branch -> {
+                            var cells = new java.util.LinkedHashMap<>(branch.cells());
+                            cells.put("ip", ImportCell.value("999.0.0.1"));
+                            return new ImportArtifactBranch(branch.artifactName(), branch.role(), cells,
+                                    branch.mergePolicies(), branch.requestedSlot(), branch.recordKey(),
+                                    branch.matchKeys());
+                        })));
+
+        ImportRowMappingResult result = mapper.map(contract,
+                record(26, "192.0.2.26", "26", "A".repeat(32), "26"));
+
+        assertThat(result.row()).isEmpty();
+        assertThat(result.issues()).extracting(ImportRowIssue::code)
+                .contains("IMPORT.VALUE_INVALID");
+    }
+
+    @Test
+    void processedFinalizationRejectsDerivedFormulaAndMissingIdentity() {
+        DataframeImportRowMapper formulaMapper = mapperReplacingPrimaryCell(
+                "description", ImportCell.value("=payload"));
+        ImportRowMappingResult formula = formulaMapper.map(
+                contract(ImportFormulaPolicy.REJECT, ImportProcessingMode.PROCESSED),
+                record(28, "192.0.2.28", "28", "C".repeat(32), "28"));
+
+        assertThat(formula.row()).isEmpty();
+        assertThat(formula.issues()).extracting(ImportRowIssue::code)
+                .contains("IMPORT.FORMULA_REJECTED");
+
+        DataframeImportRowMapper missingKeyMapper = mapperReplacingPrimaryCell(
+                "ip", ImportCell.nullValue());
+        ImportRowMappingResult missingKey = missingKeyMapper.map(
+                contract(ImportFormulaPolicy.REJECT, ImportProcessingMode.PROCESSED),
+                record(29, "192.0.2.29", "29", "D".repeat(32), "29"));
+
+        assertThat(missingKey.row()).isEmpty();
+        assertThat(missingKey.issues()).extracting(ImportRowIssue::code)
+                .contains("IMPORT.RECORD_KEY_MISSING");
+    }
+
+    @Test
+    void finalValidationDropsAcceptedWarningsWhenDerivedIdentityIsInvalid() {
+        DataframeImportRowMapper mapper = new DataframeImportRowMapper(
+                (specification, value) -> value, keys,
+                (contract, record, admitted) -> ImportRowMappingResult.accepted(
+                        replacePrimary(admitted, branch -> {
+                            var cells = new java.util.LinkedHashMap<>(branch.cells());
+                            cells.put("ip", ImportCell.nullValue());
+                            return new ImportArtifactBranch(branch.artifactName(), branch.role(), cells,
+                                    branch.mergePolicies(), branch.requestedSlot(), branch.recordKey(),
+                                    branch.matchKeys());
+                        }), List.of(new ImportRowWarning(record.sourceRowNumber(), "ip_list",
+                                "IMPORT.VIEW_FALLBACK"))));
+
+        ImportRowMappingResult result = mapper.map(
+                contract(ImportFormulaPolicy.REJECT, ImportProcessingMode.PROCESSED),
+                record(31, "192.0.2.31", "31", "F".repeat(32), "31"));
+
+        assertThat(result.row()).isEmpty();
+        assertThat(result.issues()).extracting(ImportRowIssue::code)
+                .contains("IMPORT.RECORD_KEY_MISSING");
+        assertThat(result.warnings()).isEmpty();
+    }
+
+    @Test
+    void processedFinalizationPreservesMachineOnlyDerivedFormulaText() {
+        DataframeImportRowMapper mapper = mapperReplacingPrimaryCell(
+                "description", ImportCell.value("=machine-value"));
+
+        ImportRowMappingResult result = mapper.map(
+                contract(ImportFormulaPolicy.MACHINE_ONLY_PRESERVE, ImportProcessingMode.PROCESSED),
+                record(32, "192.0.2.32", "32", "A".repeat(32), "32"));
+
+        assertThat(result.issues()).isEmpty();
+        assertThat(result.row()).hasValueSatisfying(row ->
+                assertThat(row.branches().getFirst().cells())
+                        .containsEntry("description", ImportCell.value("=machine-value")));
+    }
+
+    @Test
+    void processedInputRejectionDoesNotTurnIntoAnAcceptedWarning() {
+        DataframeImportRowMapper mapper = new DataframeImportRowMapper(
+                (specification, value) -> value, keys,
+                (contract, record, admitted) -> ImportRowMappingResult.rejected(
+                        List.of(new ImportRowIssue(record.sourceRowNumber(), "ip_list",
+                                "IMPORT.PROCESSED_INPUT_INVALID"))));
+
+        ImportRowMappingResult result = mapper.map(
+                contract(ImportFormulaPolicy.REJECT, ImportProcessingMode.PROCESSED),
+                record(30, "192.0.2.30", "30", "E".repeat(32), "30"));
+
+        assertThat(result.row()).isEmpty();
+        assertThat(result.warnings()).isEmpty();
+        assertThat(result.issues()).extracting(ImportRowIssue::code)
+                .containsExactly("IMPORT.PROCESSED_INPUT_INVALID");
+    }
+
+    private DataframeImportRowMapper mapperReplacingPrimaryCell(String target, ImportCell cell) {
+        return new DataframeImportRowMapper((specification, value) -> value, keys,
+                (contract, record, admitted) -> ImportRowMappingResult.accepted(
+                        replacePrimary(admitted, branch -> {
+                            var cells = new java.util.LinkedHashMap<>(branch.cells());
+                            cells.put(target, cell);
+                            return new ImportArtifactBranch(branch.artifactName(), branch.role(), cells,
+                                    branch.mergePolicies(), branch.requestedSlot(), branch.recordKey(),
+                                    branch.matchKeys());
+                        })));
+    }
+
+    private void assertProcessedMutationRejected(UnaryOperator<ImportLogicalRow> mutation,
+                                                 String message) {
+        DataframeImportRowMapper mapper = new DataframeImportRowMapper(
+                (specification, value) -> value, keys,
+                (contract, record, admitted) -> ImportRowMappingResult.accepted(mutation.apply(admitted)));
+        assertThatThrownBy(() -> mapper.map(
+                contract(ImportFormulaPolicy.REJECT, ImportProcessingMode.PROCESSED),
+                record(27, "192.0.2.27", "27", "B".repeat(32), "27")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(message);
+    }
+
+    private ImportLogicalRow replacePrimary(ImportLogicalRow row,
+                                            UnaryOperator<ImportArtifactBranch> mutation) {
+        var branches = new java.util.ArrayList<>(row.branches());
+        branches.set(0, mutation.apply(branches.getFirst()));
+        return new ImportLogicalRow(row.sourceRowNumber(), branches);
+    }
+
+    @Test
+    void validatesInputValuesBeforeProcessingAndRowShapeAfterProcessing() {
+        DataframeImportCatalogDraft.Contract base = contract(
+                ImportFormulaPolicy.REJECT, ImportProcessingMode.PROCESSED).definition();
+        DataframeImportCatalogDraft.Artifact primary = base.artifacts().getFirst();
+        DataframeImportCatalogDraft.Artifact constrained = new DataframeImportCatalogDraft.Artifact(
+                primary.name(), primary.role(), primary.recordKey(), primary.matchKeys(),
+                primary.mergeDefault(), null, List.of("ip", "score"),
+                List.of(
+                        new DataframeImportCatalogDraft.Column(
+                                "ip", "address", List.of("trim"), null, "bare-ip"),
+                        new DataframeImportCatalogDraft.Column(
+                                "score", "score", List.of("trim"), null),
+                        new DataframeImportCatalogDraft.Column(
+                                "description", "note", List.of(), null)));
+        CompiledDataframeImportContract configured = compiled(copyWith(
+                base, List.of(constrained, base.artifacts().get(1)), base.requestedSlot()));
+        DataframeImportRowMapper mapper = new DataframeImportRowMapper(
+                (specification, value) -> value.trim(),
+                (rule, value) -> !"bare-ip".equals(rule) || !value.startsWith("999."),
+                keys,
+                (contract, record, mapped) -> ImportRowMappingResult.accepted(mapped));
+
+        ImportRowMappingResult invalidValue = mapper.map(configured,
+                record(21, "999.0.0.1", "", "5".repeat(32), "21"));
+        ImportRowMappingResult compound = mapper.map(configured,
+                record(22, "192.0.2.22", "22", "6".repeat(32), "22"));
+
+        assertThat(invalidValue.row()).isEmpty();
+        assertThat(invalidValue.issues()).extracting(ImportRowIssue::code)
+                .containsExactly("IMPORT.VALUE_INVALID");
+        assertThat(compound.row()).isEmpty();
+        assertThat(compound.issues()).extracting(ImportRowIssue::code)
+                .contains("IMPORT.NONEMPTY_CARDINALITY");
+
+        DataframeImportRowMapper reduced = new DataframeImportRowMapper(
+                (specification, value) -> value.trim(), keys,
+                (contract, record, admitted) -> ImportRowMappingResult.accepted(
+                        replacePrimary(admitted, branch -> {
+                            var cells = new java.util.LinkedHashMap<>(branch.cells());
+                            cells.put("score", ImportCell.nullValue());
+                            return new ImportArtifactBranch(branch.artifactName(), branch.role(), cells,
+                                    branch.mergePolicies(), branch.requestedSlot(), branch.recordKey(),
+                                    branch.matchKeys());
+                        })));
+        ImportRowMappingResult single = reduced.map(configured,
+                record(33, "192.0.2.33", "33", "7".repeat(32), "33"));
+
+        assertThat(single.issues()).isEmpty();
+        assertThat(single.row()).hasValueSatisfying(row ->
+                assertThat(row.branches().getFirst().cells())
+                        .containsEntry("score", ImportCell.nullValue()));
     }
 
     private CompiledDataframeImportContract contract(ImportFormulaPolicy formulaPolicy) {

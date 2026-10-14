@@ -33,6 +33,24 @@ class PatternEngineContractTest {
         assertThat(compiled.findAll("no indicators here")).isEmpty();
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("engines")
+    void lazyCursorUsesAbsoluteUtf16OffsetsWithoutMaterializingTheSource(EngineCase engineCase) {
+        var text = new CharSequence() {
+            private final String value = "😀before IOC-7, IOC-42 after";
+            public int length() { return value.length(); }
+            public char charAt(int index) { return value.charAt(index); }
+            public CharSequence subSequence(int start, int end) { return value.substring(start, end); }
+            public String toString() { throw new AssertionError("Whole source must not be copied"); }
+        };
+        var cursor = engineCase.engine().compile("\\bIOC-\\d+\\b").matches(text);
+        assertThat(cursor.next()).isTrue();
+        assertThat(new Span(cursor.start(), cursor.end(), cursor.value())).isEqualTo(new Span(9, 14, "IOC-7"));
+        assertThat(cursor.next()).isTrue();
+        assertThat(new Span(cursor.start(), cursor.end(), cursor.value())).isEqualTo(new Span(16, 22, "IOC-42"));
+        assertThat(cursor.next()).isFalse();
+    }
+
     private static Stream<EngineCase> engines() {
         return Stream.of(
                 new EngineCase("re2j", new Re2jPatternEngine()),

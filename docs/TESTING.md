@@ -18,6 +18,35 @@ Every Failsafe suite must also carry integration semantics through
 discovery; tags describe test semantics. They are complementary and neither is
 a substitute for the complete release gate.
 
+The reviewed source universe is 221 fast classes and 78 integration classes,
+including five external shells (294 deterministic classes). Removing two fast
+measurement suites and eight Staged/receipt-diagnostic integration suites changes
+only the exact inventory. Coverage floors, report integrity, architecture checks
+and analyzer rules remain enforced. The Native lifecycle and import TCK bindings
+run against the retained backend.
+
+`StreamingSourceContractIT` and `JdbcDocumentSourceWorkspaceIT` check real
+HTML/DOCX parsing, independent source outcomes, disk-backed text, overlap priority,
+positions and resource admission. Native document-workspace tests preserve seal,
+quota, corruption, replay and owned-resource failure coverage.
+
+`NativeDeliveryLifecycleIT` connects production Spring/YAML processing, Native
+canonical writes, immutable CSV export and durable fetch/publish ledgers. Only
+UTC and the SMB wire boundary are substituted. It checks receipt-only replay
+with deleted input, renewal, exact TTL expiry, non-reusable canonical identity,
+reusable export slots and retry after a lost publication reply.
+`RouterSelectedImportDeliveryIT` connects real processed-route configuration and
+physical CSV to canonical commit, COALESCE and receipt-only delivery recovery.
+
+Native JDBC contracts check rollback of fan-out mutations/receipt evidence,
+source/registration authority, expiry/history rollback, receipt snapshots during
+retirement, malformed ordered positions and connection release on failed close.
+Admission tests force competing completion/recovery operations and reject
+changed claim/file evidence, namespace, rank and stale versions. Compatibility
+writes preserve duplicate observation/ID behavior and distinguish metadata-only
+origins from public changes. These are correctness checks, not load acceptance;
+live and historical load scopes are recorded in [native capacity](dev/native-capacity.md).
+
 The shared composed annotations live in `ioc-application-tck` under
 `com.iocextractor.application.tck.junit`. Adapter and bootstrap test scopes may
 depend on that module. Framework-free core modules use direct JUnit tags when a
@@ -97,7 +126,7 @@ blocking a release. Stable HTML/XML reports are written to
 
 The `stability-pilot` profile randomizes Surefire/Failsafe class order and JUnit
 class/method order from the same published seed. The wrapper advances the seed
-by one for each repetition, runs all 20 functional JAR modules sequentially,
+by one for each repetition, runs all 21 functional JAR modules sequentially,
 and verifies the exact source/report union after every pass. It archives each
 pass under `target/test-pilots/stability/run-N-seed-S/` before the next Maven
 lifecycle deletes current reports. The first failure stops the pilot and keeps
@@ -175,9 +204,9 @@ later step fails.
 
 The aggregate report and its groups are the authoritative release measurement.
 `build-support/coverage-report/coverage-scope.tsv` gives every reactor project
-an explicit disposition. The production denominator is exactly 19 JAR modules;
+an explicit disposition. The production denominator is exactly 21 JAR modules;
 the reusable TCK, root and build-only POMs are excluded, with no class or package
-exclusions. Eighteen production modules must generate local XML/HTML reports.
+exclusions. Twenty production modules must generate local XML/HTML reports.
 `ioc-platform-errors` has no local test JVM and is declared aggregate-only, but
 its downstream execution must still appear as an aggregate group.
 
@@ -243,7 +272,7 @@ but they do not prove that a named deployed consumer has accepted a release.
 
 | Surface | Contract evidence |
 |---|---|
-| Mutable CSV projections | `GoldenPipelineIT` compares all four artifacts byte-for-byte, including UTF-8, semicolon quoting, `NULL`, column order and CRLF records, then parses them through the independent reference consumer |
+| Mutable CSV projections | `GoldenPipelineIT` compares all five artifacts byte-for-byte, including UTF-8, semicolon quoting, `NULL`, column order and CRLF records, then parses them through the independent reference consumer |
 | Immutable export slice | `ReferenceArtifactConsumerTest` consumes a committed complete v1 slice without production manifest/model classes and rejects checksum or `_SUCCESS` drift; `OnDemandExportIntegrationIT` applies the same consumer to local and published copies |
 | CLI automation | CLI tests compare root help, version, usage errors, sync summaries and extraction completion blocks with exact stdout/stderr fixtures; only the generated run ID is replaced by an explicit token |
 | ECS logging | `LogbackConfigurationIT` compares one deterministic ECS JSON event byte-for-byte after replacing only the build version, then evaluates the committed JSON-pointer query corpus with exact scalar types and values |

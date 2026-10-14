@@ -3,6 +3,7 @@ package com.iocextractor.adapter.out.store.jdbc;
 import com.iocextractor.application.dataframeimport.model.ImportExistingSlotPolicy;
 import com.iocextractor.application.export.ExportArtifactSpec;
 import com.iocextractor.application.export.ExportPlan;
+import com.iocextractor.application.port.out.artifact.RowSource;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -11,8 +12,6 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -30,10 +29,29 @@ final class JdbcExportSlotRegistry {
     static final long MAX_ASSIGNABLE_SLOT = Long.MAX_VALUE - 1;
 
     private static final String EXTERNAL_ID = "id";
-    private static final String EXCLUDED_LIFECYCLE = "temp_export_slot_exclusion";
-    private static final String RELEASED_SLOT = "temp_export_slot_release";
-    private static final String MERGED_RANGE = "temp_export_slot_merged_range";
-    private static final String PENDING_LIFECYCLE = "temp_export_slot_pending";
+    private static final String EXCLUDED_LIFECYCLE = "temp.temp_export_slot_exclusion";
+    private static final String RELEASED_SLOT = "temp.temp_export_slot_release";
+    private static final String MERGED_RANGE = "temp.temp_export_slot_merged_range";
+    private static final String PENDING_LIFECYCLE = "temp.temp_export_slot_pending";
+
+    private static final String PREFERRED_REQUEST = "temp.temp_export_slot_preferred";
+    private static final int REQUEST_BATCH_ROWS = 128;
+
+    private final Map<String, String> lifecycleTables;
+
+    JdbcExportSlotRegistry() { this(Map.of()); }
+
+    JdbcExportSlotRegistry(Map<String, String> lifecycleTables) {
+        lifecycleTables.forEach((artifact, table) -> {
+            DataframeColumn.requireSqlIdentifier(artifact, "slot artifact");
+            DataframeColumn.requireSqlIdentifier(table, "slot lifecycle table");
+        });
+        this.lifecycleTables = Map.copyOf(lifecycleTables);
+    }
+
+    private String activeTable(String artifact) {
+        return quote(lifecycleTables.getOrDefault(artifact, artifact));
+    }
 
     boolean appliesTo(ExportArtifactSpec artifact) {
         return artifact.columns().contains(EXTERNAL_ID);
@@ -50,42 +68,60 @@ final class JdbcExportSlotRegistry {
         }
     }
 
+    /** Small-caller convenience; one reply is returned per request, in the original order. */
+    List<PreferredExportSlotResolution> reconcilePreferred(Connection connection, String profile,
+            String artifact, Instant asOf, List<PreferredExportSlotRequest> requests) throws SQLException {
+        List<PreferredExportSlotResolution> replies = new ArrayList<>();
+        reconcilePreferred(connection, profile, artifact, asOf, RowSource.of(requests), replies::add);
+        return List.copyOf(replies);
+    }
+
     /**
-     * Reconciles preferred import requests and all remaining active lifecycles.
-     * Duplicate requests and strict survivor mismatches fail before any slot
-     * mutation. The owning canonical transaction decides whether to roll back.
+     * Uses transaction-local scratch for the complete request set. Validation and exclusion
+     * precede every allocation, so streaming does not change sparse-slot preference or ordering.
+     * The callback consumes each result before the next one is produced. Scratch placement
+     * follows the connection's temp_store policy; this removes Java lists, not an RSS budget.
      */
-    List<PreferredExportSlotResolution> reconcilePreferred(
-            Connection connection,
-            String profile,
-            String artifact,
-            Instant asOf,
-            List<PreferredExportSlotRequest> requests) throws SQLException {
+    void reconcilePreferred(Connection connection, String profile, String artifact, Instant asOf,
+            RowSource<PreferredExportSlotRequest> requests, ResolutionConsumer results) throws SQLException {
         Objects.requireNonNull(connection, "connection");
         Objects.requireNonNull(asOf, "asOf");
-        List<PreferredExportSlotRequest> preferred = List.copyOf(
-                Objects.requireNonNull(requests, "requests"));
-        validatePreferredRequests(preferred);
+        Objects.requireNonNull(requests, "requests");
+        Objects.requireNonNull(results, "results");
         ensureScratchTables(connection);
         clearScratchTables(connection);
+        Throwable primary = null;
         try {
-            excludeNewLifecycles(connection, preferred);
+            stagePreferredRequests(connection, requests);
+            validatePreferredRequests(connection);
+            excludeNewLifecycles(connection);
             long generation = currentGeneration(connection, artifact);
             initializeOrValidate(connection, profile, artifact, generation, asOf);
             releaseVanishedAssignments(connection, profile, artifact, asOf);
-            validatePreferredSurvivors(connection, profile, artifact, preferred);
-
-            List<PreferredExportSlotResolution> resolutions = new ArrayList<>(preferred.size());
-            for (PreferredExportSlotRequest request : preferred) {
-                resolutions.add(resolvePreferred(connection, profile, artifact, request, asOf));
+            validatePreferredSurvivors(connection, profile, artifact);
+            try (Statement statement = connection.createStatement();
+                 ResultSet rows = statement.executeQuery("SELECT lifecycle_id, requested_slot, new_lifecycle, existing_policy"
+                         + " FROM " + PREFERRED_REQUEST + " ORDER BY ordinal")) {
+                while (rows.next()) {
+                    var request = new PreferredExportSlotRequest(rows.getLong(1), rows.getLong(2), rows.getInt(3) == 1,
+                            ImportExistingSlotPolicy.valueOf(rows.getString(4)));
+                    results.accept(resolvePreferred(connection, profile, artifact, request, asOf));
+                }
             }
             assignRemainingActive(connection, profile, artifact, asOf);
             updateGeneration(connection, profile, artifact, generation, asOf);
             requireCompleteAssignments(connection, profile, artifact, asOf);
-            return List.copyOf(resolutions);
+        } catch (SQLException | RuntimeException | Error failure) {
+            primary = failure;
+            throw failure;
         } finally {
-            clearScratchTables(connection);
+            dropScratchTables(connection, primary);
         }
+    }
+
+    @FunctionalInterface
+    interface ResolutionConsumer {
+        void accept(PreferredExportSlotResolution resolution) throws SQLException;
     }
 
     void requireCurrentSnapshot(Connection connection,
@@ -129,7 +165,7 @@ final class JdbcExportSlotRegistry {
                  AND a.lifecycle_id = t.${lifecycleId}
                 WHERE t.${validUntil} > ?
                 """
-                .replace("${artifact}", quote(artifact))
+                .replace("${artifact}", activeTable(artifact))
                 .replace("${lifecycleId}", quote("_lifecycle_id"))
                 .replace("${validUntil}", quote("_valid_until_epoch_ms"));
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -151,6 +187,7 @@ final class JdbcExportSlotRegistry {
                            Instant asOf) throws SQLException {
         ensureScratchTables(connection);
         clearScratchTables(connection);
+        Throwable primary = null;
         try {
             long generation = currentGeneration(connection, artifact);
             initializeOrValidate(connection, profile, artifact, generation, asOf);
@@ -158,8 +195,11 @@ final class JdbcExportSlotRegistry {
             assignRemainingActive(connection, profile, artifact, asOf);
             updateGeneration(connection, profile, artifact, generation, asOf);
             requireCompleteAssignments(connection, profile, artifact, asOf);
+        } catch (SQLException | RuntimeException | Error failure) {
+            primary = failure;
+            throw failure;
         } finally {
-            clearScratchTables(connection);
+            dropScratchTables(connection, primary);
         }
     }
 
@@ -213,7 +253,7 @@ final class JdbcExportSlotRegistry {
                 """
                 .replace("${lifecycleId}", quote("_lifecycle_id"))
                 .replace("${externalId}", quote("id"))
-                .replace("${artifact}", quote(artifact))
+                .replace("${artifact}", activeTable(artifact))
                 .replace("${validUntil}", quote("_valid_until_epoch_ms"))
                 .replace("${excluded}", EXCLUDED_LIFECYCLE);
         try (PreparedStatement statement = connection.prepareStatement(insert)) {
@@ -232,10 +272,10 @@ final class JdbcExportSlotRegistry {
     private void requireSeedableRows(Connection connection,
                                      String artifact,
                                      Instant asOf) throws SQLException {
-        String sql = "SELECT 1 FROM " + quote(artifact)
+        String sql = "SELECT 1 FROM " + activeTable(artifact)
                 + " WHERE " + quote("_valid_until_epoch_ms") + " > ?"
                 + " AND NOT EXISTS (SELECT 1 FROM " + EXCLUDED_LIFECYCLE + " e"
-                + " WHERE e.lifecycle_id = " + quote(artifact) + "." + quote("_lifecycle_id") + ")"
+                + " WHERE e.lifecycle_id = " + activeTable(artifact) + "." + quote("_lifecycle_id") + ")"
                 + " AND (" + quote("_lifecycle_id") + " IS NULL"
                 + " OR " + quote("_lifecycle_id") + " <= 0"
                 + " OR " + quote("id") + " <= 0) LIMIT 1";
@@ -303,7 +343,7 @@ final class JdbcExportSlotRegistry {
                                              String profile,
                                              String artifact,
                                              Instant asOf) throws SQLException {
-        String activeLifecycle = "SELECT 1 FROM " + quote(artifact) + " t"
+        String activeLifecycle = "SELECT 1 FROM " + activeTable(artifact) + " t"
                 + " WHERE t." + quote("_lifecycle_id") + " = a.lifecycle_id"
                 + " AND t." + quote("_valid_until_epoch_ms") + " > ?";
         String collect = "INSERT INTO " + RELEASED_SLOT + "(slot, released_at_ms)"
@@ -439,7 +479,7 @@ final class JdbcExportSlotRegistry {
                 """
                 .replace("${pending}", PENDING_LIFECYCLE)
                 .replace("${lifecycleId}", quote("_lifecycle_id"))
-                .replace("${artifact}", quote(artifact))
+                .replace("${artifact}", activeTable(artifact))
                 .replace("${validUntil}", quote("_valid_until_epoch_ms"));
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setLong(1, asOf.toEpochMilli());
@@ -659,64 +699,77 @@ final class JdbcExportSlotRegistry {
                         : PreferredExportSlotResolution.Outcome.EXACT);
     }
 
-    private void validatePreferredSurvivors(Connection connection,
-                                            String profile,
-                                            String artifact,
-                                            List<PreferredExportSlotRequest> requests) throws SQLException {
+    // The typed conflict result lists implicated IDs. Production import planning rejects
+    // these groups before allocation; valid requests and resolutions never accumulate here.
+    private void validatePreferredSurvivors(Connection connection, String profile, String artifact) throws SQLException {
         List<Long> conflicts = new ArrayList<>();
-        for (PreferredExportSlotRequest request : requests) {
-            Long existing = assignedSlot(connection, profile, artifact, request.lifecycleId());
-            if (existing != null
-                    && existing != request.requestedSlot()
-                    && request.existingRecordPolicy() == ImportExistingSlotPolicy.REJECT_MISMATCH) {
-                conflicts.add(request.lifecycleId());
+        try (PreparedStatement statement = connection.prepareStatement("SELECT r.lifecycle_id FROM " + PREFERRED_REQUEST
+                + " r JOIN export_slot_assignment a ON a.lifecycle_id = r.lifecycle_id"
+                + " AND a.profile = ? AND a.artifact = ?"
+                + " WHERE r.existing_policy = 'REJECT_MISMATCH' AND a.slot <> r.requested_slot ORDER BY r.ordinal")) {
+            statement.setString(1, profile);
+            statement.setString(2, artifact);
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) { conflicts.add(rows.getLong(1)); }
             }
         }
         if (!conflicts.isEmpty()) {
             throw new PreferredExportSlotConflictException(
-                    PreferredExportSlotConflictException.Reason.SURVIVOR_MISMATCH,
-                    conflicts,
+                    PreferredExportSlotConflictException.Reason.SURVIVOR_MISMATCH, conflicts,
                     "Preferred export slot differs from a stable survivor assignment");
         }
     }
 
-    private void validatePreferredRequests(List<PreferredExportSlotRequest> requests) throws SQLException {
-        Map<Long, Long> lifecycleRequests = new HashMap<>();
-        Map<Long, List<Long>> slotLifecycles = new LinkedHashMap<>();
-        for (PreferredExportSlotRequest request : requests) {
-            Long previous = lifecycleRequests.putIfAbsent(request.lifecycleId(), request.requestedSlot());
-            if (previous != null) {
+    private void stagePreferredRequests(Connection connection, RowSource<PreferredExportSlotRequest> requests)
+            throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("INSERT INTO " + PREFERRED_REQUEST
+                + "(ordinal, lifecycle_id, requested_slot, new_lifecycle, existing_policy) VALUES (?, ?, ?, ?, ?)");
+             var cursor = requests.open()) {
+            int ordinal = 0;
+            while (cursor.next()) {
+                var request = cursor.value();
+                statement.setInt(1, ++ordinal);
+                statement.setLong(2, request.lifecycleId());
+                statement.setLong(3, request.requestedSlot());
+                statement.setInt(4, request.newLifecycle() ? 1 : 0);
+                statement.setString(5, request.existingRecordPolicy().name());
+                statement.addBatch();
+                if (ordinal % REQUEST_BATCH_ROWS == 0) { statement.executeBatch(); statement.clearBatch(); }
+            }
+            if (ordinal != requests.size()) { throw new SQLException("Preferred export-slot request count changed"); }
+            statement.executeBatch();
+        }
+    }
+
+    private void validatePreferredRequests(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT lifecycle_id FROM " + PREFERRED_REQUEST
+                     + " GROUP BY lifecycle_id HAVING COUNT(*) > 1 ORDER BY MIN(ordinal) LIMIT 1")) {
+            if (rows.next()) {
                 throw new PreferredExportSlotConflictException(
-                        PreferredExportSlotConflictException.Reason.DUPLICATE_REQUEST,
-                        List.of(request.lifecycleId()),
+                        PreferredExportSlotConflictException.Reason.DUPLICATE_REQUEST, List.of(rows.getLong(1)),
                         "One lifecycle has multiple preferred export-slot requests");
             }
-            slotLifecycles.computeIfAbsent(request.requestedSlot(), ignored -> new ArrayList<>())
-                    .add(request.lifecycleId());
         }
-        List<Long> conflicts = slotLifecycles.values().stream()
-                .filter(lifecycles -> lifecycles.size() > 1)
-                .flatMap(List::stream)
-                .toList();
+        List<Long> conflicts = new ArrayList<>();
+        try (Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT r.lifecycle_id FROM " + PREFERRED_REQUEST + " r JOIN ("
+                     + " SELECT requested_slot, MIN(ordinal) AS first_ordinal FROM " + PREFERRED_REQUEST
+                     + " GROUP BY requested_slot HAVING COUNT(*) > 1) d ON d.requested_slot = r.requested_slot"
+                     + " ORDER BY d.first_ordinal, r.ordinal")) {
+            while (rows.next()) { conflicts.add(rows.getLong(1)); }
+        }
         if (!conflicts.isEmpty()) {
             throw new PreferredExportSlotConflictException(
-                    PreferredExportSlotConflictException.Reason.DUPLICATE_REQUEST,
-                    conflicts,
+                    PreferredExportSlotConflictException.Reason.DUPLICATE_REQUEST, conflicts,
                     "Multiple lifecycles request the same preferred export slot");
         }
     }
 
-    private void excludeNewLifecycles(Connection connection,
-                                      List<PreferredExportSlotRequest> requests) throws SQLException {
-        String sql = "INSERT INTO " + EXCLUDED_LIFECYCLE + "(lifecycle_id) VALUES (?)";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            for (PreferredExportSlotRequest request : requests) {
-                if (request.newLifecycle()) {
-                    statement.setLong(1, request.lifecycleId());
-                    statement.addBatch();
-                }
-            }
-            statement.executeBatch();
+    private void excludeNewLifecycles(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.executeUpdate("INSERT INTO " + EXCLUDED_LIFECYCLE + "(lifecycle_id)"
+                    + " SELECT lifecycle_id FROM " + PREFERRED_REQUEST + " WHERE new_lifecycle = 1");
         }
     }
 
@@ -953,7 +1006,7 @@ final class JdbcExportSlotRegistry {
                                         String artifact,
                                         long lifecycleId,
                                         Instant asOf) throws SQLException {
-        String sql = "SELECT 1 FROM " + quote(artifact)
+        String sql = "SELECT 1 FROM " + activeTable(artifact)
                 + " WHERE " + quote("_lifecycle_id") + " = ?"
                 + " AND " + quote("_valid_until_epoch_ms") + " > ? LIMIT 1";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -1083,25 +1136,24 @@ final class JdbcExportSlotRegistry {
                                             String artifact,
                                             Instant asOf) throws SQLException {
         String sql = """
-                SELECT COUNT(*) AS active_count,
-                       COUNT(a.lifecycle_id) AS assigned_count
+                SELECT 1
                 FROM ${artifact} t
-                LEFT JOIN export_slot_assignment a
-                  ON a.profile = ?
-                 AND a.artifact = ?
-                 AND a.lifecycle_id = t.${lifecycleId}
                 WHERE t.${validUntil} > ?
+                  AND NOT EXISTS(
+                    SELECT 1 FROM export_slot_assignment a
+                    WHERE a.profile = ? AND a.artifact = ?
+                      AND a.lifecycle_id = t.${lifecycleId})
+                LIMIT 1
                 """
-                .replace("${artifact}", quote(artifact))
+                .replace("${artifact}", activeTable(artifact))
                 .replace("${lifecycleId}", quote("_lifecycle_id"))
                 .replace("${validUntil}", quote("_valid_until_epoch_ms"));
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, profile);
-            statement.setString(2, artifact);
-            statement.setLong(3, asOf.toEpochMilli());
+            statement.setLong(1, asOf.toEpochMilli());
+            statement.setString(2, profile);
+            statement.setString(3, artifact);
             try (ResultSet resultSet = statement.executeQuery()) {
-                if (!resultSet.next()
-                        || resultSet.getLong("active_count") != resultSet.getLong("assigned_count")) {
+                if (resultSet.next()) {
                     throw new SQLException(
                             "Export-slot assignments are incomplete for " + profile + "/" + artifact);
                 }
@@ -1124,6 +1176,13 @@ final class JdbcExportSlotRegistry {
 
     private void ensureScratchTables(Connection connection) throws SQLException {
         try (Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TEMP TABLE IF NOT EXISTS " + PREFERRED_REQUEST
+                    + "(ordinal INTEGER PRIMARY KEY, lifecycle_id INTEGER NOT NULL, requested_slot INTEGER NOT NULL,"
+                    + " new_lifecycle INTEGER NOT NULL, existing_policy TEXT NOT NULL)");
+            statement.execute("CREATE INDEX IF NOT EXISTS temp.ix_export_slot_preferred_lifecycle"
+                    + " ON temp_export_slot_preferred(lifecycle_id)");
+            statement.execute("CREATE INDEX IF NOT EXISTS temp.ix_export_slot_preferred_slot"
+                    + " ON temp_export_slot_preferred(requested_slot)");
             statement.execute("CREATE TEMP TABLE IF NOT EXISTS " + EXCLUDED_LIFECYCLE
                     + "(lifecycle_id INTEGER PRIMARY KEY) WITHOUT ROWID");
             statement.execute("CREATE TEMP TABLE IF NOT EXISTS " + RELEASED_SLOT
@@ -1136,8 +1195,28 @@ final class JdbcExportSlotRegistry {
         }
     }
 
+    /** Preserve a failed operation's cause while still reporting cleanup failure after success. */
+    private void dropScratchTables(Connection connection, Throwable primary) throws SQLException {
+        try { dropScratchTables(connection); }
+        catch (SQLException cleanup) {
+            if (primary == null) { throw cleanup; }
+            primary.addSuppressed(cleanup);
+        }
+    }
+
+    /** Scratch belongs to one operation, not the lifetime of a pooled physical connection. */
+    private void dropScratchTables(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            for (String table : List.of(PREFERRED_REQUEST, EXCLUDED_LIFECYCLE,
+                    RELEASED_SLOT, MERGED_RANGE, PENDING_LIFECYCLE)) {
+                statement.execute("DROP TABLE IF EXISTS " + table);
+            }
+        }
+    }
+
     private void clearScratchTables(Connection connection) throws SQLException {
         try (Statement statement = connection.createStatement()) {
+            statement.executeUpdate("DELETE FROM " + PREFERRED_REQUEST);
             statement.executeUpdate("DELETE FROM " + EXCLUDED_LIFECYCLE);
             statement.executeUpdate("DELETE FROM " + RELEASED_SLOT);
             statement.executeUpdate("DELETE FROM " + MERGED_RANGE);

@@ -1,0 +1,130 @@
+package com.iocextractor.adapter.out.store.jdbc;
+
+import com.iocextractor.application.artifact.ArtifactRow;
+import com.iocextractor.application.artifact.PreparedArtifactRow;
+import com.iocextractor.application.observation.OccurrencePosition;
+import com.iocextractor.common.IocExtractorException;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.CharsetDecoder;
+import java.util.LinkedHashMap;
+import java.util.Optional;
+
+/** Versioned bounded row encoding; strict slice decoding preserves absent columns, nulls and field rank. */
+final class DocumentRowCodec {
+    private static final int PAYLOAD_VERSION = 1;
+    private static final int MAXIMUM_FIELDS = 128;
+    private static final int NULL_FIELD_LENGTH = -1;
+
+    private final int maximumRowBytes;
+    private final int maximumFieldBytes;
+
+    /** Limits come from processing.workspace and bound serialized bytes, not total JVM heap. */
+    DocumentRowCodec(int maximumRowBytes, int maximumFieldBytes) {
+        this.maximumRowBytes = maximumRowBytes;
+        this.maximumFieldBytes = maximumFieldBytes;
+    }
+
+    byte[] encode(PreparedArtifactRow row) {
+        try (var bytes = new ByteArrayOutputStream(); var output = new DataOutputStream(bytes)) {
+            output.writeInt(PAYLOAD_VERSION);
+            text(output, row.idColumn().orElse(null));
+            output.writeInt(row.template().values().size());
+            if (row.template().values().size() > MAXIMUM_FIELDS || row.orderedFieldPositions().size() > MAXIMUM_FIELDS) {
+                throw new IllegalArgumentException("Document row has too many fields");
+            }
+            for (var field : row.template().values().entrySet()) {
+                text(output, field.getKey());
+                text(output, field.getValue());
+                requireSize(bytes.size());
+            }
+            output.writeInt(row.orderedFieldPositions().size());
+            for (var field : row.orderedFieldPositions().entrySet().stream().sorted(java.util.Map.Entry.comparingByKey()).toList()) {
+                text(output, field.getKey());
+                output.writeLong(field.getValue().value());
+                requireSize(bytes.size());
+            }
+            requireSize(bytes.size());
+            return bytes.toByteArray();
+        } catch (IOException failure) {
+            throw new IocExtractorException("Cannot encode document preparation row", failure);
+        }
+    }
+
+    PreparedArtifactRow decode(byte[] bytes) {
+        requireSize(bytes.length);
+        try (var input = new DataInputStream(new ByteArrayInputStream(bytes))) {
+            if (input.readInt() != PAYLOAD_VERSION) { throw new IOException("Unsupported document row version"); }
+            // The convenience decode operation resets this invocation-owned decoder for each slice.
+            var decoder = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT);
+            String id = text(input, bytes, decoder);
+            var values = new LinkedHashMap<String, String>();
+            int fields = count(input);
+            for (int index = 0; index < fields; index++) {
+                String field = field(input, bytes, decoder);
+                if (values.containsKey(field)) { throw new IOException("Duplicate document field"); }
+                values.put(field, text(input, bytes, decoder));
+            }
+            var positions = new LinkedHashMap<String, OccurrencePosition>();
+            int ordered = count(input);
+            for (int index = 0; index < ordered; index++) {
+                String field = field(input, bytes, decoder);
+                if (positions.containsKey(field)) { throw new IOException("Duplicate ordered document field"); }
+                positions.put(field, new OccurrencePosition(input.readLong()));
+            }
+            if (input.available() != 0) { throw new IOException("Trailing document row bytes"); }
+            return new PreparedArtifactRow(ArtifactRow.ordered(values), Optional.ofNullable(id), positions);
+        } catch (IOException failure) {
+            throw new IocExtractorException("Corrupt document preparation row", failure);
+        }
+    }
+
+    private int count(DataInputStream input) throws IOException {
+        int count = input.readInt();
+        if (count < 0 || count > MAXIMUM_FIELDS) { throw new IOException("Invalid document field count"); }
+        return count;
+    }
+
+    private void text(DataOutputStream output, String value) throws IOException {
+        if (value == null) { output.writeInt(NULL_FIELD_LENGTH); return; }
+        if (value.length() > maximumFieldBytes) { throw new IOException("Document field exceeds byte limit"); }
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        if (bytes.length > maximumFieldBytes) { throw new IOException("Document field exceeds byte limit"); }
+        output.writeInt(bytes.length);
+        output.write(bytes);
+    }
+
+    private String text(DataInputStream input, byte[] payload, CharsetDecoder decoder) throws IOException {
+        int size = input.readInt();
+        if (size == NULL_FIELD_LENGTH) { return null; }
+        if (size < 0 || size > maximumFieldBytes || size > input.available()) {
+            throw new IOException("Invalid document field size");
+        }
+        int offset = payload.length - input.available();
+        input.skipNBytes(size);
+        for (int index = offset; index < offset + size; index++) {
+            if (payload[index] < 0) {
+                return decoder.decode(ByteBuffer.wrap(payload, offset, size)).toString();
+            }
+        }
+        // All bytes have been checked: ASCII is valid UTF-8. String still owns its copied value.
+        return new String(payload, offset, size, StandardCharsets.US_ASCII);
+    }
+
+    private String field(DataInputStream input, byte[] payload, CharsetDecoder decoder) throws IOException {
+        String field = text(input, payload, decoder);
+        if (field == null || field.isBlank()) { throw new IOException("Invalid document field name"); }
+        return field;
+    }
+
+    private void requireSize(int size) {
+        if (size > maximumRowBytes) { throw new IocExtractorException("Document row exceeds byte limit"); }
+    }
+}

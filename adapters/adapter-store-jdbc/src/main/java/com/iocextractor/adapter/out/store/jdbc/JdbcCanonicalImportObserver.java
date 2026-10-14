@@ -9,6 +9,13 @@ interface JdbcCanonicalImportObserver {
     /** Called after the named phase; throwing aborts unless commit already completed. */
     void after(Phase phase);
 
+    /**
+     * Reports the native plan's renewal decision, even when stored timestamps
+     * happen to be equal. This is uncommitted diagnostic metadata; discard it
+     * on rollback. It does not change mutation or publication authority.
+     */
+    default void afterMutation(String artifact, long canonicalRowId, boolean renewsValidity) { }
+
     /** Ordered failure-injection phases. */
     enum Phase {
         STAGE_ATTACHED,

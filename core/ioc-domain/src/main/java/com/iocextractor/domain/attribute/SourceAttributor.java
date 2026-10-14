@@ -9,6 +9,15 @@ import java.util.List;
  */
 public interface SourceAttributor {
 
-    /** Attributes raw indicators and exposes marker-selection decisions. */
+    /**
+     * Attributes raw indicators and exposes marker-selection decisions.
+     * Encounter order is preserved; positions need not be sorted and equal
+     * marker/indicator positions are inclusive.
+     */
     AttributionOutcome attribute(String text, List<RawIndicator> indicators);
+
+    /** Discovers markers lazily without retaining a document-wide list. */
+    default MarkerCursor markers(CharSequence text, int maximumMatchCharacters) {
+        throw new UnsupportedOperationException("Lazy markers are required for document processing");
+    }
 }

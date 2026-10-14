@@ -23,3 +23,8 @@ run/stage scopes.
 **Зависит от:** `ioc-platform-etl`, SLF4J API.
 
 **Не импортируется:** domain, adapters, bootstrap, Logback appenders in main.
+
+`MdcScope` восстанавливает изменённые ключи в обратном порядке через reversed view
+существующей ordered map. Закрытие не создаёт отдельный список ключей; повторная
+запись одного ключа сохраняет первоначальное значение. Nested scopes, hide,
+идемпотентное close и восстановление при исключениях остаются частью контракта.

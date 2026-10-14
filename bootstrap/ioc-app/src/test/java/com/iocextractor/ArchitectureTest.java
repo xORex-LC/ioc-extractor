@@ -51,6 +51,11 @@ class ArchitectureTest {
                     "org.slf4j..", "ch.qos.logback..");
 
     @ArchTest
+    static final ArchRule camel_is_confined_to_adapters_and_bootstrap = noClasses()
+            .that().resideInAnyPackage("..domain..", "..application..", "..platform..")
+            .should().dependOnClassesThat().resideInAPackage("org.apache.camel..");
+
+    @ArchTest
     static final ArchRule dataframe_import_core_is_framework_and_integration_free = noClasses()
             .that().resideInAnyPackage(
                     "..application.dataframeimport..",

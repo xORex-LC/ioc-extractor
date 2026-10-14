@@ -13,10 +13,11 @@ public interface ArtifactProjectionWorkStore {
     /**
      * Acknowledges only the generation represented by the installed file.
      *
-     * <p>The operation returns {@code false} when newer required work appeared
-     * after the caller read state, leaving convergence pending.
+     * <p>Newer required work may remain pending after successful acknowledgement.
+     * Returns {@code false} for missing state, future coverage or a regression below
+     * already projected coverage. Only the shared projection owner may acknowledge.
      *
-     * @param acknowledgement compare-and-set projection evidence
+     * @param acknowledgement installed snapshot evidence
      * @return whether the durable state accepted the acknowledgement
      */
     boolean acknowledge(ProjectionAcknowledgement acknowledgement);

@@ -20,6 +20,8 @@ import com.iocextractor.application.port.out.export.ArtifactRevisionReader;
 import com.iocextractor.application.port.out.export.ExportProgressStore;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -36,6 +38,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Delayed;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -46,11 +49,56 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @Timeout(value = 30, unit = TimeUnit.SECONDS)
 class DaemonExportSchedulerTest {
 
     private static final Instant START = Instant.parse("2026-06-28T00:00:00Z");
+
+    @Test
+    void blockedProfileDoesNotPreventAnotherProfileAndHintsStayBounded() throws Exception {
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var secondCompleted = new CountDownLatch(1);
+        var firstAttempts = new AtomicInteger();
+        var scheduler = new DaemonExportScheduler(
+                List.of(plan("one"), plan("two")),
+                Map.of("one", alwaysDue(), "two", alwaysDue()),
+                artifacts -> nullRevision(artifacts), profile -> List.of(), () -> 0,
+                command -> {
+                    if (command.profile().equals("one")) {
+                        firstAttempts.incrementAndGet();
+                        entered.countDown();
+                        AsyncTestSupport.awaitOrFail(release, "blocked profile release");
+                    } else {
+                        secondCompleted.countDown();
+                    }
+                    return completed(command.profile());
+                }, Duration.ofHours(1));
+        scheduler.start();
+        try {
+            scheduler.runOnce();
+            assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(secondCompleted.await(5, TimeUnit.SECONDS))
+                    .as("independent profile completes before the first is released").isTrue();
+            for (int hint = 0; hint < 1000; hint++) {
+                scheduler.runOnce();
+                assertThat(scheduler.outstandingProfiles()).isLessThanOrEqualTo(2);
+            }
+            assertThat(firstAttempts).hasValue(1);
+        } finally {
+            release.countDown();
+            scheduler.stop();
+        }
+        assertThat(scheduler.outstandingProfiles()).isZero();
+    }
 
     @Test
     void startCompletesRecoveryBeforeSchedulingAndStopIsControlled() {
@@ -93,7 +141,7 @@ class DaemonExportSchedulerTest {
                 Duration.ofHours(1),
                 ExportNudgePolicy.disabled(),
                 admission,
-                () -> executor);
+                () -> executor, ManualExecutor::new);
 
         scheduler.start();
         assertThat(calls).isEmpty();
@@ -111,7 +159,61 @@ class DaemonExportSchedulerTest {
     }
 
     @Test
-    void dueProfilesRunSequentiallyInConfigurationOrder() {
+    void repeatedStartDoesNotRegisterAnotherRecoveryOrTimer() {
+        var calls = new AtomicInteger();
+        var timer = new ManualExecutor();
+        var scheduler = nudgedScheduler(List.of(plan("one")), Map.of("one", alwaysDue()),
+                profile -> List.of(), this::nullRevision, () -> { calls.incrementAndGet(); return 0; },
+                command -> completed(command.profile()), ExportNudgePolicy.disabled(), () -> timer);
+        try {
+            scheduler.start();
+            scheduler.start();
+            assertThat(calls).hasValue(1);
+            assertThat(timer.fixedDelayTasks).hasSize(1);
+        } finally { scheduler.stop(); }
+    }
+
+    @Test
+    void stoppedSchedulerCannotOpenWhenDelayedAdmissionArrives() {
+        var admission = new CanonicalDataAdmissionState();
+        var timer = new ManualExecutor();
+        var scheduler = new DaemonExportScheduler(List.of(plan("one")), Map.of("one", alwaysDue()),
+                this::nullRevision, profile -> List.of(),
+                () -> { throw new AssertionError("stopped scheduler recovered"); },
+                command -> { throw new AssertionError("stopped scheduler exported"); },
+                Duration.ofHours(1), ExportNudgePolicy.disabled(), admission, () -> timer, ManualExecutor::new);
+        scheduler.start();
+        scheduler.stop();
+
+        admission.admitted(new LifecycleAdmissionResult(LifecycleActivationState.DISABLED_COMPATIBLE,
+                EffectiveTime.at(START), 0, 0));
+
+        assertThat(scheduler.isRunning()).isFalse();
+        assertThat(timer.fixedDelayTasks).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {0, -1})
+    void rejectsAnExportTimerThatCannotMakePeriodicProgress(long millis) {
+        assertThatThrownBy(() -> new DaemonExportScheduler(List.of(plan("one")), Map.of("one", alwaysDue()),
+                this::nullRevision, profile -> List.of(), () -> 0,
+                command -> completed(command.profile()), Duration.ofMillis(millis)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("pollInterval must be positive");
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void rejectsMissingOrExtraProfileCadences(boolean extra) {
+        var cadences = extra ? Map.of("one", alwaysDue(), "other", alwaysDue()) : Map.of("other", alwaysDue());
+        assertThatThrownBy(() -> new DaemonExportScheduler(List.of(plan("one")), cadences,
+                this::nullRevision, profile -> List.of(), () -> 0,
+                command -> completed(command.profile()), Duration.ofHours(1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Cadence sources must match configured export profiles");
+    }
+
+    @Test
+    void eachDueProfileUsesItsOwnCadence() {
         MutableClock clock = new MutableClock(START);
         List<ExportPlan> plans = List.of(plan("one"), plan("two"));
         Map<String, CadenceSource> cadences = new LinkedHashMap<>();
@@ -282,6 +384,78 @@ class DaemonExportSchedulerTest {
         scheduler.nudge();
 
         assertThat(executor.delayedTasks).hasSize(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void failedTimerStopStillStopsWorkersAndPreventsRestart(boolean workerFailure) throws Exception {
+        var timer = mock(ScheduledExecutorService.class);
+        var workers = mock(ExecutorService.class);
+        when(timer.awaitTermination(anyLong(), any())).thenReturn(false);
+        when(workers.awaitTermination(anyLong(), any())).thenReturn(!workerFailure);
+        var scheduler = lifecycleScheduler(timer, workers);
+        scheduler.start();
+        try {
+            var failure = org.assertj.core.api.Assertions.catchThrowable(scheduler::stop);
+            assertThat(failure).isInstanceOf(IllegalStateException.class)
+                    .hasMessage("Export workers did not terminate");
+            assertThat(failure.getSuppressed()).hasSize(workerFailure ? 1 : 0);
+            verify(timer).shutdownNow();
+            verify(workers).shutdown();
+            assertThat(scheduler.isRunning()).isFalse();
+            assertThatThrownBy(scheduler::start).isInstanceOf(IllegalStateException.class)
+                    .hasMessage("Previous export executors have not terminated");
+        } finally {
+            when(timer.awaitTermination(anyLong(), any())).thenReturn(true);
+            when(workers.awaitTermination(anyLong(), any())).thenReturn(true);
+            scheduler.stop();
+        }
+        scheduler.start();
+        scheduler.stop();
+    }
+
+    @Test
+    void stopEscalatesToCancellationAndCompletesWhenWorkersTerminate() throws Exception {
+        var timer = mock(ScheduledExecutorService.class);
+        var workers = mock(ExecutorService.class);
+        when(timer.awaitTermination(anyLong(), any())).thenReturn(false, true);
+        when(workers.awaitTermination(anyLong(), any())).thenReturn(true);
+        var scheduler = lifecycleScheduler(timer, workers);
+        scheduler.start();
+
+        scheduler.stop();
+
+        verify(timer).shutdownNow();
+        verify(workers).shutdown();
+        assertThat(scheduler.isRunning()).isFalse();
+    }
+
+    @Test
+    void interruptedStopPreservesTheSignalAndStillStopsWorkers() throws Exception {
+        var timer = mock(ScheduledExecutorService.class);
+        var workers = mock(ExecutorService.class);
+        when(timer.awaitTermination(anyLong(), any())).thenThrow(new InterruptedException("stop interrupted"));
+        when(workers.awaitTermination(anyLong(), any())).thenReturn(true);
+        var scheduler = lifecycleScheduler(timer, workers);
+        scheduler.start();
+        try {
+            assertThatThrownBy(scheduler::stop).isInstanceOf(IllegalStateException.class)
+                    .hasCauseInstanceOf(InterruptedException.class);
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+            verify(timer).shutdownNow();
+            verify(workers).shutdown();
+        } finally {
+            Thread.interrupted();
+            doReturn(true).when(timer).awaitTermination(anyLong(), any());
+            scheduler.stop();
+        }
+    }
+
+    private DaemonExportScheduler lifecycleScheduler(ScheduledExecutorService timer, ExecutorService workers) {
+        return new DaemonExportScheduler(List.of(plan("one")), Map.of("one", alwaysDue()),
+                this::nullRevision, profile -> List.of(), () -> 0,
+                command -> completed(command.profile()), Duration.ofHours(1), ExportNudgePolicy.disabled(),
+                CanonicalDataAdmissionState.admittedCompatible(EffectiveTime.at(START)), () -> timer, () -> workers);
     }
 
     @Test
@@ -460,10 +634,13 @@ class DaemonExportSchedulerTest {
             ExportProgressStore progressStore,
             com.iocextractor.application.port.in.export.RecoverExportUseCase recovery,
             com.iocextractor.application.port.in.export.ExportArtifactsUseCase exporter) {
-        return new DaemonExportScheduler(
-                plans, cadences,
-                artifacts -> nullRevision(artifacts),
-                progressStore, recovery, exporter, Duration.ofHours(1));
+        var scheduler = new DaemonExportScheduler(
+                plans, cadences, artifacts -> nullRevision(artifacts),
+                progressStore, recovery, exporter, Duration.ofHours(1), ExportNudgePolicy.disabled(),
+                CanonicalDataAdmissionState.admittedCompatible(EffectiveTime.at(START)),
+                ManualExecutor::new, ManualExecutor::new);
+        scheduler.start();
+        return scheduler;
     }
 
     private DaemonExportScheduler nudgedScheduler(
@@ -490,7 +667,9 @@ class DaemonExportSchedulerTest {
             Supplier<ScheduledExecutorService> executorFactory) {
         return new DaemonExportScheduler(
                 plans, cadences, revisionReader, progressStore, recovery, exporter,
-                Duration.ofHours(1), nudgePolicy, executorFactory);
+                Duration.ofHours(1), nudgePolicy,
+                CanonicalDataAdmissionState.admittedCompatible(EffectiveTime.at(START)),
+                executorFactory, ManualExecutor::new);
     }
 
     private List<ArtifactRevision> nullRevision(List<String> artifacts) {

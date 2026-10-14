@@ -25,7 +25,7 @@ public final class EventPublishingCanonicalArtifactWriter implements CanonicalAr
             return result;
         }
         publish(CanonicalDeadlineScheduleChanged.from(result));
-        if (result.publicRowsInserted() > 0) {
+        if (result.publicRowsChanged() > 0) {
             publish(MutableArtifactProjectionRequired.from(
                     "observation-" + result.observationId().value(),
                     result.artifactName(),

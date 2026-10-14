@@ -102,7 +102,7 @@ class IngestRunRecoveryServiceTest {
                 .with("source", "run-4")
                 .with("reason", "lossy projection")
                 .build();
-        var projection = new CollectingProjection(new ArtifactProjectionResult(2, List.of(warning)));
+        var projection = new CollectingProjection(new ArtifactProjectionResult(2, List.of(warning), new com.iocextractor.application.artifact.lifecycle.ProjectionGeneration(0)));
         var sink = new CollectingDiagnosticSink();
 
         new IngestRunRecoveryService(ledger, projection, sink).recover();

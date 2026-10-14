@@ -1,5 +1,6 @@
 package com.iocextractor.application.dataframeimport.contract;
 
+
 import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
 import com.iocextractor.application.dataframeimport.model.ImportDuplicatePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportFormulaPolicy;
@@ -77,6 +78,17 @@ class DataframeImportCatalogCompilerTest {
 
         assertThat(reorderedHeaders).isEqualTo(first);
         assertThat(reorderedTransforms).isNotEqualTo(first);
+    }
+
+    @Test
+    void contractFingerprintPinsEffectiveProcessingPolicy() {
+        DataframeImportCatalogDraft draft = validDraft(List.of("ip", "score"));
+        String first = compiler.compile(draft, environment("a".repeat(64)))
+                .catalogOrThrow().contracts().values().iterator().next().fingerprint().value();
+        String changed = compiler.compile(draft, environment("b".repeat(64)))
+                .catalogOrThrow().contracts().values().iterator().next().fingerprint().value();
+
+        assertThat(changed).isNotEqualTo(first);
     }
 
     @Test
@@ -166,11 +178,15 @@ class DataframeImportCatalogCompilerTest {
     }
 
     private DataframeImportCatalogEnvironment environment() {
+        return environment(null);
+    }
+
+    private DataframeImportCatalogEnvironment environment(String processingPolicyFingerprint) {
         return new DataframeImportCatalogEnvironment(
                 Map.of("ip_list", new DataframeImportCatalogEnvironment.ArtifactSchema(
                         Set.of("ip", "score"), "ip-row-v1", Set.of("ip-v1"),
                         Set.of("reputation-lists"), true)),
                 Set.of("lower", "upper"),
-                Set.of("upstream"));
+                Set.of(), Set.of("upstream"), processingPolicyFingerprint);
     }
 }

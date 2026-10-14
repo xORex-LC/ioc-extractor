@@ -13,11 +13,15 @@ import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
 import com.iocextractor.application.artifact.lifecycle.LifecycleTimeSource;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
+import com.iocextractor.application.observation.ObservationOrigin;
+import com.iocextractor.application.observation.OccurrencePosition;
+import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
@@ -27,9 +31,11 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -53,6 +59,504 @@ class JdbcCanonicalLifecycleWriterIT {
     private List<DataframeArtifactSchema> schemas;
     private MutableTimeSource timeSource;
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {2048, 262144})
+    void opaqueReceiptIdentitiesPreservePositionsAcrossByteBoundedBatchFlushes(int identityLength) {
+        var id = "r".repeat(identityLength);
+        var context = receipt(id, 1);
+        var records = new ArrayList<CanonicalRecordConfirmation>();
+        int count = identityLength > 65536 ? 1 : 130;
+        for (int ordinal = 0; ordinal < count; ordinal++) {
+            var original = row("wide-" + ordinal, "wide-" + ordinal + ".example");
+            records.add(new CanonicalRecordConfirmation(original.rowKey(), new PreparedArtifactRow(
+                    original.preparedRow().template(), Optional.of("id"), Map.of("value", new OccurrencePosition(ordinal)))));
+        }
+
+        var registration = new JdbcObservationRegistrationStore(dataSource, ALLOCATOR_CLOCK)
+                .registerNew(new ObservationId("wide-receipt"), ObservationOrigin.DOCUMENT);
+        writer(JdbcLifecycleTransactionObserver.NOOP).confirm(new CanonicalArtifactConfirmation(registration.observationId(),
+                "source-key", context, "masks", List.of("id", "value", "source", "time_first_seen", "time_last_seen"),
+                records, registration));
+
+        var recovered = new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30))
+                .findComplete("source-key", "policy-v1", EffectiveTime.at(START)).orElseThrow();
+        assertThat(recovered.id().value()).isEqualTo(id);
+        try (var rows = recovered.artifacts().getFirst().records().open()) {
+            for (int ordinal = 0; ordinal < count; ordinal++) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.value().preparedRow().orderedFieldPositions()).containsEntry("value", new OccurrencePosition(ordinal));
+                assertThat(rows.value().preparedRow().template().value("value")).isEqualTo("wide-" + ordinal + ".example");
+            }
+            assertThat(rows.next()).isFalse();
+        }
+    }
+
+    @Test
+    void alteredSharedReceiptIdentityCannotCommitTheRemainingArtifact() throws Exception {
+        var writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        var receipt = receipt("altered-header", 2);
+        writer.confirm(command("header-first", "masks", receipt, row("a", "a")));
+        for (String alteration : List.of("source_key='other'", "processing_policy_fingerprint='other'",
+                "expected_artifacts=3", "payload_version=1", "state='COMPLETE',completed_at_ms=1,purge_after_ms=2")) {
+            execute("UPDATE confirmation_receipt SET " + alteration + " WHERE receipt_id='altered-header'");
+            assertThatThrownBy(() -> writer.confirm(command("header-second", "hashes", receipt, row("b", "b"))))
+                    .hasMessage("Confirmation receipt identity is not writable");
+            assertThat(queryLong("SELECT COUNT(*) FROM hashes")).isZero();
+            assertThat(queryLong("SELECT COUNT(*) FROM confirmation_receipt_artifact WHERE receipt_id='altered-header'")).isOne();
+            execute("UPDATE confirmation_receipt SET source_key='source-key', processing_policy_fingerprint='policy-v1',"
+                    + " expected_artifacts=2, payload_version=2, state='STAGING',completed_at_ms=NULL,purge_after_ms=NULL WHERE receipt_id='altered-header'");
+        }
+        assertThat(writer.confirm(command("header-second", "hashes", receipt, row("b", "b"))).created()).isOne();
+    }
+
+    @Test
+    void corruptedMarkersAndTypedRowsPreventReceiptPublicationAndRollBackTheLastArtifact() throws Exception {
+        var writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        String[] failures = {"Confirmation receipt has too many artifact markers",
+                "Confirmation receipt row total does not match markers",
+                "Receipt references an unknown artifact: ghost",
+                "Typed confirmation receipt row count does not match marker: masks"};
+        for (int scenario = 0; scenario < failures.length; scenario++) {
+            String id = "corrupt-markers-" + scenario;
+            writer.confirm(command(id + "-first", "masks", receipt(id, 2), row("a-" + scenario, "a")));
+            int expected = scenario == 0 ? 1 : scenario == 2 ? 3 : 2;
+            if (scenario == 0) { execute("UPDATE confirmation_receipt SET expected_artifacts=1 WHERE receipt_id='" + id + "'"); }
+            if (scenario == 1) { execute("UPDATE confirmation_receipt SET row_count=2 WHERE receipt_id='" + id + "'"); }
+            if (scenario == 2) {
+                execute("UPDATE confirmation_receipt SET expected_artifacts=3 WHERE receipt_id='" + id + "'");
+                execute("INSERT INTO confirmation_receipt_artifact(receipt_id,artifact,row_count,staged_at_ms) VALUES ('" + id + "','ghost',0,0)");
+            }
+            if (scenario == 3) { execute("DELETE FROM masks_receipt_rows WHERE receipt_id='" + id + "'"); }
+            var completing = command(id + "-last", "hashes", receipt(id, expected), row("b-" + scenario, "b"));
+            String reason = failures[scenario];
+            assertThatThrownBy(() -> writer.confirm(completing)).hasMessage(reason);
+            assertThat(queryLong("SELECT COUNT(*) FROM hashes")).isZero();
+            assertThat(queryLong("SELECT COUNT(*) FROM hashes_receipt_rows")).isZero();
+            assertThat(queryString("SELECT state FROM confirmation_receipt WHERE receipt_id='" + id + "'")).isEqualTo("STAGING");
+        }
+    }
+
+    @Test
+    void completeReceiptReaderRejectsUnknownArtifactsAndContradictoryTotals() throws Exception {
+        writer(JdbcLifecycleTransactionObserver.NOOP).confirm(command("read-corrupt", "masks", receipt("read-corrupt", 1), row("a", "a")));
+        var store = new JdbcConfirmationReceiptStore(dataSource, schemas);
+        for (String alteration : List.of("expected_artifacts=2", "row_count=2")) {
+            execute("UPDATE confirmation_receipt SET " + alteration + " WHERE receipt_id='read-corrupt'");
+            assertThatThrownBy(() -> store.findComplete("source-key", "policy-v1", EffectiveTime.at(START)))
+                    .hasMessage("Complete receipt structural totals do not match its header");
+            execute("UPDATE confirmation_receipt SET expected_artifacts=1,row_count=1 WHERE receipt_id='read-corrupt'");
+        }
+        execute("UPDATE confirmation_receipt_artifact SET artifact='unknown' WHERE receipt_id='read-corrupt'");
+        assertThatThrownBy(() -> store.findComplete("source-key", "policy-v1", EffectiveTime.at(START)))
+                .hasMessage("Complete receipt references unknown artifact: unknown");
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @Test
+    void receiptRetentionRejectsInvalidBudgetsAndPreservesStateAfterSqlFailure() throws Exception {
+        for (Duration invalid : List.of(Duration.ZERO, Duration.ofSeconds(-1))) {
+            assertThatThrownBy(() -> new JdbcConfirmationReceiptStore(dataSource, schemas, invalid))
+                    .hasMessage("Staging receipt retention must be positive");
+        }
+        assertThatThrownBy(() -> new JdbcConfirmationReceiptStore(dataSource, List.of(schemas.getFirst(), schemas.getFirst())))
+                .hasMessageContaining("Duplicate dataframe artifact schema");
+        var store = new JdbcConfirmationReceiptStore(dataSource, schemas);
+        for (Duration invalid : List.of(Duration.ZERO, Duration.ofSeconds(-1))) {
+            assertThatThrownBy(() -> store.markTerminal(new ObservationId("none"), EffectiveTime.at(START), invalid))
+                    .hasMessage("Observation retention must be positive");
+        }
+        assertThatThrownBy(() -> store.purgeExpired(EffectiveTime.at(START), 0)).hasMessage("Receipt purge batch size must be positive");
+        store.markTerminal(new ObservationId("not-committed"), EffectiveTime.at(START), Duration.ofDays(1));
+        writer(JdbcLifecycleTransactionObserver.NOOP).confirm(command("retained", "masks", receipt("retained", 1), row("a", "a")));
+        execute("CREATE TRIGGER reject_terminal BEFORE UPDATE ON canonical_observation BEGIN SELECT RAISE(ABORT,'terminal fault'); END");
+        assertThatThrownBy(() -> store.markTerminal(new ObservationId("retained"), EffectiveTime.at(START), Duration.ofDays(1)))
+                .hasMessage("Failed to mark canonical observation terminal");
+        execute("DROP TRIGGER reject_terminal");
+        store.markTerminal(new ObservationId("retained"), EffectiveTime.at(START), Duration.ofDays(1));
+        store.markTerminal(new ObservationId("retained"), EffectiveTime.at(START), Duration.ofDays(1));
+        execute("CREATE TRIGGER reject_purge BEFORE DELETE ON confirmation_receipt BEGIN SELECT RAISE(ABORT,'purge fault'); END");
+        assertThatThrownBy(() -> store.purgeExpired(EffectiveTime.at(START.plus(Duration.ofDays(31))), 1))
+                .hasMessage("Failed to purge confirmation receipts");
+        assertThat(queryLong("SELECT COUNT(*) FROM confirmation_receipt")).isOne();
+        assertThat(queryLong("SELECT COUNT(*) FROM canonical_observation")).isOne();
+        execute("DROP TRIGGER reject_purge");
+        assertThat(store.purgeExpired(EffectiveTime.at(START.plus(Duration.ofDays(31))), 1).purged()).isOne();
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+        var unavailable = new JdbcConfirmationReceiptStore(new org.springframework.jdbc.datasource.AbstractDataSource() {
+            public Connection getConnection() throws SQLException { throw new SQLException("database unavailable"); }
+            public Connection getConnection(String username, String password) throws SQLException { return getConnection(); }
+        }, schemas);
+        assertThatThrownBy(() -> unavailable.findComplete("source-key", "policy-v1", EffectiveTime.at(START)))
+                .hasMessage("Failed to load a complete confirmation receipt").hasRootCauseMessage("database unavailable");
+    }
+
+    @Test
+    void boundedReceiptBatchesPreserveAllRowsAcrossByteAndCountFlushes() {
+        var rows = new java.util.ArrayList<CanonicalRecordConfirmation>();
+        for (int index = 0; index < 129; index++) { rows.add(row("key-" + index, "value-" + index)); }
+        rows.add(row("large-a", "я".repeat(140000)));
+        rows.add(row("large-b", "b".repeat(140000)));
+        rows.add(row("large-c", "c".repeat(300000)));
+        var confirmation = new CanonicalArtifactConfirmation(new ObservationId("receipt-batches"), "source-key",
+                receipt("receipt-batches", 1), "masks", publicHeader(), rows);
+        assertThat(writer(JdbcLifecycleTransactionObserver.NOOP).confirm(confirmation).created()).isEqualTo(rows.size());
+        var replay = new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30))
+                .findComplete("source-key", "policy-v1", EffectiveTime.at(START)).orElseThrow().artifacts().getFirst();
+        assertThat(replay.records().snapshot()).containsExactlyElementsOf(rows);
+    }
+
+    @Test
+    void receiptCursorCancellationAndCountDriftFailWithoutLeakingItsReadConnection() throws Exception {
+        writer(JdbcLifecycleTransactionObserver.NOOP).confirm(command("cursor-contract", "masks", receipt("cursor-contract", 1), row("a", "a")));
+        var source = new JdbcReceiptRowSource(dataSource, schemas.getFirst(), new ConfirmationReceiptId("cursor-contract"), 1);
+        assertThatThrownBy(() -> new JdbcReceiptRowSource(dataSource, schemas.getFirst(), new ConfirmationReceiptId("cursor-contract"), -1))
+                .hasMessageContaining("Negative complete receipt row count");
+        try (var cursor = source.open()) {
+            assertThatThrownBy(cursor::value).hasMessage("current receipt row");
+            Thread.currentThread().interrupt();
+            try { assertThatThrownBy(cursor::next).hasMessage("Receipt read interrupted"); }
+            finally { Thread.interrupted(); }
+            assertThat(cursor.next()).isTrue();
+            assertThat(cursor.value().rowKey().value()).isEqualTo("a");
+            assertThat(cursor.next()).isFalse();
+            assertThatThrownBy(cursor::value).hasMessage("current receipt row");
+            cursor.close(); cursor.close();
+            assertThatThrownBy(cursor::next).hasMessage("Receipt cursor is closed");
+        }
+        execute("DELETE FROM masks_receipt_rows WHERE receipt_id='cursor-contract'");
+        assertThatThrownBy(source::open).hasRootCauseMessage("Complete receipt row count mismatch for artifact: masks");
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @Test
+    void receiptCursorReportsAllCloseFailuresAndStillAttemptsRollbackAndConnectionClose() throws Exception {
+        writer(JdbcLifecycleTransactionObserver.NOOP).confirm(command("close-fault", "masks", receipt("close-fault", 1), row("a", "a")));
+        for (boolean positionFailure : new boolean[]{false, true}) {
+            try (var realConnection = dataSource.getConnection()) {
+                var statements = new java.util.ArrayList<java.sql.PreparedStatement>();
+                var closed = new java.util.ArrayList<String>();
+                var connection = jdbcProxy(Connection.class, realConnection, (method, arguments) -> {
+                    if (method.getName().equals("prepareStatement")) {
+                        String sql = (String) arguments[0];
+                        var real = realConnection.prepareStatement(sql); statements.add(real);
+                        return jdbcProxy(java.sql.PreparedStatement.class, real, (operation, values) -> {
+                            if (operation.getName().equals("close")) {
+                                if (sql.contains("FROM confirmation_receipt_field_position")) {
+                                    if (positionFailure) { throw new SQLException("position close"); }
+                                } else if (sql.startsWith("SELECT ordinal")) {
+                                    throw new SQLException("row close");
+                                }
+                            }
+                            return invokeJdbc(real, operation, values);
+                        });
+                    }
+                    if (method.getName().equals("rollback")) { closed.add("rollback"); throw new SQLException("rollback close"); }
+                    if (method.getName().equals("close")) { closed.add("connection"); throw new SQLException("connection close"); }
+                    return invokeJdbc(realConnection, method, arguments);
+                });
+                var source = new JdbcReceiptRowSource(connectionSource(connection), schemas.getFirst(), new ConfirmationReceiptId("close-fault"), 1);
+                try {
+                    var cursor = source.open();
+                    assertThat(cursor.next()).isTrue();
+                    assertThatThrownBy(cursor::close).hasMessage("Cannot close typed receipt cursor").cause()
+                            .satisfies(cause -> {
+                                assertThat(cause).hasMessage(positionFailure ? "position close" : "row close");
+                                assertThat(cause.getSuppressed()).extracting(Throwable::getMessage)
+                                        .contains("rollback close", "connection close");
+                                if (positionFailure) {
+                                    assertThat(cause.getSuppressed()).extracting(Throwable::getMessage)
+                                            .contains("row close");
+                                }
+                            });
+                    assertThat(closed).containsExactly("rollback", "connection");
+                } finally {
+                    for (var statement : statements) { statement.close(); }
+                    realConnection.rollback();
+                }
+            }
+        }
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @Test
+    void openReceiptCursorPinsRowsAndPositionsAcrossPhysicalRetirement() {
+        var original = row("pinned", "pinned.example");
+        var record = new CanonicalRecordConfirmation(original.rowKey(), new PreparedArtifactRow(
+                original.preparedRow().template(), Optional.of("id"),
+                Map.of("value", new com.iocextractor.application.observation.OccurrencePosition(42))));
+        var registration = new JdbcObservationRegistrationStore(dataSource, ALLOCATOR_CLOCK)
+                .registerNew(new ObservationId("pinned-receipt"), ObservationOrigin.DOCUMENT);
+        writer(JdbcLifecycleTransactionObserver.NOOP).confirm(new CanonicalArtifactConfirmation(
+                registration.observationId(), "source-key", receipt("pinned-receipt", 1), "masks",
+                publicHeader(), List.of(record), registration));
+        var store = new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30));
+        var source = store.findComplete("source-key", "policy-v1", EffectiveTime.at(START)).orElseThrow()
+                .artifacts().getFirst().records();
+
+        try (var cursor = source.open()) {
+            store.markTerminal(new ObservationId("pinned-receipt"), EffectiveTime.at(START), Duration.ofDays(30));
+            assertThat(store.purgeExpired(EffectiveTime.at(START.plus(Duration.ofDays(31))), 16).purged()).isOne();
+            assertThat(store.findComplete("source-key", "policy-v1", EffectiveTime.at(START))).isEmpty();
+            assertThat(cursor.next()).isTrue();
+            assertThat(cursor.value().preparedRow().template().value("value")).isEqualTo("pinned.example");
+            assertThat(cursor.value().preparedRow().orderedFieldPositions())
+                    .containsEntry("value", new com.iocextractor.application.observation.OccurrencePosition(42));
+            assertThat(cursor.next()).isFalse();
+        }
+        assertThatThrownBy(source::open).hasRootCauseMessage("Complete receipt disappeared before replay");
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {0, 2})
+    void receiptCursorRejectsPositionsWithoutACorrespondingRow(int orphanOrdinal) throws Exception {
+        writer(JdbcLifecycleTransactionObserver.NOOP).confirm(command("orphan-position", "masks",
+                receipt("orphan-position", 1), row("row", "row.example")));
+        if (orphanOrdinal == 0) {
+            execute("UPDATE masks_receipt_rows SET ordinal=1 WHERE receipt_id='orphan-position'");
+        }
+        execute("INSERT INTO confirmation_receipt_field_position(receipt_id,artifact,ordinal,field_name,occurrence_position)"
+                + " VALUES('orphan-position','masks'," + orphanOrdinal + ",'value',42)");
+        var source = new JdbcReceiptRowSource(dataSource, schemas.getFirst(), new ConfirmationReceiptId("orphan-position"), 1);
+
+        try (var cursor = source.open()) {
+            if (orphanOrdinal > 0) { assertThat(cursor.next()).isTrue(); }
+            assertThatThrownBy(cursor::next).hasMessage("Receipt positions have no matching row");
+        }
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @Test
+    void rollbackFailureNeverEnablesAutoCommitOrReplacesThePrimaryFatalError() throws Exception {
+        try (Connection real = dataSource.getConnection()) {
+            real.setAutoCommit(false);
+            var enabledAutoCommit = new java.util.concurrent.atomic.AtomicBoolean();
+            SQLException rollbackFailure = new SQLException("rollback failed");
+            Connection failing = jdbcProxy(Connection.class, real, (method, arguments) -> {
+                if (method.getName().equals("rollback")) { throw rollbackFailure; }
+                if (method.getName().equals("setAutoCommit")) { enabledAutoCommit.set(true); }
+                return invokeJdbc(real, method, arguments);
+            });
+            AssertionError primary = new AssertionError("mutation failed");
+
+            JdbcLifecycleTransactions.restoreAutoCommit(failing, true, primary);
+
+            assertThat(primary.getSuppressed()).containsExactly(rollbackFailure);
+            assertThat(enabledAutoCommit).isFalse();
+            assertThat(real.getAutoCommit()).isFalse();
+            assertThatThrownBy(() -> JdbcLifecycleTransactions.restoreAutoCommit(failing, true, null))
+                    .isSameAs(rollbackFailure);
+            assertThat(enabledAutoCommit).isFalse();
+            real.rollback();
+        }
+    }
+
+    @Test
+    void validationRestorationFailuresDoNotMaskTheOriginalRejectionOrReserveIds() throws Exception {
+        for (int scenario = 0; scenario < 3; scenario++) {
+            boolean invalid = scenario == 2;
+            boolean autoCommitFailure = scenario != 0;
+            var enabled = new java.util.concurrent.atomic.AtomicBoolean();
+            var source = new org.springframework.jdbc.datasource.AbstractDataSource() {
+                public Connection getConnection() throws SQLException {
+                    var real = dataSource.getConnection();
+                    if (!enabled.get()) { return real; }
+                    return jdbcProxy(Connection.class, real, (method, arguments) -> {
+                        if (autoCommitFailure && method.getName().equals("setAutoCommit") && Boolean.TRUE.equals(arguments[0])) {
+                            throw new SQLException("restore auto commit");
+                        }
+                        if (method.getName().equals("createStatement")) {
+                            var statement = real.createStatement();
+                            return jdbcProxy(java.sql.Statement.class, statement, (operation, values) -> {
+                                if (operation.getName().equals("execute") && ((String) values[0]).matches("PRAGMA temp_store=[0-9]+")) {
+                                    throw new SQLException("restore temp store");
+                                }
+                                return invokeJdbc(statement, operation, values);
+                            });
+                        }
+                        return invokeJdbc(real, method, arguments);
+                    });
+                }
+                public Connection getConnection(String username, String password) throws SQLException { return getConnection(); }
+            };
+            var writer = new JdbcCanonicalLifecycleWriter(source, schemas,
+                    List.of(new ArtifactIdAllocatorDefinition("masks", ArtifactIdStrategy.ASCENDING, 1, 1),
+                            new ArtifactIdAllocatorDefinition("hashes", ArtifactIdStrategy.ASCENDING, 1, 1)),
+                    timeSource, new FixedRecordValidityPolicy(TTL), ALLOCATOR_CLOCK, JdbcLifecycleTransactionObserver.NOOP);
+            enabled.set(true);
+            var first = row("same", "a");
+            var confirmation = invalid
+                    ? new CanonicalArtifactConfirmation(new ObservationId("restore-invalid"), "source-key", receipt("restore-invalid", 1),
+                            "masks", publicHeader(), com.iocextractor.application.port.out.artifact.RowSource.of(List.of(first, first)), null)
+                    : command("restore-valid-" + scenario, "masks", receipt("restore-valid-" + scenario, 1), first);
+            if (invalid) {
+                assertThatThrownBy(() -> writer.confirm(confirmation)).hasMessageContaining("duplicate row key")
+                        .satisfies(failure -> assertThat(failure.getSuppressed()).singleElement()
+                                .satisfies(restore -> assertThat(restore.getSuppressed()).extracting(Throwable::getMessage).contains("restore temp store")));
+            } else {
+                assertThatThrownBy(() -> writer.confirm(confirmation)).hasMessage("Cannot validate streamed confirmation")
+                        .cause().hasMessage(autoCommitFailure ? "restore auto commit" : "restore temp store");
+            }
+            assertThat(queryLong("SELECT next_value FROM artifact_id_allocator WHERE artifact='masks'")).isOne();
+            assertThat(queryLong("SELECT COUNT(*) FROM masks")).isZero();
+            assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+        }
+    }
+
+    private static javax.sql.DataSource connectionSource(Connection connection) {
+        return new org.springframework.jdbc.datasource.AbstractDataSource() {
+            public Connection getConnection() { return connection; }
+            public Connection getConnection(String username, String password) { return connection; }
+        };
+    }
+
+    private static <T> T jdbcProxy(Class<T> type, T delegate, JdbcCall call) {
+        return type.cast(java.lang.reflect.Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type},
+                (proxy, method, arguments) -> call.invoke(method, arguments)));
+    }
+
+    private static Object invokeJdbc(Object delegate, java.lang.reflect.Method method, Object[] arguments) throws Throwable {
+        try { return method.invoke(delegate, arguments); }
+        catch (java.lang.reflect.InvocationTargetException failure) { throw failure.getCause(); }
+    }
+
+    @FunctionalInterface private interface JdbcCall {
+        Object invoke(java.lang.reflect.Method method, Object[] arguments) throws Throwable;
+    }
+
+    @Test
+    @Timeout(15)
+    void receiptReplayUsesTheWriterConnectionWhenPoolHasOnlyOneSlot() {
+        dataSource.setMinimumIdle(1);
+        dataSource.setMaximumPoolSize(1);
+        dataSource.setConnectionTimeout(1000);
+        dataSource.getHikariPoolMXBean().softEvictConnections();
+        var writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        writer.confirm(command("original", "masks", receipt("original-receipt", 1), row("a", "a.example")));
+        var original = new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30))
+                .findComplete("source-key", "policy-v1", EffectiveTime.at(START)).orElseThrow().artifacts().getFirst();
+        var replay = new CanonicalArtifactConfirmation(new ObservationId("new-observation"), "source-key",
+                receipt("new-receipt", 1), original.artifactName(), original.header(), original.records(), null);
+        assertThat(writer.confirm(replay).renewed()).isOne();
+        assertThat(original.records().snapshot()).hasSize(1);
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @Test
+    void streamedDuplicateAndCountMismatchFailBeforeIdReservations() throws Exception {
+        var writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        var source = com.iocextractor.application.port.out.artifact.RowSource.of(List.of(row("same", "a"), row("same", "b")));
+        var confirmation = new CanonicalArtifactConfirmation(new ObservationId("invalid-stream"), "source-key",
+                receipt("invalid-stream", 1), "masks", publicHeader(), source, null);
+        assertThatThrownBy(() -> writer.confirm(confirmation)).hasMessageContaining("duplicate row key");
+        var shortSource = new com.iocextractor.application.port.out.artifact.RowSource<CanonicalRecordConfirmation>() {
+            public int size() { return 3; }
+            public com.iocextractor.application.port.out.artifact.RowCursor<CanonicalRecordConfirmation> open() {
+                return com.iocextractor.application.port.out.artifact.RowSource.of(List.of(row("a", "a"), row("b", "b"))).open();
+            }
+        };
+        assertThatThrownBy(() -> writer.confirm(new CanonicalArtifactConfirmation(new ObservationId("short-stream"), "source-key",
+                receipt("short-stream", 1), "masks", publicHeader(), shortSource, null)))
+                .hasMessageContaining("row count mismatch");
+        assertThat(queryLong("SELECT COUNT(*) FROM masks")).isZero();
+        assertThat(queryLong("SELECT next_value FROM artifact_id_allocator WHERE artifact='masks'")).isOne();
+    }
+
+    @Test
+    void committedArtifactCanResumeWithoutReadingAnUnavailablePreparationHandleWhileReceiptIsStaging() {
+        var writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        var receipt = receipt("partial", 2);
+        writer.confirm(command("partial", "masks", receipt, row("a", "a")));
+        var unavailable = new com.iocextractor.application.port.out.artifact.RowSource<CanonicalRecordConfirmation>() {
+            public int size() { return 1; }
+            public com.iocextractor.application.port.out.artifact.RowCursor<CanonicalRecordConfirmation> open() {
+                throw new IllegalStateException("workspace already removed");
+            }
+        };
+        assertThat(writer.confirm(new CanonicalArtifactConfirmation(new ObservationId("partial"), "source-key",
+                receipt, "masks", publicHeader(), unavailable, null)).replayed()).isTrue();
+        writer.confirm(command("partial", "hashes", receipt, row("b", "b")));
+        assertThat(new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30))
+                .findComplete("source-key", "policy-v1", EffectiveTime.at(START))).isPresent();
+    }
+
+    @Test
+    void receiptCursorFailureRollsBackArtifactAndClosesEveryReadWhileReservationsStayBurned() throws Exception {
+        var opens = new AtomicInteger();
+        var closes = new AtomicInteger();
+        var source = failingRecords(5, new IllegalStateException("receipt cursor fault"), opens, closes);
+        var writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        var confirmation = new CanonicalArtifactConfirmation(new ObservationId("cursor-fault"), "source-key",
+                receipt("cursor-fault", 1), "masks", publicHeader(), source, null);
+        assertThatThrownBy(() -> writer.confirm(confirmation)).hasRootCauseMessage("receipt cursor fault");
+        assertThat(opens).hasValue(5);
+        assertThat(closes).hasValue(5);
+        assertThat(queryLong("SELECT COUNT(*) FROM masks")).isZero();
+        assertThat(queryLong("SELECT COUNT(*) FROM confirmation_receipt")).isZero();
+        assertThat(queryLong("SELECT next_value FROM artifact_id_allocator WHERE artifact='masks'")).isEqualTo(3);
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {1, 4, 5})
+    void fatalCursorFailureNeverCommitsPartialRowsOrEvidence(int failedPass) throws Exception {
+        var opens = new AtomicInteger();
+        var closes = new AtomicInteger();
+        var fatal = new AssertionError("fatal row read");
+        var source = failingRecords(failedPass, fatal, opens, closes);
+        var confirmation = new CanonicalArtifactConfirmation(new ObservationId("fatal"), "source-key",
+                receipt("fatal", 1), "masks", publicHeader(), source, null);
+
+        assertThatThrownBy(() -> writer(JdbcLifecycleTransactionObserver.NOOP).confirm(confirmation)).isSameAs(fatal);
+
+        assertThat(opens).hasValue(failedPass);
+        assertThat(closes).hasValue(failedPass);
+        for (String table : List.of("masks", "masks_sources", "canonical_observation_commit", "confirmation_receipt")) {
+            assertThat(queryLong("SELECT COUNT(*) FROM " + table)).as(table).isZero();
+        }
+        assertThat(queryLong("SELECT next_value FROM artifact_id_allocator WHERE artifact='masks'"))
+                .isEqualTo(failedPass == 1 ? 1 : 3);
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    private com.iocextractor.application.port.out.artifact.RowSource<CanonicalRecordConfirmation> failingRecords(
+            int failedPass, Throwable fault, AtomicInteger opens, AtomicInteger closes) {
+        var records = com.iocextractor.application.port.out.artifact.RowSource.of(List.of(row("a", "a"), row("b", "b")));
+        return new com.iocextractor.application.port.out.artifact.RowSource<>() {
+            public int size() { return records.size(); }
+            public com.iocextractor.application.port.out.artifact.RowCursor<CanonicalRecordConfirmation> open() {
+                int pass = opens.incrementAndGet();
+                var delegate = records.open();
+                return new com.iocextractor.application.port.out.artifact.RowCursor<>() {
+                    private int reads;
+                    public boolean next() {
+                        // The mutation pass must write one row before the injected failure.
+                        if (pass == failedPass && ++reads == 2) {
+                            if (fault instanceof Error fatal) { throw fatal; }
+                            throw (RuntimeException) fault;
+                        }
+                        return delegate.next();
+                    }
+                    public CanonicalRecordConfirmation value() { return delegate.value(); }
+                    public void close() { delegate.close(); closes.incrementAndGet(); }
+                };
+            }
+        };
+    }
+
+    @Test
+    void removedEmptyReceiptCannotBeReplayedThroughAnAlreadyIssuedHandle() throws Exception {
+        writer(JdbcLifecycleTransactionObserver.NOOP).confirm(command("empty", "masks", receipt("empty", 1)));
+        var source = new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30))
+                .findComplete("source-key", "policy-v1", EffectiveTime.at(START)).orElseThrow().artifacts().getFirst().records();
+        execute("DELETE FROM confirmation_receipt WHERE receipt_id='empty'");
+        assertThatThrownBy(source::snapshot).hasRootCauseMessage("Complete receipt disappeared before replay");
+    }
+
+    private static List<String> publicHeader() {
+        return List.of("id", "value", "source", "time_first_seen", "time_last_seen");
+    }
+
     @BeforeEach
     void setUp() {
         dataSource = new SqliteDataSourceFactory(new SqlitePragmaPolicy()).create(
@@ -69,6 +573,67 @@ class JdbcCanonicalLifecycleWriterIT {
     @AfterEach
     void close() {
         dataSource.close();
+    }
+
+    @Test
+    void expiryUsesTheEarliestArtifactDeadlineAndLeavesEmptyChecksSilent() {
+        var expiry = new JdbcExpiredArtifactStore(dataSource, schemas);
+        assertThat(expiry.nearestDeadline()).isEmpty();
+        var empty = expiry.expireDue("masks", EffectiveTime.at(START), 1);
+        assertThat(empty.expired()).isZero();
+        assertThat(empty.artifactRevision()).isZero();
+        var writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        writer.confirm(command("deadline-hash", "hashes", receipt("deadline-hash", 1), row("hash", "AABB")));
+        timeSource.set(START.plusSeconds(60));
+        writer.confirm(command("deadline-mask", "masks", receipt("deadline-mask", 1), row("mask", "example.test")));
+
+        assertThat(expiry.nearestDeadline()).get()
+                .satisfies(deadline -> assertThat(deadline.validUntil()).isEqualTo(START.plus(TTL)));
+        assertThat(expiry.expireDue("hashes", EffectiveTime.at(START.plus(TTL)), 1).expired()).isOne();
+        assertThat(expiry.nearestDeadline()).get()
+                .satisfies(deadline -> assertThat(deadline.validUntil()).isEqualTo(START.plus(TTL).plusSeconds(60)));
+    }
+
+    @Test
+    void expiryRejectsInactiveLifecycleAndInvalidRequestsWithoutChangingCanonicalRows() throws Exception {
+        var expiry = new JdbcExpiredArtifactStore(dataSource, schemas);
+        assertThatThrownBy(() -> expiry.expireDue("unknown", EffectiveTime.at(START), 1))
+                .isInstanceOf(IocExtractorException.class).hasMessageContaining("Unknown dataframe artifact");
+        assertThatThrownBy(() -> expiry.expireDue("masks", EffectiveTime.at(START), 0))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new JdbcExpiredArtifactStore(dataSource, List.of(schema("masks"), schema("masks"))))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Duplicate");
+        execute("UPDATE canonical_lifecycle_control SET state='ACTIVATING', activated_at_ms=NULL");
+        assertThatThrownBy(expiry::nearestDeadline).isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("not active");
+        assertThatThrownBy(() -> expiry.expireDue("masks", EffectiveTime.at(START), 1))
+                .isInstanceOf(IocExtractorException.class).hasMessageContaining("not active");
+        assertThat(queryLong("SELECT COUNT(*) FROM masks_history")).isZero();
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @Test
+    void expiryArchiveFailureRollsBackMembershipHistoryAndProjectionGeneration() throws Exception {
+        writer(JdbcLifecycleTransactionObserver.NOOP).confirm(command(
+                "expiry-atomic", "masks", receipt("expiry-atomic", 1), row("expiry-row", "example.test")));
+        long generation = queryLong("SELECT required_generation FROM artifact_projection_state WHERE artifact='masks'");
+        execute("""
+                CREATE TRIGGER reject_expiry_history BEFORE INSERT ON masks_history
+                BEGIN SELECT RAISE(ABORT, 'expiry archive fixture'); END
+                """);
+        var expiry = new JdbcExpiredArtifactStore(dataSource, schemas);
+
+        assertThatThrownBy(() -> expiry.expireDue("masks", EffectiveTime.at(START.plus(TTL)), 1))
+                .isInstanceOf(IocExtractorException.class)
+                .hasRootCauseMessage("[SQLITE_CONSTRAINT_TRIGGER] A RAISE function within a trigger fired, causing the SQL statement to abort (expiry archive fixture)");
+
+        assertThat(queryLong("SELECT COUNT(*) FROM masks")).isOne();
+        assertThat(queryLong("SELECT COUNT(*) FROM masks_history")).isZero();
+        assertThat(queryLong("SELECT required_generation FROM artifact_projection_state WHERE artifact='masks'"))
+                .isEqualTo(generation);
+        execute("DROP TRIGGER reject_expiry_history");
+        assertThat(expiry.expireDue("masks", EffectiveTime.at(START.plus(TTL)), 1).expired()).isOne();
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
     }
 
     @Test
@@ -138,7 +703,7 @@ class JdbcCanonicalLifecycleWriterIT {
         assertThat(snapshot.artifacts()).allSatisfy(artifact -> {
             assertThat(artifact.header())
                     .containsExactly("id", "value", "source", "time_first_seen", "time_last_seen");
-            assertThat(artifact.records()).singleElement().satisfies(record -> {
+            assertThat(artifact.records().snapshot()).singleElement().satisfies(record -> {
                 assertThat(record.preparedRow().template().value("id")).isNull();
                 assertThat(record.preparedRow().template().value("source")).isEqualTo("feed-name");
                 assertThat(record.preparedRow().template().value("time_first_seen")).isNull();
@@ -146,6 +711,11 @@ class JdbcCanonicalLifecycleWriterIT {
         });
         assertThat(store.findComplete(
                 "source-key", "policy-v2", EffectiveTime.at(START))).isEmpty();
+
+        execute("UPDATE confirmation_receipt SET payload_version = 1 "
+                + "WHERE receipt_id = 'receipt-replayable'");
+        assertThat(store.findComplete(
+                "source-key", "policy-v1", EffectiveTime.at(START))).isEmpty();
 
         store.markTerminal(
                 new ObservationId("observation-replayable"),
@@ -440,6 +1010,163 @@ class JdbcCanonicalLifecycleWriterIT {
                 .hasMessageContaining("Canonical observation identity is not writable");
     }
 
+    @Test
+    void ordered_field_uses_admission_order_and_distinguishes_public_from_metadata_changes()
+            throws Exception {
+        JdbcCanonicalLifecycleWriter writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        var registrations = new JdbcObservationRegistrationStore(dataSource, ALLOCATOR_CLOCK);
+        RegisteredObservation older = registrations.registerNew(
+                new ObservationId("ordered-older"), ObservationOrigin.DOCUMENT);
+        RegisteredObservation newer = registrations.registerNew(
+                new ObservationId("ordered-newer"), ObservationOrigin.DOCUMENT);
+
+        var first = writer.confirm(orderedCommand(
+                newer, receipt("ordered-newer-receipt", 1), "new-name", 20));
+        var stale = writer.confirm(orderedCommand(
+                older, receipt("ordered-older-receipt", 1), "old-name", 10));
+        RegisteredObservation newest = registrations.registerNew(
+                new ObservationId("ordered-newest"), ObservationOrigin.DOCUMENT);
+        var sameValue = writer.confirm(orderedCommand(
+                newest, receipt("ordered-newest-receipt", "ordered-policy-v2", 1), "new-name", 30));
+        long newestOrder = newest.admissionOrder().value();
+        RegisteredObservation empty = registrations.registerNew(
+                new ObservationId("ordered-empty"), ObservationOrigin.DOCUMENT);
+        var emptyValue = writer.confirm(orderedCommand(
+                empty, receipt("ordered-empty-receipt", 1), "   ", 40));
+
+        assertThat(first.created()).isOne();
+        assertThat(stale.publicRowsUpdated()).isZero();
+        assertThat(sameValue.publicRowsUpdated()).isZero();
+        assertThat(sameValue.metadataOnlyRows()).isOne();
+        assertThat(sameValue.artifactRevision()).isEqualTo(first.artifactRevision());
+        assertThat(emptyValue.metadataOnlyRows()).isZero();
+        assertThat(queryString("SELECT value FROM masks WHERE row_key = 'ordered-row'"))
+                .isEqualTo("new-name");
+        assertThat(queryLong("SELECT admission_order FROM canonical_lifecycle_field_origin "
+                + "WHERE artifact = 'masks' AND field_name = 'value'"))
+                .isEqualTo(newestOrder);
+        var replayable = new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30))
+                .findComplete("source-key", "ordered-policy-v2", EffectiveTime.at(START))
+                .orElseThrow();
+        assertThat(replayable.artifacts()).singleElement().satisfies(artifact ->
+                assertThat(artifact.records().snapshot()).singleElement().satisfies(record ->
+                        assertThat(record.preparedRow().orderedFieldPositions())
+                                .containsEntry("value", new OccurrencePosition(30))));
+    }
+
+    @Test
+    @Timeout(20)
+    void later_registered_observation_wins_when_it_commits_before_an_older_worker() throws Exception {
+        var registrations = new JdbcObservationRegistrationStore(dataSource, ALLOCATOR_CLOCK);
+        RegisteredObservation older = registrations.registerNew(
+                new ObservationId("concurrent-older"), ObservationOrigin.DOCUMENT);
+        RegisteredObservation newer = registrations.registerNew(
+                new ObservationId("concurrent-newer"), ObservationOrigin.DOCUMENT);
+        CountDownLatch olderReachedWrite = new CountDownLatch(1);
+        CountDownLatch releaseOlder = new CountDownLatch(1);
+        JdbcLifecycleTransactionObserver delayedOlder = (phase, operation, artifact) -> {
+            if (operation == JdbcLifecycleTransactionObserver.Operation.CONFIRM
+                    && phase == JdbcLifecycleTransactionObserver.Phase.BEFORE_WRITE_OWNERSHIP) {
+                olderReachedWrite.countDown();
+                await(releaseOlder, "older ordered confirmation release");
+            }
+        };
+        JdbcCanonicalLifecycleWriter olderWriter = writer(delayedOlder);
+        JdbcCanonicalLifecycleWriter newerWriter = writer(JdbcLifecycleTransactionObserver.NOOP);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var olderCompletion = executor.submit(() -> olderWriter.confirm(orderedCommand(
+                    older, receipt("concurrent-older-receipt", 1), "older", 10)));
+            assertThat(olderReachedWrite.await(5, TimeUnit.SECONDS)).isTrue();
+            var newerCompletion = executor.submit(() -> newerWriter.confirm(orderedCommand(
+                    newer, receipt("concurrent-newer-receipt", 1), "newer", 20)));
+            try {
+                assertThat(newerCompletion.get(5, TimeUnit.SECONDS).created()).isOne();
+            } finally {
+                releaseOlder.countDown();
+            }
+            assertThat(olderCompletion.get(5, TimeUnit.SECONDS).publicRowsUpdated()).isZero();
+        }
+
+        assertThat(queryString("SELECT value FROM masks WHERE row_key = 'ordered-row'"))
+                .isEqualTo("newer");
+        assertThat(queryLong("SELECT admission_order FROM canonical_lifecycle_field_origin "
+                + "WHERE artifact = 'masks' AND field_name = 'value'"))
+                .isEqualTo(newer.admissionOrder().value());
+    }
+
+    @Test
+    void ordered_field_and_origin_rollback_together_when_public_update_fails() throws Exception {
+        JdbcCanonicalLifecycleWriter writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        var registrations = new JdbcObservationRegistrationStore(dataSource, ALLOCATOR_CLOCK);
+        RegisteredObservation first = registrations.registerNew(
+                new ObservationId("atomic-first"), ObservationOrigin.DOCUMENT);
+        writer.confirm(orderedCommand(first, receipt("atomic-first-receipt", 1), "first", 1));
+        long firstOrder = first.admissionOrder().value();
+        execute("""
+                CREATE TRIGGER reject_ordered_update BEFORE UPDATE OF value ON masks
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced ordered update failure');
+                END
+                """);
+        RegisteredObservation second = registrations.registerNew(
+                new ObservationId("atomic-second"), ObservationOrigin.DOCUMENT);
+
+        assertThatThrownBy(() -> writer.confirm(orderedCommand(
+                second, receipt("atomic-second-receipt", 1), "second", 2)))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("Failed lifecycle confirmation");
+
+        assertThat(queryString("SELECT value FROM masks WHERE row_key = 'ordered-row'"))
+                .isEqualTo("first");
+        assertThat(queryLong("SELECT admission_order FROM canonical_lifecycle_field_origin "
+                + "WHERE artifact = 'masks' AND field_name = 'value'"))
+                .isEqualTo(firstOrder);
+        assertThat(queryLong("SELECT COUNT(*) FROM canonical_observation_commit "
+                + "WHERE observation_id = 'atomic-second'"))
+                .isZero();
+        assertThat(queryLong("SELECT COUNT(*) FROM confirmation_receipt "
+                + "WHERE receipt_id = 'atomic-second-receipt'"))
+                .isZero();
+    }
+
+    @Test
+    void expiry_archives_field_origin_and_reappearance_starts_a_new_origin() throws Exception {
+        JdbcCanonicalLifecycleWriter writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        var registrations = new JdbcObservationRegistrationStore(dataSource, ALLOCATOR_CLOCK);
+        RegisteredObservation first = registrations.registerNew(
+                new ObservationId("expiry-first"), ObservationOrigin.DOCUMENT);
+        writer.confirm(orderedCommand(first, receipt("expiry-first-receipt", 1), "first", 1));
+        long oldLifecycle = queryLong("SELECT _lifecycle_id FROM masks WHERE row_key = 'ordered-row'");
+        timeSource.set(START.plus(TTL));
+        RegisteredObservation second = registrations.registerNew(
+                new ObservationId("expiry-second"), ObservationOrigin.DOCUMENT);
+
+        var restarted = writer.confirm(orderedCommand(
+                second, receipt("expiry-second-receipt", 1), "second", 2));
+
+        assertThat(restarted.restarted()).isOne();
+        assertThat(queryLong("SELECT COUNT(*) FROM canonical_lifecycle_field_origin_history "
+                + "WHERE artifact = 'masks' AND lifecycle_id = " + oldLifecycle))
+                .isOne();
+        assertThat(queryLong("SELECT admission_order FROM canonical_lifecycle_field_origin "
+                + "WHERE artifact = 'masks' AND field_name = 'value'"))
+                .isEqualTo(second.admissionOrder().value());
+
+        registrations.markTerminal(first.observationId(), first.namespaceId());
+        assertThat(registrations.purgeTerminal(first)).isFalse();
+        assertThat(new JdbcLifecycleHistoryStore(dataSource, schemas)
+                .purge("masks", EffectiveTime.at(START.plus(TTL)), 10).purged())
+                .isOne();
+        assertThat(registrations.purgeTerminal(first)).isFalse();
+        var receipts = new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30));
+        receipts.markTerminal(first.observationId(), EffectiveTime.at(START.plus(TTL)), Duration.ofDays(30));
+        assertThat(receipts.purgeExpired(
+                EffectiveTime.at(START.plus(TTL).plus(Duration.ofDays(31))), 1).purged())
+                .isOne();
+        assertThat(registrations.purgeTerminal(first)).isTrue();
+    }
+
     private JdbcCanonicalLifecycleWriter writer(JdbcLifecycleTransactionObserver observer) {
         return new JdbcCanonicalLifecycleWriter(
                 dataSource,
@@ -474,6 +1201,27 @@ class JdbcCanonicalLifecycleWriterIT {
                 List.of(records));
     }
 
+    private CanonicalArtifactConfirmation orderedCommand(RegisteredObservation registration,
+                                                          ConfirmationReceiptContext receipt,
+                                                          String value,
+                                                          long position) {
+        LinkedHashMap<String, String> values = new LinkedHashMap<>();
+        values.put("id", null);
+        values.put("value", value);
+        values.put("source", "feed-name");
+        values.put("time_first_seen", null);
+        values.put("time_last_seen", null);
+        var record = new CanonicalRecordConfirmation(
+                new ArtifactRowKey("ordered-row"),
+                new PreparedArtifactRow(
+                        ArtifactRow.ordered(values), Optional.of("id"),
+                        Map.of("value", new OccurrencePosition(position))));
+        return new CanonicalArtifactConfirmation(
+                registration.observationId(), "source-key", receipt, "masks",
+                List.of("id", "value", "source", "time_first_seen", "time_last_seen"),
+                List.of(record), registration);
+    }
+
     private CanonicalRecordConfirmation row(String rowKey, String value) {
         LinkedHashMap<String, String> values = new LinkedHashMap<>();
         values.put("id", null);
@@ -502,8 +1250,12 @@ class JdbcCanonicalLifecycleWriterIT {
     }
 
     private ConfirmationReceiptContext receipt(String id, int expectedArtifacts) {
+        return receipt(id, "policy-v1", expectedArtifacts);
+    }
+
+    private ConfirmationReceiptContext receipt(String id, String policy, int expectedArtifacts) {
         return new ConfirmationReceiptContext(
-                new ConfirmationReceiptId(id), "policy-v1", expectedArtifacts, Duration.ofDays(30));
+                new ConfirmationReceiptId(id), policy, expectedArtifacts, Duration.ofDays(30));
     }
 
     private DataframeArtifactSchema schema(String artifact) {

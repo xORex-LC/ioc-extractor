@@ -97,7 +97,7 @@ public final class JdbcArtifactIdentityStore implements ArtifactIdentityStore {
         boolean previousAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
         List<EpochBump> epochBumps = new ArrayList<>();
-        Exception failure = null;
+        Throwable failure = null;
         try {
             List<ArtifactIdentityDefinition> pending = new ArrayList<>();
             for (ArtifactIdentityDefinition definition : definitions) {
@@ -118,12 +118,12 @@ public final class JdbcArtifactIdentityStore implements ArtifactIdentityStore {
                 applyStagedMigration(connection, pending);
             }
             connection.commit();
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | RuntimeException | Error e) {
             failure = e;
-            rollback(connection, e);
+            JdbcLifecycleTransactions.rollback(connection, e);
             throw e;
         } finally {
-            restoreAutoCommit(connection, previousAutoCommit, failure);
+            JdbcLifecycleTransactions.restoreAutoCommit(connection, previousAutoCommit, failure);
         }
         epochBumps.forEach(bump -> emitEpochBump(bump.stored(), bump.definition()));
         return definitions.stream()
@@ -485,26 +485,6 @@ public final class JdbcArtifactIdentityStore implements ArtifactIdentityStore {
                 .field(LogField.IOC_IDENTITY_EPOCH, definition.epoch())
                 .message("artifact identity epoch bumped")
                 .log();
-    }
-
-    private void rollback(Connection connection, Exception original) throws SQLException {
-        try {
-            connection.rollback();
-        } catch (SQLException rollbackFailure) {
-            original.addSuppressed(rollbackFailure);
-        }
-    }
-
-    private void restoreAutoCommit(Connection connection, boolean previous, Exception original) throws SQLException {
-        try {
-            connection.setAutoCommit(previous);
-        } catch (SQLException restoreFailure) {
-            if (original != null) {
-                original.addSuppressed(restoreFailure);
-            } else {
-                throw restoreFailure;
-            }
-        }
     }
 
     private String quote(String identifier) {

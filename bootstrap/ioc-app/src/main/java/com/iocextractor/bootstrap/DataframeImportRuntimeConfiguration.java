@@ -1,8 +1,11 @@
 package com.iocextractor.bootstrap;
 
+
 import com.iocextractor.adapter.in.csv.CommonsCsvDelimitedRecordReader;
+import com.iocextractor.application.port.out.artifact.ArtifactIdBaseline;
 import com.iocextractor.adapter.in.csv.CommonsCsvImportValueTransformRegistry;
-import com.iocextractor.adapter.in.csv.CsvProcessedImportRowPreparer;
+import com.iocextractor.adapter.processing.camel.runtime.CamelRouteRuntime;
+import com.iocextractor.adapter.in.csv.CsvImportValueValidatorRegistry;
 import com.iocextractor.adapter.in.csv.ImportSnapshotPathResolver;
 import com.iocextractor.adapter.in.ingest.LocalImportChangeSignalSource;
 import com.iocextractor.adapter.in.ingest.LocalImportSourceDefinition;
@@ -15,6 +18,7 @@ import com.iocextractor.adapter.out.store.jdbc.JdbcImportDeliveryLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcImportStatusReader;
 import com.iocextractor.adapter.out.store.jdbc.JdbcImportWorkspace;
 import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleClock;
+import com.iocextractor.adapter.out.store.jdbc.JdbcObservationAdmissionReferenceStore;
 import com.iocextractor.adapter.out.store.jdbc.JdbcWriterAdmission;
 import com.iocextractor.adapter.out.store.jdbc.SchemaMigrationResult;
 import com.iocextractor.adapter.out.transport.smb.SmbChangeNotifyWatcher;
@@ -24,7 +28,7 @@ import com.iocextractor.adapter.out.transport.smb.SmbManagedImportSourceLifecycl
 import com.iocextractor.adapter.out.transport.smb.SmbSessionPool;
 import com.iocextractor.application.artifact.CanonicalArtifactKeyResolver;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
-import com.iocextractor.application.classification.IndicatorClassifier;
+import com.iocextractor.processing.classification.IndicatorClassifier;
 import com.iocextractor.application.dataframeimport.DataframeImportAdmissionService;
 import com.iocextractor.application.dataframeimport.DataframeImportDetectionCoordinator;
 import com.iocextractor.application.dataframeimport.DataframeImportDetectionService;
@@ -50,6 +54,7 @@ import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
 import com.iocextractor.application.dataframeimport.model.ImportTerminalRetentionTarget;
 import com.iocextractor.application.dataframeimport.model.ImportWorkspaceLimits;
 import com.iocextractor.application.maintenance.RetentionAction;
+import com.iocextractor.application.observation.ManagedImportObservationAdmission;
 import com.iocextractor.application.port.in.dataframeimport.AdmitDataframeImportUseCase;
 import com.iocextractor.application.port.in.dataframeimport.ProcessNextDataframeImportUseCase;
 import com.iocextractor.application.port.in.dataframeimport.QueryDataframeImportStatusUseCase;
@@ -72,7 +77,8 @@ import com.iocextractor.application.port.out.dataframeimport.ImportValueTransfor
 import com.iocextractor.application.port.out.dataframeimport.ImportWorkspace;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
 import com.iocextractor.application.port.out.dataframeimport.ProcessedImportRowPreparer;
-import com.iocextractor.application.port.out.artifact.ArtifactIdBaseline;
+import com.iocextractor.application.port.out.dataframeimport.ImportValueValidatorRegistry;
+import com.iocextractor.application.port.out.observation.ObservationRegistrationStore;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.platform.concurrent.BoundedKeyedSerialExecutor;
 import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
@@ -103,6 +109,18 @@ import java.util.concurrent.Executors;
 @ConditionalOnServiceStorage
 @ConditionalOnProperty(prefix = "ioc.dataframe-import", name = "enabled", havingValue = "true")
 class DataframeImportRuntimeConfiguration {
+
+    @Bean
+    ManagedImportObservationAdmission managedImportObservationAdmission(
+            ObservationRegistrationStore registrations,
+            LazyServiceStorage serviceStorage,
+            Clock clock) {
+        serviceStorage.migration();
+        return new ManagedImportObservationAdmission(
+                registrations,
+                new JdbcObservationAdmissionReferenceStore(serviceStorage.dataSource(), clock),
+                clock);
+    }
 
     @Bean
     ImportWorkspaceLimits dataframeImportWorkspaceLimits() {
@@ -207,6 +225,16 @@ class DataframeImportRuntimeConfiguration {
     }
 
     @Bean
+    ImportValueValidatorRegistry dataframeImportValidators(
+            Refanger refanger,
+            IndicatorExtractor extractor,
+            MatchPolicy matchPolicy) {
+        return new CsvImportValueValidatorRegistry(
+                refanger, extractor, new IndicatorClassifier(matchPolicy),
+                ConfigRegistryCatalog.artifactFilters());
+    }
+
+    @Bean
     DataframeImportRecognizer dataframeImportRecognizer(
             DataframeImportCatalog catalog,
             DelimitedRecordReader reader) {
@@ -215,27 +243,44 @@ class DataframeImportRuntimeConfiguration {
 
     @Bean
     ProcessedImportRowPreparer dataframeImportProcessedRowPreparer(
-            AppConfig appConfig,
-            IocProperties properties,
-            ArtifactIdBaseline artifactIdBaseline,
             Refanger refanger,
             IndicatorExtractor extractor,
-            MatchPolicy matchPolicy) {
-        CanonicalArtifactKeyResolver keys = new CanonicalArtifactKeyResolver(
-                appConfig.artifactIdentityDefinitions(properties));
-        return new CsvProcessedImportRowPreparer(
-                appConfig.artifactDefinitions(properties, artifactIdBaseline),
-                refanger, extractor, new IndicatorClassifier(matchPolicy), keys);
+            MatchPolicy matchPolicy,
+            ProcessingPlanBindings bindings,
+            DataframeImportCatalog catalog,
+            org.springframework.beans.factory.ObjectProvider<CamelRouteRuntime> routerRuntime,
+            Clock clock) {
+        var classifier = new IndicatorClassifier(matchPolicy);
+        Map<String, ProcessedImportRowPreparer> routed = new LinkedHashMap<>();
+        catalog.contracts().values().forEach(contract -> {
+            var route = contract.definition().processedRoute();
+            if (route == null) {
+                return;
+            }
+            var inputs = route.inputs().stream()
+                    .map(input -> new RouterProcessedImportRowPreparer.Input(
+                            input.artifact(), input.target())).toList();
+            Map<String, Set<String>> outputs = new LinkedHashMap<>();
+            route.outputs().forEach(output -> outputs.put(output.artifact(),
+                    new java.util.LinkedHashSet<>(output.targets())));
+            var adapter = new IocProcessingRouteAdapter(bindings.plans().get(route.plan()),
+                    routerRuntime.getObject(), clock);
+            routed.put(contract.id().value(), new RouterProcessedImportRowPreparer(
+                    contract, inputs, outputs, refanger, extractor,
+                    classifier, adapter));
+        });
+        return new SelectedProcessedImportRowPreparer(routed);
     }
 
     @Bean
     DataframeImportRowMapper dataframeImportRowMapper(
             ImportValueTransformRegistry transforms,
+            ImportValueValidatorRegistry validators,
             ProcessedImportRowPreparer processed,
             AppConfig appConfig,
             IocProperties properties) {
         return new DataframeImportRowMapper(
-                transforms,
+                transforms, validators,
                 new CanonicalArtifactKeyResolver(appConfig.artifactIdentityDefinitions(properties)),
                 processed);
     }
@@ -302,7 +347,8 @@ class DataframeImportRuntimeConfiguration {
                 lifecycleClock,
                 new FixedRecordValidityPolicy(properties.lifecycle().validity().fixedTtl()),
                 clock,
-                writerAdmission);
+                writerAdmission,
+                ArtifactPolicyCatalog.compile(properties));
         return new EventPublishingCanonicalImportWriter(writer, events);
     }
 
@@ -326,8 +372,10 @@ class DataframeImportRuntimeConfiguration {
             ImportDeliveryLedger ledger,
             CanonicalImportWriter writer,
             Clock clock,
-            DataframeImportObserver observer) {
-        return new DataframeImportPromotionService(ledger, writer, clock, observer);
+            DataframeImportObserver observer,
+            ManagedImportObservationAdmission observationAdmission) {
+        return new DataframeImportPromotionService(
+                ledger, writer, clock, observer, observationAdmission);
     }
 
     @Bean
@@ -338,10 +386,12 @@ class DataframeImportRuntimeConfiguration {
             LocalImportTerminalStore terminals,
             IocProperties properties,
             Clock clock,
-            DataframeImportObserver observer) {
+            DataframeImportObserver observer,
+            ManagedImportObservationAdmission observationAdmission) {
         return new DataframeImportAdmissionService(
                 ledger, sources, events, clock,
-                properties.dataframeImport().runtime().retry().delay(), terminals, observer);
+                properties.dataframeImport().runtime().retry().delay(), terminals, observer,
+                observationAdmission);
     }
 
     @Bean
@@ -355,18 +405,21 @@ class DataframeImportRuntimeConfiguration {
             ManagedImportSourceLifecycle sources,
             IocProperties properties,
             Clock clock,
-            DataframeImportObserver observer) {
+            DataframeImportObserver observer,
+            ManagedImportObservationAdmission observationAdmission) {
         return new DataframeImportProcessingService(
                 ledger, staging, promotion, workspace, commits, terminals, sources, clock,
-                properties.dataframeImport().runtime().retry().delay(), observer);
+                properties.dataframeImport().runtime().retry().delay(), observer,
+                observationAdmission);
     }
 
     @Bean
     RecoverDataframeImportsUseCase recoverDataframeImportsUseCase(
             DataframeImportAdmissionService admission,
             @Qualifier("processNextDataframeImportUseCase")
-            ProcessNextDataframeImportUseCase processor) {
-        return new DataframeImportRecoveryService(admission, processor);
+            ProcessNextDataframeImportUseCase processor,
+            ManagedImportObservationAdmission observationAdmission) {
+        return new DataframeImportRecoveryService(admission, processor, observationAdmission);
     }
 
     @Bean

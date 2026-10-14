@@ -20,4 +20,9 @@ public interface SourceReader {
      * @throws DiagnosticException if the source cannot be read or parsed
      */
     String readText(Path source);
+
+    /** Streams decoded text; the caller owns and closes the output writer. */
+    default void readText(Path source, java.io.Writer output) {
+        throw new UnsupportedOperationException("Streaming source read is required for document processing");
+    }
 }

@@ -14,6 +14,7 @@
 |---|---|
 | `ioc-domain/` | IOC bounded context and domain capabilities |
 | `ioc-application/` | Use cases, ports and IOC ETL stages |
+| `ioc-application-tck/` | Reusable contract tests and composed test annotations for application ports |
 
 ## Зависимости
 

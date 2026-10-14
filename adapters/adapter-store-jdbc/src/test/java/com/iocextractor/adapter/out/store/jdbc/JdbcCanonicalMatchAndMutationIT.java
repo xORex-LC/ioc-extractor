@@ -9,6 +9,7 @@ import com.iocextractor.application.artifact.CanonicalKeyMode;
 import com.iocextractor.application.artifact.CanonicalMatchCardinality;
 import com.iocextractor.application.artifact.CanonicalMatchRequest;
 import com.iocextractor.application.artifact.CanonicalRecordMutationKind;
+import com.iocextractor.application.artifact.CanonicalKeyMaterial;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
 import com.iocextractor.common.IocExtractorException;
@@ -16,6 +17,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
@@ -24,12 +26,17 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @IntegrationTest
+@Timeout(20)
 class JdbcCanonicalMatchAndMutationIT {
 
     private static final Instant START = Instant.parse("2026-08-23T00:00:00Z");
@@ -65,6 +72,263 @@ class JdbcCanonicalMatchAndMutationIT {
     @AfterEach
     void close() {
         dataSource.close();
+    }
+
+    @Test
+    void matching_sessions_rebind_requests_and_isolate_temp_state_between_connections() throws Exception {
+        var planner = new JdbcCanonicalMatchPlanner(dataSource, List.of(schema));
+        var resolver = new CanonicalArtifactKeyResolver(List.of(identity));
+        var asOf = EffectiveTime.at(START.plusMillis(500));
+        var one = request("same-request-id", resolver, row("one.example", null), true);
+        var two = request("same-request-id", resolver, row("two.example", null), true);
+        var many = request("many", resolver, row("unused.example", "shared"), false);
+        try (var first = dataSource.getConnection(); var second = dataSource.getConnection();
+             var left = planner.openSession(first, schema, asOf);
+             var right = planner.openSession(second, schema, asOf)) {
+            assertThat(left.plan(List.of(one)).getFirst().candidates())
+                    .extracting(candidate -> candidate.canonicalRowId()).containsExactly(11L);
+            assertThat(queryLong(first, "SELECT COUNT(*) FROM sqlite_temp_master WHERE name='ioc_match_request'"))
+                    .isZero();
+            assertThat(left.plan(List.of(many, one)).getFirst().candidates())
+                    .extracting(candidate -> candidate.canonicalRowId()).containsExactly(11L, 12L);
+            assertThat(right.plan(List.of(two, many)).getFirst().candidates())
+                    .extracting(candidate -> candidate.canonicalRowId()).containsExactly(12L);
+            assertThat(left.plan(List.of(two)).getFirst().candidates())
+                    .extracting(candidate -> candidate.canonicalRowId()).containsExactly(12L);
+            assertThat(left.plan(List.of(new CanonicalMatchRequest("empty", List.of()))).getFirst().candidates())
+                    .isEmpty();
+            left.close();
+            assertThat(queryLong(first, "SELECT COUNT(*) FROM sqlite_temp_master WHERE name='ioc_match_request'"))
+                    .isZero();
+            assertThatThrownBy(() -> left.plan(List.of())).isInstanceOf(IllegalStateException.class);
+            assertThat(right.plan(List.of(many, two)).getFirst().candidates())
+                    .extracting(candidate -> candidate.canonicalRowId()).containsExactly(11L, 12L);
+        }
+    }
+
+    @Test
+    void chunk_boundaries_preserve_duplicate_request_id_union_and_candidate_order() throws Exception {
+        var planner = new JdbcCanonicalMatchPlanner(dataSource, List.of(schema));
+        var resolver = new CanonicalArtifactKeyResolver(List.of(identity));
+        var requests = new ArrayList<CanonicalMatchRequest>();
+        requests.add(request("repeated", resolver, row("two.example", null), true));
+        for (int index = 1; index < 300; index++) {
+            requests.add(new CanonicalMatchRequest("empty-" + index, List.of()));
+        }
+        requests.add(request("repeated", resolver, row("one.example", null), true));
+        try (var connection = dataSource.getConnection();
+             var session = planner.openSession(connection, schema, EffectiveTime.at(START.plusMillis(500)))) {
+            var plans = session.plan(requests);
+            assertThat(plans).hasSize(301);
+            assertThat(plans.getFirst().candidates()).extracting(candidate -> candidate.canonicalRowId())
+                    .containsExactly(12L, 11L);
+            assertThat(plans.getLast()).isEqualTo(plans.getFirst());
+            assertThat(plans.subList(1, 300)).allSatisfy(plan -> assertThat(plan.candidates()).isEmpty());
+        }
+    }
+
+    @Test
+    void mutation_session_failure_rolls_back_and_a_fresh_session_can_retry_on_the_connection() throws Exception {
+        var engine = new JdbcCanonicalMutationEngine(dataSource, List.of(schema), List.of(identity));
+        var asOf = EffectiveTime.at(START.plusMillis(300));
+        var validity = new FixedRecordValidityPolicy(Duration.ofHours(1)).decide(asOf);
+        try (var connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try (var session = engine.openSession(connection, schema, asOf, validity)) {
+                assertThat(session.mutateExisting(11L, row("one.example", "rollback-source"), true, "import:test")
+                        .kind()).isEqualTo(CanonicalRecordMutationKind.UPDATED);
+                assertThatThrownBy(() -> session.mutateExisting(11L, row("different.example", null), false, null))
+                        .isInstanceOf(IocExtractorException.class);
+            }
+            connection.rollback();
+            try (var session = engine.openSession(connection, schema, asOf, validity)) {
+                assertThat(session.mutateExisting(11L, row("one.example", "shared"), false, null).kind())
+                        .isEqualTo(CanonicalRecordMutationKind.NO_OP);
+                assertThat(session.mutateExisting(11L, row("one.example", "retry-source"), false, "import:test")
+                        .kind()).isEqualTo(CanonicalRecordMutationKind.UPDATED);
+            }
+            connection.commit();
+            assertThat(queryLong(connection, "SELECT COUNT(*) FROM masks_sources WHERE source_key='import:test'"))
+                    .isEqualTo(1);
+        }
+    }
+
+    @Test
+    void mutation_sessions_require_a_transaction_and_reject_cross_thread_or_closed_use() throws Exception {
+        var engine = new JdbcCanonicalMutationEngine(dataSource, List.of(schema), List.of(identity));
+        var asOf = EffectiveTime.at(START.plusMillis(300));
+        var validity = new FixedRecordValidityPolicy(Duration.ofHours(1)).decide(asOf);
+        try (var connection = dataSource.getConnection()) {
+            assertThatThrownBy(() -> engine.openSession(connection, schema, asOf, validity))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("Mutation session requires a caller-owned transaction");
+            connection.setAutoCommit(false);
+            try (var sessions = new JdbcCanonicalMutationSessions(engine, connection, asOf, validity)) {
+                var session = sessions.forArtifact(schema);
+                assertThat(sessions.forArtifact(schema)).isSameAs(session);
+                var worker = Executors.newSingleThreadExecutor();
+                try {
+                    worker.submit(() -> {
+                        assertThatThrownBy(() -> sessions.forArtifact(schema))
+                                .isInstanceOf(IllegalStateException.class).hasMessageContaining("another thread");
+                        assertThatThrownBy(sessions::close)
+                                .isInstanceOf(IllegalStateException.class).hasMessageContaining("another thread");
+                    }).get(3, TimeUnit.SECONDS);
+                } finally {
+                    worker.shutdownNow();
+                    assertThat(worker.awaitTermination(3, TimeUnit.SECONDS)).isTrue();
+                }
+                assertThat(session.mutateExisting(11L, row("one.example", "transaction-owned"), false, null)
+                        .kind()).isEqualTo(CanonicalRecordMutationKind.UPDATED);
+                sessions.close();
+                assertThatThrownBy(() -> sessions.forArtifact(schema))
+                        .isInstanceOf(IllegalStateException.class).hasMessage("Canonical mutation sessions are closed");
+            }
+            assertThat(connection.isClosed()).isFalse();
+            assertThat(connection.getAutoCommit()).isFalse();
+            connection.rollback();
+            try (var session = engine.openSession(connection, schema, asOf, validity)) {
+                assertThat(session.mutateExisting(11L, row("one.example", "shared"), false, null).kind())
+                        .isEqualTo(CanonicalRecordMutationKind.NO_OP);
+            }
+        }
+    }
+
+    @Test
+    void rejects_missing_canonical_rows_and_corrupt_lifecycle_metadata() throws Exception {
+        var reader = new JdbcCanonicalStoredRowReader(schema);
+        try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement(reader.sql())) {
+            assertThatThrownBy(() -> reader.load(statement, 999L)).isInstanceOf(IocExtractorException.class)
+                    .hasMessageContaining("missing row");
+            connection.setAutoCommit(false);
+            try (var update = connection.createStatement()) {
+                for (String invalid : List.of("_lifecycle_id=NULL", "_lifecycle_id=0",
+                        "_first_confirmed_at_epoch_ms=_last_confirmed_at_epoch_ms+1",
+                        "_last_confirmed_at_epoch_ms=_valid_until_epoch_ms")) {
+                    update.executeUpdate("UPDATE masks SET " + invalid + " WHERE id=11");
+                    assertThatThrownBy(() -> reader.load(statement, 11L)).isInstanceOf(IocExtractorException.class)
+                            .hasMessageContaining("metadata");
+                    connection.rollback();
+                }
+            }
+            assertThat(reader.load(statement, 11L).publicRow()).isEqualTo(row("one.example", "shared"));
+        }
+    }
+
+    @Test
+    void empty_requests_and_requests_without_usable_keys_have_no_candidates() {
+        var planner = new JdbcCanonicalMatchPlanner(dataSource, List.of(schema));
+        var asOf = EffectiveTime.at(START.plusMillis(500));
+
+        assertThat(planner.plan("masks", asOf, List.of())).isEmpty();
+        assertThat(planner.plan("masks", asOf, List.of(new CanonicalMatchRequest("empty", List.of()))))
+                .singleElement().satisfies(plan -> {
+                    assertThat(plan.requestId()).isEqualTo("empty");
+                    assertThat(plan.cardinality()).isEqualTo(CanonicalMatchCardinality.ZERO);
+                });
+    }
+
+    @Test
+    void unions_multiple_keys_without_repeating_candidates_and_preserves_request_order() {
+        var resolver = new CanonicalArtifactKeyResolver(List.of(identity));
+        var keys = resolver.matchKeysOf("masks", row("one.example", "shared"));
+        var planner = new JdbcCanonicalMatchPlanner(dataSource, List.of(schema));
+
+        var plans = planner.plan("masks", EffectiveTime.at(START.plusMillis(500)), List.of(
+                new CanonicalMatchRequest("z-last-name-first", List.of(keys.get(0), keys.get(1), keys.get(0))),
+                new CanonicalMatchRequest("a-first-name-last", List.of(keys.get(0)))));
+
+        assertThat(plans).extracting(plan -> plan.requestId())
+                .containsExactly("z-last-name-first", "a-first-name-last");
+        assertThat(plans.get(0).candidates()).extracting(candidate -> candidate.canonicalRowId())
+                .containsExactly(11L, 12L);
+        assertThat(plans.get(1).candidates()).extracting(candidate -> candidate.canonicalRowId())
+                .containsExactly(11L);
+    }
+
+    @Test
+    void ignores_other_definitions_artifacts_and_stale_lifecycle_aliases() throws Exception {
+        var resolver = new CanonicalArtifactKeyResolver(List.of(identity));
+        var key = resolver.matchKeysOf("masks", row("one.example", null)).getFirst();
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.executeUpdate("""
+                    INSERT INTO canonical_match_definition(
+                        artifact, definition_id, definition_fingerprint, identity_epoch, activated_at_ms)
+                    VALUES ('other_artifact', 'mask-v1', 'test', 1, 0),
+                           ('masks', 'other-definition', 'test', 1, 0)
+                    """);
+        }
+        try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement("""
+                INSERT INTO canonical_match_alias
+                VALUES (?, ?, ?, ?, ?, ?)
+                """)) {
+            for (var values : List.of(
+                    List.<Object>of("other_artifact", key.definitionId(), key.keyHash(), key.keyCanonical(), 102L, 12L),
+                    List.<Object>of("masks", "other-definition", key.keyHash(), key.keyCanonical(), 102L, 12L),
+                    List.<Object>of("masks", key.definitionId(), key.keyHash(), key.keyCanonical(), 999L, 12L))) {
+                JdbcSql.bind(statement, values);
+                statement.executeUpdate();
+            }
+        }
+        var planner = new JdbcCanonicalMatchPlanner(dataSource, List.of(schema));
+        var plan = planner.plan("masks", EffectiveTime.at(START.plusMillis(500)),
+                List.of(new CanonicalMatchRequest("isolated", List.of(key)))).getFirst();
+
+        assertThat(plan.candidates()).extracting(candidate -> candidate.canonicalRowId()).containsExactly(11L);
+        var otherDefinition = new CanonicalKeyMaterial("missing-definition", key.keyHash(), key.keyCanonical());
+        assertThat(planner.plan("masks", EffectiveTime.at(START.plusMillis(500)),
+                List.of(new CanonicalMatchRequest("missing", List.of(otherDefinition))))
+                .getFirst().cardinality()).isEqualTo(CanonicalMatchCardinality.ZERO);
+    }
+
+    @Test
+    void later_requests_see_alias_changes_in_the_same_transaction_and_rollback_restores_them() throws Exception {
+        var engine = new JdbcCanonicalMutationEngine(dataSource, List.of(schema), List.of(identity));
+        var planner = new JdbcCanonicalMatchPlanner(dataSource, List.of(schema));
+        var resolver = new CanonicalArtifactKeyResolver(List.of(identity));
+        var asOf = EffectiveTime.at(START.plusMillis(300));
+        var validity = new FixedRecordValidityPolicy(Duration.ofHours(1)).decide(asOf);
+        var changed = request("changed", resolver, row("one.example", "new-alias"), false);
+        var old = request("old", resolver, row("unused.example", "shared"), false);
+        try (var connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            engine.mutateExisting(connection, schema, 11L, row("one.example", "new-alias"), false, asOf, validity);
+            var plans = planner.plan(connection, schema, asOf, List.of(changed, old));
+            assertThat(plans.get(0).candidates()).extracting(candidate -> candidate.canonicalRowId()).containsExactly(11L);
+            assertThat(plans.get(1).candidates()).extracting(candidate -> candidate.canonicalRowId()).containsExactly(12L);
+            connection.rollback();
+        }
+        assertThat(planner.plan("masks", asOf, List.of(changed)).getFirst().cardinality())
+                .isEqualTo(CanonicalMatchCardinality.ZERO);
+        assertThat(planner.plan("masks", asOf, List.of(old)).getFirst().candidates())
+                .extracting(candidate -> candidate.canonicalRowId()).containsExactly(11L, 12L);
+    }
+
+    @Test
+    void later_requests_see_new_aliases_before_commit_without_exposing_them_to_another_connection()
+            throws Exception {
+        var engine = new JdbcCanonicalMutationEngine(dataSource, List.of(schema), List.of(identity));
+        var planner = new JdbcCanonicalMatchPlanner(dataSource, List.of(schema));
+        var resolver = new CanonicalArtifactKeyResolver(List.of(identity));
+        var incoming = row("inserted.example", "insert-source");
+        var asOf = EffectiveTime.at(START.plusMillis(300));
+        var validity = new FixedRecordValidityPolicy(Duration.ofHours(1)).decide(asOf);
+        var request = request("inserted", resolver, incoming, true);
+        var recordKey = new com.iocextractor.application.artifact.ArtifactRowKey(
+                resolver.recordKeyOf("masks", incoming).orElseThrow().keyHash());
+        try (var writer = dataSource.getConnection()) {
+            writer.setAutoCommit(false);
+            var inserted = engine.insertPlanned(writer, schema, "document", incoming, recordKey,
+                    new com.iocextractor.application.artifact.lifecycle.LifecycleId(104), asOf, validity);
+            assertThat(planner.plan(writer, schema, asOf, List.of(request)).getFirst().candidates())
+                    .extracting(candidate -> candidate.canonicalRowId())
+                    .containsExactly(inserted.canonicalRowId());
+            assertThat(planner.plan("masks", asOf, List.of(request)).getFirst().cardinality())
+                    .isEqualTo(CanonicalMatchCardinality.ZERO);
+            writer.rollback();
+        }
+        assertThat(planner.plan("masks", asOf, List.of(request)).getFirst().cardinality())
+                .isEqualTo(CanonicalMatchCardinality.ZERO);
     }
 
     @Test
@@ -152,6 +416,47 @@ class JdbcCanonicalMatchAndMutationIT {
                     .hasMessageContaining("record key must contain at least one value");
 
             connection.rollback();
+        }
+    }
+
+    @Test
+    void nativePreparationRejectsExpiredIdentityChangesAndAmbiguousOrdinaryMatchesBeforeMutation() throws Exception {
+        var engine = new JdbcCanonicalMutationEngine(dataSource, List.of(schema), List.of(identity));
+        var currentTime = EffectiveTime.at(START.plusMillis(300));
+        var validity = new FixedRecordValidityPolicy(Duration.ofHours(1)).decide(currentTime);
+        try (var connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try (var session = engine.openSession(connection, schema, currentTime, validity)) {
+                var prepared = new com.iocextractor.application.artifact.PreparedArtifactRow(row("one.example", "shared"), Optional.empty());
+                var key = engine.loadForImport(connection, schema, 11).rowKey();
+                var confirmation = new com.iocextractor.application.artifact.lifecycle.CanonicalRecordConfirmation(key, prepared);
+                assertThatThrownBy(() -> session.confirm("new-feed", confirmation, null,
+                        new com.iocextractor.application.artifact.lifecycle.LifecycleId(900), null))
+                        .hasMessageContaining("Multiple active canonical matches");
+                assertThatThrownBy(() -> session.mutateExisting(11, row("changed.example", "shared"), false, null))
+                        .hasMessageContaining("record-key mutation");
+                assertThatThrownBy(() -> session.mutateExistingOrdered(11, row("changed.example", "shared"),
+                        prepared, false, "new-feed", null)).hasMessageContaining("record-key mutation");
+                assertThatThrownBy(() -> session.insertPlanned("new-feed", row("one.example", "shared"), key,
+                        new com.iocextractor.application.artifact.lifecycle.LifecycleId(900)))
+                        .hasMessageContaining("Active canonical record-key collision");
+            }
+            connection.rollback();
+            var expiredAt = EffectiveTime.at(START.plusMillis(500));
+            try (var session = engine.openSession(connection, schema, expiredAt, validity)) {
+                var prepared = new com.iocextractor.application.artifact.PreparedArtifactRow(row("boundary.example", "changed"), Optional.empty());
+                assertThatThrownBy(() -> session.mutateExisting(13, prepared.template(), true, null))
+                        .hasMessageContaining("expired canonical lifecycle");
+                assertThatThrownBy(() -> session.mutateExistingOrdered(13, prepared.template(), prepared, true, "new-feed", null))
+                        .hasMessageContaining("expired canonical lifecycle");
+                var key = engine.loadForImport(connection, schema, 13).rowKey();
+                assertThat(session.insertPlanned("new-feed", prepared.template(), key,
+                        new com.iocextractor.application.artifact.lifecycle.LifecycleId(900)).kind())
+                        .isEqualTo(CanonicalRecordMutationKind.RESTARTED);
+            }
+            connection.rollback();
+            assertThat(queryLong(connection, "SELECT COUNT(*) FROM masks")).isEqualTo(3);
+            assertThat(queryLong(connection, "SELECT COUNT(*) FROM masks_history")).isZero();
         }
     }
 

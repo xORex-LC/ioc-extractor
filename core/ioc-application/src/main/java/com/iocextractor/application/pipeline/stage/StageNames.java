@@ -23,13 +23,10 @@ public final class StageNames {
     /** Source attribution. */
     public static final StageId ATTRIBUTE = new StageId("ATTRIBUTE");
 
-    /** Feature extraction and mask classification. */
-    public static final StageId CLASSIFY = new StageId("CLASSIFY");
-
-    /** De-duplication. */
+    /** Source-observation de-duplication diagnostic context within preparation. */
     public static final StageId DEDUPLICATE = new StageId("DEDUPLICATE");
 
-    /** Side-effect-free artifact filtering and row mapping. */
+    /** Configured routing/classification, observation selection and side-effect-free row mapping. */
     public static final StageId PREPARE_ARTIFACTS = new StageId("PREPARE_ARTIFACTS");
 
     /** Artifact writing. */

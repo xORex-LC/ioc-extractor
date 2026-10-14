@@ -57,6 +57,22 @@ class EnvelopeTest {
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 
+    @Test
+    void bounded_stage_counts_survive_every_envelope_copy_and_extend_only_with_new_occurrences() {
+        var collector = new com.iocextractor.diagnostics.result.BoundedDiagnosticCollector(1);
+        collector.add(diagnostic());
+        collector.add(diagnostic());
+        var envelope = Envelope.of("start", meta()).withDiagnostics(collector.batch());
+        var next = envelope.withPayload(42).atStage(new StageId("EXTRACT"))
+                .withMetaAttribute("rows", 5).withDiagnostic(diagnostic()).withDiagnostics(List.of(diagnostic()));
+
+        assertThat(envelope.diagnosticSummary().total()).isEqualTo(2);
+        assertThat(envelope.diagnosticSummary().suppressed()).isOne();
+        assertThat(next.diagnosticSummary().total()).isEqualTo(4);
+        assertThat(next.diagnosticSummary().suppressed()).isOne();
+        assertThat(next.diagnostics()).hasSize(3);
+    }
+
     private EnvelopeMeta meta() {
         return EnvelopeMeta.initial("run-1", "source.html", CLOCK);
     }

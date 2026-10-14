@@ -65,6 +65,26 @@ public final class RegexIndicatorExtractor implements IndicatorExtractor {
         return false;
     }
 
+    @Override
+    public void extract(CharSequence text, int maximumMatchCharacters, ExtractionClaims claims) {
+        if (text.isEmpty()) { return; }
+        for (Entry entry : entries) {
+            var matches = entry.compiled().matches(text);
+            while (matches.next()) {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new IllegalStateException("Document extraction interrupted");
+                }
+                if (matches.end() - matches.start() > maximumMatchCharacters) {
+                    throw new IllegalArgumentException("Extraction match exceeds admitted field limit");
+                }
+                var status = claims.overlaps(matches.start(), matches.end())
+                        ? ExtractionDecisionStatus.DROPPED_OVERLAP : ExtractionDecisionStatus.ACCEPTED;
+                claims.record(new ExtractionDecision(entry.type(), entry.pattern(),
+                        new Span(matches.start(), matches.end(), matches.value()), status));
+            }
+        }
+    }
+
     private void claim(boolean[] claimed, int start, int end) {
         for (int i = start; i < end; i++) {
             claimed[i] = true;

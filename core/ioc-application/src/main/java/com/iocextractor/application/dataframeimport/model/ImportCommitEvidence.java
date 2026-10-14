@@ -20,16 +20,26 @@ public record ImportCommitEvidence(
         long rejectedRows,
         long publicMutations,
         Set<String> affectedArtifacts,
-        List<ImportRowIssue> issues) {
+        List<ImportRowIssue> issues,
+        List<ImportRowWarning> warnings) {
 
     /** Snapshots bounded evidence and validates aggregate counts. */
     public ImportCommitEvidence {
         Objects.requireNonNull(deliveryId, "deliveryId");
         affectedArtifacts = Set.copyOf(Objects.requireNonNull(affectedArtifacts, "affectedArtifacts"));
         issues = List.copyOf(Objects.requireNonNull(issues, "issues"));
+        warnings = List.copyOf(Objects.requireNonNull(warnings, "warnings"));
         if (acceptedRows < 0 || rejectedRows < 0 || publicMutations < 0) {
             throw new IllegalArgumentException("Import commit evidence counts must not be negative");
         }
+    }
+
+    /** Compatibility constructor for receipts without accepted-row warnings. */
+    public ImportCommitEvidence(ImportDeliveryId deliveryId, long acceptedRows, long rejectedRows,
+                                long publicMutations, Set<String> affectedArtifacts,
+                                List<ImportRowIssue> issues) {
+        this(deliveryId, acceptedRows, rejectedRows, publicMutations,
+                affectedArtifacts, issues, List.of());
     }
 
     /** Derives the only valid post-commit terminal outcome. */

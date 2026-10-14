@@ -44,17 +44,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EndToEndTest
 class GoldenPipelineIT {
 
-    private static final List<String> ARTIFACTS = List.of("masks", "ip_list", "address_blacklist", "hashes");
+    private static final List<String> ARTIFACTS = List.of(
+            "masks", "ip_list", "address_blacklist", "hashes", "ioc_aggregate");
     private static final Map<String, Path> PROJECTIONS = Map.of(
             "masks", Path.of("target/golden/masks.csv"),
             "ip_list", Path.of("target/golden/ip-list.csv"),
             "address_blacklist", Path.of("target/golden/address-blacklist.csv"),
-            "hashes", Path.of("target/golden/hashes.csv"));
+            "hashes", Path.of("target/golden/hashes.csv"),
+            "ioc_aggregate", Path.of("target/golden/IOC_aggregate.csv"));
     private static final Map<String, String> GOLDEN_RESOURCES = Map.of(
             "masks", "golden/expected-masks.csv",
             "ip_list", "golden/expected-ip-list.csv",
             "address_blacklist", "golden/expected-address-blacklist.csv",
-            "hashes", "golden/expected-hashes.csv");
+            "hashes", "golden/expected-hashes.csv",
+            "ioc_aggregate", "golden/expected-ioc-aggregate.csv");
     private static final Map<String, List<String>> HEADERS = Map.of(
             "masks", List.of(
                     "id", "mask", "url_match", "host_match", "score", "time_last_seen",
@@ -65,12 +68,25 @@ class GoldenPipelineIT {
             "address_blacklist", List.of("forbidden_url", "forbidden_ip"),
             "hashes", List.of(
                     "id", "hash_md5", "hash_sha256", "hash_sha1", "score",
-                    "time_last_seen", "time_first_seen", "threat_type", "source", "description"));
+                    "time_last_seen", "time_first_seen", "threat_type", "source", "description"),
+            "ioc_aggregate", List.of("name", "ip_address", "url_match", "host_match", "hash"));
 
     private final ReferenceArtifactConsumer consumer = new ReferenceArtifactConsumer();
 
+    @org.junit.jupiter.api.io.TempDir
+    Path temporary;
+
     @Autowired
     ExtractIocsUseCase useCase;
+
+    @Autowired
+    com.iocextractor.adapter.processing.camel.runtime.CamelRouteRuntime router;
+
+    @Autowired
+    com.iocextractor.bootstrap.IocProperties properties;
+
+    @Autowired
+    org.springframework.context.ApplicationContext context;
 
     @Autowired
     @Qualifier("dataframeStorageDataSource")
@@ -78,6 +94,7 @@ class GoldenPipelineIT {
 
     @DynamicPropertySource
     static void pristineOutput(DynamicPropertyRegistry registry) {
+        registry.add("ioc.processing.workspace.directory", () -> "target/golden/workspace");
         Path dir = Path.of("target/golden");
         if (Files.notExists(dir)) {
             return;
@@ -97,6 +114,14 @@ class GoldenPipelineIT {
 
     @Test
     void pipeline_output_matches_golden_and_repeated_extract_updates_only_provenance() throws Exception {
+        assertThat(router).isNotNull();
+        assertThat(context.getBeansOfType(com.iocextractor.application.port.out.artifact.ArtifactProjection.class))
+                .hasSize(1).containsKey("artifactProjection")
+                .allSatisfy((name, projection) -> assertThat(projection).isInstanceOf(
+                        com.iocextractor.application.artifact.lifecycle.GenerationOwnedArtifactProjection.class));
+        assertThat(context.getBeansOfType(com.iocextractor.adapter.out.sink.csv.CsvArtifactProjection.class))
+                .isEmpty();
+        assertThat(properties.processing().documentPlan()).isEqualTo("original-document");
         useCase.extract(new ExtractionCommand(
                 "golden-first", Path.of("src/test/resources/golden/source.html"), false));
 
@@ -122,6 +147,87 @@ class GoldenPipelineIT {
         assertThat(publicRowCounts()).isEqualTo(firstRows);
         assertThat(revisions()).isEqualTo(firstRevisions);
         assertOccurrencesIncrementedByOne(firstOccurrences, sourceOccurrences());
+    }
+
+    @Test
+    @org.junit.jupiter.api.Timeout(120)
+    void originalRouteMappedCollisionsPreserveReservationAndProvenanceInBothWritePaths() throws Exception {
+        Path root = temporary;
+        Path source = root.resolve("input.html");
+        Files.writeString(source, "<html><head><meta charset=\"utf-8\"></head><body><p>БИБ-first</p>"
+                + "<p>same.example same.example</p><p>БИБ-second</p><p>other.example</p></body></html>");
+        for (boolean lifecycle : List.of(false, true)) {
+            for (boolean deduplicate : List.of(false, true)) {
+                Path run = Files.createDirectories(root.resolve(lifecycle + "-" + deduplicate));
+                try (var context = org.springframework.boot.SpringApplication.run(IocExtractorApplication.class,
+                        "--spring.profiles.active=golden", "--spring.main.web-application-type=none",
+                        "--spring.main.banner-mode=off", "--golden.output-dir=" + run.toAbsolutePath(),
+                        "--ioc.processing.workspace.directory=" + run.resolve("workspace").toAbsolutePath(),
+                        "--ioc.storage.service.url=jdbc:sqlite:" + run.resolve("service.db").toAbsolutePath(),
+                        "--ioc.pipeline.deduplicate=" + deduplicate,
+                        "--ioc.lifecycle.validity.mode=" + (lifecycle ? "fixed" : "disabled"),
+                        "--ioc.lifecycle.validity.fixed-ttl=12h", "--ioc.lifecycle.validity.existing-records=expire",
+                        "--ioc.artifact-identity.artifacts[0].name=masks",
+                        "--ioc.artifact-identity.artifacts[0].key-columns[0]=mask",
+                        "--ioc.artifact-identity.artifacts[0].key-mode=composite",
+                        "--ioc.artifact-identity.artifacts[0].record-key=mask-row-v1",
+                        "--ioc.artifact-identity.artifacts[0].match-keys[0].name=mask-v1",
+                        "--ioc.artifact-identity.artifacts[0].match-keys[0].key-columns[0]=mask",
+                        "--ioc.processing.document-plan=original-accounting",
+                        "--ioc.processing.plans[0].name=original-accounting",
+                        "--ioc.processing.plans[0].views=",
+                        "--ioc.processing.plans[0].observation-selection=retained-observations",
+                        "--ioc.processing.plans[0].classifications[0].view=original",
+                        "--ioc.processing.plans[0].classifications[0].policy=configured",
+                        "--ioc.processing.plans[0].routing.mode=all",
+                        "--ioc.processing.plans[0].routing.on-unmatched.action=skip",
+                        "--ioc.processing.plans[0].routing.branches[0].id=masks-original",
+                        "--ioc.processing.plans[0].routing.branches[0].artifact=masks",
+                        "--ioc.processing.plans[0].routing.branches[0].default-view=original",
+                        "--ioc.sink.artifacts[0].name=masks",
+                        "--ioc.sink.artifacts[0].enabled=true",
+                        "--ioc.sink.artifacts[0].path=" + run.resolve("masks.csv").toAbsolutePath(),
+                        "--ioc.sink.artifacts[0].accepts[0]=DOMAIN",
+                        "--ioc.sink.artifacts[0].id.strategy=ascending",
+                        "--ioc.sink.artifacts[0].id.start=1",
+                        "--ioc.sink.artifacts[0].columns[0].name=id",
+                        "--ioc.sink.artifacts[0].columns[0].from=id",
+                        "--ioc.sink.artifacts[0].columns[1].name=mask",
+                        "--ioc.sink.artifacts[0].columns[1].from=const",
+                        "--ioc.sink.artifacts[0].columns[1].value=same-key",
+                        "--ioc.sink.artifacts[0].columns[2].name=source",
+                        "--ioc.sink.artifacts[0].columns[2].from=source.label")) {
+                    var useCase = context.getBean(ExtractIocsUseCase.class);
+                    var command = new ExtractionCommand("original-route-accounting", source, false);
+                    int expected = deduplicate ? 2 : 3;
+                    if (lifecycle) {
+                        org.assertj.core.api.Assertions.assertThatThrownBy(() -> useCase.extract(command))
+                                .isInstanceOf(com.iocextractor.diagnostics.DiagnosticException.class)
+                                .hasMessageContaining("Canonical confirmation contains duplicate row key");
+                    } else {
+                        var result = useCase.extract(command);
+                        assertThat(result.extracted()).isEqualTo(3);
+                        assertThat(result.retained()).isEqualTo(expected);
+                    }
+                    var data = context.getBean("dataframeStorageDataSource", HikariDataSource.class);
+                    try (var connection = data.getConnection(); var statement = connection.createStatement()) {
+                        try (var rows = statement.executeQuery("SELECT COUNT(*) FROM masks")) {
+                            assertThat(rows.next()).isTrue();
+                            assertThat(rows.getLong(1)).isEqualTo(lifecycle ? 0 : 1);
+                        }
+                        try (var rows = statement.executeQuery("SELECT SUM(occurrences) FROM masks_sources")) {
+                            assertThat(rows.next()).isTrue();
+                            assertThat(rows.getLong(1)).isEqualTo(lifecycle ? 0 : expected);
+                        }
+                        try (var rows = statement.executeQuery(
+                                "SELECT next_value FROM artifact_id_allocator WHERE artifact='masks'")) {
+                            assertThat(rows.next()).isTrue();
+                            assertThat(rows.getLong(1)).isOne();
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private byte[] goldenCsvBytes(String resource) throws Exception {

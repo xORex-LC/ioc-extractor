@@ -1,7 +1,7 @@
 package com.iocextractor.application.port.out.artifact;
 
 import com.iocextractor.application.artifact.ArtifactWritePlan;
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.diagnostics.result.Result;
 
 import java.util.List;
@@ -17,4 +17,5 @@ public interface ArtifactPreparer {
      * Element data failures are returned as diagnostics while valid rows remain in the plan.
      */
     Result<ArtifactWritePlan> prepare(List<ClassifiedIndicator> indicators);
+
 }

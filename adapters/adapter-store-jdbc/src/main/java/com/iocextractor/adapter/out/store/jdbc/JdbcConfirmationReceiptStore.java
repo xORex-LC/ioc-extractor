@@ -1,9 +1,5 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
-import com.iocextractor.application.artifact.ArtifactRow;
-import com.iocextractor.application.artifact.ArtifactRowKey;
-import com.iocextractor.application.artifact.PreparedArtifactRow;
-import com.iocextractor.application.artifact.lifecycle.CanonicalRecordConfirmation;
 import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptArtifact;
 import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptId;
 import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptSnapshot;
@@ -32,6 +28,7 @@ public final class JdbcConfirmationReceiptStore
         implements ConfirmationReceiptStore, CanonicalObservationStore {
 
     private final DataSource dataSource;
+    private final JdbcWriterAdmission writerAdmission;
     private final Map<String, DataframeArtifactSchema> schemas;
     private final Duration stagingRetention;
 
@@ -42,6 +39,12 @@ public final class JdbcConfirmationReceiptStore
     public JdbcConfirmationReceiptStore(DataSource dataSource,
                                         List<DataframeArtifactSchema> schemas,
                                         Duration stagingRetention) {
+        this(dataSource, schemas, stagingRetention, new JdbcWriterAdmission());
+    }
+
+    public JdbcConfirmationReceiptStore(DataSource dataSource, List<DataframeArtifactSchema> schemas,
+            Duration stagingRetention, JdbcWriterAdmission writerAdmission) {
+        this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.stagingRetention = Objects.requireNonNull(stagingRetention, "stagingRetention");
         if (stagingRetention.isZero() || stagingRetention.isNegative()) {
@@ -84,6 +87,11 @@ public final class JdbcConfirmationReceiptStore
 
     @Override
     public PurgeResult purgeExpired(EffectiveTime asOf, int batchSize) {
+        return writerAdmission.execute(JdbcWriterAdmission.OperationClass.MAINTENANCE,
+                () -> purgeAdmitted(asOf, batchSize));
+    }
+
+    private PurgeResult purgeAdmitted(EffectiveTime asOf, int batchSize) {
         Objects.requireNonNull(asOf, "asOf");
         if (batchSize <= 0) {
             throw new IllegalArgumentException("Receipt purge batch size must be positive");
@@ -91,14 +99,14 @@ public final class JdbcConfirmationReceiptStore
         try (Connection connection = dataSource.getConnection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
-            Exception failure = null;
+            Throwable failure = null;
             try {
                 int purged = purgeReceipts(connection, asOf, batchSize);
                 purgeObservations(connection, asOf, batchSize);
                 boolean more = hasExpiredReceipts(connection, asOf);
                 connection.commit();
                 return new PurgeResult(purged, more);
-            } catch (SQLException | RuntimeException e) {
+            } catch (SQLException | RuntimeException | Error e) {
                 failure = e;
                 JdbcLifecycleTransactions.rollback(connection, e);
                 throw e;
@@ -116,6 +124,13 @@ public final class JdbcConfirmationReceiptStore
     public void markTerminal(ObservationId observationId,
                              EffectiveTime completedAt,
                              Duration retention) {
+        writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL, () -> {
+            markTerminalAdmitted(observationId, completedAt, retention);
+            return null;
+        });
+    }
+
+    private void markTerminalAdmitted(ObservationId observationId, EffectiveTime completedAt, Duration retention) {
         Objects.requireNonNull(observationId, "observationId");
         Objects.requireNonNull(completedAt, "completedAt");
         Objects.requireNonNull(retention, "retention");
@@ -153,6 +168,7 @@ public final class JdbcConfirmationReceiptStore
                 FROM confirmation_receipt
                 WHERE source_key = ?
                   AND processing_policy_fingerprint = ?
+                  AND payload_version = 2
                   AND state = 'COMPLETE'
                   AND purge_after_ms > ?
                 ORDER BY completed_at_ms DESC, receipt_id DESC
@@ -192,8 +208,8 @@ public final class JdbcConfirmationReceiptStore
                         throw new IocExtractorException(
                                 "Complete receipt references unknown artifact: " + artifact);
                     }
-                    List<CanonicalRecordConfirmation> rows = loadRows(
-                            connection, schema, header.id());
+                    var rows = new JdbcReceiptRowSource(dataSource, schema, header.id(), resultSet.getInt("row_count"));
+                    rows.validateCount(connection);
                     if (rows.size() != resultSet.getInt("row_count")) {
                         throw new IocExtractorException(
                                 "Complete receipt row count mismatch for artifact: " + artifact);
@@ -208,37 +224,6 @@ public final class JdbcConfirmationReceiptStore
             throw new IocExtractorException("Complete receipt structural totals do not match its header");
         }
         return List.copyOf(artifacts);
-    }
-
-    private List<CanonicalRecordConfirmation> loadRows(Connection connection,
-                                                       DataframeArtifactSchema schema,
-                                                       ConfirmationReceiptId receiptId) throws SQLException {
-        List<String> businessColumns = publicHeader(schema).stream()
-                .filter(column -> !"id".equals(column))
-                .toList();
-        String sql = "SELECT " + quote("row_key")
-                + (businessColumns.isEmpty() ? "" : ", " + joinedQuoted(businessColumns))
-                + " FROM " + quote(schema.artifactName() + "_receipt_rows")
-                + " WHERE " + quote("receipt_id") + " = ? ORDER BY " + quote("ordinal");
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, receiptId.value());
-            try (ResultSet resultSet = statement.executeQuery()) {
-                var rows = new ArrayList<CanonicalRecordConfirmation>();
-                while (resultSet.next()) {
-                    var values = new LinkedHashMap<String, String>();
-                    for (DataframeColumn column : schema.columns()) {
-                        values.put(column.name(), "id".equals(column.name())
-                                ? null : resultSet.getString(column.name()));
-                    }
-                    Optional<String> idColumn = publicHeader(schema).contains("id")
-                            ? Optional.of("id") : Optional.empty();
-                    rows.add(new CanonicalRecordConfirmation(
-                            new ArtifactRowKey(resultSet.getString("row_key")),
-                            new PreparedArtifactRow(ArtifactRow.ordered(values), idColumn)));
-                }
-                return List.copyOf(rows);
-            }
-        }
     }
 
     private int purgeReceipts(Connection connection,
@@ -312,14 +297,6 @@ public final class JdbcConfirmationReceiptStore
 
     private List<String> publicHeader(DataframeArtifactSchema schema) {
         return schema.columns().stream().map(DataframeColumn::name).toList();
-    }
-
-    private String joinedQuoted(List<String> identifiers) {
-        return identifiers.stream().map(this::quote).collect(java.util.stream.Collectors.joining(", "));
-    }
-
-    private String quote(String identifier) {
-        return "\"" + DataframeColumn.requireSqlIdentifier(identifier, "identifier") + "\"";
     }
 
     private record ReceiptHeader(ConfirmationReceiptId id, int expectedArtifacts, long rowCount) {

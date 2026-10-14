@@ -1,58 +1,53 @@
 # com.iocextractor.application.ingest
 
-## Назначение
+Framework-free whole-file ingestion orchestration. The package coordinates owned
+source units, durable ingestion state, extraction preparation, canonical
+promotion/projection and terminal source disposition. Filesystem discovery,
+Spring, JDBC and concrete CSV code remain in adapters/bootstrap.
 
-Framework-free модель bounded context **Whole-file Ingest**. Пакет описывает
-прикладной lifecycle одного входного файла: claim source, durable ledger status,
-запуск extraction pipeline, canonical write/project saga и архивирование
-обработанного source.
+## Contents
 
-**Правило слоя:** ingest не знает о Spring Integration, filesystem polling,
-SQLite/JDBC, CSV projection implementation или logging. Все внешние механики
-приходят через application ports и собираются в `bootstrap`.
-
-## Структура
-
-| Файл / группа | Назначение |
+| Component | Responsibility |
 |---|---|
-| `IngestionService` | Use case orchestration для normal ingest, recovery `CLAIMED` records и reject |
-| `IngestionRecord`, `IngestionStatus` | Durable source-ledger read model и terminal/active statuses |
-| `SourceKey`, `SourceUnit`, `ArchivedSourceUnit` | Stable source identity и перемещение файла между lifecycle зонами |
-| `SourcePreparers` | Per-source preparer bundle и список затронутых artifact names |
+| `IngestionService` | Synchronous ingest/recovery/reject and split prepare/promote operations |
+| `IngestionRecord`, `IngestionStatus` | Durable occurrence status and monotonic terminal CAS |
+| `SourceKey`, `SourceUnit`, `ArchivedSourceUnit` | Content identity and owned source references |
+| `SourcePreparers` | Per-source artifact descriptors |
+| `admission/DocumentAdmissionService` | Source reservation/order/claim/link/terminal handshake |
+| `admission/DocumentExecutionState` | Durable document attempt/backoff metadata |
 
-## Инварианты
+## Contracts
 
-- Повтор source-key не запускает extraction заново: duplicate source архивируется
-  отдельно, существующий `FAILED` остаётся terminal.
-- `CLAIMED` recovery идёт тем же `processClaimed()` путём, что и normal ingest,
-  поэтому durable write/project/complete семантика едина.
-- `RunLedger` фиксирует write -> projection -> completed checkpoints для
-  canonical artifacts; сбой до DB commit помечает run как `FAILED`, сбой после DB
-  commit оставляет работу для startup recovery.
-- Успешная projection может вернуть advisory diagnostics: use case доставляет
-  каждую occurrence один раз, объединяет её с extraction summary и пересчитывает
-  completion до terminal driving result.
-- artifact-level `CanonicalArtifactsChanged` публикуется только после
-  `runLedger.markCompleted`; контракт события живёт в `application.artifact`,
-  поэтому тот же post-commit fact может публиковать dataframe import
-  и source archive. Событие несёт `runId` и artifact names, но не revision:
-  consumers делают claim-check и читают durable revision сами.
-- Failure `ControlEventPublisher` не влияет на итог ingest. Событие является
-  latency hint; correctness остаётся за durable ledgers и downstream poll/backstop.
-- Claim, ledger и dead-letter failures возвращаются как typed `INGEST.*` carriers;
-  final retry boundary эмитит occurrence ровно один раз.
-- Recovery сохраняет точный `INGEST.STATE_TRANSITION_CONFLICT`, когда ledger
-  возвращает неожиданный result, и создаёт `INGEST.RECOVERY_FAILED` только для
-  ещё не типизированного сбоя. Application recovery сразу доставляет созданный
-  recovery diagnostic; adapter startup boundary не эмитит его повторно.
-- Diagnostic не подменяет ledger/file transition и не меняет fail-closed
-  startup contract.
+The daemon adapter reserves occurrence/order and claims the source before invoking
+`PrepareIngestionUseCase`. A prepared handle owns sealed workspace references,
+not IOC graphs. Preparation has no canonical effect. Promotion acquires shared
+content-key exclusion, revalidates a reusable receipt, writes and projects through
+the same durable saga as synchronous ingest. Cancel closes the prepared run and
+workspace; it leaves claimed source ownership recoverable. Handles are single-use
+and are handed between workers only after a publication barrier.
 
-## Границы ответственности
+A duplicate is a new delivery observation. A valid receipt can confirm it without
+ETL; changed/expired receipt falls back to extraction. Existing FAILED occurrences
+remain terminal. CLAIMED recovery uses the same processing path. The run ledger
+records write/projection checkpoints: precommit failure fails the run, whereas
+postcommit failure recovers forward. Source archive and observation registration
+terminalization are monotonic/idempotent.
 
-- Spring Integration file discovery/stability, physical move/archive and JDBC
-  ledgers are adapter/bootstrap concerns.
-- `IngestionService` оркестрирует ports, но не выбирает storage/projection
-  implementation.
-- Operational control facts уходят через framework-free `ControlEventPublisher`;
-  application не импортирует Spring и не решает, кто слушает событие.
+Projection advisory diagnostics are delivered once per occurrence and added to
+extraction completion. `CanonicalArtifactsChanged` is emitted after completed
+run state; it carries artifact names, not rows/revisions. Publisher failure does
+not change durable outcome. Consumers query truth and retain periodic reconcile.
+
+Claim/ledger/dead-letter failures return typed INGEST carriers. Recovery preserves
+STATE_TRANSITION_CONFLICT, and emits its newly created RECOVERY_FAILED once. The
+adapter owns retry-attempt delivery; operational logging never changes processing
+state. Diagnostics do not substitute for file/ledger transitions.
+
+Document ordering is an adapter execution responsibility over the durable
+admission model. Core does not select thread pools, dispatch priorities or parse
+SQL. Shared content-key exclusion applies at promotion, so a newer preparation
+cannot hold it while waiting for older work. Cross-process fencing is not implied.
+
+See [ingestion](../../../../../../../../../docs/dev/ingestion.md) and
+ADR-0038 in the repository documentation for startup, quotas and blocked pre-hash
+failure disposition.

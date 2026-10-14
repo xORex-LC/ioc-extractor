@@ -1,5 +1,6 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
+import com.iocextractor.application.port.out.artifact.RowSource;
 import com.iocextractor.application.artifact.ArtifactIdReservation;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.CanonicalRecordMutationKind;
@@ -47,7 +48,10 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
     private final JdbcLifecycleTransactionObserver transactionObserver;
     private final JdbcWriterAdmission writerAdmission;
 
-    /** Creates and validates the lifecycle writer's durable ID allocators. */
+    /**
+     * Creates durable ID allocators for a standalone caller. Production passes
+     * its shared admission and lifecycle clock through the corresponding overload.
+     */
     public JdbcCanonicalLifecycleWriter(DataSource dataSource,
                                         List<DataframeArtifactSchema> schemas,
                                         List<ArtifactIdAllocatorDefinition> publicIdDefinitions,
@@ -144,11 +148,10 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
         this.validityPolicy = Objects.requireNonNull(validityPolicy, "validityPolicy");
         this.transactionObserver = Objects.requireNonNull(transactionObserver, "transactionObserver");
         this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
-        Objects.requireNonNull(allocatorClock, "allocatorClock");
         this.lifecycleIdAllocator = new JdbcLifecycleIdAllocator(dataSource, allocatorClock);
         this.mutationEngine = new JdbcCanonicalMutationEngine(dataSource, schemas, identityDefinitions);
         this.receiptWriter = new JdbcConfirmationReceiptWriter(this.schemas);
-        this.publicIdAllocators = initializePublicIdAllocators(publicIdDefinitions, allocatorClock);
+        this.publicIdAllocators = initializePublicIdAllocators(publicIdDefinitions, allocatorClock, dataSource);
     }
 
     @Override
@@ -159,7 +162,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
         if (prior.isPresent()) {
             return prior.orElseThrow();
         }
-
+        validateRows(confirmation, schema);
         ReservedIds ids = reserveWorstCase(schema, confirmation.records());
         return writerAdmission.execute(() -> confirmAdmitted(schema, confirmation, ids));
     }
@@ -183,7 +186,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                                          ReservedIds ids) throws SQLException {
         boolean previousAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
-        Exception failure = null;
+        Throwable failure = null;
         try {
             JdbcLifecycleTransactions.acquireActiveWriteOwnership(
                     connection,
@@ -200,48 +203,68 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                     timeSource.now(connection), "lifecycle effective time");
             ValidityDecision validity = validityPolicy.decide(asOf).requireValidAt(asOf);
             ensureObservation(connection, confirmation, asOf);
+            var records = JdbcRowSources.onConnection(confirmation.records(), connection);
+            boolean hasOrderedFields = records.anyMatch(record -> !record.preparedRow().orderedFieldPositions().isEmpty());
+            if (hasOrderedFields) {
+                mutationEngine.validateRegistration(connection,
+                        Objects.requireNonNull(confirmation.registration(),
+                                "ordered confirmation registration"));
+            }
 
             int created = 0;
             int renewed = 0;
             int restarted = 0;
+            int updated = 0;
+            int metadataOnly = 0;
             int publicOffset = 0;
             int lifecycleOffset = 0;
-            for (CanonicalRecordConfirmation record : confirmation.records()) {
-                var outcome = mutationEngine.confirm(
-                        connection, schema, confirmation.sourceKey(), record,
-                        ids.publicId(publicOffset, record), ids.lifecycleIds().idAt(lifecycleOffset),
-                        asOf, validity);
-                if (outcome.kind() == CanonicalRecordMutationKind.INSERTED) {
-                    publicOffset += publicIdIncrement(record);
-                    lifecycleOffset++;
-                    created++;
-                } else if (outcome.kind() == CanonicalRecordMutationKind.TTL_CONFIRMED) {
-                    renewed++;
-                } else if (outcome.kind() == CanonicalRecordMutationKind.RESTARTED) {
-                    publicOffset += publicIdIncrement(record);
-                    lifecycleOffset++;
-                    restarted++;
-                } else {
-                    throw new IocExtractorException("Unexpected ordinary-ingest mutation outcome: "
-                            + outcome.kind());
+            try (var session = mutationEngine.openSession(connection, schema, asOf, validity);
+                 var cursor = records.open()) {
+                while (cursor.next()) {
+                    CanonicalRecordConfirmation record = cursor.value();
+                    var outcome = session.confirm(
+                            confirmation.sourceKey(), record,
+                            ids.publicId(publicOffset, record), ids.lifecycleIds().idAt(lifecycleOffset),
+                            confirmation.registration());
+                    if (outcome.kind() == CanonicalRecordMutationKind.INSERTED) {
+                        publicOffset += publicIdIncrement(record);
+                        lifecycleOffset++;
+                        created++;
+                    } else if (outcome.kind() == CanonicalRecordMutationKind.TTL_CONFIRMED) {
+                        renewed++;
+                    } else if (outcome.kind() == CanonicalRecordMutationKind.RESTARTED) {
+                        publicOffset += publicIdIncrement(record);
+                        lifecycleOffset++;
+                        restarted++;
+                    } else if (outcome.kind() == CanonicalRecordMutationKind.UPDATED) {
+                        updated++;
+                    } else {
+                        throw new IocExtractorException("Unexpected ordinary-ingest mutation outcome: "
+                                + outcome.kind());
+                    }
+                    if (outcome.metadataMutation() && !outcome.publicMutation()) {
+                        metadataOnly++;
+                    }
                 }
             }
 
             int newPublicRows = Math.addExact(created, restarted);
-            long revision = newPublicRows == 0
+            int changedPublicRows = Math.addExact(newPublicRows, updated);
+            long revision = changedPublicRows == 0
                     ? currentRevision(connection, schema.artifactName())
                     : bumpRevision(connection, schema.artifactName(), asOf.value().toString());
-            ProjectionGeneration generation = newPublicRows == 0
+            ProjectionGeneration generation = changedPublicRows == 0
                     ? currentProjectionGeneration(connection, schema.artifactName())
                     : advanceProjectionGeneration(connection, schema.artifactName(), asOf);
 
-            insertCommitMarker(connection, confirmation, asOf, created, renewed, restarted, revision, generation);
+            insertCommitMarker(connection, confirmation, asOf, created, renewed, restarted,
+                    updated, metadataOnly, revision, generation);
             receiptWriter.stageAndPublishIfComplete(connection, schema, confirmation, asOf);
             connection.commit();
             return new LifecycleWriteResult(
                     confirmation.observationId(), confirmation.artifactName(), asOf,
-                    created, renewed, restarted, revision, generation, false);
-        } catch (SQLException | RuntimeException e) {
+                    created, renewed, restarted, updated, metadataOnly, revision, generation, false);
+        } catch (SQLException | RuntimeException | Error e) {
             failure = e;
             JdbcLifecycleTransactions.rollback(connection, e);
             throw e;
@@ -260,31 +283,58 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
             throw new IllegalArgumentException("Canonical confirmation header does not match artifact schema: "
                     + confirmation.artifactName());
         }
-        boolean hasPublicId = expectedHeader.contains("id");
-        for (CanonicalRecordConfirmation record : confirmation.records()) {
-            Optional<String> idColumn = record.preparedRow().idColumn();
-            boolean validIdSlot = hasPublicId
-                    ? idColumn.filter("id"::equals).isPresent()
-                    : idColumn.isEmpty();
-            if (!validIdSlot) {
-                throw new IllegalArgumentException(
-                        "Prepared public-id slot does not match artifact schema: " + confirmation.artifactName());
-            }
-            if (idColumn.isPresent()) {
-                String supplied = record.preparedRow().template().value(idColumn.orElseThrow());
-                if (supplied != null && !supplied.isBlank()) {
-                    throw new IllegalArgumentException("Service-owned public id must remain deferred");
-                }
-            }
-        }
         return schema;
     }
 
+    private void validateRows(CanonicalArtifactConfirmation confirmation, DataframeArtifactSchema schema) {
+        try (var connection = dataSource.getConnection()) {
+            int tempStore;
+            try (var pragma = connection.createStatement(); var result = pragma.executeQuery("PRAGMA temp_store")) {
+                result.next(); tempStore = result.getInt(1);
+            }
+            // This pool lease is exclusive. TEMP tables belong to individual operations;
+            // switching temp_store deletes them, and restoring the PRAGMA cannot restore rows.
+            // FILE keeps duplicate validation on disk under the validator's page limit.
+            try (var pragma = connection.createStatement()) { pragma.execute("PRAGMA temp_store=FILE"); }
+            boolean autoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            Throwable validationFailure = null;
+            try {
+                JdbcConfirmationValidator.validate(connection, confirmation, publicHeader(schema).contains("id"));
+                connection.commit();
+            } catch (SQLException | RuntimeException | Error failure) {
+                validationFailure = failure;
+                JdbcLifecycleTransactions.rollback(connection, failure);
+                throw failure;
+            } finally {
+                restoreValidationConnection(connection, autoCommit, tempStore, validationFailure);
+            }
+        } catch (SQLException failure) {
+            throw new IocExtractorException("Cannot validate streamed confirmation", failure);
+        }
+    }
+
+    private void restoreValidationConnection(Connection connection, boolean autoCommit,
+            int tempStore, Throwable original) throws SQLException {
+        SQLException failure = null;
+        try { JdbcLifecycleTransactions.restoreAutoCommit(connection, autoCommit, null); }
+        catch (SQLException restoreFailure) { failure = restoreFailure; }
+        try (var pragma = connection.createStatement()) { pragma.execute("PRAGMA temp_store=" + tempStore); }
+        catch (SQLException restoreFailure) {
+            if (failure == null) { failure = restoreFailure; }
+            else { failure.addSuppressed(restoreFailure); }
+        }
+        if (failure != null) {
+            if (original == null) { throw failure; }
+            original.addSuppressed(failure);
+        }
+    }
+
     private ReservedIds reserveWorstCase(DataframeArtifactSchema schema,
-                                         List<CanonicalRecordConfirmation> records) {
-        int publicCount = Math.toIntExact(records.stream()
-                .filter(record -> record.preparedRow().idColumn().isPresent())
-                .count());
+                                         RowSource<CanonicalRecordConfirmation> records) {
+        int[] publicRows = {0};
+        records.forEach(record -> { if (record.preparedRow().idColumn().isPresent()) { publicRows[0]++; } });
+        int publicCount = publicRows[0];
         ArtifactIdReservation publicIds = null;
         if (publicCount > 0) {
             JdbcArtifactIdAllocator allocator = publicIdAllocators.get(schema.artifactName());
@@ -292,12 +342,14 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                 throw new IocExtractorException(
                         "Public id allocator is not configured for artifact: " + schema.artifactName());
             }
-            publicIds = allocator.reserve(schema.artifactName(), publicCount);
+            publicIds = writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
+                    () -> allocator.reserve(schema.artifactName(), publicCount));
         }
-        return new ReservedIds(publicIds, lifecycleIdAllocator.reserve(records.size()));
+        return new ReservedIds(publicIds, writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL,
+                () -> lifecycleIdAllocator.reserve(records.size())));
     }
 
-    private Optional<LifecycleWriteResult> loadCommitted(CanonicalArtifactConfirmation confirmation) {
+    Optional<LifecycleWriteResult> loadCommitted(CanonicalArtifactConfirmation confirmation) {
         try (Connection connection = dataSource.getConnection()) {
             return loadCommitted(connection, confirmation);
         } catch (SQLException e) {
@@ -310,6 +362,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
             throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT c.effective_as_of_ms, c.inserted, c.renewed, c.restarted,
+                       c.updated, c.metadata_only,
                        c.artifact_revision, c.projection_generation, o.source_key
                 FROM canonical_observation_commit c
                 JOIN canonical_observation o ON o.observation_id = c.observation_id
@@ -331,6 +384,8 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                         resultSet.getInt("inserted"),
                         resultSet.getInt("renewed"),
                         resultSet.getInt("restarted"),
+                        resultSet.getInt("updated"),
+                        resultSet.getInt("metadata_only"),
                         resultSet.getLong("artifact_revision"),
                         new ProjectionGeneration(resultSet.getLong("projection_generation")),
                         true));
@@ -373,13 +428,16 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                                     int created,
                                     int renewed,
                                     int restarted,
+                                    int updated,
+                                    int metadataOnly,
                                     long revision,
                                     ProjectionGeneration generation) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO canonical_observation_commit(
                     observation_id, artifact, committed_at_ms, effective_as_of_ms,
-                    inserted, renewed, restarted, artifact_revision, projection_generation)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    inserted, renewed, restarted, updated, metadata_only,
+                    artifact_revision, projection_generation)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """)) {
             statement.setString(1, confirmation.observationId().value());
             statement.setString(2, confirmation.artifactName());
@@ -388,8 +446,10 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
             statement.setInt(5, created);
             statement.setInt(6, renewed);
             statement.setInt(7, restarted);
-            statement.setLong(8, revision);
-            statement.setLong(9, generation.value());
+            statement.setInt(8, updated);
+            statement.setInt(9, metadataOnly);
+            statement.setLong(10, revision);
+            statement.setLong(11, generation.value());
             statement.executeUpdate();
         }
     }
@@ -449,9 +509,12 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
         }
     }
 
+    // Construct writers before intake: initialization writes allocator epochs.
+    // Runtime reservations use shared admission; dynamic construction is not a scheduling path.
     private Map<String, JdbcArtifactIdAllocator> initializePublicIdAllocators(
             List<ArtifactIdAllocatorDefinition> definitions,
-            java.time.Clock allocatorClock) {
+            java.time.Clock allocatorClock,
+            DataSource reservationDataSource) {
         Objects.requireNonNull(definitions, "publicIdDefinitions");
         Map<String, JdbcArtifactIdAllocator> allocators = new LinkedHashMap<>();
         for (ArtifactIdAllocatorDefinition definition : definitions) {
@@ -461,7 +524,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                 throw new IllegalArgumentException(
                         "Public id allocator does not match an id-bearing artifact: " + definition.artifact());
             }
-            JdbcArtifactIdAllocator allocator = new JdbcArtifactIdAllocator(dataSource, allocatorClock);
+            JdbcArtifactIdAllocator allocator = new JdbcArtifactIdAllocator(reservationDataSource, allocatorClock);
             allocator.ensureInitialized(definition);
             if (allocators.put(definition.artifact(), allocator) != null) {
                 throw new IllegalArgumentException(
@@ -495,7 +558,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
     }
 
     @FunctionalInterface
-    private interface ConnectionTimeSource {
+    interface ConnectionTimeSource {
         EffectiveTime now(Connection connection) throws SQLException;
     }
 

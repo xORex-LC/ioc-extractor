@@ -7,7 +7,11 @@ import java.sql.Statement;
 /** Private SQLite staging schema; versioned independently from service/dataframe stores. */
 final class ImportWorkspaceSchema {
 
-    static final int VERSION = 2;
+    static final int VERSION = 3;
+
+    static boolean readable(int version) {
+        return version == 2 || version == VERSION;
+    }
 
     private static final String CREATE_META = """
             CREATE TABLE stage_meta (
@@ -88,6 +92,15 @@ final class ImportWorkspaceSchema {
                 FOREIGN KEY(source_row_number) REFERENCES stage_input_row(source_row_number) ON DELETE CASCADE
             )
             """;
+    private static final String CREATE_ROW_WARNING = """
+            CREATE TABLE stage_row_warning (
+                warning_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_row_number INTEGER NOT NULL,
+                artifact TEXT,
+                diagnostic_code TEXT NOT NULL,
+                FOREIGN KEY(source_row_number) REFERENCES stage_input_row(source_row_number) ON DELETE CASCADE
+            )
+            """;
 
     private static final String CREATE_INPUT_GROUP_INDEX = """
             CREATE INDEX ix_stage_input_group
@@ -121,6 +134,7 @@ final class ImportWorkspaceSchema {
             statement.execute(CREATE_CELL);
             statement.execute(CREATE_MATCH_KEY);
             statement.execute(CREATE_ROW_ERROR);
+            statement.execute(CREATE_ROW_WARNING);
             statement.execute("PRAGMA user_version=" + VERSION);
         }
     }

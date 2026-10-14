@@ -3,7 +3,7 @@ package com.iocextractor.observability;
 import org.slf4j.MDC;
 
 import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.SequencedMap;
 import java.util.Objects;
 
 /**
@@ -14,7 +14,7 @@ import java.util.Objects;
  */
 public final class MdcScope implements AutoCloseable {
 
-    private final Map<String, String> previous = new LinkedHashMap<>();
+    private final SequencedMap<String, String> previous = new LinkedHashMap<>();
     private boolean closed;
 
     private MdcScope() {
@@ -67,10 +67,9 @@ public final class MdcScope implements AutoCloseable {
         if (closed) {
             return;
         }
-        var keys = previous.keySet().stream().toList();
-        for (int i = keys.size() - 1; i >= 0; i--) {
-            var key = keys.get(i);
-            var value = previous.get(key);
+        for (var entry : previous.reversed().entrySet()) {
+            var key = entry.getKey();
+            var value = entry.getValue();
             if (value == null) {
                 MDC.remove(key);
             } else {

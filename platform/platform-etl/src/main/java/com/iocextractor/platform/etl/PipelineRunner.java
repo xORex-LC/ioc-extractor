@@ -6,6 +6,7 @@ import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.diagnostics.result.FailurePolicy;
 import com.iocextractor.diagnostics.result.BoundedNotification;
+import com.iocextractor.diagnostics.result.DiagnosticBatch;
 import com.iocextractor.diagnostics.result.Notification;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
@@ -109,11 +110,26 @@ public final class PipelineRunner {
      * @return typed pipeline outcome
      */
     public <I, O> PipelineRunResult<O> runWithOutcome(Envelope<I> input, Pipeline<I, O> pipeline) {
+        return runPart(input, pipeline, true);
+    }
+
+    /** Runs a precommit segment; its suppression summary is emitted on failure or final continuation. */
+    public <I, O> PipelineRunResult<O> runPreparation(Envelope<I> input, Pipeline<I, O> pipeline) {
+        return runPart(input, pipeline, false);
+    }
+
+    /** Completes diagnostic delivery when a prepared segment is cancelled without continuation. */
+    public void finishPreparation(Envelope<?> prepared) {
+        emitSuppressionSummary(Objects.requireNonNull(prepared, "prepared").diagnostics(), null);
+    }
+
+    private <I, O> PipelineRunResult<O> runPart(Envelope<I> input, Pipeline<I, O> pipeline,
+                                               boolean complete) {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(pipeline, "pipeline");
 
         try (var ignored = observer.openRun(input.meta())) {
-            return executeInRunScope(input, pipeline);
+            return executeInRunScope(input, pipeline, complete);
         } catch (RuntimeException ex) {
             throw ex;
         } catch (Exception ex) {
@@ -121,10 +137,12 @@ public final class PipelineRunner {
         }
     }
 
-    private <I, O> PipelineRunResult<O> executeInRunScope(Envelope<I> input, Pipeline<I, O> pipeline) {
+    private <I, O> PipelineRunResult<O> executeInRunScope(Envelope<I> input, Pipeline<I, O> pipeline, boolean complete) {
         var bounded = new BoundedNotification(maxDiagnosticsPerRun, diagnosticFactory);
-        bounded.addAll(input.diagnostics());
-        Envelope<?> current = compact(input, bounded.diagnostics());
+        bounded.addAll(new DiagnosticBatch(input.diagnostics().stream()
+                .filter(diagnostic -> diagnostic.code() != PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED).toList(),
+                input.diagnosticSummary()));
+        Envelope<?> current = compact(input, bounded);
         RuntimeException runFailure = null;
         try {
             for (Stage<?, ?> stage : pipeline.stages()) {
@@ -134,10 +152,9 @@ public final class PipelineRunner {
                     long startedAt = System.nanoTime();
                     try {
                         Envelope<?> next = executeStage(stage, stageInput);
-                        List<Diagnostic> delta = delta(stageInput.diagnostics(), next.diagnostics());
-                        delta.forEach(diagnosticSink::emit);
-                        bounded.addAll(delta);
-                        current = compact(next, bounded.diagnostics());
+                        DiagnosticBatch delta = delta(stageInput, next);
+                        retainAndEmit(delta, bounded);
+                        current = compact(next, bounded);
                         rejectIfRequired(current.diagnostics());
                         observer.stageCompleted(stageInput.meta(), System.nanoTime() - startedAt);
                     } catch (StageProcessingFailure failure) {
@@ -161,7 +178,7 @@ public final class PipelineRunner {
             runFailure = ex;
             throw ex;
         } finally {
-            emitSuppressionSummary(current.diagnostics(), runFailure);
+            if (complete || runFailure != null) { emitSuppressionSummary(current.diagnostics(), runFailure); }
         }
     }
 
@@ -182,15 +199,22 @@ public final class PipelineRunner {
         }
     }
 
-    private List<Diagnostic> delta(List<Diagnostic> before, List<Diagnostic> after) {
+    private void retainAndEmit(DiagnosticBatch diagnostics, BoundedNotification bounded) {
+        bounded.addAll(diagnostics, diagnosticSink::emit);
+    }
+
+    private DiagnosticBatch delta(Envelope<?> input, Envelope<?> output) {
+        List<Diagnostic> before = input.diagnostics();
+        List<Diagnostic> after = output.diagnostics();
         if (after.size() < before.size() || !after.subList(0, before.size()).equals(before)) {
             throw new IllegalStateException("Stage diagnostics must be append-only");
         }
-        return List.copyOf(after.subList(before.size(), after.size()));
+        return new DiagnosticBatch(after.subList(before.size(), after.size()),
+                output.diagnosticSummary().since(input.diagnosticSummary()));
     }
 
-    private Envelope<?> compact(Envelope<?> envelope, List<Diagnostic> diagnostics) {
-        return new Envelope<>(envelope.payload(), envelope.meta(), diagnostics);
+    private Envelope<?> compact(Envelope<?> envelope, BoundedNotification bounded) {
+        return new Envelope<>(envelope.payload(), envelope.meta(), bounded.diagnostics(), bounded.summary());
     }
 
     private void rejectIfRequired(List<Diagnostic> diagnostics) {

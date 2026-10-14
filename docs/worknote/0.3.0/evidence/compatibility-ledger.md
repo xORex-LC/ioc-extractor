@@ -227,8 +227,8 @@ consumer, либо принять явное release-level решение об u
 
 DATA-TTL-01 является принятым observable scope change относительно baseline.
 Его lifecycle foundation завершает dataframe schema v6 и service schema v8;
-после DATA-IMPORT-01 текущее repository candidate состояние имеет schema
-`v9/v9`. Миграции additive, но включение validity для существующей
+на момент завершения DATA-IMPORT-01 repository candidate имел schema `v9/v9`.
+Миграции additive, но включение validity для существующей
 dataframe DB является явной one-way activation, а не automatic upgrade side
 effect.
 
@@ -257,6 +257,28 @@ upgrade seeding, survivor/no-compaction, smallest-hole, byte-identical
 redelivery, bounded runtime-state и rollback assertions. `R030-REL` повторяет
 admission только для итогового release candidate, если он изменится после этого
 зафиксированного subject.
+
+## DATA-AGGREGATE-01 candidate delta
+
+DATA-AGGREGATE-01 расширяет candidate до dataframe/service schema `v11/v11` и
+добавляет пятый mutable artifact `IOC_aggregate_generated.csv` с отдельным
+immutable export profile `ioc-aggregate`. Его public identity образуют четыре
+carrier-поля (`ip_address`, `url_match`, `host_match`, `hash`); `name` не входит
+в identity и обновляется только более поздним зарегистрированным непустым
+наблюдением. Один подготовленный ряд несёт один carrier, исторический backfill
+при включении отсутствует.
+
+| Surface | Candidate disposition |
+|---|---|
+| Configuration | Добавлены declarative multi-type/typed column providers, artifact write policy и expanded section markers; включён shipping aggregate artifact/profile |
+| Durable state | Service schema v11 резервирует монотонный admission order до обработки и сохраняет его через retry/restart; dataframe schema v11 хранит ordered field provenance и выполняет identity row плюс mutation атомарно |
+| Mutable CSV | Новый independent projection имеет колонки `name;ip_address;url_match;host_match;hash`; существующие четыре projection и их identities не меняются |
+| Managed import | Aggregate contract распознаётся отдельно; accepted rows меняют только target aggregate и используют ту же durable observation order |
+| Immutable export | Aggregate публикуется отдельным complete profile, поэтому его изменения не создают новые slices legacy `reputation-lists` profile |
+| Upgrade/rollback | Fresh start пуст; packaged qualification подтвердила additive upgrade и coordinated rollback через matching snapshots обеих SQLite DB и matching config/binary |
+
+Exact-HEAD deterministic, deployment, runtime, recovery and representative-load
+evidence находится в [DATA-AGGREGATE-01 evidence ledger](../ioc-aggregate/evidence.md).
 
 ## Missing evidence и handoff
 

@@ -14,4 +14,17 @@ Review when JBIG2 is upgraded, NVD/CPE mapping changes, or by 2027-01-31.
         <cve>CVE-2026-23907</cve>
         <cve>CVE-2026-33929</cve>
     </suppress>
+    <suppress until="2027-01-31Z">
+        <notes><![CDATA[
+Disposition: false_positive.
+The scanned package is this project's internal Camel adapter. Dependency-Check
+assigned it a low-confidence CPE for Processing Foundation Processing because
+both names contain "processing". CVE-2018-1000840 concerns Processing's
+loadXML() implementation, which this Maven artifact does not contain.
+Advisory: https://nvd.nist.gov/vuln/detail/CVE-2018-1000840
+Review if the artifact coordinates or CPE mapping change, or by 2027-01-31.
+        ]]></notes>
+        <packageUrl regex="true">^pkg:maven/com\.iocextractor/ioc-adapter-processing-camel@0\.3\.0-SNAPSHOT$</packageUrl>
+        <cve>CVE-2018-1000840</cve>
+    </suppress>
 </suppressions>

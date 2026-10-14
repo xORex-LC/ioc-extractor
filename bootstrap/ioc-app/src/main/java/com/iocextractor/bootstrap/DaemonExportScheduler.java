@@ -25,6 +25,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Set;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -32,12 +37,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 /**
- * Daemon lifecycle boundary that samples durable cadence facts and invokes profiles sequentially.
+ * Daemon cadence boundary with independent, bounded per-profile execution.
  *
  * <p>Recovery runs synchronously when the common canonical-data admission gate opens, before the
- * first scheduled poll. One executor and an explicit overlap guard ensure this process never
- * starts two formation attempts at once; the service-database single-flight remains authoritative
- * across processes.
+ * first scheduled poll. Two workers share a queue bounded by the configured profile catalog.
+ * At most one queued/running attempt exists per profile; cadence checks and formation run on
+ * workers so a blocked profile cannot hold the detection timer. Durable per-profile single-flight
+ * and profile file leases remain authoritative across processes.
  */
 public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeTrigger {
 
@@ -46,6 +52,8 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
 
     private static final Logger log = LoggerFactory.getLogger(DaemonExportScheduler.class);
     private static final Duration STOP_TIMEOUT = Duration.ofSeconds(5);
+    // Independent profiles may prepare concurrently; canonical writer ownership remains serialized.
+    private static final int PROFILE_WORKERS = 2;
 
     private final List<ExportPlan> plans;
     private final Map<String, CadenceSource> cadences;
@@ -56,12 +64,15 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
     private final Duration pollInterval;
     private final ExportNudgePolicy nudgePolicy;
     private final Supplier<ScheduledExecutorService> executorFactory;
+    private final Supplier<ExecutorService> workerFactory;
+    private final Set<String> inFlight = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
     private final CanonicalDataAdmissionState admission;
     private final AtomicBoolean running = new AtomicBoolean();
     private final AtomicBoolean nudgeScheduled = new AtomicBoolean();
 
     private volatile boolean active;
     private volatile ScheduledExecutorService executor;
+    private volatile ExecutorService workers;
 
     /** Creates a scheduler with one cadence source per configured profile. */
     public DaemonExportScheduler(List<ExportPlan> plans,
@@ -129,6 +140,21 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
                           ExportNudgePolicy nudgePolicy,
                           CanonicalDataAdmissionState admission,
                           Supplier<ScheduledExecutorService> executorFactory) {
+        this(plans, cadences, revisionReader, progressStore, recovery, exporter, pollInterval,
+                nudgePolicy, admission, executorFactory, () -> newWorkers(plans.size()));
+    }
+
+    DaemonExportScheduler(List<ExportPlan> plans,
+                          Map<String, CadenceSource> cadences,
+                          ArtifactRevisionReader revisionReader,
+                          ExportProgressStore progressStore,
+                          RecoverExportUseCase recovery,
+                          ExportArtifactsUseCase exporter,
+                          Duration pollInterval,
+                          ExportNudgePolicy nudgePolicy,
+                          CanonicalDataAdmissionState admission,
+                          Supplier<ScheduledExecutorService> executorFactory,
+                          Supplier<ExecutorService> workerFactory) {
         this.plans = List.copyOf(Objects.requireNonNull(plans, "plans"));
         this.cadences = Map.copyOf(new LinkedHashMap<>(Objects.requireNonNull(cadences, "cadences")));
         this.revisionReader = Objects.requireNonNull(revisionReader, "revisionReader");
@@ -138,6 +164,7 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
         this.pollInterval = requirePositive(pollInterval);
         this.nudgePolicy = Objects.requireNonNull(nudgePolicy, "nudgePolicy");
         this.executorFactory = Objects.requireNonNull(executorFactory, "executorFactory");
+        this.workerFactory = Objects.requireNonNull(workerFactory, "workerFactory");
         this.admission = Objects.requireNonNull(admission, "admission");
         List<String> profiles = this.plans.stream().map(plan -> plan.profile().name()).toList();
         if (!this.cadences.keySet().containsAll(profiles) || this.cadences.size() != profiles.size()) {
@@ -150,6 +177,9 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
         if (active) {
             return;
         }
+        if (workers != null || executor != null) {
+            throw new IllegalStateException("Previous export executors have not terminated");
+        }
         nudgeScheduled.set(false);
         active = true;
         admission.whenAdmitted(this::openAfterAdmission);
@@ -160,13 +190,14 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
             return;
         }
         recovery.recoverIncomplete();
+        workers = Objects.requireNonNull(workerFactory.get(), "workers");
         executor = Objects.requireNonNull(executorFactory.get(), "executor");
         executor.scheduleWithFixedDelay(
                 this::runOnce, pollInterval.toMillis(), pollInterval.toMillis(), TimeUnit.MILLISECONDS);
         nudge();
     }
 
-    /** Executes one non-overlapping poll; profile failures are isolated and retried on later polls. */
+    /** Dispatches a coalesced profile check; later polls recover failed or rejected hints. */
     public void runOnce() {
         runProfiles();
     }
@@ -196,18 +227,55 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
     }
 
     private SchedulerOutcome runProfiles() {
+        if (!active || workers == null) {
+            return SchedulerOutcome.IDLE;
+        }
         if (!running.compareAndSet(false, true)) {
             return SchedulerOutcome.BUSY;
         }
         SchedulerOutcome outcome = SchedulerOutcome.IDLE;
         try {
             for (ExportPlan plan : plans) {
-                outcome = outcome.merge(attempt(plan));
+                outcome = outcome.merge(dispatch(plan));
             }
         } finally {
             running.set(false);
         }
         return outcome;
+    }
+
+    private SchedulerOutcome dispatch(ExportPlan plan) {
+        String profile = plan.profile().name();
+        if (!inFlight.add(profile)) {
+            return SchedulerOutcome.BUSY;
+        }
+        ExecutorService current = workers;
+        if (current == null) {
+            inFlight.remove(profile);
+            return SchedulerOutcome.IDLE;
+        }
+        try {
+            current.execute(() -> {
+                SchedulerOutcome outcome;
+                try {
+                    outcome = attempt(plan);
+                } finally {
+                    inFlight.remove(profile);
+                }
+                if (outcome == SchedulerOutcome.PENDING_NOT_DUE) {
+                    nudge();
+                }
+            });
+            return SchedulerOutcome.ATTEMPTED;
+        } catch (RejectedExecutionException rejected) {
+            inFlight.remove(profile);
+            return SchedulerOutcome.BUSY;
+        }
+    }
+
+    /** Bounded queued/running attempts; this excludes remote publication work. */
+    public int outstandingProfiles() {
+        return inFlight.size();
     }
 
     private SchedulerOutcome attempt(ExportPlan plan) {
@@ -279,19 +347,46 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
     @Override
     public synchronized void stop() {
         active = false;
-        if (executor == null) {
+        stopExecutors();
+        executor = null;
+        workers = null;
+        inFlight.clear();
+    }
+
+    private void stopExecutors() {
+        RuntimeException failure = null;
+        for (ExecutorService owned : new ExecutorService[] {executor, workers}) {
+            try {
+                terminate(owned);
+            } catch (RuntimeException stopping) {
+                if (failure == null) {
+                    failure = stopping;
+                } else {
+                    failure.addSuppressed(stopping);
+                }
+            }
+        }
+        if (failure != null) {
+            throw failure;
+        }
+    }
+
+    private void terminate(ExecutorService owned) {
+        if (owned == null) {
             return;
         }
-        executor.shutdown();
+        owned.shutdown();
         try {
-            if (!executor.awaitTermination(STOP_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
-                executor.shutdownNow();
+            if (!owned.awaitTermination(STOP_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+                owned.shutdownNow();
+                if (!owned.awaitTermination(STOP_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+                    throw new IllegalStateException("Export workers did not terminate");
+                }
             }
         } catch (InterruptedException interrupted) {
-            executor.shutdownNow();
+            owned.shutdownNow();
             Thread.currentThread().interrupt();
-        } finally {
-            executor = null;
+            throw new IllegalStateException("Interrupted while stopping export workers", interrupted);
         }
     }
 
@@ -319,6 +414,13 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
             thread.setDaemon(false);
             return thread;
         });
+    }
+
+    private static ExecutorService newWorkers(int profiles) {
+        return new ThreadPoolExecutor(PROFILE_WORKERS, PROFILE_WORKERS, 0, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(Math.max(1, profiles)),
+                Thread.ofPlatform().name("ioc-export-profile-", 0).factory(),
+                new ThreadPoolExecutor.AbortPolicy());
     }
 
     private enum SchedulerOutcome {

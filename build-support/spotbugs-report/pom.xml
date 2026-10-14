@@ -59,6 +59,10 @@
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-processing</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
             <artifactId>ioc-application</artifactId>
         </dependency>
 
@@ -78,6 +82,10 @@
         <dependency>
             <groupId>com.iocextractor</groupId>
             <artifactId>ioc-adapter-csv</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-adapter-processing-camel</artifactId>
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>

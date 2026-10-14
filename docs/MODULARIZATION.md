@@ -40,12 +40,14 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 │   └── platform-diagnostics-logging (bridge: DiagnosticSink → LogEvent)
 ├── core/
 │   ├── ioc-domain                 (единый IOC bounded context; capability = пакеты + ArchUnit-DAG)
+│   ├── ioc-processing             (чистая композиция IOC views, classification и field mapping)
 │   ├── ioc-application            (порты in/out + use cases + IOC ETL stages)
 │   └── ioc-application-tck        (переиспользуемые contract tests driven-портов)
 ├── adapters/
 │   ├── adapter-regex-re2j         (PatternEngine → RE2J/JDK fallback)
 │   ├── adapter-source-tika        (SourceReader → Tika)
 │   ├── adapter-csv                (strict CSV parsing + ArtifactPreparer/projection/export → commons-csv)
+│   ├── adapter-processing-camel   (bounded selection, recovery, execution and lifecycle → Camel; selected IOC flows)
 │   ├── adapter-manifest-json-jackson (SliceManifestCodec → Jackson)
 │   ├── adapter-store-jdbc         (service/dataframe storage → Spring JDBC + sqlite-jdbc)
 │   ├── adapter-transport-smb      (FileTransport → smbj)
@@ -65,10 +67,16 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 > ArtifactId имеют префикс `ioc-*`, например `ioc-platform-etl`,
 > `ioc-application`, `ioc-adapter-csv`, `ioc-app`.
 
+`ioc-processing/session` содержит ограниченное переиспользование успешной
+классификации и host-пар в рамках одного вызова. Владелец документной сессии —
+application stage; для попытки staging импорта — application staging service
+через порт session, для прямого вызова одной строки — bootstrap preparer. Camel не
+знает ключей семантического кеша и не владеет его жизненным циклом.
+
 ### Направление зависимостей между модулями
 
 ```
-ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
+ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ ioc-domain
    │              │             │              └────────────▶ platform/*
    │              │             └───────────────────────────▶ platform/*
    │              └─────────────────────────────────────────▶ platform/*
@@ -82,6 +90,10 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 - `platform-etl` зависит только на diagnostics/errors и не знает про IOC domain.
 - `ioc-domain` не зависит на application/adapters/bootstrap/platform-etl и
   остаётся framework-free.
+- `ioc-processing` зависит только от `ioc-domain` и `platform-errors`: он
+  владеет единой классификацией значения и декларативным заполнением полей,
+  но не canonical key, commit, диагностикой или Camel. Его граница описана в
+  [README модуля](../core/ioc-processing/README.md).
 - `ioc-application` зависит внутрь от `ioc-domain` и framework-free platform
   contracts для ETL, diagnostics, control events и keyed concurrency. Точный
   прямой Maven-граф принадлежит [POM модуля](../core/ioc-application/pom.xml),
@@ -92,19 +104,22 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
   только свою технологическую библиотеку/integration family.
 - `ioc-application-tck` содержит test-scope contract tests; реализации портов
   подключают его только в тестовом scope.
-- `ioc-app` (bootstrap) зависит на всё и собирает исполняемый артефакт.
+- `ioc-app` (bootstrap) собирает исполняемый артефакт и зависит от подключённых
+  runtime-адаптеров. `adapter-processing-camel` исполняет обязательный документный
+  план и явно связанные processed-import планы; альтернативных путей dispatch нет.
+  Runtime допускает весь проверенный каталог планов при запуске.
 - `build-quality` не является Maven-модулем: root `validate` компилирует его
   JDK-only verifier и synthetic-reactor contract harness напрямую.
 - `coverage-report` зависит на все production-модули только для формирования
   полного JaCoCo aggregate.
-- `spotbugs-report` зависит на те же 19 production-модулей для reactor ordering,
+- `spotbugs-report` зависит на те же 21 production-модуль для reactor ordering,
   формирует общий SpotBugs XML/HTML и проверяет наличие всех module/aggregate
   reports.
-- `cpd-report` зависит на 19 production-модулей только для reactor ordering и
+- `cpd-report` зависит на 21 production-модуль только для reactor ordering и
   анализирует единым PMD CPD execution явный allowlist их `src/main/java`;
   fail-closed registry сверяет reactor, ordering dependencies, source roots и
   итоговый XML source universe.
-- `pmd-report` зависит на те же 19 production-модулей только для reactor
+- `pmd-report` зависит на те же 21 production-модуль только для reactor
   ordering и type resolution. Поимённая 22-rule policy выполняется
   отдельным regular CI job, а 3-rule ownership/size watchlist остаётся
   локально opt-in. Оба профиля анализируют явный allowlist
@@ -142,13 +157,13 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `ioc-application` | Pipeline/ingest use cases; framework-free Artifact Emission, Remote Sync, canonical lifecycle и managed dataframe-import contracts/models/ports, exact recognition, tri-state mapping, staging orchestration, retry/cadence, sagas и policies |
 | `ioc-application-tck` | Переиспользуемые JUnit contract tests application ports, включая import delivery ledger и canonical promotion, исполняемые каждой реализацией |
 | `adapter-regex-re2j` | PatternEngine implementation (RE2J + JDK fallback) |
-| `adapter-source-tika` | SourceReader (Tika) |
+| `adapter-source-tika` | SourceReader (Tika; progressive HTML and SAX DOCX) |
 | `adapter-csv` | Strict delimited-row parsing, import transforms/processed-row preparation, artifact mapping, cursor-streamed canonical CSV projection, callback-streaming immutable slices, integrity verification, atomic local publish и directory-level slice retention |
 | `adapter-manifest-json-jackson` | Deterministic versioned JSON codec for immutable slice manifests |
-| `adapter-store-jdbc` | Service/dataframe SQLite: canonical/revision/lifecycle storage, typed history/receipts, reusable export-slot registry, bounded reconcile checkpoint, strict active snapshot reader, ingest/export/fetch/publish/import ledgers, private sealed import staging, migrations и health |
+| `adapter-store-jdbc` | Service/dataframe SQLite: canonical/revision/lifecycle storage, typed history/receipts, reusable export-slot registry, bounded reconcile checkpoint, strict active snapshot reader, ingest/export/fetch/publish/import ledgers, private sealed document preparation/import staging, migrations и health; Native is the sole canonical backend ([storage](dev/storage.md)) |
 | `adapter-transport-smb` | smbj boundary: shared lazy SMB2/3 sessions, streaming get, atomic slice publish, server-side managed-import claim/materialization/disposition и `CHANGE_NOTIFY` doorbells за application ports |
 | `adapter-psl` | HostClassifier (PSL/Guava) |
-| `adapter-ingest` | Watch ingest: `IngestSourceUseCase`(in), `SourceLifecycle`, file `IngestionLedger`; SourceFeed adapter-local (Spring Integration); local managed-import claim/snapshot/disposition; `FileSystemRetentionStore` (reaper IO) |
+| `adapter-ingest` | Single document detector, bounded durable dispatcher и ordered promotion через `PrepareIngestionUseCase`; `SourceLifecycle`, file `IngestionLedger`/admission journal; local managed-import claim/snapshot/disposition; `FileSystemRetentionStore` (reaper IO) |
 | `adapter-cli-picocli` | входной CLI: `extract`, lazy `export`, `sync fetch|publish|all`, remote daemon `health` |
 | `ioc-app` (bootstrap) | composition root, lazy export/sync graphs, transport registry; fetch/export/publish/retention/lifecycle/import schedulers, strict lifecycle/import config compilation, local/SMB import routing, conditional web и health |
 | `build-quality` (build-support tooling) | Общий JDK-only fail-fast scope/report verifier и synthetic-reactor contract matrix; не является Maven reactor project |

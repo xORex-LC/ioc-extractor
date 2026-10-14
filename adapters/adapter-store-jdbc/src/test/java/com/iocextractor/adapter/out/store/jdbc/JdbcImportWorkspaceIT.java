@@ -14,6 +14,7 @@ import com.iocextractor.application.dataframeimport.model.ImportDuplicatePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportLogicalRow;
 import com.iocextractor.application.dataframeimport.model.ImportRejectedLogicalRow;
 import com.iocextractor.application.dataframeimport.model.ImportRowIssue;
+import com.iocextractor.application.dataframeimport.model.ImportRowWarning;
 import com.iocextractor.application.dataframeimport.model.ImportSha256;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshot;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshotReference;
@@ -50,6 +51,92 @@ class JdbcImportWorkspaceIT {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void acceptedWarningsRemainSeparateFromRejectionsInSealedStage() throws Exception {
+        JdbcImportWorkspace workspace = workspace(limits(2, 4, 32, 1));
+        CreateImportWorkspaceCommand command = command("warnings", ImportDuplicatePolicy.KEEP_FIRST);
+        ImportStage stage;
+        try (ImportWorkspaceWriter writer = workspace.create(command)) {
+            writer.append(row(2, "key-a", Map.of("ip", ImportCell.value("192.0.2.1"))),
+                    List.of(new ImportRowWarning(2, "ip_list", "IMPORT.VIEW_FALLBACK"),
+                            new ImportRowWarning(2, "ip_list", "IMPORT.SECOND_WARNING")));
+            stage = writer.seal();
+        }
+        assertThat(stage.acceptedRows()).isOne();
+        assertThat(stage.rejectedRows()).isZero();
+        assertThat(workspace.verifySealed(command, stage)).isEqualTo(stage);
+        assertThat(queryLong("SELECT COUNT(*) FROM stage_row_error")).isZero();
+        assertThat(queryString("SELECT diagnostic_code FROM stage_row_warning"))
+                .isEqualTo("IMPORT.VIEW_FALLBACK");
+        assertThat(queryLong("SELECT COUNT(*) FROM stage_row_warning")).isOne();
+    }
+
+    @Test
+    void warningForAnotherSourceRowAbortsTheWorkspace() {
+        JdbcImportWorkspace workspace = workspace(limits(2));
+        CreateImportWorkspaceCommand command = command("wrong-warning-row", ImportDuplicatePolicy.KEEP_FIRST);
+
+        try (ImportWorkspaceWriter writer = workspace.create(command)) {
+            assertThatThrownBy(() -> writer.append(
+                    row(2, "key-a", Map.of("ip", ImportCell.value("192.0.2.1"))),
+                    List.of(new ImportRowWarning(3, "ip_list", "IMPORT.VIEW_FALLBACK"))))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("another source row");
+        }
+        assertThat(workspace.adoptSealed(command.deliveryId(), command.snapshot(), command.contract()))
+                .isEmpty();
+    }
+
+    @Test
+    void rejectsPinnedStageWithUnsupportedPrivateSchemaVersion() throws Exception {
+        JdbcImportWorkspace workspace = workspace(limits(2));
+        CreateImportWorkspaceCommand command = command("future-version", ImportDuplicatePolicy.KEEP_FIRST);
+        ImportStage stage;
+        try (ImportWorkspaceWriter writer = workspace.create(command)) {
+            writer.append(row(2, "key-a", Map.of("ip", ImportCell.value("192.0.2.1"))));
+            stage = writer.seal();
+        }
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + sealedFile());
+             var statement = connection.createStatement()) {
+            statement.execute("PRAGMA user_version=99");
+            statement.execute("UPDATE stage_meta SET schema_version=99");
+        }
+        ImportStage repinned = new ImportStage(stage.reference(), ImportFileDigests.sha256(sealedFile()),
+                stage.sourceRows(), stage.acceptedRows(), stage.rejectedRows());
+
+        assertThatThrownBy(() -> workspace.verifySealed(command, repinned))
+                .isInstanceOfSatisfying(ImportWorkspaceException.class,
+                        failure -> assertThat(failure.reason()).isEqualTo(
+                                ImportWorkspaceException.Reason.STAGE_INTEGRITY_FAILED));
+    }
+
+    @Test
+    void adoptsPinnedVersionTwoStageWithoutReinterpretingItsPlan() throws Exception {
+        JdbcImportWorkspace workspace = workspace(limits(10));
+        CreateImportWorkspaceCommand command = command("version-two", ImportDuplicatePolicy.KEEP_FIRST);
+        ImportStage newStage;
+        try (ImportWorkspaceWriter writer = workspace.create(command)) {
+            writer.append(row(2, "key-a", Map.of("ip", ImportCell.value("192.0.2.1"))));
+            newStage = writer.seal();
+        }
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + sealedFile());
+             var statement = connection.createStatement()) {
+            statement.execute("DROP TABLE stage_row_warning");
+            statement.execute("PRAGMA user_version=2");
+            statement.execute("""
+                    UPDATE stage_meta SET schema_version=2,
+                    plan_hash='16f637219429dbb9053ea2fae651d05c00666c2b613303a3bd0c19f25769017d'
+                    """);
+        }
+        ImportStage oldStage = new ImportStage(newStage.reference(),
+                ImportFileDigests.sha256(sealedFile()), newStage.sourceRows(),
+                newStage.acceptedRows(), newStage.rejectedRows());
+
+        assertThat(workspace.verifySealed(command, oldStage)).isEqualTo(oldStage);
+        assertThat(workspace.adoptSealed(command.deliveryId(), command.snapshot(), command.contract()))
+                .contains(oldStage);
+    }
 
     @Test
     void coalescesCompatibleTriStateRowsAndVerifiesSealedStageReadOnly() throws Exception {
@@ -135,6 +222,44 @@ class JdbcImportWorkspaceIT {
                 .isEqualTo("ACCEPTED,DUPLICATE_IGNORED");
         assertThat(queryLong("SELECT COUNT(*) FROM stage_row_error WHERE diagnostic_code = 'IMPORT.DUPLICATE_IGNORED'"))
                 .isOne();
+    }
+
+    @Test
+    void lastNonemptyRetainsLatestNamedRowIntactAndFallsBackToFirstUnnamedRow() throws Exception {
+        JdbcImportWorkspace workspace = workspace(limits(1_000));
+        CreateImportWorkspaceCommand command = command(
+                "last-nonempty", ImportDuplicatePolicy.LAST_NONEMPTY, "name");
+        ImportStage stage;
+        try (ImportWorkspaceWriter writer = workspace.create(command)) {
+            writer.append(row(2, "key-a", Map.of(
+                    "name", ImportCell.value("first"), "ip", ImportCell.value("192.0.2.1"))));
+            writer.append(row(3, "key-a", Map.of(
+                    "name", ImportCell.nullValue(), "ip", ImportCell.value("192.0.2.1"))));
+            writer.append(row(4, "key-a", Map.of(
+                    "name", ImportCell.value("last"), "ip", ImportCell.value("192.0.2.1"))));
+            writer.append(row(5, "key-b", Map.of(
+                    "name", ImportCell.nullValue(), "ip", ImportCell.value("192.0.2.2"))));
+            writer.append(row(6, "key-b", Map.of(
+                    "name", ImportCell.value("   "), "ip", ImportCell.value("192.0.2.2"))));
+            stage = writer.seal();
+        }
+
+        assertThat(stage.acceptedRows()).isEqualTo(2);
+        assertThat(queryString("""
+                SELECT group_concat(source_row_number || ':' || COALESCE(value, 'NULL'), ',')
+                FROM (
+                    SELECT input.source_row_number, cell.value
+                    FROM stage_input_row input
+                    JOIN stage_branch branch ON branch.source_row_number = input.source_row_number
+                    JOIN stage_cell cell ON cell.branch_id = branch.branch_id
+                    WHERE input.status = 'ACCEPTED' AND cell.target_column = 'name'
+                    ORDER BY input.source_row_number)
+                """))
+                .isEqualTo("4:last,5:NULL");
+        assertThat(queryLong("""
+                SELECT COUNT(*) FROM stage_row_error
+                WHERE diagnostic_code = 'IMPORT.DUPLICATE_IGNORED'
+                """)).isEqualTo(3);
     }
 
     @Test
@@ -488,6 +613,12 @@ class JdbcImportWorkspaceIT {
     }
 
     private CreateImportWorkspaceCommand command(String delivery, ImportDuplicatePolicy duplicatePolicy) {
+        return command(delivery, duplicatePolicy, null);
+    }
+
+    private CreateImportWorkspaceCommand command(String delivery,
+                                                  ImportDuplicatePolicy duplicatePolicy,
+                                                  String selectionColumn) {
         return new CreateImportWorkspaceCommand(
                 new ImportDeliveryId(delivery),
                 new ImportSnapshot(
@@ -496,7 +627,7 @@ class JdbcImportWorkspaceIT {
                 new ImportContractPin(
                         new ImportContractId("ip-list-v1"), 1,
                         new ImportContractFingerprint("b".repeat(64))),
-                duplicatePolicy);
+                duplicatePolicy, selectionColumn);
     }
 
     private ImportLogicalRow row(long sourceRow, String key, Map<String, ImportCell> values) {

@@ -18,6 +18,8 @@ import java.util.Set;
  * Semantic startup preflight for the bound {@code ioc.*} configuration tree.
  */
 final class IocConfigPreflight implements Validator {
+    private static final int MAXIMUM_PENDING_DOCUMENTS = 256;
+
 
     private static final String ERROR_CODE = "ioc.config.invalid";
 
@@ -31,7 +33,7 @@ final class IocConfigPreflight implements Validator {
         if (!(target instanceof IocProperties props)) {
             return;
         }
-        validateIngestion(props.ingestion(), errors);
+        validateIngestion(props, errors);
         validateLifecycle(props.lifecycle(), errors);
         validateArtifactIdentityReferences(props, errors);
         validateSync(props, errors);
@@ -88,11 +90,29 @@ final class IocConfigPreflight implements Validator {
         }
     }
 
-    private void validateIngestion(IocProperties.Ingestion ingestion, Errors errors) {
+    private void validateIngestion(IocProperties props, Errors errors) {
+        var ingestion = props.ingestion();
         if (ingestion != null && ingestion.concurrency() != 1) {
             reject(errors, "ingestion.concurrency", ingestion.concurrency(),
-                    "ioc.ingestion.concurrency=%d is invalid; keep it at 1 because parallel ingestion is not supported"
+                    "ioc.ingestion.concurrency=%d is invalid; keep it at 1 because canonical promotion remains serial"
                             .formatted(ingestion.concurrency()));
+        }
+        if (ingestion != null && ingestion.execution() != null) {
+            var execution = ingestion.execution();
+            if (execution.preparationWorkers() < 1 || execution.preparationWorkers() > 2
+                    || execution.window() < execution.preparationWorkers()
+                    || execution.window() > execution.maxPendingDocuments()
+                    || execution.maxPendingDocuments() > MAXIMUM_PENDING_DOCUMENTS
+                    || execution.maxSourceBytes() < 1
+                    || execution.maxPendingSourceBytes() < execution.maxSourceBytes()) {
+                reject(errors, "ingestion.execution", execution,
+                        "Execution requires 1..2 workers, workers <= window <= pending <= 256 and positive source byte budgets");
+            }
+            if (props.processing() != null && props.processing().workspace() != null
+                    && execution.maxSourceBytes() > props.processing().workspace().workspaceBytes() / 4) {
+                reject(errors, "ingestion.execution.maxSourceBytes", execution.maxSourceBytes(),
+                        "Per-source admission must fit the preparation workspace source pin budget (workspace-bytes / 4)");
+            }
         }
     }
 
@@ -110,6 +130,12 @@ final class IocConfigPreflight implements Validator {
     private void validateArtifactIdentityReferences(IocProperties props, Errors errors) {
         Map<String, SinkArtifactRef> sinkArtifacts = validateSinkArtifacts(props.sink(), errors);
         Set<String> identityArtifacts = validateIdentityDefinitions(props.artifactIdentity(), sinkArtifacts, errors);
+        if (sinkArtifacts.containsKey("ioc_aggregate")
+                && props.artifactIdentity() != null
+                && V020ArtifactIdentityCompatibility.containsCompleteLegacyBase(
+                        props.artifactIdentity().artifacts())) {
+            identityArtifacts.add("ioc_aggregate");
+        }
         for (SinkArtifactRef sinkArtifact : sinkArtifacts.values()) {
             IocProperties.Sink.Artifact artifact = sinkArtifact.artifact();
             if (artifact.enabled() && hasText(artifact.name()) && !identityArtifacts.contains(artifact.name())) {

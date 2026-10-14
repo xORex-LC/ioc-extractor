@@ -146,6 +146,7 @@ public abstract class CanonicalRecordLifecycleContractTest {
 
         LifecycleWriteResult committed = fixture.writer().confirm(confirmation);
         ActiveArtifactRecord original = onlyRecord(fixture, START);
+        int committedSamples = timeSource.samples();
         timeSource.set(START.plus(Duration.ofMinutes(45)));
 
         LifecycleWriteResult replayed = fixture.writer().confirm(confirmation);
@@ -154,14 +155,15 @@ public abstract class CanonicalRecordLifecycleContractTest {
         assertThat(replayed.replayed()).isTrue();
         assertThat(replayed.effectiveTime()).isEqualTo(committed.effectiveTime());
         assertThat(replayed.artifactRevision()).isEqualTo(committed.artifactRevision());
-        assertThat(timeSource.samples()).isEqualTo(1);
+        assertThat(timeSource.samples()).isEqualTo(committedSamples);
         assertThat(current.lifecycle()).isEqualTo(original.lifecycle());
         assertThat(publicId(current)).isEqualTo(publicId(original));
     }
 
     @Test
-    void one_multi_row_transaction_samples_effective_time_once() {
+    void one_multi_row_confirmation_uses_one_published_effective_time() {
         var timeSource = new AdjustableTimeSource(START);
+        timeSource.tickPerSample = true;
         LifecycleFixture fixture = fixture(timeSource);
 
         LifecycleWriteResult result = fixture.writer().confirm(command(
@@ -169,9 +171,13 @@ public abstract class CanonicalRecordLifecycleContractTest {
                 row("row-a", "a.example"),
                 row("row-b", "b.example")));
 
-        assertThat(result.effectiveTime()).isEqualTo(EffectiveTime.at(START));
         assertThat(result.confirmedRecords()).isEqualTo(2);
-        assertThat(timeSource.samples()).isEqualTo(1);
+        assertThat(fixture.reader().loadActive(ARTIFACT, result.effectiveTime()).records())
+                .hasSize(2).allSatisfy(record -> {
+                    assertThat(record.lifecycle().firstConfirmedAt()).isEqualTo(result.effectiveTime());
+                    assertThat(record.lifecycle().lastConfirmedAt()).isEqualTo(result.effectiveTime());
+                    assertThat(record.lifecycle().deadline().validUntil()).isEqualTo(result.effectiveTime().value().plus(TTL));
+                });
     }
 
     @Test
@@ -283,6 +289,7 @@ public abstract class CanonicalRecordLifecycleContractTest {
 
         private volatile Instant instant;
         private int samples;
+        private boolean tickPerSample;
 
         private AdjustableTimeSource(Instant instant) {
             this.instant = Objects.requireNonNull(instant, "instant");
@@ -299,7 +306,9 @@ public abstract class CanonicalRecordLifecycleContractTest {
         @Override
         public EffectiveTime now() {
             samples++;
-            return EffectiveTime.at(instant);
+            EffectiveTime result = EffectiveTime.at(instant);
+            if (tickPerSample) { instant = instant.plusSeconds(1); }
+            return result;
         }
     }
 }

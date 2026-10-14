@@ -1,11 +1,13 @@
 package com.iocextractor.application.dataframeimport.model;
 
 import com.iocextractor.application.artifact.CanonicalKeyMaterial;
+import com.iocextractor.application.dataframeimport.mapping.ImportRowMappingResult;
 import com.iocextractor.application.maintenance.RetentionAction;
 import com.iocextractor.application.port.in.dataframeimport.RecoverDataframeImportsResult;
 import com.iocextractor.application.port.in.dataframeimport.ReplayDataframeImportCommand;
 import com.iocextractor.application.port.in.dataframeimport.ValidateDataframeImportResult;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportResult;
+import com.iocextractor.application.port.out.dataframeimport.CreateImportWorkspaceCommand;
 import com.iocextractor.application.port.out.dataframeimport.PublishImportReportCommand;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
@@ -73,6 +75,24 @@ class DataframeImportModelContractsTest {
                 () -> new ImportRowIssue(1, "ip_list", " ")));
         assertThatNullPointerException()
                 .isThrownBy(() -> new ImportRowIssue(1, "ip_list", null))
+                .withMessage("code");
+    }
+
+    @Test
+    void acceptedWarningsRequireValidEvidenceAndCannotAccompanyRejection() {
+        ImportRowWarning warning = new ImportRowWarning(3, null, "IMPORT.VIEW_FALLBACK");
+        assertThat(warning.artifact()).isNull();
+        assertThat(warning.code()).isEqualTo("IMPORT.VIEW_FALLBACK");
+
+        assertInvalid(List.of(
+                () -> new ImportRowWarning(0, "ip_list", "IMPORT.VIEW_FALLBACK"),
+                () -> new ImportRowWarning(3, "ip_list", " "),
+                () -> new ImportRowMappingResult(Optional.empty(), List.of(), List.of()),
+                () -> new ImportRowMappingResult(Optional.empty(),
+                        List.of(new ImportRowIssue(3, "ip_list", "IMPORT.ROW_INVALID")),
+                        List.of(warning))));
+        assertThatNullPointerException()
+                .isThrownBy(() -> new ImportRowWarning(3, "ip_list", null))
                 .withMessage("code");
     }
 
@@ -372,6 +392,37 @@ class DataframeImportModelContractsTest {
                         new ImportContractId("contract"), 0, new ImportContractFingerprint(DIGEST)),
                 () -> ImportMergePolicy.parse(null),
                 () -> ImportMergePolicy.parse("unknown")));
+    }
+
+    @Test
+    void workspaceCreationRequiresSelectionOnlyForLastNonemptyReduction() {
+        ImportDeliveryId deliveryId = new ImportDeliveryId("delivery-workspace");
+        ImportSnapshot snapshot = snapshot();
+        ImportContractPin contract = contract();
+
+        assertThat(new CreateImportWorkspaceCommand(
+                deliveryId, snapshot, contract, ImportDuplicatePolicy.LAST_NONEMPTY,
+                "name", ImportPromotionPolicy.defaults()).duplicateSelectionColumn())
+                .isEqualTo("name");
+        assertThat(new CreateImportWorkspaceCommand(
+                deliveryId, snapshot, contract, ImportDuplicatePolicy.COALESCE,
+                null, ImportPromotionPolicy.defaults()).duplicateSelectionColumn())
+                .isNull();
+        assertThat(new CreateImportWorkspaceCommand(
+                deliveryId, snapshot, contract, ImportDuplicatePolicy.COALESCE,
+                " ", ImportPromotionPolicy.defaults()).duplicateSelectionColumn())
+                .isBlank();
+
+        assertInvalid(List.of(
+                () -> new CreateImportWorkspaceCommand(
+                        deliveryId, snapshot, contract, ImportDuplicatePolicy.LAST_NONEMPTY,
+                        null, ImportPromotionPolicy.defaults()),
+                () -> new CreateImportWorkspaceCommand(
+                        deliveryId, snapshot, contract, ImportDuplicatePolicy.LAST_NONEMPTY,
+                        " ", ImportPromotionPolicy.defaults()),
+                () -> new CreateImportWorkspaceCommand(
+                        deliveryId, snapshot, contract, ImportDuplicatePolicy.KEEP_FIRST,
+                        "name", ImportPromotionPolicy.defaults())));
     }
 
     @Test

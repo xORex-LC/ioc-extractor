@@ -1,0 +1,317 @@
+package com.iocextractor.bootstrap;
+
+import com.iocextractor.application.artifact.RoutedArtifactCandidate;
+import com.iocextractor.application.dataframeimport.contract.CompiledDataframeImportContract;
+import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
+import com.iocextractor.application.dataframeimport.mapping.ImportRowMappingResult;
+import com.iocextractor.application.dataframeimport.mapping.ImportMergePolicyResolver;
+import com.iocextractor.application.dataframeimport.model.ImportArtifactBranch;
+import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
+import com.iocextractor.application.dataframeimport.model.ImportCell;
+import com.iocextractor.application.dataframeimport.model.ImportDelimitedRecord;
+import com.iocextractor.application.dataframeimport.model.ImportLogicalRow;
+import com.iocextractor.application.dataframeimport.model.ImportMergePolicy;
+import com.iocextractor.application.dataframeimport.model.ImportRowIssue;
+import com.iocextractor.application.dataframeimport.model.ImportRowWarning;
+import com.iocextractor.application.observation.OccurrencePosition;
+import com.iocextractor.application.port.out.dataframeimport.ProcessedImportRowPreparer;
+import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.domain.extract.IndicatorExtractor;
+import com.iocextractor.domain.feature.NetworkAddressParser;
+import com.iocextractor.domain.model.Indicator;
+import com.iocextractor.domain.model.SourceContext;
+import com.iocextractor.domain.refang.Refanger;
+import com.iocextractor.processing.classification.IndicatorClassifier;
+import com.iocextractor.processing.session.IndicatorProcessingSession;
+import com.iocextractor.processing.model.ClassifiedIndicator;
+import com.iocextractor.processing.parse.ExactIndicatorParser;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * Adapts explicitly bound import cells to the admitted IOC route, then assembles
+ * one authorized logical row. Canonical identity remains with the application.
+ */
+final class RouterProcessedImportRowPreparer implements ProcessedImportRowPreparer {
+    private static final String INPUT_INVALID = "IMPORT.PROCESSED_INPUT_INVALID";
+    private static final String UNROUTABLE = "IMPORT.PROCESSED_VALUE_UNROUTABLE";
+    private static final String COMPOUND_CONFLICT = "IMPORT.PROCESSED_COMPOUND_CONFLICT";
+    private static final String DERIVATION_FAILED = "IMPORT.PROCESSED_DERIVATION_FAILED";
+    private static final String VIEW_FALLBACK = "IMPORT.PROCESSED_VIEW_FALLBACK";
+    private static final int MAX_INPUTS = 32;
+
+    /** One authorized semantic carrier, identified without provider-name inference. */
+    record Input(String artifact, String target) {
+        Input {
+            if (artifact == null || artifact.isBlank() || target == null || target.isBlank()) {
+                throw new IllegalArgumentException("Processed import input requires artifact and target");
+            }
+        }
+    }
+
+    private final CompiledDataframeImportContract pinnedContract;
+    private final Map<String, DataframeImportCatalogDraft.Artifact> artifacts;
+    private final Map<String, Map<String, ImportMergePolicy>> outputPolicies;
+    private final List<Input> inputs;
+    private final Map<String, Set<String>> outputTargets;
+    private final Refanger refanger;
+    private final ExactIndicatorParser parser;
+    private final IndicatorClassifier classifier;
+    private final IocProcessingRouteAdapter route;
+
+    RouterProcessedImportRowPreparer(CompiledDataframeImportContract contract, List<Input> inputs,
+                                     Map<String, Set<String>> outputTargets,
+                                     Refanger refanger, IndicatorExtractor extractor,
+                                     IndicatorClassifier classifier, IocProcessingRouteAdapter route) {
+        this.pinnedContract = Objects.requireNonNull(contract, "pinned contract");
+        this.inputs = List.copyOf(inputs);
+        if (this.inputs.isEmpty() || this.inputs.size() > MAX_INPUTS
+                || new LinkedHashSet<>(this.inputs).size() != this.inputs.size()) {
+            throw new IllegalArgumentException("Processed import inputs must be bounded and unique");
+        }
+        Map<String, Set<String>> targets = new LinkedHashMap<>();
+        outputTargets.forEach((artifact, fields) -> {
+            if (artifact == null || artifact.isBlank() || fields == null || fields.isEmpty()) {
+                throw new IllegalArgumentException("Processed import outputs require artifact and fields");
+            }
+            if (fields.stream().anyMatch(field -> field == null || field.isBlank())) {
+                throw new IllegalArgumentException("Processed import output fields must be non-blank");
+            }
+            targets.put(artifact, java.util.Collections.unmodifiableSet(new LinkedHashSet<>(fields)));
+        });
+        this.outputTargets = java.util.Collections.unmodifiableMap(targets);
+        Map<String, DataframeImportCatalogDraft.Artifact> definitions = new LinkedHashMap<>();
+        contract.definition().artifacts().forEach(artifact -> definitions.put(artifact.name(), artifact));
+        this.artifacts = Map.copyOf(definitions);
+        this.outputPolicies = bindOutputPolicies(contract);
+        this.refanger = Objects.requireNonNull(refanger, "refanger");
+        this.parser = new ExactIndicatorParser(Objects.requireNonNull(extractor, "extractor"),
+                new NetworkAddressParser());
+        this.classifier = Objects.requireNonNull(classifier, "classifier");
+        this.route = Objects.requireNonNull(route, "route");
+    }
+
+    @Override
+    public ImportRowMappingResult prepare(CompiledDataframeImportContract contract,
+                                          ImportDelimitedRecord record, ImportLogicalRow admitted) {
+        try (var session = new IndicatorProcessingSession(classifier)) {
+            return prepareInSession(contract, record, admitted, session);
+        }
+    }
+
+    @Override
+    public Session openSession(CompiledDataframeImportContract contract) {
+        if (!pinnedContract.equals(contract)) {
+            throw new IllegalStateException("Processed import plan does not match pinned contract");
+        }
+        var semantics = new IndicatorProcessingSession(classifier);
+        return new Session() {
+            private boolean closed;
+
+            @Override
+            public ImportRowMappingResult prepare(CompiledDataframeImportContract pinned,
+                                                   ImportDelimitedRecord record, ImportLogicalRow admitted) {
+                if (closed) {
+                    throw new IllegalStateException("Import preparation session is closed");
+                }
+                return RouterProcessedImportRowPreparer.this.prepareInSession(pinned, record, admitted, semantics);
+            }
+
+            @Override
+            public void close() {
+                closed = true;
+                semantics.close();
+            }
+        };
+    }
+
+    private ImportRowMappingResult prepareInSession(CompiledDataframeImportContract contract,
+                                            ImportDelimitedRecord record, ImportLogicalRow admitted,
+                                            IndicatorProcessingSession session) {
+        requireBinding(contract, admitted);
+        RowAssembly assembly = new RowAssembly();
+        for (Input input : inputs) {
+            prepareInput(record, admitted, input, assembly, session);
+        }
+        requirePrimaryOutput(record, admitted, assembly);
+        if (!assembly.issues.isEmpty()) {
+            return ImportRowMappingResult.rejected(assembly.issues);
+        }
+        return ImportRowMappingResult.accepted(assembledRow(record, admitted, assembly),
+                assembly.warnings);
+    }
+
+    private void prepareInput(ImportDelimitedRecord record,
+                              ImportLogicalRow admitted, Input input, RowAssembly assembly,
+                              IndicatorProcessingSession session) {
+        ImportArtifactBranch branch = branch(admitted, input.artifact());
+        ImportCell cell = Objects.requireNonNull(branch.cells().get(input.target()),
+                "admitted semantic input " + input);
+        if (cell.presence() != ImportCell.Presence.VALUE) {
+            return;
+        }
+        var parsed = parser.parse(refanger.refang(cell.value()).text());
+        if (!parsed.isAvailable()) {
+            assembly.issues.add(issue(record, input.artifact(), INPUT_INVALID));
+            return;
+        }
+        Indicator indicator = new Indicator(parsed.indicator().value(), parsed.indicator().type(),
+                new SourceContext(sourceLabel(branch), null));
+        var original = new ProcessingView(new ClassifiedIndicator(indicator, session.classify(indicator)),
+                new OccurrencePosition(record.sourceRowNumber()), 0, Map.of(), session);
+        var result = route.prepare(original);
+        result.diagnostics().forEach(diagnostic -> {
+            if (diagnostic.severity() == DiagnosticSeverity.WARN) {
+                assembly.warnings.add(new ImportRowWarning(record.sourceRowNumber(), input.artifact(),
+                        VIEW_FALLBACK));
+            } else {
+                assembly.issues.add(issue(record, input.artifact(), DERIVATION_FAILED));
+            }
+        });
+        result.value().forEach(candidate -> mergeCandidate(record, candidate, assembly));
+    }
+
+    private void mergeCandidate(ImportDelimitedRecord record, RoutedArtifactCandidate candidate,
+                                RowAssembly assembly) {
+        Set<String> targets = outputTargets.get(candidate.artifact());
+        if (targets == null) {
+            throw new IllegalStateException("Route produced unauthorized import artifact: "
+                    + candidate.artifact());
+        }
+        assembly.preparedArtifacts.add(candidate.artifact());
+        Map<String, String> values = assembly.outputs.computeIfAbsent(candidate.artifact(),
+                ignored -> new LinkedHashMap<>());
+        for (String target : targets) {
+            if (!candidate.row().template().values().containsKey(target)) {
+                throw new IllegalStateException("Route omitted bound import output: " + target);
+            }
+            String value = candidate.row().template().value(target);
+            // A provider/gate with no value contributes nothing to this input.
+            // Route-owned fields are replaced only after all inputs are assembled.
+            if (value == null) {
+                continue;
+            }
+            if (values.containsKey(target) && !Objects.equals(values.get(target), value)) {
+                assembly.issues.add(issue(record, candidate.artifact(), COMPOUND_CONFLICT));
+            } else {
+                values.put(target, value);
+            }
+        }
+    }
+
+    private static void requirePrimaryOutput(ImportDelimitedRecord record, ImportLogicalRow admitted,
+                                             RowAssembly assembly) {
+        for (ImportArtifactBranch branch : admitted.branches()) {
+            if (branch.role() == ImportArtifactRole.PRIMARY
+                    && !assembly.preparedArtifacts.contains(branch.artifactName())) {
+                assembly.issues.add(issue(record, branch.artifactName(), UNROUTABLE));
+            }
+        }
+    }
+
+    private ImportLogicalRow assembledRow(ImportDelimitedRecord record, ImportLogicalRow admitted,
+                                          RowAssembly assembly) {
+        List<ImportArtifactBranch> branches = new ArrayList<>(admitted.branches().size());
+        for (ImportArtifactBranch branch : admitted.branches()) {
+            Map<String, ImportCell> cells = new LinkedHashMap<>(branch.cells());
+            Map<String, ImportMergePolicy> policies = new LinkedHashMap<>(branch.mergePolicies());
+            Map<String, String> produced = assembly.outputs.getOrDefault(branch.artifactName(), Map.of());
+            if (!produced.isEmpty()) {
+                for (String target : outputTargets.getOrDefault(branch.artifactName(), Set.of())) {
+                    ImportCell admittedCell = Objects.requireNonNull(cells.get(target),
+                            "admitted route output " + branch.artifactName() + "." + target);
+                    if (admittedCell.presence() == ImportCell.Presence.VALUE
+                            && !produced.containsKey(target)) {
+                        cells.put(target, ImportCell.nullValue());
+                    }
+                }
+            }
+            produced.forEach((target, value) -> {
+                cells.put(target, ImportCell.value(value));
+                policies.putIfAbsent(target, outputPolicies.get(branch.artifactName()).get(target));
+            });
+            branches.add(new ImportArtifactBranch(branch.artifactName(), branch.role(), cells,
+                    policies, branch.requestedSlot(), java.util.Optional.empty(), List.of()));
+        }
+        return new ImportLogicalRow(record.sourceRowNumber(), branches);
+    }
+
+    private static final class RowAssembly {
+        private final List<ImportRowIssue> issues = new ArrayList<>();
+        private final List<ImportRowWarning> warnings = new ArrayList<>();
+        private final Map<String, Map<String, String>> outputs = new LinkedHashMap<>();
+        private final Set<String> preparedArtifacts = new LinkedHashSet<>();
+    }
+
+    /** Validates immutable authority once, before this preparer is published to callers. */
+    private Map<String, Map<String, ImportMergePolicy>> bindOutputPolicies(
+            CompiledDataframeImportContract contract) {
+        if (!artifacts.keySet().containsAll(outputTargets.keySet())) {
+            throw new IllegalStateException("Processed route targets exceed contract authority");
+        }
+        Map<String, Map<String, ImportMergePolicy>> policies = new LinkedHashMap<>();
+        outputTargets.forEach((name, targets) -> {
+            var artifact = artifacts.get(name);
+            Set<String> authorized = new LinkedHashSet<>();
+            artifact.columns().forEach(column -> authorized.add(column.target()));
+            if (!authorized.containsAll(targets)) {
+                throw new IllegalStateException("Processed output fields exceed contract authority: " + name);
+            }
+            if (artifact.sourceLabelTarget() != null && targets.contains(artifact.sourceLabelTarget())) {
+                throw new IllegalStateException("Route cannot replace import source authority");
+            }
+            Map<String, ImportMergePolicy> fields = new LinkedHashMap<>();
+            targets.forEach(target -> fields.put(target,
+                    ImportMergePolicyResolver.resolve(contract, artifact, target)));
+            policies.put(name, Map.copyOf(fields));
+        });
+        for (Input input : inputs) {
+            var artifact = artifacts.get(input.artifact());
+            if (artifact == null || artifact.columns().stream()
+                    .noneMatch(column -> column.target().equals(input.target()))) {
+                throw new IllegalStateException("Processed input is not admitted by contract");
+            }
+        }
+        return Map.copyOf(policies);
+    }
+
+    private void requireBinding(CompiledDataframeImportContract contract, ImportLogicalRow row) {
+        // The normal path uses the same immutable catalog object; equality also admits
+        // reconstructed identical contracts without accepting same-ID policy drift.
+        if (!pinnedContract.equals(contract)) {
+            throw new IllegalStateException("Processed import plan does not match pinned contract");
+        }
+        for (ImportArtifactBranch admitted : row.branches()) {
+            if (!artifacts.containsKey(admitted.artifactName())) {
+                throw new IllegalStateException("No admitted contract artifact: " + admitted.artifactName());
+            }
+        }
+        for (Input input : inputs) {
+            if (!branch(row, input.artifact()).cells().containsKey(input.target())) {
+                throw new IllegalStateException("Processed input is not admitted by contract");
+            }
+        }
+    }
+
+    private static ImportArtifactBranch branch(ImportLogicalRow row, String artifact) {
+        return row.branches().stream().filter(candidate -> candidate.artifactName().equals(artifact))
+                .findFirst().orElseThrow(() -> new IllegalStateException("No admitted import branch: " + artifact));
+    }
+
+    private String sourceLabel(ImportArtifactBranch branch) {
+        var artifact = Objects.requireNonNull(artifacts.get(branch.artifactName()),
+                "admitted contract artifact " + branch.artifactName());
+        String target = artifact.sourceLabelTarget();
+        ImportCell cell = target == null ? null : branch.cells().get(target);
+        return cell != null && cell.presence() == ImportCell.Presence.VALUE ? cell.value() : null;
+    }
+
+    private static ImportRowIssue issue(ImportDelimitedRecord record, String artifact, String code) {
+        return new ImportRowIssue(record.sourceRowNumber(), artifact, code);
+    }
+}

@@ -69,7 +69,7 @@ Findings остаются advisory: обычный `make verify` и CI не вк
 отключает компиляцию test bytecode и обедняет анализ scope.
 
 `make pmd-analysis` запускает принятую blocking/advisory PMD source policy по
-22 точным rules и 19 production `src/main/java` roots. Команда выбирает
+22 точным rules и 20 production `src/main/java` roots. Команда выбирает
 `build-support/pmd-report` и его upstream reactor через `-pl ... -am`, чтобы
 PMD aggregate mojo не конкурировал в parallel build с независимыми JaCoCo,
 SpotBugs и CPD aggregators. XML/HTML появляются в

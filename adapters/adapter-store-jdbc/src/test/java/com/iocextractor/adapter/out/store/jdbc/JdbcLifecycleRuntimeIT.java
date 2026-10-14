@@ -9,6 +9,7 @@ import com.iocextractor.application.artifact.lifecycle.ProjectionGeneration;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
@@ -20,7 +21,12 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -40,6 +46,78 @@ class JdbcLifecycleRuntimeIT {
         if (dataSource != null) {
             dataSource.close();
         }
+    }
+
+    @Test
+    void safeClockSamplesAfterWriteOwnershipEvenWhenUtcAdvancesDuringAcquisition() throws Exception {
+        initialize("ownership-clock.db");
+        MutableClock wall = new MutableClock(NOW);
+        var policy = new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30));
+        var clock = new JdbcLifecycleClock(dataSource, wall, policy);
+        clock.now();
+        try (var connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            var acquired = new java.util.concurrent.atomic.AtomicBoolean();
+            Connection delayed = jdbcProxy(Connection.class, (method, arguments) -> {
+                Object result = invokeJdbc(connection, method, arguments);
+                if (method.getName().equals("prepareStatement") && ((String) arguments[0]).contains(
+                        "SET safe_time_high_water_ms = safe_time_high_water_ms")) {
+                    var statement = (java.sql.PreparedStatement) result;
+                    return jdbcProxy(java.sql.PreparedStatement.class, (call, values) -> {
+                        if (call.getName().equals("executeUpdate") && acquired.compareAndSet(false, true)) {
+                            wall.set(NOW.plusSeconds(3));
+                            // Another writer advanced the durable authority before this writer obtained ownership.
+                            try (var advance = connection.createStatement()) {
+                                advance.executeUpdate("UPDATE canonical_lifecycle_control SET safe_time_high_water_ms="
+                                        + NOW.plusSeconds(3).toEpochMilli());
+                            }
+                        }
+                        return invokeJdbc(statement, call, values);
+                    });
+                }
+                return result;
+            });
+
+            assertThat(clock.now(delayed).value()).isEqualTo(NOW.plusSeconds(3));
+            connection.commit();
+        }
+        assertThat(clock.inspect().status()).isEqualTo(LifecycleClockStatus.SAFE);
+        assertThat(queryNullableLong("SELECT clamp_started_at_ms FROM canonical_lifecycle_control")).isNull();
+    }
+
+    @Test
+    void readOnlyClockInspectionSamplesAfterAcquiringItsHighWaterSnapshot() throws Exception {
+        initialize("inspect-clock.db");
+        MutableClock wall = new MutableClock(NOW);
+        var policy = new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30));
+        new JdbcLifecycleClock(dataSource, wall, policy).now();
+        var delayed = new org.springframework.jdbc.datasource.DelegatingDataSource(dataSource) {
+            @Override public Connection getConnection() throws SQLException {
+                wall.set(NOW.plusSeconds(3));
+                execute("UPDATE canonical_lifecycle_control SET safe_time_high_water_ms=" + wall.millis());
+                return super.getConnection();
+            }
+        };
+
+        var inspected = new JdbcLifecycleClock(delayed, wall, policy).inspect();
+
+        assertThat(inspected.status()).isEqualTo(LifecycleClockStatus.SAFE);
+        assertThat(inspected.rawTime()).isEqualTo(NOW.plusSeconds(3));
+        assertThat(queryNullableLong("SELECT clamp_started_at_ms FROM canonical_lifecycle_control")).isNull();
+    }
+
+    private static <T> T jdbcProxy(Class<T> type, JdbcInvocation invocation) {
+        return type.cast(java.lang.reflect.Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type},
+                (proxy, method, arguments) -> invocation.call(method, arguments)));
+    }
+
+    private static Object invokeJdbc(Object delegate, java.lang.reflect.Method method, Object[] arguments) throws Throwable {
+        try { return method.invoke(delegate, arguments); }
+        catch (java.lang.reflect.InvocationTargetException failure) { throw failure.getCause(); }
+    }
+
+    @FunctionalInterface private interface JdbcInvocation {
+        Object call(java.lang.reflect.Method method, Object[] arguments) throws Throwable;
     }
 
     @Test
@@ -88,6 +166,74 @@ class JdbcLifecycleRuntimeIT {
         monotonic.set(Duration.ofSeconds(31).toNanos());
         assertThatThrownBy(clock::now).isInstanceOf(LifecycleClockUnsafeException.class);
         assertThat(clock.inspect().status()).isEqualTo(LifecycleClockStatus.UNSAFE);
+    }
+
+    @Test
+    void restartedClockUsesPersistedClampAgeBeforeItsNewLocalMonotonicSample() throws Exception {
+        initialize("restart-clamp.db");
+        MutableClock wall = new MutableClock(NOW);
+        var policy = new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30));
+        var first = new JdbcLifecycleClock(dataSource, wall, policy, () -> 0L);
+        first.now(); wall.set(NOW.minusSeconds(2)); first.now();
+        wall.set(NOW.minusSeconds(1));
+        var restarted = new JdbcLifecycleClock(dataSource, wall, policy, () -> 0L);
+        assertThat(restarted.inspect().clampAge()).isEqualTo(Duration.ofSeconds(1));
+        assertThat(restarted.now().value()).isEqualTo(NOW);
+        assertThat(restarted.inspect().clampAge()).isEqualTo(Duration.ofSeconds(1));
+        wall.set(NOW.minusSeconds(3));
+        assertThat(restarted.inspect().status()).isEqualTo(LifecycleClockStatus.UNSAFE);
+        assertThatThrownBy(restarted::now).isInstanceOf(LifecycleClockUnsafeException.class);
+        assertThat(queryLong("SELECT safe_time_high_water_ms FROM canonical_lifecycle_control")).isEqualTo(NOW.toEpochMilli());
+    }
+
+    @Test
+    void missingOrUnwritableSafeClockAuthorityFailsClosedWithoutInventingUtc() throws Exception {
+        initialize("missing-clock.db");
+        var clock = new JdbcLifecycleClock(dataSource, Clock.fixed(NOW, ZoneOffset.UTC),
+                new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30)));
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("CREATE TRIGGER suppress_clock BEFORE UPDATE ON canonical_lifecycle_control"
+                    + " WHEN NEW.safe_time_high_water_ms IS NOT OLD.safe_time_high_water_ms BEGIN SELECT RAISE(IGNORE); END");
+            assertThatThrownBy(clock::now).hasMessage("Lifecycle clock control row is missing");
+            assertThat(queryNullableLong("SELECT safe_time_high_water_ms FROM canonical_lifecycle_control")).isNull();
+            statement.execute("DROP TRIGGER suppress_clock");
+            statement.execute("DELETE FROM canonical_lifecycle_control");
+            assertThatThrownBy(clock::inspect).hasRootCauseMessage("Lifecycle clock control row is missing");
+            assertThatThrownBy(clock::now).hasMessage("Lifecycle clock control row is missing");
+            statement.execute("DROP TABLE canonical_lifecycle_control");
+            assertThatThrownBy(clock::now).hasMessage("Failed to establish safe lifecycle time").hasRootCauseInstanceOf(SQLException.class);
+            assertThatThrownBy(clock::inspect).hasMessage("Failed to inspect lifecycle clock").hasRootCauseInstanceOf(SQLException.class);
+        }
+    }
+
+    @Test
+    @Timeout(15)
+    void safe_clock_waits_for_shared_writer_admission() throws Exception {
+        initialize("clock-admission.db");
+        var admission = new JdbcWriterAdmission();
+        var clock = new JdbcLifecycleClock(dataSource, Clock.fixed(NOW, ZoneOffset.UTC),
+                new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30)), admission);
+        CountDownLatch holderEntered = new CountDownLatch(1);
+        CountDownLatch releaseHolder = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            Future<?> holder = executor.submit(() -> admission.execute(() -> {
+                holderEntered.countDown();
+                await(releaseHolder);
+                return null;
+            }));
+            assertThat(holderEntered.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<EffectiveTime> sample = executor.submit(() -> clock.now());
+            awaitQueuedWriter(admission);
+            assertThat(sample).isNotDone();
+
+            releaseHolder.countDown();
+            holder.get(5, TimeUnit.SECONDS);
+            assertThat(sample.get(5, TimeUnit.SECONDS)).isEqualTo(EffectiveTime.at(NOW));
+        } finally {
+            releaseHolder.countDown();
+        }
     }
 
     @Test
@@ -199,6 +345,25 @@ class JdbcLifecycleRuntimeIT {
                 VALUES (%1$d, 'source-%1$d', '2026-08-16T00:00:00Z',
                         '2026-08-16T00:00:00Z', 1)
                 """.formatted(lifecycleId));
+    }
+
+    private void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("Timed out waiting for writer test release");
+            }
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        }
+    }
+
+    private void awaitQueuedWriter(JdbcWriterAdmission admission) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (admission.queuedWriters() < 1 && System.nanoTime() < deadline) {
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+        }
+        assertThat(admission.queuedWriters()).isGreaterThanOrEqualTo(1);
     }
 
     private void execute(String sql) throws SQLException {

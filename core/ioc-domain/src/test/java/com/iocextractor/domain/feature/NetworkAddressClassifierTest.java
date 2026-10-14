@@ -55,6 +55,20 @@ class NetworkAddressClassifierTest {
                 features("1.2.3.4", false, false, true, HostKind.IP))).isFalse();
     }
 
+    @Test
+    void ipv4_with_fragment_is_not_bare_after_feature_extraction() {
+        var indicator = indicator("192.0.2.44#section", IndicatorType.IPV4);
+        var extractor = new DefaultIndicatorFeatureExtractor(new DefaultIndicatorNormalizer(),
+                host -> HostKind.IP);
+
+        IndicatorFeatures features = extractor.extract(indicator);
+
+        assertThat(features.hasFragment()).isTrue();
+        assertThat(features.hasPath()).isFalse();
+        assertThat(features.hasQuery()).isFalse();
+        assertThat(NetworkAddressClassifier.isBareIp(indicator, features)).isFalse();
+    }
+
     private Indicator indicator(String value, IndicatorType type) {
         return new Indicator(value, type, new SourceContext(null, null));
     }

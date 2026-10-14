@@ -1,22 +1,24 @@
 package com.iocextractor.bootstrap;
 
-import com.iocextractor.adapter.out.sink.csv.AddressIpValueProvider;
-import com.iocextractor.adapter.out.sink.csv.AddressUrlValueProvider;
+import com.iocextractor.adapter.in.csv.CsvImportValueValidatorRegistry;
+import com.iocextractor.processing.mapping.AddressIpValueProvider;
+import com.iocextractor.processing.mapping.AddressUrlValueProvider;
 import com.iocextractor.adapter.out.sink.csv.IdValueProvider;
-import com.iocextractor.adapter.out.sink.csv.IndicatorValueProvider;
-import com.iocextractor.adapter.out.sink.csv.LowerHostTransform;
-import com.iocextractor.adapter.out.sink.csv.LowercaseTransform;
-import com.iocextractor.adapter.out.sink.csv.MatchHostValueProvider;
-import com.iocextractor.adapter.out.sink.csv.MatchUrlValueProvider;
-import com.iocextractor.adapter.out.sink.csv.SourceLabelValueProvider;
-import com.iocextractor.adapter.out.sink.csv.StripPrefixTransform;
-import com.iocextractor.adapter.out.sink.csv.Transform;
-import com.iocextractor.adapter.out.sink.csv.UppercaseTransform;
-import com.iocextractor.adapter.out.sink.csv.ValueProvider;
+import com.iocextractor.processing.mapping.IndicatorValueProvider;
+import com.iocextractor.processing.mapping.LowerHostTransform;
+import com.iocextractor.processing.mapping.LowercaseTransform;
+import com.iocextractor.processing.mapping.MatchHostValueProvider;
+import com.iocextractor.processing.mapping.MatchUrlValueProvider;
+import com.iocextractor.processing.mapping.SourceLabelValueProvider;
+import com.iocextractor.processing.mapping.StripPrefixTransform;
+import com.iocextractor.processing.mapping.Transform;
+import com.iocextractor.processing.mapping.UppercaseTransform;
+import com.iocextractor.processing.mapping.ValueProvider;
 import com.iocextractor.domain.classify.FeaturePredicate;
 import com.iocextractor.domain.classify.FeaturePredicates;
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.domain.feature.NetworkAddressClassifier;
+import com.iocextractor.domain.model.IndicatorType;
 
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -30,6 +32,12 @@ import java.util.function.Predicate;
 final class ConfigRegistryCatalog {
 
     static final String CONST_VALUE_PROVIDER = "const";
+    static final String NETWORK_HOST = "network.host";
+    static final String NETWORK_WITHOUT_SCHEME = "network.without-scheme";
+
+    static Set<String> viewOperationKeys() {
+        return Set.of(NETWORK_HOST, NETWORK_WITHOUT_SCHEME);
+    }
 
     private static final String PROVIDER_ID = "id";
     private static final String PROVIDER_VALUE = "value";
@@ -40,6 +48,8 @@ final class ConfigRegistryCatalog {
     private static final String PROVIDER_ADDRESS_IP = "address.ip";
 
     private static final String FILTER_IS_BARE_IP = "is-bare-ip";
+    private static final String FILTER_IS_CLEAN_HOST = "is-clean-host";
+    private static final String FILTER_IS_ADDRESS_WITH_DETAIL = "is-address-with-detail";
 
     private static final String TRANSFORM_LOWER = "lower";
     private static final String TRANSFORM_LOWER_HOST = "lower-host";
@@ -60,6 +70,8 @@ final class ConfigRegistryCatalog {
     static Set<String> artifactFilterKeys() {
         Set<String> keys = new LinkedHashSet<>(classifyPredicateKeys());
         keys.add(FILTER_IS_BARE_IP);
+        keys.add(FILTER_IS_CLEAN_HOST);
+        keys.add(FILTER_IS_ADDRESS_WITH_DETAIL);
         return keys;
     }
 
@@ -82,6 +94,10 @@ final class ConfigRegistryCatalog {
                 TRANSFORM_STRIP_PREFIX);
     }
 
+    static Set<String> importValueValidatorKeys() {
+        return CsvImportValueValidatorRegistry.ruleKeys();
+    }
+
     static Map<String, ValueProvider> valueProviders() {
         Map<String, ValueProvider> providers = new HashMap<>();
         providers.put(PROVIDER_ID, new IdValueProvider());
@@ -100,7 +116,22 @@ final class ConfigRegistryCatalog {
                 filters.put(key, classified -> predicate.test(classified.classification().features())));
         filters.put(FILTER_IS_BARE_IP, classified -> NetworkAddressClassifier.isBareIp(
                 classified.indicator(), classified.classification().features()));
+        filters.put(FILTER_IS_CLEAN_HOST, classified ->
+                classified.indicator().type() == IndicatorType.DOMAIN
+                        && !hasAddressDetail(classified));
+        filters.put(FILTER_IS_ADDRESS_WITH_DETAIL, classified ->
+                (classified.indicator().type() == IndicatorType.URL
+                        || classified.indicator().type() == IndicatorType.DOMAIN
+                        || classified.indicator().type() == IndicatorType.IPV4)
+                        && hasAddressDetail(classified));
         return filters;
+    }
+
+    private static boolean hasAddressDetail(ClassifiedIndicator classified) {
+        var features = classified.classification().features();
+        return features.value().contains("://")
+                || features.hasPort() || features.hasPath() || features.hasQuery()
+                || features.hasFragment();
     }
 
     static Map<String, Transform> transforms() {

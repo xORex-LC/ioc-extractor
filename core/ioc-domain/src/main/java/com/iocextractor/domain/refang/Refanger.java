@@ -13,4 +13,9 @@ public interface Refanger {
      * @return immutable refang outcome
      */
     RefangOutcome refang(String text);
+
+    /** Applies the same ordered rules to admitted text storage. */
+    default java.util.List<RefangDecision> refang(TextRewrite text) {
+        throw new UnsupportedOperationException("Streaming refang is required for document processing");
+    }
 }

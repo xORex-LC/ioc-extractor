@@ -11,16 +11,27 @@ import javax.sql.DataSource;
 import java.time.Clock;
 import java.util.Objects;
 
-/** SQLite-backed compare-and-set state for mutable artifact projection convergence. */
+/** SQLite-backed monotonic coverage state for mutable artifact projection convergence. */
 public final class JdbcArtifactProjectionWorkStore implements ArtifactProjectionWorkStore {
 
     private final JdbcClient jdbc;
     private final Clock clock;
+    private final JdbcWriterAdmission writerAdmission;
+    private final JdbcProjectionMutation mutation;
 
     /** Creates projection state access with an injected UTC timestamp source. */
     public JdbcArtifactProjectionWorkStore(DataSource dataSource, Clock clock) {
+        this(dataSource, clock, new JdbcWriterAdmission());
+    }
+
+    /** Creates projection state access participating in shared local write admission. */
+    public JdbcArtifactProjectionWorkStore(DataSource dataSource,
+                                           Clock clock,
+                                           JdbcWriterAdmission writerAdmission) {
         this.jdbc = JdbcClient.create(Objects.requireNonNull(dataSource, "dataSource"));
+        this.mutation = new JdbcProjectionMutation(jdbc);
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
     }
 
     @Override
@@ -50,23 +61,13 @@ public final class JdbcArtifactProjectionWorkStore implements ArtifactProjection
         Objects.requireNonNull(acknowledgement, "acknowledgement");
         String artifact = DataframeColumn.requireSqlIdentifier(
                 acknowledgement.artifactName(), "artifact name");
-        long expected = acknowledgement.expectedRequiredGeneration().value();
         long installed = acknowledgement.installedGeneration().value();
+        return writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL, () -> acknowledgeAdmitted(artifact, installed));
+    }
+
+    private boolean acknowledgeAdmitted(String artifact, long installed) {
         try {
-            return jdbc.sql("""
-                            UPDATE artifact_projection_state
-                            SET projected_generation = :installed,
-                                projected_at_ms = :projectedAt,
-                                last_error_code = NULL
-                            WHERE artifact = :artifact
-                              AND required_generation = :expected
-                              AND projected_generation <= :installed
-                            """)
-                    .param("installed", installed)
-                    .param("projectedAt", clock.millis())
-                    .param("artifact", artifact)
-                    .param("expected", expected)
-                    .update() == 1;
+            return mutation.acknowledge(artifact, installed, clock.millis());
         } catch (RuntimeException e) {
             throw new IocExtractorException(
                     "Failed to acknowledge projection work for artifact: " + artifact, e);
@@ -82,18 +83,15 @@ public final class JdbcArtifactProjectionWorkStore implements ArtifactProjection
         if (failureCode == null || failureCode.isBlank()) {
             throw new IllegalArgumentException("failureCode must not be blank");
         }
+        return writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL, () -> recordFailureAdmitted(
+                artifact, expectedGeneration, failureCode));
+    }
+
+    private boolean recordFailureAdmitted(String artifact,
+                                          ProjectionGeneration expectedGeneration,
+                                          String failureCode) {
         try {
-            return jdbc.sql("""
-                            UPDATE artifact_projection_state
-                            SET last_error_code = :failureCode
-                            WHERE artifact = :artifact
-                              AND required_generation = :expected
-                              AND projected_generation < required_generation
-                            """)
-                    .param("failureCode", failureCode)
-                    .param("artifact", artifact)
-                    .param("expected", expectedGeneration.value())
-                    .update() == 1;
+            return mutation.recordFailure(artifact, expectedGeneration.value(), failureCode);
         } catch (RuntimeException e) {
             throw new IocExtractorException(
                     "Failed to record projection failure for artifact: " + artifact, e);

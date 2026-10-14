@@ -9,6 +9,39 @@ import static org.assertj.core.api.Assertions.tuple;
 
 class ReplacementRefangerTest {
 
+    @Test
+    void batchOnlyRefangerRejectsStreamingRatherThanSilentlySkippingRewrites() {
+        Refanger batchOnly = refanger::refang;
+        var rewrite = new TextRewrite() {
+            public boolean isEmpty() { throw new AssertionError("Streaming capability is not implemented"); }
+            public int replace(RefangRule rule) { throw new AssertionError("Streaming capability is not implemented"); }
+        };
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> batchOnly.refang(rewrite))
+                .isInstanceOf(UnsupportedOperationException.class).hasMessageContaining("Streaming refang");
+        assertThat(batchOnly.refang("hxxp[:]//a[.]b").text()).isEqualTo("http://a.b");
+    }
+
+    @Test
+    void orderedRewriteProtocolPreservesRuleDecisionsAndTheEmptySourceNoop() {
+        var text = new StringBuilder("hxxps[:]//a[.]b");
+        var rewrite = new TextRewrite() {
+            public boolean isEmpty() { return text.isEmpty(); }
+            public int replace(RefangRule rule) {
+                String before = text.toString();
+                String after = before.replace(rule.from(), rule.to());
+                int count = 0;
+                for (int index = 0; (index = before.indexOf(rule.from(), index)) >= 0; index += rule.from().length()) { count++; }
+                text.setLength(0); text.append(after); return count;
+            }
+        };
+        var expected = refanger.refang(text.toString());
+        assertThat(refanger.refang(rewrite)).containsExactlyElementsOf(expected.decisions());
+        assertThat(text.toString()).isEqualTo(expected.text());
+        text.setLength(0);
+        assertThat(refanger.refang(rewrite)).isEmpty();
+    }
+
     private final Refanger refanger = new ReplacementRefanger(List.of(
             new RefangRule("hxxps", "https"),
             new RefangRule("hxxp", "http"),
