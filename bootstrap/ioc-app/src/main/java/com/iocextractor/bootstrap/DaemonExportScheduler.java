@@ -52,6 +52,8 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
 
     private static final Logger log = LoggerFactory.getLogger(DaemonExportScheduler.class);
     private static final Duration STOP_TIMEOUT = Duration.ofSeconds(5);
+    // Independent profiles may prepare concurrently; canonical writer ownership remains serialized.
+    private static final int PROFILE_WORKERS = 2;
 
     private final List<ExportPlan> plans;
     private final Map<String, CadenceSource> cadences;
@@ -415,7 +417,7 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
     }
 
     private static ExecutorService newWorkers(int profiles) {
-        return new ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS,
+        return new ThreadPoolExecutor(PROFILE_WORKERS, PROFILE_WORKERS, 0, TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(Math.max(1, profiles)),
                 Thread.ofPlatform().name("ioc-export-profile-", 0).factory(),
                 new ThreadPoolExecutor.AbortPolicy());

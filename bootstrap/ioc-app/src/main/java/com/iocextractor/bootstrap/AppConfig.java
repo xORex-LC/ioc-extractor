@@ -354,6 +354,7 @@ public class AppConfig {
         return new LoggingExportObserver();
     }
 
+    // One singleton owns this workspace root; multiple factories in one JVM are unsupported.
     @Bean
     public com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspaceFactory documentPreparationWorkspaces(
             IocProperties props, ArtifactIdentityResolver artifactIdentityResolver) {

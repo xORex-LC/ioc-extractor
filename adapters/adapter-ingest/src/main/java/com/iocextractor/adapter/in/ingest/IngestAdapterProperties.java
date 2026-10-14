@@ -28,7 +28,16 @@ public record IngestAdapterProperties(Dirs dirs,
         }
         public record Execution(int preparationWorkers, int window, int maxPendingDocuments,
                                 long maxPendingSourceBytes, long maxSourceBytes) {
-            public static Execution defaults() { return new Execution(2, 4, 64, 4294967296L, 536870912L); }
+            private static final int DEFAULT_PREPARATION_WORKERS = 2;
+            private static final int DEFAULT_WINDOW = 4;
+            private static final int DEFAULT_PENDING_DOCUMENTS = 64;
+            private static final long DEFAULT_PENDING_SOURCE_BYTES = 4L * 1024 * 1024 * 1024;
+            private static final long DEFAULT_SOURCE_BYTES = 512L * 1024 * 1024;
+
+            public static Execution defaults() {
+                return new Execution(DEFAULT_PREPARATION_WORKERS, DEFAULT_WINDOW, DEFAULT_PENDING_DOCUMENTS,
+                        DEFAULT_PENDING_SOURCE_BYTES, DEFAULT_SOURCE_BYTES);
+            }
         }
 
 

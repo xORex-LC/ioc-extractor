@@ -873,7 +873,12 @@ public record IocProperties(
 
         public record Execution(int preparationWorkers, int window, int maxPendingDocuments,
                                 long maxPendingSourceBytes, long maxSourceBytes) {
-            public static Execution defaults() { return new Execution(2, 4, 64, 4294967296L, 536870912L); }
+            public static Execution defaults() {
+                // Bootstrap owns validation; the adapter owns the shared execution defaults.
+                var defaults = com.iocextractor.adapter.in.ingest.IngestAdapterProperties.Execution.defaults();
+                return new Execution(defaults.preparationWorkers(), defaults.window(), defaults.maxPendingDocuments(),
+                        defaults.maxPendingSourceBytes(), defaults.maxSourceBytes());
+            }
         }
 
         public record Dirs(

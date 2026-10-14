@@ -20,7 +20,7 @@ public record IocProcessingProperties(String documentPlan, List<Plan> plans,
         this(documentPlan, plans, Workspace.defaults());
     }
 
-    /** Global preparation budgets, shared by all artifacts and document invocations. */
+    /** Preparation admission budgets shared across jobs; these do not set the JVM heap or RSS limit. */
     public record Workspace(@jakarta.validation.constraints.NotBlank String directory,
                             @jakarta.validation.constraints.Positive long memoryBytes,
                             @jakarta.validation.constraints.Min(64) int cacheKib,
@@ -30,17 +30,35 @@ public record IocProcessingProperties(String documentPlan, List<Plan> plans,
                             @jakarta.validation.constraints.Positive long totalDiskBytes,
                             @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(4096) int batchRows,
                             @jakarta.validation.constraints.NotNull java.time.Duration retention) {
+        private static final int KIB = 1024;
+        private static final long MIB = KIB * (long) KIB;
+        private static final long GIB = MIB * KIB;
+        private static final long DEFAULT_MEMORY_BYTES = 64 * MIB;
+        private static final int DEFAULT_CACHE_KIB = 4096;
+        private static final int DEFAULT_ROW_BYTES = 256 * KIB;
+        private static final int DEFAULT_FIELD_BYTES = 64 * KIB;
+        private static final long DEFAULT_WORKSPACE_BYTES = 2 * GIB;
+        private static final long DEFAULT_DISK_BYTES = 8 * GIB;
+        private static final int DEFAULT_BATCH_ROWS = 128;
+        private static final int MAXIMUM_ROW_BYTES = 16 * KIB * KIB;
+        private static final long MINIMUM_WORKSPACE_BYTES = 64 * KIB;
+        private static final long WORKING_ROW_ALLOWANCE = 64;
+        private static final long FIXED_BUFFER_BYTES = 64 * KIB;
+
         static Workspace defaults() {
-            return new Workspace("./var/document-preparation", 64L * 1024 * 1024, 4096,
-                    256 * 1024, 64 * 1024, 2L * 1024 * 1024 * 1024, 8L * 1024 * 1024 * 1024, 128, java.time.Duration.ofDays(1));
+            return new Workspace("./var/document-preparation", DEFAULT_MEMORY_BYTES, DEFAULT_CACHE_KIB,
+                    DEFAULT_ROW_BYTES, DEFAULT_FIELD_BYTES, DEFAULT_WORKSPACE_BYTES, DEFAULT_DISK_BYTES,
+                    DEFAULT_BATCH_ROWS, java.time.Duration.ofDays(1));
         }
 
         @jakarta.validation.constraints.AssertTrue(message = "Document workspace budgets are inconsistent")
+        // Mirrors DocumentPreparationLimits without throwing during collect-all config validation.
+        // Working space is an admission estimate, not a measurement of Java object sizes.
         public boolean isBudgetValid() {
             return retention != null && !retention.isNegative() && !retention.isZero()
-                    && maximumRowBytes >= maximumFieldBytes && maximumRowBytes <= 16 * 1024 * 1024
-                    && workspaceBytes >= 65536 && totalDiskBytes >= workspaceBytes
-                    && memoryBytes >= cacheKib * 1024L + maximumRowBytes * 64L + 65536;
+                    && maximumRowBytes >= maximumFieldBytes && maximumRowBytes <= MAXIMUM_ROW_BYTES
+                    && workspaceBytes >= MINIMUM_WORKSPACE_BYTES && totalDiskBytes >= workspaceBytes
+                    && memoryBytes >= cacheKib * (long) KIB + maximumRowBytes * WORKING_ROW_ALLOWANCE + FIXED_BUFFER_BYTES;
         }
     }
 

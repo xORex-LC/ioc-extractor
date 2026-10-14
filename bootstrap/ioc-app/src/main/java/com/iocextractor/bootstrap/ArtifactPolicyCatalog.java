@@ -163,6 +163,7 @@ final class ArtifactPolicyCatalog {
             errors.add(fieldPath + ".name must name an output column");
             return;
         }
+        // Ordered updates may change public payload, never canonical identity or service-owned IDs.
         if (identity.contains(field.name()) || "id".equals(field.name())) {
             errors.add(fieldPath + ".name cannot be an identity or public ID column");
         }

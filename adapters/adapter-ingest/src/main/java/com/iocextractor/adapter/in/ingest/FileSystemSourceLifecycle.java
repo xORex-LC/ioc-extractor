@@ -26,6 +26,7 @@ import java.util.Objects;
  * {@code inbox -> processing -> done|failed}.
  */
 public final class FileSystemSourceLifecycle implements SourceLifecycle {
+    private static final int COPY_BUFFER_BYTES = 8 * 1024;
 
     private final Path processingDir;
     private final Path doneDir;
@@ -116,7 +117,7 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
     }
 
     private static void copyBounded(Path source, Path target, long maximumBytes) throws IOException {
-        byte[] buffer = new byte[8192];
+        byte[] buffer = new byte[COPY_BUFFER_BYTES];
         long copied = 0;
         try (var input = Files.newInputStream(source);
              var output = Files.newOutputStream(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {

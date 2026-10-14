@@ -132,6 +132,8 @@ public final class IocExtractionService implements ExtractIocsUseCase {
         var workspace = workspaces.open(command, writePolicies);
         var pinned = new ExtractionCommand(command.runId(), workspace.source(), command.dryRun(),
                 command.lifecycleWriteContext(), command.registration());
+        // The workspace-enabled builder ends with WriteArtifactsStage. Arbitrary pipelines
+        // use the constructor without workspace support and cannot enter this split path.
         int writeIndex = pipeline.stages().size() - 1;
         Pipeline<ExtractionCommand, PreparedArtifacts> preparation =
                 new Pipeline<>(pipeline.stages().subList(0, writeIndex));

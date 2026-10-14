@@ -18,6 +18,8 @@ import java.util.Set;
  * Semantic startup preflight for the bound {@code ioc.*} configuration tree.
  */
 final class IocConfigPreflight implements Validator {
+    private static final int MAXIMUM_PENDING_DOCUMENTS = 256;
+
 
     private static final String ERROR_CODE = "ioc.config.invalid";
 
@@ -100,7 +102,7 @@ final class IocConfigPreflight implements Validator {
             if (execution.preparationWorkers() < 1 || execution.preparationWorkers() > 2
                     || execution.window() < execution.preparationWorkers()
                     || execution.window() > execution.maxPendingDocuments()
-                    || execution.maxPendingDocuments() > 256
+                    || execution.maxPendingDocuments() > MAXIMUM_PENDING_DOCUMENTS
                     || execution.maxSourceBytes() < 1
                     || execution.maxPendingSourceBytes() < execution.maxSourceBytes()) {
                 reject(errors, "ingestion.execution", execution,

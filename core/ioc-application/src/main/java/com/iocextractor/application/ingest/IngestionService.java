@@ -191,6 +191,8 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         var preparers = sourcePreparerFactory.createFor(unit);
         var run = runLedger.startIngest(unit.key().value(), preparers.artifactNames());
         try {
+            // A null context means lifecycle is disabled. A null extraction below means
+            // the committed receipt supplies preparation during replay; PreparedDocument handles both.
             var context = lifecycleSupport == null ? null : lifecycleSupport.context(unit, preparers.artifactNames().size());
             boolean reusable = lifecycleSupport != null && lifecycleSupport.receiptReplay()
                     .hasReusableReceipt(new ConfirmationReceiptReplayCommand(context));
