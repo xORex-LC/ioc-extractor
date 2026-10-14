@@ -51,6 +51,12 @@ are not silently ignored.
 
 ## Router execution and outcomes
 
+`network.host` derives a bare host/IP; `network.without-scheme` removes only a
+validated HTTP(S) scheme and preserves the remaining address text. The latter
+classifies detailed results as URL and bare results as DOMAIN/IPV4. Both retain
+source attribution and reclassify through the configured policy. Selecting a
+view in one import plan does not alter the document plan or shared column mapping.
+
 `adapter-processing-camel` compiles a bounded local plan. Registry-backed
 operations, predicates and destinations are resolved before intake; operator
 configuration cannot supply endpoint URIs, scripts or a custom expression

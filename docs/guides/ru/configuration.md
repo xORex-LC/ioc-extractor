@@ -151,7 +151,11 @@ Dataframe database — канонический источник бизнес-д
   Поля записи: `ioc.processing.plans[].views[].name`,
   `ioc.processing.plans[].views[].operation` и
   `ioc.processing.plans[].views[].input`. Операция `network.host` извлекает
-  хост. Для отдельного восстановленного представления `view.recover` нужны
+  хост. Операция `network.without-scheme` удаляет только HTTP(S), сохраняя
+  написание хоста, порт, путь, query и fragment. Обе операции проверяют весь
+  адрес и сохраняют источник. Результат без протокола имеет тип URL при наличии
+  деталей адреса, иначе DOMAIN или IPV4. Аргументы не принимаются.
+  Для отдельного восстановленного представления `view.recover` нужны
   `ioc.processing.plans[].views[].arguments.on-reasons` и
   `ioc.processing.plans[].views[].arguments.use-view`; разрешены только
   причины ожидаемого отказа `empty`, `unsupported-scheme`,

@@ -12,6 +12,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class NetworkAddressParserTest {
     private final NetworkAddressParser parser = new NetworkAddressParser();
     private final NetworkHostDeriver deriver = new NetworkHostDeriver(parser);
+    private final NetworkSchemeDeriver schemeDeriver = new NetworkSchemeDeriver(parser);
     private final SourceContext source = new SourceContext("document-section", null);
 
     @ParameterizedTest
@@ -31,6 +32,43 @@ class NetworkAddressParserTest {
         assertThat(result.isAvailable()).isTrue();
         assertThat(result.indicator()).isEqualTo(new Indicator(host, type, source));
         assertThat(input.value()).isEqualTo(original);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "https://Sub.Example.com:8443/Path?q=One#Part, Sub.Example.com:8443/Path?q=One#Part, URL",
+        "HTTP://192.0.2.44:9090/One?x=Two, 192.0.2.44:9090/One?x=Two, URL",
+        "example.com/Path, example.com/Path, URL",
+        "https://example.com?Q=One, example.com?Q=One, URL",
+        "https://example.com, example.com, DOMAIN",
+        "http://192.0.2.44, 192.0.2.44, IPV4",
+        "192.0.2.44#Part, 192.0.2.44#Part, URL",
+        "192.0.2.44, 192.0.2.44, IPV4"
+    })
+    void removesOnlySchemeAndReclassifiesAddressShape(String original, String expected, IndicatorType type) {
+        var input = new Indicator(original, IndicatorType.URL, source);
+
+        var result = schemeDeriver.derive(input);
+
+        assertThat(result.isAvailable()).isTrue();
+        assertThat(result.indicator()).isEqualTo(new Indicator(expected, type, source));
+        assertThat(input.value()).isEqualTo(original);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "ftp://example.com/Path, URL, UNSUPPORTED_SCHEME",
+        "https://user@example.com/Path, URL, INVALID_AUTHORITY",
+        "https://example.com:65536/Path, URL, INVALID_PORT",
+        "0123456789, MD5, UNSUPPORTED_ADDRESS_FORM"
+    })
+    void schemeRemovalPreservesExpectedFailures(String value, IndicatorType type,
+                                               NetworkAddressParser.FailureReason failure) {
+        var result = schemeDeriver.derive(new Indicator(value, type, source));
+
+        assertThat(result.isAvailable()).isFalse();
+        assertThat(result.indicator()).isNull();
+        assertThat(result.failure()).isEqualTo(failure);
     }
 
     @ParameterizedTest
@@ -116,6 +154,8 @@ class NetworkAddressParserTest {
         assertThatThrownBy(() -> new NetworkAddressParser.Result(null, null))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new NetworkHostDeriver.Result(null, null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new NetworkSchemeDeriver.Result(null, null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

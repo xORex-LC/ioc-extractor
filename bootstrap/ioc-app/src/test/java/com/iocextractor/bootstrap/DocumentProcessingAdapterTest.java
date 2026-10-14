@@ -54,6 +54,14 @@ class DocumentProcessingAdapterTest {
         var hostBinding = new ProcessingPlanCatalog.CompiledPlan(derived,
                 Map.of("host-branch", new ProcessingPlanCatalog.BranchBinding(
                         "masks", "host", Map.of())), Set.of("host"));
+        var scheme = new PlanDescriptor("import-scheme", List.of(
+                new PlanDescriptor.View("without-scheme", "network.without-scheme", "original")),
+                new PlanDescriptor.Routing(PlanDescriptor.Mode.FIRST, List.of(
+                        new PlanDescriptor.Branch("scheme-branch", "masks", null, List.of("without-scheme"))),
+                        original.routing().onUnmatched(), null));
+        var schemeBinding = new ProcessingPlanCatalog.CompiledPlan(scheme,
+                Map.of("scheme-branch", new ProcessingPlanCatalog.BranchBinding(
+                        "masks", "without-scheme", Map.of())), Set.of("without-scheme"));
         var classifier = new IndicatorClassifier(indicator -> decision(indicator.value(), "configured"));
         var baseline = preparer("masks", List.of(column("mask", "value")));
         var runPreparer = new CsvArtifactPreparer(new CsvArtifactDefinition("masks",
@@ -65,12 +73,14 @@ class DocumentProcessingAdapterTest {
                 new DiagnosticFactory(Clock.systemUTC()), "document-source-key",
                 NoopPipelineDecisionTracer.INSTANCE);
         var catalog = new IocProcessingOperations(Map.of("document", originalBinding,
-                "derived", hostBinding), Map.of("masks", baseline), classifier).catalog();
+                "derived", hostBinding, "import-scheme", schemeBinding), Map.of("masks", baseline), classifier).catalog();
         try (var runtime = new CamelRouteRuntime(new CamelPlanCompiler().compile(
-                List.of(original, derived), catalog))) {
+                List.of(original, derived, scheme), catalog))) {
             var first = new DocumentProcessingAdapter(originalBinding, runtime, classifier,
                     Clock.systemUTC(), List.of(runPreparer));
             var second = new DocumentProcessingAdapter(hostBinding, runtime, classifier,
+                    Clock.systemUTC(), Map.of("masks", runPreparer));
+            var schemeOnly = new DocumentProcessingAdapter(schemeBinding, runtime, classifier,
                     Clock.systemUTC(), Map.of("masks", runPreparer));
             var occurrence = occurrence("https://example.com/a", 1);
 
@@ -80,6 +90,10 @@ class DocumentProcessingAdapterTest {
                     .isEqualTo("example.com");
             assertThat(second.prepare(occurrence).value().getFirst().row().template().value("_source_key"))
                     .isEqualTo("document-source-key");
+            assertThat(schemeOnly.prepare(occurrence).value().getFirst().row().template().value("mask"))
+                    .isEqualTo("example.com/a");
+            assertThat(first.prepare(occurrence).value().getFirst().row().template().value("mask"))
+                    .isEqualTo("https://example.com/a");
         }
     }
 

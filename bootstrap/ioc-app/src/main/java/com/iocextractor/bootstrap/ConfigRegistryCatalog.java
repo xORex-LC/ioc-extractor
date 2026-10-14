@@ -32,6 +32,12 @@ import java.util.function.Predicate;
 final class ConfigRegistryCatalog {
 
     static final String CONST_VALUE_PROVIDER = "const";
+    static final String NETWORK_HOST = "network.host";
+    static final String NETWORK_WITHOUT_SCHEME = "network.without-scheme";
+
+    static Set<String> viewOperationKeys() {
+        return Set.of(NETWORK_HOST, NETWORK_WITHOUT_SCHEME);
+    }
 
     private static final String PROVIDER_ID = "id";
     private static final String PROVIDER_VALUE = "value";

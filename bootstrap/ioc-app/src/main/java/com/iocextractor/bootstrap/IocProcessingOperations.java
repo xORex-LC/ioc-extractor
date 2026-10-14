@@ -12,6 +12,8 @@ import com.iocextractor.application.artifact.RoutedArtifactCandidate;
 import com.iocextractor.domain.classify.FeaturePredicate;
 import com.iocextractor.domain.feature.NetworkAddressParser;
 import com.iocextractor.domain.feature.NetworkHostDeriver;
+import com.iocextractor.domain.feature.NetworkSchemeDeriver;
+import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.processing.classification.IndicatorClassifier;
 import com.iocextractor.processing.model.ClassifiedIndicator;
 import java.util.HashMap;
@@ -23,7 +25,6 @@ import org.apache.camel.Processor;
 
 /** Binds shared IOC operations and CSV preparers to Router's neutral catalog. */
 final class IocProcessingOperations {
-    private static final String NETWORK_HOST = "network.host";
     private final Map<String, ProcessingPlanCatalog.CompiledPlan> plans;
     private final Map<String, CsvArtifactPreparer> preparers;
     private final IndicatorClassifier classifier;
@@ -50,21 +51,38 @@ final class IocProcessingOperations {
             var result = input.session() == null ? deriver.derive(input.classified().indicator())
                     : input.session().deriveHost(input.classified().indicator());
             exchange.getMessage().setBody(result.isAvailable()
-                    ? new ViewOutcome.Available(input.derived(new ClassifiedIndicator(
-                            result.indicator(), input.session() == null ? classifier.classify(result.indicator())
-                                    : input.session().classifyWith(result.indicator(), classifier))))
-                    : new ViewOutcome.Unavailable(new FailureReference(NETWORK_HOST,
-                            result.failure().name().toLowerCase(java.util.Locale.ROOT)
-                                    .replace('_', '-'))));
+                    ? available(input, result.indicator())
+                    : unavailable(ConfigRegistryCatalog.NETWORK_HOST, result.failure()));
+        };
+        var schemeDeriver = new NetworkSchemeDeriver(new NetworkAddressParser());
+        Processor withoutScheme = exchange -> {
+            ProcessingView input = Objects.requireNonNull(
+                    exchange.getMessage().getBody(ProcessingView.class), "processing view");
+            var result = schemeDeriver.derive(input.classified().indicator());
+            exchange.getMessage().setBody(result.isAvailable()
+                    ? available(input, result.indicator())
+                    : unavailable(ConfigRegistryCatalog.NETWORK_WITHOUT_SCHEME, result.failure()));
         };
         Map<String, Processor> destinations = new HashMap<>();
         preparers.forEach((artifact, preparer) -> destinations.put(artifact,
                 exchange -> prepareBranch(exchange, artifact)));
         Map<String, PredicateRegistration> predicates = predicates();
-        return new OperationCatalog(Map.of(NETWORK_HOST, host), destinations, predicates,
+        return new OperationCatalog(Map.of(ConfigRegistryCatalog.NETWORK_HOST, host,
+                ConfigRegistryCatalog.NETWORK_WITHOUT_SCHEME, withoutScheme), destinations, predicates,
                 java.util.Arrays.stream(NetworkAddressParser.FailureReason.values())
                         .map(reason -> reason.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-'))
                         .collect(java.util.stream.Collectors.toUnmodifiableSet()));
+    }
+
+    private ViewOutcome available(ProcessingView input, Indicator indicator) {
+        return new ViewOutcome.Available(input.derived(new ClassifiedIndicator(indicator,
+                input.session() == null ? classifier.classify(indicator)
+                        : input.session().classifyWith(indicator, classifier))));
+    }
+
+    private static ViewOutcome unavailable(String operation, NetworkAddressParser.FailureReason reason) {
+        return new ViewOutcome.Unavailable(new FailureReference(operation,
+                reason.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-')));
     }
 
     private static Map<String, PredicateRegistration> predicates() {

@@ -118,6 +118,19 @@ IOC routing; a `processed` contract without a route fails configuration admissio
 Use [`ioc import validate`](dataframe-import.md#validate-without-importing) on
 the exact candidate before submitting a delivery.
 
+To remove only HTTP(S) in one import scenario, declare
+`{ name: scheme-free, operation: network.without-scheme, input: original }`
+in its own import plan, classify `scheme-free`, and select that view for the
+authorized branch or fields. For example,
+`https://example.com:8443/Path?q=One#Part` becomes
+`example.com:8443/Path?q=One#Part`. The operation preserves the suffix exactly;
+the artifact's existing mapping transforms still apply afterwards. Unsupported
+schemes and malformed addresses use the same typed failures as `network.host`.
+Bare input is accepted unchanged. Only plans selecting this view use it;
+`document-plan` and `as-is` contracts remain independent. A change to the shared
+`ioc.sink.artifacts[].columns[].transform` instead changes every processed path
+using that artifact. Do not use that global setting for an import-only policy.
+
 ## Activate and recover
 
 1. Save the current configuration and both SQLite databases with their WAL

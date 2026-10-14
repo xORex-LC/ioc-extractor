@@ -149,6 +149,10 @@ imports finalize from receipts.
   `ioc.processing.plans[].views[].name`,
   `ioc.processing.plans[].views[].operation` and
   `ioc.processing.plans[].views[].input`. `network.host` derives a bare host;
+  `network.without-scheme` removes only HTTP(S), preserving host spelling, port,
+  path, query and fragment. Both validate the entire network address and retain
+  source attribution. The scheme-free result is URL when it has address details,
+  otherwise DOMAIN or IPV4. Operations take no arguments.
   `view.recover` requires
   `ioc.processing.plans[].views[].arguments.on-reasons` and
   `ioc.processing.plans[].views[].arguments.use-view`. Recovery creates a

@@ -202,7 +202,8 @@ class ConfigurationDocumentationContractTest {
         values.addAll(ConfigRegistryCatalog.valueProviderKeys());
         values.add(ConfigRegistryCatalog.CONST_VALUE_PROVIDER);
         values.addAll(ConfigRegistryCatalog.transformKeys());
-        values.addAll(Set.of("network.host", "view.recover", "type-in", "configured"));
+        values.addAll(ConfigRegistryCatalog.viewOperationKeys());
+        values.addAll(Set.of("view.recover", "type-in", "configured"));
         Arrays.stream(IocProcessingProperties.Mode.values())
                 .map(mode -> mode.name().toLowerCase(java.util.Locale.ROOT)).forEach(values::add);
         Arrays.stream(IocProcessingProperties.Action.values())

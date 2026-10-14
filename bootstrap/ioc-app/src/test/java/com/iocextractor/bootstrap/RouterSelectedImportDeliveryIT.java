@@ -102,7 +102,8 @@ class RouterSelectedImportDeliveryIT {
                 new ImportClaimReservation(DELIVERY, SOURCE, candidate.candidateToken(), clock.instant())));
         assertThat(admitted.delivery().state()).isEqualTo(ImportDeliveryState.SNAPSHOT_PINNED);
         var snapshot = admitted.delivery().snapshot().orElseThrow();
-        var contract = catalog.contracts().values().iterator().next();
+        var contract = catalog.contracts().get(
+                new com.iocextractor.application.dataframeimport.model.ImportContractId("host-masks-v1"));
         assertThat(contract.definition().duplicatePolicy()).isEqualTo(ImportDuplicatePolicy.COALESCE);
         var headers = reader.readHeader(new DelimitedHeaderReadCommand(snapshot.reference(),
                 contract.definition().charset(), contract.dialect(),
@@ -158,6 +159,49 @@ class RouterSelectedImportDeliveryIT {
                 assertThat(rows.next()).isFalse();
             }
         }
+        assertSchemeOnlyImport();
+    }
+
+    private void assertSchemeOnlyImport() throws Exception {
+        var source = new ImportSourceId("local-scheme-free");
+        var delivery = new ImportDeliveryId("scheme-production-import");
+        Path inbox = Files.createDirectories(root.resolve("scheme-inbox"));
+        Files.writeString(inbox.resolve("scheme.csv"), "ioc;source;url_match;host_match\n"
+                + "https://scheme.example:8443/path?q=one#part;Feed Scheme;u:hAS,pEX;NULL\n"
+                + "http://scheme.example:8443/path?q=one#part;Feed Scheme;u:hAS,pEX;NULL\n"
+                + "https://scheme.example:8443/other?q=two;Feed Scheme;u:hAS,pEX;NULL\n",
+                StandardCharsets.UTF_8);
+        var candidate = sources.detect(source, clock.instant()).getFirst();
+        admission.admit(new AdmitDataframeImportCommand(new ImportClaimReservation(
+                delivery, source, candidate.candidateToken(), clock.instant())));
+
+        assertThat(processor.processNext().workPerformed()).isTrue();
+        var staged = ledger.find(delivery).orElseThrow();
+        assertThat(staged.stage().orElseThrow().sourceRows()).isEqualTo(3);
+        assertThat(staged.stage().orElseThrow().acceptedRows()).isEqualTo(2);
+        assertThat(staged.stage().orElseThrow().rejectedRows()).isZero();
+        assertThat(processor.processNext().workPerformed()).isTrue();
+        var receipt = commits.find(delivery).orElseThrow();
+        assertThat(receipt.publicMutations()).isEqualTo(2);
+        workspace.discard(delivery);
+        assertThat(processor.processNext().workPerformed()).isTrue();
+        assertThat(ledger.find(delivery).orElseThrow().state()).isEqualTo(ImportDeliveryState.TERMINAL);
+        assertThat(commits.find(delivery)).contains(receipt);
+
+        try (var connection = dataframe.getConnection();
+             var statement = connection.createStatement();
+             var rows = statement.executeQuery(
+                     "SELECT mask, url_match, host_match FROM masks WHERE source = 'Feed Scheme' ORDER BY mask")) {
+            java.util.List<String> values = new java.util.ArrayList<>();
+            while (rows.next()) {
+                values.add(rows.getString("mask"));
+                assertThat(rows.getString("url_match")).isEqualTo("u:hAS,pEX");
+                assertThat(rows.getString("host_match")).isNull();
+            }
+            assertThat(values).containsExactly("scheme.example:8443/other?q=two",
+                    "scheme.example:8443/path?q=one#part");
+        }
+        assertThat(plans.documentPlan()).isEqualTo("imported-hosts");
     }
 
     private void assertCanonicalRow() throws Exception {

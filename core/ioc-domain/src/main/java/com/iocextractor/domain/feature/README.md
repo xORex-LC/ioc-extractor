@@ -19,6 +19,9 @@
 | `IndicatorFeatures.java` | Признаки: `value/host/hasPort/hasPath/hasQuery/hostKind` |
 | `IndicatorFeatureExtractor.java` | Порт извлечения признаков из `Indicator` |
 | `DefaultIndicatorFeatureExtractor.java` | Парсинг scheme/authority/path/query; `:`-порт только в authority |
+| `NetworkAddressParser.java` | Проверка полного HTTP(S) или scheme-free адреса без DNS и сетевого I/O |
+| `NetworkHostDeriver.java` | Получение bare host/IP с сохранением источника |
+| `NetworkSchemeDeriver.java` | Удаление только HTTP(S) с сохранением порта, пути, query, fragment и источника |
 | `HostClassifier.java` | Порт классификации хоста (PSL за адаптером) |
 | `HostKind.java` | `IP / REGISTRABLE / SUBDOMAIN / ONION / UNKNOWN` |
 

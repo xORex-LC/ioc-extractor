@@ -19,7 +19,6 @@ import java.util.stream.Collectors;
 /** Compiles bounded IOC policy references into the existing technical Router contract. */
 final class ProcessingPlanCatalog {
     private static final String ORIGINAL = "original";
-    private static final String NETWORK_HOST = "network.host";
     private static final String RECOVER = "view.recover";
     private static final String TYPE_IN = "type-in";
     private static final int MAX_PLANS = 32;
@@ -147,7 +146,7 @@ final class ProcessingPlanCatalog {
                                 PlanDescriptor.Action.valueOf(routing.onUnmatched().action().name()),
                                 routing.onUnmatched().branch()), defaultBranch));
         try {
-            PlanValidator.validate(descriptor, Set.of(NETWORK_HOST), artifacts.keySet(),
+            PlanValidator.validate(descriptor, ConfigRegistryCatalog.viewOperationKeys(), artifacts.keySet(),
                     technicalPredicates(), RECOVERABLE_REASONS);
         } catch (IllegalArgumentException failure) {
             errors.add(path + ": " + failure.getMessage());
@@ -181,7 +180,7 @@ final class ProcessingPlanCatalog {
             return null;
         }
         if (!RECOVER.equals(view.operation())) {
-            if (!NETWORK_HOST.equals(view.operation()) || view.arguments() != null) {
+            if (!ConfigRegistryCatalog.viewOperationKeys().contains(view.operation()) || view.arguments() != null) {
                 errors.add(path + " has unknown operation or unexpected arguments");
                 return null;
             }
