@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.out.sink.csv;
 
 import com.iocextractor.application.export.ExportFormat;
+import com.iocextractor.application.export.ExportQuoting;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
@@ -15,15 +16,13 @@ import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
 import com.iocextractor.observability.logging.LogEvents;
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.CSVPrinter;
-import org.apache.commons.csv.QuoteMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.Charset;
+import java.nio.charset.CodingErrorAction;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -45,8 +44,10 @@ public final class CsvArtifactProjection implements ArtifactProjection {
     private final CanonicalArtifactStreamReader reader;
     private final Map<String, List<String>> headers;
     private final Map<String, Path> paths;
-    private final CSVFormat format;
+    private final CsvRecordFormat format;
+    private final String nullLiteral;
     private final Charset charset;
+    private final CodingErrorAction encodingErrors;
     private final DiagnosticFactory diagnostics;
 
     /** Creates a canonical-to-CSV projection adapter with explicit output and diagnostic policies. */
@@ -58,8 +59,12 @@ public final class CsvArtifactProjection implements ArtifactProjection {
         this.reader = Objects.requireNonNull(reader, "reader");
         this.headers = copyHeaders(Objects.requireNonNull(headers, "headers"));
         this.paths = Map.copyOf(Objects.requireNonNull(paths, "paths"));
-        this.format = csvFormat(Objects.requireNonNull(exportFormat, "exportFormat"));
+        this.format = new CsvRecordFormat(Objects.requireNonNull(exportFormat, "exportFormat"));
+        this.nullLiteral = exportFormat.nullLiteral();
         this.charset = charset(exportFormat);
+        this.encodingErrors = exportFormat.headerQuoting() == ExportQuoting.ALL
+                && exportFormat.valueQuoting() == ExportQuoting.ALL
+                ? CodingErrorAction.REPLACE : CodingErrorAction.REPORT;
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
     }
 
@@ -94,17 +99,16 @@ public final class CsvArtifactProjection implements ArtifactProjection {
             temp = tempPath(path);
             var inspector = new CsvValueEncodingInspector(charset);
             inspector.inspectHeader(header);
-            var writer = CsvIo.newWriter(temp, charset);
             CanonicalArtifactStreamResult snapshot;
-            try (CSVPrinter printer = new CSVPrinter(writer, format)) {
-                printer.printRecord(header);
+            try (var writer = CsvIo.newWriter(temp, charset, encodingErrors)) {
+                format.printHeader(writer, header);
                 snapshot = reader.stream(artifactName, row -> {
                     checkCancellation();
                     var values = new ArrayList<String>(header.size());
                     header.forEach(column -> values.add(row.value(column)));
-                    inspector.inspectRow(values, format.getNullString());
+                    inspector.inspectRow(values, nullLiteral);
                     try {
-                        printer.printRecord(values);
+                        format.printRecord(writer, values);
                     } catch (IOException failure) {
                         throw new UncheckedIOException(failure);
                     }
@@ -197,22 +201,6 @@ public final class CsvArtifactProjection implements ArtifactProjection {
         } catch (IOException cleanupFailure) {
             failure.addSuppressed(cleanupFailure);
         }
-    }
-
-    private CSVFormat csvFormat(ExportFormat exportFormat) {
-        if (!"csv".equalsIgnoreCase(exportFormat.type())) {
-            throw new IllegalArgumentException("Mutable CSV projection requires csv export format");
-        }
-        if (exportFormat.delimiter().length() != 1 || exportFormat.quote().length() != 1) {
-            throw new IllegalArgumentException("CSV delimiter and quote must each be one character");
-        }
-        return CSVFormat.Builder.create()
-                .setDelimiter(exportFormat.delimiter().charAt(0))
-                .setQuote(exportFormat.quote().charAt(0))
-                .setNullString(exportFormat.nullLiteral())
-                .setQuoteMode(QuoteMode.ALL_NON_NULL)
-                .setRecordSeparator("\r\n")
-                .build();
     }
 
     private Charset charset(ExportFormat exportFormat) {

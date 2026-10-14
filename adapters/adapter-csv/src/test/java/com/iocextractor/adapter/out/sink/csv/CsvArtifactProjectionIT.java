@@ -4,6 +4,8 @@ import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.export.ExportFormat;
+import com.iocextractor.application.export.ExportQuoting;
+import com.iocextractor.application.export.ExportRecordSeparator;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactStreamReader;
 import com.iocextractor.common.IocExtractorException;
@@ -13,6 +15,8 @@ import com.iocextractor.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.SinkDiagnosticCodes;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -38,6 +42,67 @@ class CsvArtifactProjectionIT {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void writes_lf_with_quoted_headers_and_minimal_values() throws Exception {
+        var header = List.of("id", "value");
+        var artifact = new CanonicalArtifact("masks", header, List.of(
+                row(header, "1", "plain"), row(header, "2", "a;b"), row(header, "3", null)));
+        Path path = tempDir.resolve("masks.csv");
+        var format = new ExportFormat("csv", "UTF-8", ";", "\"", "NULL",
+                ExportRecordSeparator.LF, ExportQuoting.ALL, ExportQuoting.MINIMAL);
+        var projection = new CsvArtifactProjection(new SnapshotRepository(artifact),
+                Map.of("masks", header), Map.of("masks", path), format, DIAGNOSTICS);
+
+        projection.project(new ArtifactProjectionCommand("lf-layout", "masks"));
+
+        assertThat(Files.readAllBytes(path)).isEqualTo(
+                "\"id\";\"value\"\n1;plain\n2;\"a;b\"\n3;NULL\n".getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void none_keeps_the_previous_file_and_removes_temporary_output_on_validation_failure() throws Exception {
+        var header = List.of("id", "value");
+        var artifact = new CanonicalArtifact("masks", header, List.of(
+                row(header, "1", "plain"), row(header, "2", "private;value")));
+        Path path = tempDir.resolve("masks.csv");
+        byte[] previous = "previous projection\r\n".getBytes(StandardCharsets.UTF_8);
+        Files.write(path, previous);
+        var format = new ExportFormat("csv", "UTF-8", ";", "\"", "NULL",
+                ExportRecordSeparator.LF, ExportQuoting.ALL, ExportQuoting.NONE);
+        var projection = new CsvArtifactProjection(new SnapshotRepository(artifact),
+                Map.of("masks", header), Map.of("masks", path), format, DIAGNOSTICS);
+
+        assertThatThrownBy(() -> projection.project(new ArtifactProjectionCommand("none-layout", "masks")))
+                .isInstanceOf(IocExtractorException.class)
+                .hasRootCauseMessage("CSV NONE cannot represent column 2 without quoting; use ALL or MINIMAL");
+        assertThat(Files.readAllBytes(path)).isEqualTo(previous);
+        try (var children = Files.list(tempDir)) {
+            assertThat(children).containsExactly(path);
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = ExportQuoting.class, names = {"MINIMAL", "NONE"})
+    void rejects_lossy_encoding_that_could_inject_an_unquoted_delimiter(ExportQuoting quoting) throws Exception {
+        var header = List.of("id", "value");
+        var artifact = new CanonicalArtifact("masks", header, List.of(row(header, "1", "alpha😀beta")));
+        Path path = tempDir.resolve("masks.csv");
+        byte[] previous = "previous projection\n".getBytes(StandardCharsets.US_ASCII);
+        Files.write(path, previous);
+        var format = new ExportFormat("csv", "US-ASCII", "?", "\"", "NULL",
+                ExportRecordSeparator.LF, ExportQuoting.ALL, quoting);
+        var projection = new CsvArtifactProjection(new SnapshotRepository(artifact),
+                Map.of("masks", header), Map.of("masks", path), format, DIAGNOSTICS);
+
+        assertThatThrownBy(() -> projection.project(new ArtifactProjectionCommand("lossy-layout", "masks")))
+                .isInstanceOf(IocExtractorException.class)
+                .hasRootCauseInstanceOf(java.nio.charset.UnmappableCharacterException.class);
+        assertThat(Files.readAllBytes(path)).isEqualTo(previous);
+        try (var children = Files.list(tempDir)) {
+            assertThat(children).containsExactly(path);
+        }
+    }
 
     @Test
     void reports_exact_lossy_value_row_and_header_counts_without_raw_values() throws Exception {

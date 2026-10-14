@@ -1,6 +1,8 @@
 package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.export.ExportMode;
+import com.iocextractor.application.export.ExportQuoting;
+import com.iocextractor.application.export.ExportRecordSeparator;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
@@ -13,16 +15,54 @@ import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.boot.context.properties.source.ConfigurationPropertySources;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.env.MapPropertySource;
+import org.springframework.core.env.MutablePropertySources;
 
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 class ExportPlanCatalogTest {
+
+    @Test
+    void binds_explicit_csv_layout_and_resolves_v2_plans() throws Exception {
+        var loader = new YamlPropertySourceLoader();
+        var sources = new MutablePropertySources();
+        sources.addFirst(new MapPropertySource("csv-layout", Map.of(
+                "ioc.sink.csv.record-separator", "lf", "ioc.sink.csv.header-quoting", "all",
+                "ioc.sink.csv.value-quoting", "none")));
+        loader.load("defaults", new ClassPathResource("application.yml")).forEach(sources::addLast);
+        var properties = new Binder(ConfigurationPropertySources.from(sources), null,
+                conversionService()).bind("ioc", Bindable.of(IocProperties.class)).get();
+
+        var plans = catalog(properties, new ArrayList<>()).plans();
+
+        assertThat(plans).allSatisfy(plan -> {
+            assertThat(plan.manifestVersion()).isEqualTo(2);
+            assertThat(plan.format().recordSeparator()).isEqualTo(ExportRecordSeparator.LF);
+            assertThat(plan.format().headerQuoting()).isEqualTo(ExportQuoting.ALL);
+            assertThat(plan.format().valueQuoting()).isEqualTo(ExportQuoting.NONE);
+            assertThat(plan.format()).isEqualTo(CsvFormatConfiguration.resolve(properties.sink().csv()));
+        });
+        assertThat(plans.getFirst().planHash())
+                .isNotEqualTo(catalog(defaults(), new ArrayList<>()).plans().getFirst().planHash());
+    }
+
+    @Test
+    void defaults_missing_output_policies_and_charset_to_the_compatible_layout() {
+        var csv = new IocProperties.Sink.Csv(";", "\"", "NULL", null, null, null, null);
+
+        var format = CsvFormatConfiguration.resolve(csv);
+
+        assertThat(format).isEqualTo(new com.iocextractor.application.export.ExportFormat(
+                "csv", "UTF-8", ";", "\"", "NULL"));
+        assertThat(format.requiredManifestVersion()).isOne();
+    }
 
     @Test
     void resolvesDefaultProfilesWithOrderedSchemasAndIdentity() throws Exception {
@@ -240,12 +280,16 @@ class ExportPlanCatalogTest {
     private IocProperties defaults() throws Exception {
         var source = new YamlPropertySourceLoader()
                 .load("defaults", new ClassPathResource("application.yml")).getFirst();
-        ApplicationConversionService conversionService = new ApplicationConversionService();
-        conversionService.addConverter(String.class, IdStart.class, IdStart::parse);
-        conversionService.addConverter(Number.class, IdStart.class, IdStart::from);
-        return new Binder(ConfigurationPropertySources.from(source), null, conversionService)
+        return new Binder(ConfigurationPropertySources.from(source), null, conversionService())
                 .bind("ioc", Bindable.of(IocProperties.class))
                 .orElseThrow(() -> new IllegalStateException("default ioc properties did not bind"));
+    }
+
+    private ApplicationConversionService conversionService() {
+        ApplicationConversionService service = new ApplicationConversionService();
+        service.addConverter(String.class, IdStart.class, IdStart::parse);
+        service.addConverter(Number.class, IdStart.class, IdStart::from);
+        return service;
     }
 
     private IocProperties.Export export(IocProperties properties,

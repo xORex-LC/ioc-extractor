@@ -60,6 +60,7 @@
 | [0041-sqlite-staged-publication-experiment.md](0041-sqlite-staged-publication-experiment.md) | Historical isolated versioned SQLite experiment; concluded without activation under ADR 0042. |
 
 | [0042-native-sqlite-production-storage.md](0042-native-sqlite-production-storage.md) | Retain improved Native SQLite as the sole production backend; remove isolated versioned storage and experiment tooling while preserving shared preparation and recovery. |
+| [0043-configurable-csv-output-format.md](0043-configurable-csv-output-format.md) | Explicit LF/CRLF and independent header/data quoting, strict unquoted validation, unchanged v1 bytes and versioned layout manifests. |
 
 ## Формат
 

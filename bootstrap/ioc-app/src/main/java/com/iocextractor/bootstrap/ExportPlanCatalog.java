@@ -14,7 +14,6 @@ import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.ExportDiagnosticCodes;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 
-import java.nio.charset.Charset;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -78,7 +77,7 @@ public final class ExportPlanCatalog {
         Map<String, IocProperties.Sink.Artifact> sinkArtifacts = sinkArtifacts(properties);
         Map<String, ArtifactIdentityDefinition> identities = identities(properties);
         IocProperties.Sink.Csv csv = properties.sink().csv();
-        ExportFormat format = format(csv);
+        ExportFormat format = CsvFormatConfiguration.resolve(csv);
         List<ExportPlan> result = new ArrayList<>();
         HashSet<String> profileNames = new HashSet<>();
         for (IocProperties.Export.Profile configured : properties.export().profiles()) {
@@ -98,7 +97,7 @@ public final class ExportPlanCatalog {
                 throw new IllegalArgumentException("Export profile uses a reserved slice file name: "
                         + configured.name());
             }
-            result.add(new ExportPlan(1,
+            result.add(new ExportPlan(format.requiredManifestVersion(),
                     new ExportProfile(configured.name(), mode, configured.artifacts()),
                     format, artifacts));
         }
@@ -173,29 +172,6 @@ public final class ExportPlanCatalog {
         Diagnostic diagnostic = builder.build();
         diagnosticSink.emit(diagnostic);
         return new DiagnosticException(diagnostic);
-    }
-
-    private String charset(IocProperties.Sink.Csv csv) {
-        return csv.charset() == null || csv.charset().isBlank() ? "UTF-8" : csv.charset();
-    }
-
-    private ExportFormat format(IocProperties.Sink.Csv csv) {
-        String charset = charset(csv);
-        try {
-            Charset.forName(charset);
-        } catch (IllegalArgumentException invalidCharset) {
-            throw new IllegalArgumentException("Unsupported export charset: " + charset, invalidCharset);
-        }
-        if (csv.delimiter().length() != 1 || csv.quote().length() != 1) {
-            throw new IllegalArgumentException("Export CSV delimiter and quote must be one character");
-        }
-        char delimiter = csv.delimiter().charAt(0);
-        char quote = csv.quote().charAt(0);
-        if (delimiter == quote || delimiter == '\r' || delimiter == '\n'
-                || quote == '\r' || quote == '\n') {
-            throw new IllegalArgumentException("Export CSV delimiter and quote must be distinct non-line-breaks");
-        }
-        return new ExportFormat("csv", charset, csv.delimiter(), csv.quote(), csv.nullLiteral());
     }
 
     /** Fingerprints every configured mapping input that can alter future canonical bytes. */

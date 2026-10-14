@@ -32,9 +32,13 @@ errors/diagnostics/observability, Commons CSV, SLF4J API.
   parentless relative leaf поддерживается через current directory, filesystem
   root отклоняется как path без имени файла и в bootstrap preflight, и на
   adapter boundary;
+- общий formatter задаёт LF/CRLF и независимые ALL/MINIMAL/NONE для заголовка
+  и значений; strict NONE отклоняет неоднозначные cells до публикации. Контракт:
+  [CSV output format](../../docs/dev/csv-output-format.md);
 - mutable projection проверяет logical header/cell values до записи и при
   charset replacement возвращает одну `SINK.CHARSET_UNMAPPABLE` diagnostic с
-  точными counts; diagnostic доставляет application orchestration, не adapter;
+  точными counts при ALL/ALL; для MINIMAL/NONE кодирование строгое, чтобы
+  replacement не создал CSV syntax; diagnostic доставляет application orchestration, не adapter;
 - `CsvArtifactPreparer` выполняет config-driven filtering/mapping до policy
   checkpoint; provider/transform из `ioc-processing` может явно вернуть data-dependent failure
   только через `MappingValueException`. Общий `ConfigurableRowMapper` локализует его

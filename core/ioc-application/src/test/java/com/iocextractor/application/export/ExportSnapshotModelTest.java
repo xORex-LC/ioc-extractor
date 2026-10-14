@@ -45,6 +45,16 @@ class ExportSnapshotModelTest {
     }
 
     @Test
+    void manifest_v1_cannot_claim_a_layout_it_does_not_describe() {
+        var format = new ExportFormat("csv", "UTF-8", ";", "\"", "NULL",
+                ExportRecordSeparator.LF, ExportQuoting.ALL, ExportQuoting.ALL);
+
+        assertThatThrownBy(() -> new SliceManifest(1, "run-1", "run-1", "default", NOW,
+                ExportMode.COMPLETE, HASH_A, format, List.of(manifestArtifact("masks"))))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("manifest version 2");
+    }
+
+    @Test
     void manifest_rejects_duplicate_artifacts_and_mismatched_slice_id() {
         assertThatThrownBy(() -> new SliceManifest(
                 1, "slice-1", "run-1", "default", NOW, ExportMode.COMPLETE,

@@ -10,7 +10,7 @@ version gate локализованы в adapter-owned document records.
 
 | Файл | Назначение |
 |---|---|
-| `JacksonSliceManifestCodec.java` | Model↔document mapping, deterministic serialization и strict v1 decoding |
+| `JacksonSliceManifestCodec.java` | Model↔document mapping, deterministic serialization и strict v1/v2 decoding |
 | `package-info.java` | Package boundary |
 
 ## Контракт bytes
@@ -20,6 +20,10 @@ Root order: `manifest_version`, `slice_id`, `run_id`, `profile`, `created_at`,
 имеют explicit order. Pretty-print фиксирован: `\n` и два пробела, без
 platform-dependent newline. Codec не считает hash: caller хэширует именно
 возвращённые bytes, которые записаны в `manifest.json`.
+
+V1 сохраняет прежние bytes и означает CRLF с кавычками у не-null значений.
+V2 дополняет `format` обязательными `record_separator`, `header_quoting` и
+`value_quoting`. Новые настройки не применяются к уже сохранённым slices.
 
 ## Ошибки
 

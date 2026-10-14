@@ -202,7 +202,6 @@ import org.springframework.context.Lifecycle;
 import org.springframework.integration.dsl.IntegrationFlow;
 
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -1661,14 +1660,6 @@ public class AppConfig {
     }
 
     /**
-     * Output charset for generated CSV projections and export slices. Blank or
-     * absent {@code ioc.sink.csv.charset} means UTF-8.
-     */
-    private Charset csvCharset(IocProperties props) {
-        return resolveCharset(props.sink().csv().charset(), StandardCharsets.UTF_8, "ioc.sink.csv.charset");
-    }
-
-    /**
      * Forced input charset (boundary 1). {@code auto}/blank/absent means Tika
      * auto-detection; an explicit name forces decoding of text/HTML sources.
      */
@@ -1693,8 +1684,6 @@ public class AppConfig {
     }
 
     private ExportFormat projectionFormat(IocProperties props) {
-        IocProperties.Sink.Csv csv = props.sink().csv();
-        return new ExportFormat("csv", csvCharset(props).name(),
-                csv.delimiter(), csv.quote(), csv.nullLiteral());
+        return CsvFormatConfiguration.resolve(props.sink().csv());
     }
 }

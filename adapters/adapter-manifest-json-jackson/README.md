@@ -24,7 +24,9 @@ Outbound adapter для versioned JSON-представления `SliceManifest
 - порядок полей задан явно для root/format/artifact/coverage;
 - `output_mode` кодируется lower-case;
 - nullable `changed_at` при revision zero пишется явным JSON `null`;
-- v1 decoder отклоняет любой другой `manifest_version` до построения model.
+- decoder читает v1 (исходный CSV layout) и v2 (явные record separator и
+  quoting policies); неизвестные версии и неполный v2 отклоняются до построения model;
+- при исходном CSV layout encoder сохраняет точные прежние bytes v1.
 
 ## Зависимости
 

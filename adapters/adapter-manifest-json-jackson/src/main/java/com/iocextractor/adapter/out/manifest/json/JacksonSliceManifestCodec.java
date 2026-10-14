@@ -14,6 +14,8 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.iocextractor.application.export.ArtifactCoverage;
 import com.iocextractor.application.export.ExportFormat;
 import com.iocextractor.application.export.ExportMode;
+import com.iocextractor.application.export.ExportQuoting;
+import com.iocextractor.application.export.ExportRecordSeparator;
 import com.iocextractor.application.export.SliceArtifactManifest;
 import com.iocextractor.application.export.SliceManifest;
 import com.iocextractor.application.port.out.export.SliceManifestCodec;
@@ -25,7 +27,7 @@ import java.util.Locale;
 import java.util.Objects;
 
 /**
- * Deterministic Jackson implementation of the version-1 slice manifest wire format.
+ * Deterministic Jackson implementation of the v1 and explicit-CSV-layout v2 manifests.
  *
  * <p>Jackson annotations are isolated on adapter-owned document records. The
  * application model remains serialization-neutral, while explicit property
@@ -33,7 +35,7 @@ import java.util.Objects;
  */
 public final class JacksonSliceManifestCodec implements SliceManifestCodec {
 
-    public static final int SUPPORTED_VERSION = 1;
+    public static final int SUPPORTED_VERSION = ExportFormat.CONFIGURABLE_CSV_MANIFEST_VERSION;
 
     private final ObjectReader reader;
     private final ObjectWriter writer;
@@ -85,13 +87,18 @@ public final class JacksonSliceManifestCodec implements SliceManifestCodec {
                 manifest.createdAt().toString(),
                 manifest.outputMode().name().toLowerCase(Locale.ROOT),
                 manifest.planHash(),
-                new FormatDocument(
-                        manifest.format().type(),
-                        manifest.format().charset(),
-                        manifest.format().delimiter(),
-                        manifest.format().quote(),
-                        manifest.format().nullLiteral()),
+                formatDocument(manifest),
                 manifest.artifacts().stream().map(this::toDocument).toList());
+    }
+
+    private FormatDocument formatDocument(SliceManifest manifest) {
+        ExportFormat format = manifest.format();
+        boolean legacy = manifest.manifestVersion() == ExportFormat.LEGACY_MANIFEST_VERSION;
+        return new FormatDocument(format.type(), format.charset(), format.delimiter(),
+                format.quote(), format.nullLiteral(),
+                legacy ? null : format.recordSeparator().name().toLowerCase(Locale.ROOT),
+                legacy ? null : format.headerQuoting().name().toLowerCase(Locale.ROOT),
+                legacy ? null : format.valueQuoting().name().toLowerCase(Locale.ROOT));
     }
 
     private ArtifactDocument toDocument(SliceArtifactManifest artifact) {
@@ -122,10 +129,25 @@ public final class JacksonSliceManifestCodec implements SliceManifestCodec {
                 Instant.parse(document.createdAt()),
                 ExportMode.valueOf(document.outputMode().toUpperCase(Locale.ROOT)),
                 document.planHash(),
-                new ExportFormat(
-                        format.type(), format.charset(), format.delimiter(),
-                        format.quote(), format.nullLiteral()),
+                formatModel(format, document.manifestVersion()),
                 artifacts.stream().map(this::toModel).toList());
+    }
+
+    private ExportFormat formatModel(FormatDocument format, int version) {
+        if (version == ExportFormat.LEGACY_MANIFEST_VERSION) {
+            if (format.recordSeparator() != null || format.headerQuoting() != null || format.valueQuoting() != null) {
+                throw new IllegalArgumentException("Manifest v1 cannot declare CSV layout policies");
+            }
+            return new ExportFormat(format.type(), format.charset(), format.delimiter(),
+                    format.quote(), format.nullLiteral());
+        }
+        return new ExportFormat(format.type(), format.charset(), format.delimiter(), format.quote(), format.nullLiteral(),
+                ExportRecordSeparator.valueOf(Objects.requireNonNull(format.recordSeparator(), "record_separator")
+                        .toUpperCase(Locale.ROOT)),
+                ExportQuoting.valueOf(Objects.requireNonNull(format.headerQuoting(), "header_quoting")
+                        .toUpperCase(Locale.ROOT)),
+                ExportQuoting.valueOf(Objects.requireNonNull(format.valueQuoting(), "value_quoting")
+                        .toUpperCase(Locale.ROOT)));
     }
 
     private SliceArtifactManifest toModel(ArtifactDocument artifact) {
@@ -145,7 +167,7 @@ public final class JacksonSliceManifestCodec implements SliceManifestCodec {
     }
 
     private void requireSupportedVersion(int version) {
-        if (version != SUPPORTED_VERSION) {
+        if (version != ExportFormat.LEGACY_MANIFEST_VERSION && version != SUPPORTED_VERSION) {
             throw new IocExtractorException("Unsupported slice manifest version: " + version);
         }
     }
@@ -167,14 +189,18 @@ public final class JacksonSliceManifestCodec implements SliceManifestCodec {
             @JsonProperty("artifacts") List<ArtifactDocument> artifacts) {
     }
 
-    @JsonInclude(JsonInclude.Include.ALWAYS)
-    @JsonPropertyOrder({"type", "charset", "delimiter", "quote", "null_literal"})
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonPropertyOrder({"type", "charset", "delimiter", "quote", "null_literal",
+            "record_separator", "header_quoting", "value_quoting"})
     private record FormatDocument(
             @JsonProperty("type") String type,
             @JsonProperty("charset") String charset,
             @JsonProperty("delimiter") String delimiter,
             @JsonProperty("quote") String quote,
-            @JsonProperty("null_literal") String nullLiteral) {
+            @JsonProperty("null_literal") String nullLiteral,
+            @JsonProperty("record_separator") String recordSeparator,
+            @JsonProperty("header_quoting") String headerQuoting,
+            @JsonProperty("value_quoting") String valueQuoting) {
     }
 
     @JsonInclude(JsonInclude.Include.ALWAYS)

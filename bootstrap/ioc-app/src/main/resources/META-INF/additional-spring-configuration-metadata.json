@@ -76,6 +76,29 @@
       ]
     },
     {
+      "name": "ioc.sink.csv.record-separator",
+      "values": [
+        { "value": "lf", "description": "Write LF after each CSV record." },
+        { "value": "crlf", "description": "Write CRLF after each CSV record (compatible default)." }
+      ]
+    },
+    {
+      "name": "ioc.sink.csv.header-quoting",
+      "values": [
+        { "value": "all", "description": "Quote every header field." },
+        { "value": "minimal", "description": "Quote header fields only when needed." },
+        { "value": "none", "description": "Reject header fields that require quoting." }
+      ]
+    },
+    {
+      "name": "ioc.sink.csv.value-quoting",
+      "values": [
+        { "value": "all", "description": "Quote every non-null value; keep the null marker unquoted." },
+        { "value": "minimal", "description": "Quote values only when needed, including text equal to the null marker." },
+        { "value": "none", "description": "Reject values that cannot be represented without quoting or escaping." }
+      ]
+    },
+    {
       "name": "ioc.sink.csv.charset",
       "providers": [
         { "name": "handle-as", "parameters": { "target": "java.nio.charset.Charset" } }

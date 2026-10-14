@@ -17,7 +17,7 @@ adapters за портами `application.port.out.export`.
 | Файл / группа | Назначение |
 |---|---|
 | `ExportProfile`, `ExportMode` | Именованный, упорядоченный и неделимый набор артефактов; v1 исполняет только `COMPLETE` |
-| `ExportFormat`, `ExportArtifactSpec`, `ExportPlan` | Полностью resolved-контракт публичных bytes; `planHash` покрывает format, schema, identity, active mapping и reusable-slot policy для artifacts с `id` |
+| `ExportFormat`, `ExportRecordSeparator`, `ExportQuoting`, `ExportArtifactSpec`, `ExportPlan` | Полностью resolved-контракт публичных bytes; `planHash` покрывает format, schema, identity, active mapping и reusable-slot policy для artifacts с `id` |
 | `ArtifactSchemaFingerprint` | SHA-256 ordered public columns + normalized declared types (`schema:v1`) |
 | `SnapshotRequest`, `SnapshotMetadata`, `SnapshotArtifactMetadata`, `ArtifactCoverage` | Запрос и факты, захваченные в одном consistent read snapshot |
 | `SliceManifest`, `SliceArtifactManifest` | Versioned integrity root всего среза и checksums/coverage его файлов |
@@ -36,7 +36,10 @@ adapters за портами `application.port.out.export`.
 
 ## Инварианты
 
-- В v1 `sliceId == runId`; имена среза и файлов — один path segment, не путь.
+- `sliceId == runId`; имена среза и файлов — один path segment, не путь.
+- Исходный CSV layout (CRLF/ALL/ALL) сохраняет manifest v1 и прежний plan hash.
+  Нестандартный layout требует manifest v2; все три CSV policy входят в plan hash.
+  Schema hash от форматирования не меняется.
 - Порядок artifacts и columns значим. Все byte-affecting поля входят в
   length-prefixed SHA-256 `planHash`; runtime id/timestamp исключены.
 - `identityHash`, `schemaHash`, file checksum, manifest checksum и `planHash` —

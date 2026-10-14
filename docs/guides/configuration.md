@@ -245,8 +245,11 @@ contract and must be tested against existing databases and consumers.
 |---|---|---|---|
 | `ioc.sink.csv.delimiter` | one-character string | `;` | Must differ from quote. |
 | `ioc.sink.csv.quote` | one-character string | `"` | Must differ from delimiter. |
-| `ioc.sink.csv.null-literal` | non-blank string | `NULL` | Serialized value for absent cells. |
-| `ioc.sink.csv.charset` | Java charset name | `UTF-8` | Unmappable characters are replaced and reported, not fatal. |
+| `ioc.sink.csv.null-literal` | non-blank string | `NULL` | Unquoted marker for absent cells; cannot contain delimiter, quote, CR or LF. |
+| `ioc.sink.csv.record-separator` | `lf`, `crlf` | `crlf` | Explicit record endings. See [CSV output format](../dev/csv-output-format.md) for combinations and compatibility. |
+| `ioc.sink.csv.header-quoting` | `all`, `minimal`, `none` | `all` | Quoting policy for column names, independent of data cells. |
+| `ioc.sink.csv.value-quoting` | `all`, `minimal`, `none` | `all` | `all` quotes non-null values; `minimal` quotes only when needed; strict `none` rejects values requiring quoting or escaping. |
+| `ioc.sink.csv.charset` | Java charset name | `UTF-8` | ALL/ALL projections diagnose charset replacement; MINIMAL/NONE and immutable slices require lossless encoding. |
 | `ioc.sink.artifacts` | non-empty list | masks, ip_list, address_blacklist, hashes, ioc_aggregate | Override complete list elements, not isolated indexes. See the [IOC aggregate guide](ioc-aggregate.md) before first activation. |
 | `ioc.sink.artifacts[].name` | unique string | required | Stable artifact identity referenced by export and row-key configuration. |
 | `ioc.sink.artifacts[].enabled` | boolean | required | Disabled artifacts are not prepared or projected. |

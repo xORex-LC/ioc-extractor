@@ -29,9 +29,14 @@ final class CsvIo {
 
     /** Buffered writer in {@code charset}, replacing unmappable/malformed characters. */
     static BufferedWriter newWriter(Path path, Charset charset) throws IOException {
+        return newWriter(path, charset, CodingErrorAction.REPLACE);
+    }
+
+    /** Explicit encoding policy: unquoted output must not gain CSV syntax through replacement. */
+    static BufferedWriter newWriter(Path path, Charset charset, CodingErrorAction errorAction) throws IOException {
         CharsetEncoder encoder = charset.newEncoder()
-                .onMalformedInput(CodingErrorAction.REPLACE)
-                .onUnmappableCharacter(CodingErrorAction.REPLACE);
+                .onMalformedInput(errorAction)
+                .onUnmappableCharacter(errorAction);
         return new BufferedWriter(new OutputStreamWriter(Files.newOutputStream(path), encoder));
     }
 

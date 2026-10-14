@@ -197,6 +197,11 @@ ioc:
       delimiter: ";"
       quote: "\""
       null-literal: "NULL"
+      # Use lf for Unix consumers; crlf preserves the original export layout.
+      record-separator: crlf
+      # Independent policies: all, minimal, none (reject values requiring quoting).
+      header-quoting: all
+      value-quoting: all
       charset: UTF-8
     artifacts:
       - name: masks

@@ -19,7 +19,8 @@ dataframe и формирование immutable export slices. Схема арт
 | `CsvArtifactDefinition.java`, `CsvArtifactPreparer.java` | Выбор артефакта и адаптация общей подготовки полей к write plan |
 | `CsvArtifactProjection.java` | Производная CSV-проекция из canonical JDBC storage |
 | `CsvArtifactSliceWriter.java` | Реализация `ArtifactSliceWriter`: staging, inspection/recovery и atomic publish; синхронный `SnapshotRowConsumer` |
-| `CsvSliceMaterialization.java` | Состояние одного callback-сеанса: `ArtifactRow → CSVPrinter → DigestOutputStream`, row count и SHA-256 за один проход |
+| `CsvSliceMaterialization.java` | Состояние одного callback-сеанса: `ArtifactRow → CsvRecordFormat → DigestOutputStream`, row count и SHA-256 за один проход |
+| `CsvRecordFormat.java` | Общие LF/CRLF и независимые правила кавычек заголовка/данных; строгая проверка режима без кавычек |
 | `SliceTreeVerifier.java` | Независимая проверка manifest identity, точного состава каталога, data hashes и `_SUCCESS → manifest` hash-chain |
 | `FileSystemSliceRetentionStore.java` | Profile-scoped discovery и recursive directory-as-unit delete только verified final slices |
 | `FileSystemCompletedSliceCatalog.java` | Read-only publish worklist поверх тех же verified final slices, без delete/retention semantics |
@@ -30,8 +31,10 @@ dataframe и формирование immutable export slices. Схема арт
 
 ## Заметки
 
-Диалект: `;`, кавычки на не-null значениях, `null` → литерал `NULL`
-(`QuoteMode.ALL_NON_NULL` + `nullString`). DSL ограничен (см.
+Диалект по умолчанию: `;`, CRLF, кавычки на не-null значениях, `null` → литерал `NULL`.
+Окончания записей и кавычки настраиваются независимо для заголовка и данных;
+см. [формат CSV](../../../../../../../../../../../docs/dev/csv-output-format.md).
+DSL ограничен (см.
 `docs/dev/processing.md`): artifact `include`/`exclude`, провайдер/`const`,
 `when-type`, упорядоченные `transform` — без выражений в конфиге. Реестры
 собираются в `bootstrap/AppConfig`.
@@ -97,8 +100,8 @@ anti-join и не перечитывать payload уже известных с�
 ## Инварианты и ошибки
 
 - data CSV использует charset/delimiter/quote/null literal из immutable
-  `ExportPlan`; record separator фиксирован как CRLF; format/charset проверяются
-  до открытия artifact file;
+  `ExportPlan`; LF/CRLF и кавычки заголовка/данных задаются независимо;
+  исходные defaults — CRLF/ALL/ALL; format/charset проверяются до открытия artifact file;
 - manifest hash считается по фактически записанным bytes codec-а;
 - final slice считается доступным только при валидных data/manifest/marker;
 - одновременное наличие staging и final классифицируется как `CONFLICT`;
