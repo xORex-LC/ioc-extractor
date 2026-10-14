@@ -9,6 +9,8 @@ import com.iocextractor.application.export.ExportFormat;
 import com.iocextractor.application.export.ExportMode;
 import com.iocextractor.application.export.ExportPlan;
 import com.iocextractor.application.export.ExportProfile;
+import com.iocextractor.application.export.ExportQuoting;
+import com.iocextractor.application.export.ExportRecordSeparator;
 import com.iocextractor.application.export.ExportRun;
 import com.iocextractor.application.export.ExportRunStatus;
 import com.iocextractor.application.export.SliceInspectionState;
@@ -54,6 +56,53 @@ class CsvArtifactSliceWriterIT {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void writes_explicit_lf_layout_and_recovers_it_without_reading_new_configuration() throws Exception {
+        var format = new ExportFormat("csv", "UTF-8", ";", "\"", "NULL",
+                ExportRecordSeparator.LF, ExportQuoting.NONE, ExportQuoting.ALL);
+        var plan = plan(format);
+        var run = started(plan);
+        var codec = new TestManifestCodec();
+        Path root = tempDir.resolve("lf");
+        var writer = writer(root, codec, new RecordingFileOperations(), new ArrayList<>());
+
+        var staged = writer.stage(run, new SnapshotRequest(plan), reader(plan, 1));
+        Path csv = root.resolve(".staging/run-1/masks.csv");
+
+        assertThat(Files.readAllBytes(csv)).isEqualTo(
+                "id;value\n\"1\";\"ioc-1\"\n".getBytes(StandardCharsets.UTF_8));
+        assertThat(staged.manifest().manifestVersion()).isEqualTo(2);
+        assertThat(staged.manifest().format()).isEqualTo(format);
+        var restarted = writer(root, codec, new RecordingFileOperations(), new ArrayList<>());
+        var available = restarted.makeAvailable(withStatus(run, ExportRunStatus.STAGED, staged.manifestSha256()));
+        assertThat(available.manifest().format()).isEqualTo(format);
+        assertThat(Files.readAllBytes(root.resolve("complete/slice-1/masks.csv")))
+                .isEqualTo("id;value\n\"1\";\"ioc-1\"\n".getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void none_validation_never_publishes_a_partial_slice_or_success_marker() throws Exception {
+        var format = new ExportFormat("csv", "UTF-8", ";", "\"", "NULL",
+                ExportRecordSeparator.LF, ExportQuoting.ALL, ExportQuoting.NONE);
+        var plan = plan(format);
+        var run = started(plan);
+        Path root = tempDir.resolve("none");
+        var writer = writer(root, new TestManifestCodec(), new RecordingFileOperations(), new ArrayList<>());
+        SnapshotSliceReader invalid = (request, consumer) -> {
+            var snapshot = snapshot(plan, 1);
+            consumer.begin(snapshot);
+            consumer.beginArtifact(snapshot.artifacts().getFirst());
+            consumer.row(ArtifactRow.ordered(Map.of("id", "1", "value", "private;value")));
+            throw new AssertionError("Invalid value must fail before snapshot completion");
+        };
+
+        assertThatThrownBy(() -> writer.stage(run, new SnapshotRequest(plan), invalid))
+                .isInstanceOf(DiagnosticException.class).hasMessageContaining("cannot write artifact");
+        assertThat(root.resolve("complete/slice-1")).doesNotExist();
+        assertThat(root.resolve(".staging/run-1/_SUCCESS")).doesNotExist();
+        assertThat(writer.inspect(run).state()).isEqualTo(SliceInspectionState.PARTIAL);
+    }
 
     @Test
     void stagesDeterministicTreeAndPublishesOnlyByAtomicRename() throws Exception {
@@ -521,7 +570,7 @@ class CsvArtifactSliceWriterIT {
     private ExportPlan plan(ExportFormat format) {
         ExportArtifactSpec masks = spec("masks", "masks.csv", HASH_A, HASH_B);
         ExportArtifactSpec hashes = spec("hashes", "hashes.csv", HASH_B, HASH_C);
-        return new ExportPlan(1,
+        return new ExportPlan(format.requiredManifestVersion(),
                 new ExportProfile("complete", ExportMode.COMPLETE, List.of("masks", "hashes")),
                 format,
                 List.of(masks, hashes));

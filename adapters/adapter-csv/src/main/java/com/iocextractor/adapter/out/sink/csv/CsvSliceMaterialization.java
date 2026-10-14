@@ -2,7 +2,6 @@ package com.iocextractor.adapter.out.sink.csv;
 
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.export.ExportArtifactSpec;
-import com.iocextractor.application.export.ExportFormat;
 import com.iocextractor.application.export.ExportPlan;
 import com.iocextractor.application.export.ExportRun;
 import com.iocextractor.application.export.SliceArtifactManifest;
@@ -11,9 +10,6 @@ import com.iocextractor.application.export.SnapshotArtifactMetadata;
 import com.iocextractor.application.export.SnapshotMetadata;
 import com.iocextractor.application.port.out.export.SliceManifestCodec;
 import com.iocextractor.application.port.out.export.SnapshotRowConsumer;
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.CSVPrinter;
-import org.apache.commons.csv.QuoteMode;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -38,12 +34,13 @@ final class CsvSliceMaterialization implements SnapshotRowConsumer, AutoCloseabl
     private final Path staging;
     private final SliceManifestCodec codec;
     private final SliceFileOperations fileOperations;
+    private CsvRecordFormat format;
     private final Thread owner = Thread.currentThread();
     private final List<SliceArtifactManifest> artifacts = new ArrayList<>();
 
     private SnapshotMetadata metadata;
     private SnapshotArtifactMetadata currentMetadata;
-    private CSVPrinter printer;
+    private BufferedWriter writer;
     private MessageDigest currentDigest;
     private long currentRows;
     private int artifactIndex;
@@ -98,9 +95,11 @@ final class CsvSliceMaterialization implements SnapshotRowConsumer, AutoCloseabl
             throw state("snapshot artifact metadata differs from ordered export plan");
         }
         OutputStream stream = null;
-        CSVPrinter openedPrinter = null;
+        BufferedWriter openedWriter = null;
         try {
-            CSVFormat format = csvFormat(plan.format());
+            if (format == null) {
+                format = new CsvRecordFormat(plan.format());
+            }
             var encoder = Charset.forName(plan.format().charset()).newEncoder()
                     .onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT);
@@ -108,15 +107,14 @@ final class CsvSliceMaterialization implements SnapshotRowConsumer, AutoCloseabl
             MessageDigest digest = SliceHashes.sha256Digest();
             stream = Files.newOutputStream(output, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
             var digestStream = new DigestOutputStream(stream, digest);
-            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(digestStream, encoder));
-            openedPrinter = new CSVPrinter(writer, format);
-            openedPrinter.printRecord(expected.columns());
-            printer = openedPrinter;
+            openedWriter = new BufferedWriter(new OutputStreamWriter(digestStream, encoder));
+            format.printHeader(openedWriter, expected.columns());
+            writer = openedWriter;
             currentDigest = digest;
             currentMetadata = artifact;
             currentRows = 0;
         } catch (IOException | RuntimeException e) {
-            closeOnFailure(openedPrinter != null ? openedPrinter : stream, e);
+            closeOnFailure(openedWriter != null ? openedWriter : stream, e);
             closeQuietly();
             throw write("cannot open artifact " + expected.fileName(), e);
         }
@@ -125,12 +123,12 @@ final class CsvSliceMaterialization implements SnapshotRowConsumer, AutoCloseabl
     @Override
     public void row(ArtifactRow row) {
         requireOwner();
-        if (currentMetadata == null || printer == null || row == null) {
+        if (currentMetadata == null || writer == null || row == null) {
             throw state("row callback is out of sequence or null");
         }
         try {
             List<String> values = currentMetadata.columns().stream().map(row::value).toList();
-            printer.printRecord(values);
+            format.printRecord(writer, values);
             currentRows++;
         } catch (IOException e) {
             throw write("cannot write artifact " + currentMetadata.fileName(), e);
@@ -140,14 +138,14 @@ final class CsvSliceMaterialization implements SnapshotRowConsumer, AutoCloseabl
     @Override
     public void endArtifact() {
         requireOwner();
-        if (currentMetadata == null || printer == null) {
+        if (currentMetadata == null || writer == null) {
             throw state("artifact end callback is out of sequence");
         }
         SnapshotArtifactMetadata finished = currentMetadata;
         Path file = staging.resolve(finished.fileName());
         try {
-            printer.close();
-            printer = null;
+            writer.close();
+            writer = null;
             fileOperations.forceFile(file);
             artifacts.add(new SliceArtifactManifest(
                     finished.artifactName(), finished.fileName(), currentRows, finished.coverage(),
@@ -200,22 +198,6 @@ final class CsvSliceMaterialization implements SnapshotRowConsumer, AutoCloseabl
         closeQuietly();
     }
 
-    private CSVFormat csvFormat(ExportFormat format) {
-        if (!format.type().equalsIgnoreCase("csv")) {
-            throw state("unsupported export format: " + format.type());
-        }
-        if (format.delimiter().length() != 1 || format.quote().length() != 1) {
-            throw state("CSV delimiter and quote must each be one character");
-        }
-        return CSVFormat.Builder.create()
-                .setDelimiter(format.delimiter().charAt(0))
-                .setQuote(format.quote().charAt(0))
-                .setQuoteMode(QuoteMode.ALL_NON_NULL)
-                .setNullString(format.nullLiteral())
-                .setRecordSeparator("\r\n")
-                .build();
-    }
-
     private void requireOwner() {
         if (Thread.currentThread() != owner) {
             throw state("snapshot callbacks must remain synchronous on the stage thread");
@@ -231,13 +213,13 @@ final class CsvSliceMaterialization implements SnapshotRowConsumer, AutoCloseabl
     }
 
     private void closeQuietly() {
-        if (printer != null) {
+        if (writer != null) {
             try {
-                printer.close();
+                writer.close();
             } catch (IOException ignored) {
                 // Original callback failure remains authoritative.
             } finally {
-                printer = null;
+                writer = null;
             }
         }
     }

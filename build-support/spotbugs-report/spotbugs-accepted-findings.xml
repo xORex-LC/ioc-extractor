@@ -291,13 +291,13 @@
     <finding id="DATA-IMPORT-P1-SB-002" module="adapters/adapter-csv" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="f56a56a24ae9a2c06d035d24e988bb8a" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P1-ATOMIC-PROJECTION" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.adapter.out.sink.csv.CsvArtifactProjection" />
         <method name="write" signature="(Ljava/lang/String;Ljava/nio/file/Path;Ljava/util/List;)Lcom/iocextractor/adapter/out/sink/csv/CsvArtifactProjection$ProjectionWriteResult;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/CsvArtifactProjection.java" startLine="130" bytecode="259" />
+        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/CsvArtifactProjection.java" startLine="136" bytecode="263" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.adapter.out.sink.csv.CsvArtifactProjection" />
             <Method name="write" />
         </suppression>
-        <rationale>Reviewed exception-policy signal: the private atomic-projection boundary removes its temporary file and rethrows the original runtime failure so the application-level failure contract is preserved. CAP-2 qualifies cursor and cancellation cleanup plus atomic rename failure using real temporary CSV/SQLite.</rationale>
+        <rationale>Reviewed exception-policy signal: the private atomic-projection boundary removes its temporary file and rethrows the original runtime failure so the application-level failure contract is preserved. CAP-2 qualifies cursor and cancellation cleanup plus atomic rename failure using real temporary CSV/SQLite. CSV layout review retains that same cleanup/rethrow boundary; strict NONE and lossless-encoding regressions verify prior-file preservation and temporary-file removal. Only the bytecode anchor moved after passing the encoding policy to the writer.</rationale>
     </finding>
     <finding id="DATA-IMPORT-P1-SB-003" module="core/ioc-application" type="EI_EXPOSE_REP" hash="ae1d90e2a0b58d8b07cbda5c3f6149a5" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="DATA-IMPORT-01" evidence="P1-IMMUTABLE-EVENT" review="immutable-snapshot-construction-change">
         <class name="com.iocextractor.application.artifact.CanonicalArtifactsChanged" />
