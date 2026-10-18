@@ -235,7 +235,9 @@ public final class PipelineRunner {
             if (runFailure == null) {
                 throw deliveryFailure;
             }
-            runFailure.addSuppressed(deliveryFailure);
+            if (deliveryFailure != runFailure) {
+                runFailure.addSuppressed(deliveryFailure);
+            }
         }
     }
 

@@ -24,6 +24,27 @@ class PipelineRunnerTest {
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-06-21T00:00:00Z"), ZoneOffset.UTC);
 
     @Test
+    void terminal_delivery_cannot_replace_a_stage_failure_with_a_self_suppression_error() {
+        var stageFailure = new DiagnosticException(diagnostic(DiagnosticSeverity.FATAL));
+        var pipeline = Pipeline.<String>start()
+                .then(new DiagnosticStage(diagnostic(DiagnosticSeverity.WARN)))
+                .then(new DiagnosticStage(diagnostic(DiagnosticSeverity.WARN)))
+                .then(new ThrowingStage(stageFailure));
+        var summaries = new ArrayList<Diagnostic>();
+        var runner = new PipelineRunner(FailurePolicy.collectAndContinue(), new NoopPipelineObserver(),
+                value -> {
+                    if (value.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED) {
+                        summaries.add(value);
+                        throw stageFailure;
+                    }
+                }, new DiagnosticFactory(CLOCK), 1);
+
+        assertThatThrownBy(() -> runner.run(Envelope.of("start", meta()), pipeline))
+                .isSameAs(stageFailure).hasNoSuppressedExceptions();
+        assertThat(summaries).hasSize(1);
+    }
+
+    @Test
     void runs_stages_in_pipeline_order_and_sets_stage_metadata() {
         var seenStages = new ArrayList<StageId>();
         var pipeline = Pipeline.<String>start()
