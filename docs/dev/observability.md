@@ -29,6 +29,11 @@ Diagnostic -> LoggingDiagnosticSink -> ordinary typed LogEvent
 `platform-diagnostics-logging` — bridge. Domain не зависит ни от одного из них:
 он возвращает pure decision outcomes, а application создаёт diagnostics/TRACE.
 
+Граница общей библиотеки и IOC-части принята в
+[ADR 0044](../ADR/0044-reusable-diagnostics-contract.md). Контракты для внешнего
+потребителя и исполняемые примеры — в
+[руководстве по diagnostics](../guides/diagnostics-library.md).
+
 ## Diagnostic contract
 
 - Общий `DiagnosticCode` задаёт ID, default severity и impact. Локальный
@@ -47,6 +52,14 @@ Diagnostic -> LoggingDiagnosticSink -> ordinary typed LogEvent
   occurrences и явно добавляет `PIPELINE.DIAGNOSTICS_SUPPRESSED`.
 - Saga diagnostics фиксируют final fact после retries/state transition и не
   заменяют durable ledger status.
+
+Ограниченный run sample заменяет элементы на месте и не обещает
+хронологического порядка причин. Например, при бюджете 2 вход WARN A,
+ERROR B, FATAL C оставляет `[C, B]`; policy над этим списком выбирает C.
+Сохраняется сигнал остановки и точный severity summary, а не первая причина
+сбоя исходного потока. Политика, которой нужны все коды, должна исполняться до
+compaction. OPERATION occurrences не ограничены бюджетом; immutable batch
+копирует контейнеры, но не context values или Throwable.
 
 Default mapping severity в operational `log.level` является стабильным:
 

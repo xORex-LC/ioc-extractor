@@ -23,7 +23,8 @@ public interface FailurePolicy {
 
     /**
      * Returns a policy that stops on the first retained {@code ERROR} or {@code FATAL}
-     * diagnostic.
+     * diagnostic in the supplied notification's list order. A compacted sample
+     * need not preserve the original input order or earliest failure reason.
      *
      * @return fail-fast policy
      */

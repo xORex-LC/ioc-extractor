@@ -15,6 +15,8 @@ import IOC catalogs, product exceptions, Spring, SLF4J or other platform modules
 | [`sink`](src/main/java/com/iocextractor/platform/diagnostics/sink/README.md) | Synchronous delivery, collecting/no-op/resilient sinks |
 
 Start with the [consumer guide](../../docs/guides/diagnostics-library.md).
+The accepted boundary and compatibility policy are recorded in
+[ADR 0044](../../docs/ADR/0044-reusable-diagnostics-contract.md).
 `package-info.java` and public Javadoc describe the API contracts. The
 [executable guide examples](src/test/java/com/iocextractor/platform/diagnostics/DiagnosticsLibraryExampleTest.java)
 use their own code enum and clock, without the IOC catalog.

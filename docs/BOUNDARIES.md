@@ -61,6 +61,7 @@
 | Слои зависят только внутрь; package cycles запрещены | `bootstrap/ioc-app/.../ArchitectureTest` |
 | Domain не импортирует frameworks, logging, adapters/application pipeline или ingest | `ArchitectureTest` + `core/ioc-domain/.../DomainBoundaryTest` + domain Enforcer |
 | Application не импортирует adapters/bootstrap/Spring/logging | `ArchitectureTest` + Maven module graph |
+| Общий diagnostics API зависит только от себя и JDK; IOC-каталоги, исключения и logging остаются локальными | `ArchitectureTest.reusable_diagnostics_depends_only_on_itself_and_jdk`, `diagnostics_core_is_framework_and_adapter_free`; [ADR 0044](ADR/0044-reusable-diagnostics-contract.md) |
 | `platform-etl` не знает IOC/application/adapters/observability/frameworks | `ArchitectureTest.platform_etl_is_generic_and_framework_free` |
 | `platform-events` остаётся framework-free, не зависит от keyed execution и не становится serializable broker contract | `ArchitectureTest.platform_events_is_framework_free_and_not_a_broker`, `control_events_are_not_serializable`, `keyed_execution_is_not_part_of_platform_events` |
 | `platform-concurrency` не зависит от events/frameworks/business layers | `ArchitectureTest.platform_concurrency_is_framework_free_and_event_free` |

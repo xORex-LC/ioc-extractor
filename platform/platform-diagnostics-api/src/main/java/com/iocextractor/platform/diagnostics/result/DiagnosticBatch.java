@@ -45,7 +45,7 @@ public final class DiagnosticBatch {
     /**
      * Validates retained counts, severity counts and rejecting signals.
      *
-     * @param retained occurrences in encounter order; copied, with no null elements
+     * @param retained occurrences in caller-supplied order; copied, with no null elements
      * @param summary exact counts, including omitted occurrences
      * @param suppressionCode reserved synthetic marker shared by the aggregation tree
      * @return an immutable batch
@@ -58,8 +58,11 @@ public final class DiagnosticBatch {
         return new DiagnosticBatch(retained, summary, suppressionCode);
     }
 
-    /** Exposes the retained sample in encounter order.
-     * @return retained occurrences in encounter order, with no synthetic marker */
+    /**
+     * Returns the sample in the order supplied at construction. A run accumulator
+     * replaces samples in place, so this need not be the original encounter order.
+     * @return retained occurrences in supplied order, with no synthetic marker
+     */
     public List<Diagnostic> retained() {
         return retained;
     }

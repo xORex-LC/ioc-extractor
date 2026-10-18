@@ -8,6 +8,9 @@ unbounded, task-owned accumulator. `FailurePolicy` returns a pure
 when necessary, its first ERROR/FATAL. `BoundedNotification` retains at most N
 ELEMENT/RUN occurrences by replacing a lower-severity sample for the first
 ERROR/FATAL. Both retain every OPERATION occurrence. Neither is thread-safe.
+Run replacement keeps the displaced list position, so sample order can differ
+from input order. Policies select from the supplied list; the original earliest
+failure reason is not preserved by compaction.
 
 `DiagnosticBatch.of` validates immutable retained detail against an exact
 `DiagnosticSummary`. Merge batches, never synthetic display markers. The entire

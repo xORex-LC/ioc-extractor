@@ -31,15 +31,17 @@ Javadoc/package docs, module READMEs and a consumer guide with compiled/executed
 examples. D2 public-boundary qualification is complete: generic and IOC
 regressions, budget/merge/delivery limits and failure ownership are verified.
 D3 independent packaging is complete: both components pass snapshot/RC
-empty-cache consumers, and diagnostics executes all guide examples. D4 reviews
-final documentation and promotes the ADR draft. Publication remains pending explicit authorization.
+empty-cache consumers, and diagnostics executes all guide examples. D4 promotes
+[ADR 0044](../../../ADR/0044-reusable-diagnostics-contract.md), reviews the final
+documentation and closes local admission with the recorded final gates.
+Publication remains pending explicit authorization.
 
 ## Candidate documents
 
 - [Diagnostics contract and extraction plan](lib-2-diagnostics-design.md): D0
-  decisions, completed D1–D3 evidence, migration seams and remaining release gates.
-- [Diagnostics ADR draft](lib-2-diagnostics-adr-draft.md): boundary, alternatives,
-  compatibility obligations and operational trade-offs for D4 promotion.
+  decisions, D1–D4 evidence, migration seams and remaining release gates.
+- [Diagnostics ADR promotion record](lib-2-diagnostics-adr-draft.md): preserved
+  draft path pointing to the accepted ADR 0044.
 - [Spring Boot configuration proposal](configuration-library-design.md): existing
   mechanics, supported-contract limits, service ownership, extraction slices and
   publication-tooling prerequisites.
@@ -68,4 +70,5 @@ API and [consumer guide](../../../guides/diagnostics-library.md) with executable
 examples. Its [qualification record](lib-2-diagnostics-design.md#d1-implementation-and-qualification-record--2026-10-18)
 retains migration, documentation and analyzer review. D2 boundary qualification
 is complete. D3 standalone packaging/consumption is also qualified; public
-publication and D4 final admission remain pending.
+publication remains pending. The D4 record owns final local admission evidence;
+it does not promote the artifact to `published-qualified`.

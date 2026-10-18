@@ -52,7 +52,7 @@ successful CI build
 
 regular PMD source-policy job
   -> tools/ci/pmd.sh policy
-  -> selected 22-project upstream reactor, tests/analyzers not owned here skipped
+  -> selected upstream reactor, tests/analyzers not owned here skipped
   -> exact adopted ruleset + XML/HTML integrity + per-rule count ratchet
   -> upload PMD source evidence even when analysis failed late
 ```

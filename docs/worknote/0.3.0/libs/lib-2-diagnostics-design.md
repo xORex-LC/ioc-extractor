@@ -599,7 +599,7 @@ dependency-bearing publication is unnecessary for LIB-2 and is not a prerequisit
 | D1 — coherent extraction, IOC migration and documentation | Create the JDK-only module, local metadata extension and one diagnostic model; migrate all callers, batches and local exception enforcement; document source contracts and deliver module reference/consumer guide alongside affected IOC docs | Buildable reactor without local catalog/exception/logging dependency in shared code; preserved IOC behavior; reviewed Javadoc for all 18 types/members/packages, rendered API docs and compiled/executed guide examples | Implemented; qualification record below |
 | D2 — public boundary hardening | Complete adversarial qualification of the implemented D0 contracts; extend the generic and IOC regression matrix and keep source/consumer documentation aligned | Generic-code tests, exact budget/merge/delivery regressions and IOC integration tests pass; documented boundary/error outcomes agree with tests | Complete, 2026-10-18; qualification record below |
 | D3 — independent packaging | Add reviewed component selection to tooling/workflow and an outside-reactor consumer exercising the guide examples; retain concurrency qualification | Flattened zero-runtime-dependency POM, complete main/sources/Javadoc/license archives, manifest/recovery identity checks and isolated consumer pass | Complete, 2026-10-18; qualification record below |
-| D4 — documentation review and final gates | Finalize ADR/docs/index references and review the documentation coverage/example evidence; review all analyzer/coverage/test registries and publication security boundary | Complete and consistent source/consumer docs and links; focused tests, final verify, PMD policy and exception-ownership watchlist reviewed; raw findings and exact-worktree evidence retained | Not started |
+| D4 — documentation review and final gates | Finalize ADR/docs/index references and review the documentation coverage/example evidence; review all analyzer/coverage/test registries and publication security boundary | Complete and consistent source/consumer docs and links; focused tests, final verify, PMD policy and exception-ownership watchlist reviewed; raw findings and exact-worktree evidence retained | Complete, 2026-10-18; admission record below |
 | D5 — authorized publication | Integrate/release only under explicit owner instruction; publish immutable reviewed bytes, without changing concurrency's release/tag | Separate cold consumers and artifact identity from each claimed repository; retained release evidence | Not authorized by this planning update |
 
 Do not advance a slice by lowering a floor, accepting unexplained finding drift,
@@ -886,3 +886,118 @@ and the task report. No coverage/analyzer ratchet, accepted-finding identity,
 production Java, suite universe or external-test classification changes in D3.
 D4 remains the final ADR/documentation and publication-security admission review;
 D5 repository publication is a separate explicitly authorized step.
+
+## D4 final admission record — 2026-10-18
+
+[ADR 0044](../../../ADR/0044-reusable-diagnostics-contract.md) promotes the D0
+boundary and records the implemented API, service ownership, alternatives,
+compatibility obligations, limits and publication admission. The former draft
+path is now a promotion pointer. Accepted earlier ADRs are unchanged. Published
+maps, the executable-boundary table, IOC observability capability and consumer
+references link to the accepted decision. No published document links back to
+this execution bundle. The existing observability capability owns the
+cross-module mechanics; no duplicate capability document was introduced.
+
+### Source and consumer documentation review
+
+All 18 public types and their declared public members were reviewed against
+implementation and tests. Three package summaries and package references cover
+ownership and dependencies. Strict JDK 21 Javadoc passes without warnings;
+archive inspection confirms source and rendered pages for every public type
+and all package summaries. Rendered batch, accumulator and policy text was
+checked after the ordering clarification below.
+
+| Reviewed surface | Contract checked against implementation and tests |
+|---|---|
+| `Diagnostic`, `DiagnosticCode`, `DiagnosticBuilder`, `DiagnosticFactory` | Stable consumer metadata, explicit clock, effective-severity equality, null/blank validation, shallow context and optional cause, raw inspection output |
+| `DiagnosticImpact`, `DiagnosticSeverity` | Scope independent of severity, OPERATION exemption, ERROR/FATAL policy meaning |
+| `Result`, `Notification`, `FailurePolicy`, `FailureDecision` | Nullable result value, copied lists, mapper propagation, per-task mutation, pure decisions and caller-owned enforcement |
+| `DiagnosticBatch`, `DiagnosticSummary` | Validated sizes/counts/rejecting signals, exact occurrence arithmetic, checked overflow, marker exclusion, snapshot ordering and shallow values |
+| `BoundedDiagnosticCollector`, `BoundedNotification` | N+2 versus N retention, same-budget merge, smaller-stage loss, OPERATION growth, replacement order, exact suppression and partial callback failure |
+| `DiagnosticSink`, `NoopDiagnosticSink`, `CollectingDiagnosticSink`, `ResilientDiagnosticSink` | Synchronous delivery, null input, unbounded collection, callback resource/latency/thread ownership, runtime-failure containment and Error propagation |
+
+Review found an overly strong ordering claim: a run replaces a sample in its
+existing slot. At budget 2, WARN A, ERROR B, FATAL C leave `[C, B]`, so a policy
+over that sample chooses C. Batch order is the supplied list order, not an
+assurance of original chronology. Source Javadoc, package reference, consumer
+guide, IOC capability and ADR now agree. A new regression qualifies both
+built-in policies on this sample; the API implementation and retention algorithm
+are unchanged. Exact original first-failure identity is not promised.
+
+The API's 78 tests and focused IOC diagnostics/ETL/observability/bridge cohorts
+pass. The three main guide examples execute in module tests and the independent
+Maven consumer; the ordering clarification has its own consumer-visible regression.
+A fresh diagnostics snapshot bundle resolves outside the checkout with an empty
+cache; its four resolved primary artifacts match the manifest. This bundle is
+unsigned and records the dirty D4 checkout at `f2b1f83a`; it is local qualification,
+not a release candidate. The D3 four-consumer snapshot/RC matrix remains historical
+evidence; D4 does not rebuild or republish concurrency.
+
+### Registry and publication-security review
+
+The reactor has 28 projects, 23 functional JARs and 22 production JARs. Coverage,
+SpotBugs, CPD and PMD registries match that exact production universe, exclude
+TCK and include the diagnostics API. Both aggregate source-root lists contain
+exactly those 22 production roots. All four report POMs order the API with its
+public group ID. API coverage floors/ratchet, aggregate floors, accepted finding
+identities, analyzer rules/exclusions and the 223 fast / 78 integration /
+5 external / 296 offline suite inventory are unchanged. The added case belongs
+to an existing test class. PMD POM formatting now separates two already-present
+roots; it does not change scope. Stale explanatory project/root counts were
+corrected without changing any gate.
+
+The runtime dependency tree contains only the API artifact; JDK `jdeps` reports
+only `java.base`. Parent-managed packaging plugin versions remain selected as in
+D3. No dependency upgrade, NVD refresh or repository-wide CVE qualification is
+claimed by this zero-runtime-dependency review.
+
+Review confirmed explicit component/tag/release-branch admission, no publishing
+credentials in the build job, protected signing/write jobs, pinned Actions,
+component/source/version binding on recovery, preservation of the original signed
+bundle and deployment, and separate repository consumers. The retained manifest
+is hash evidence from a trusted workflow, not a separately signed JSON attestation;
+protected review and Actions artifact provenance remain required.
+
+A concrete path check gap was fixed: symbolic `identity.json` or the repository
+root could pass the old reader even though linked artifact files were rejected.
+Links in parent directories are now rejected explicitly before bytes are read;
+linked Central archive/deployment recovery files are rejected before writes.
+Offline regressions cover both components and assert no signing subprocess or
+repository request on rejection, with recovery targets left untouched. The
+original failing probe is retained; all 51 publication tests now pass, including
+disposable-key signing, component mismatch and partial-publication recovery.
+Existing concurrency manifests and deployment-name calculation remain unchanged.
+The configured owner key was not imported and no protected workflow was dispatched.
+
+### Final gates and evidence limits
+
+Final `make verify`, `make pmd-analysis`, the exception/resource ownership
+`make pmd-watchlist`, `make docs` and `git diff --check` are the admission gates.
+Raw SpotBugs, CPD, adopted PMD and watchlist reports are reviewed for drift and
+API/ETL intersections. No baseline/floor reduction, suppression or scope exclusion
+is part of this change. Reviewed dispositions:
+
+- Raw SpotBugs retains 137 findings / 133 accepted selectors, zero filtered
+  findings and zero API findings. The five existing runner exception-policy
+  identities remain accepted; no new identity or suppression was added.
+- CPD retains 22 groups. The only diagnostic group remains the 102-token
+  Schema/Storage catalog metadata match; no API clone is introduced.
+- Adopted PMD retains 19 findings (7 CognitiveComplexity, 3 NPathComplexity,
+  2 UnusedAssignment, 7 ExcessiveParameterList), with no API/runner finding.
+- The ownership watchlist retains 73 findings (63 CloseResource,
+  8 PreserveStackTrace, 2 NcssCount). Its existing runner signal concerns
+  rethrowing the original diagnostic failure out of the internal wrapper;
+  identity-preservation tests support the retained disposition. No API finding
+  or new ownership finding is introduced.
+- API coverage remains 314/318 lines and 125/126 branches. Reactor floors and
+  per-module ratchets pass; exact aggregate counters remain in the generated
+  report rather than being copied over earlier D1–D3 measurement records.
+
+Exact commit/worktree freshness is held by `make context`,
+not inferred from the earlier D3 report. Logs, registry/archive review and local
+consumer output are retained under `.dev/lib2-d4/`.
+
+D4 closes local architectural/documentation admission. D5 remains separately
+authorized integration, tagging, protected publication and cold resolution from
+each claimed remote repository. Another real production-service integration and
+provisioned external service checks remain outside this evidence.

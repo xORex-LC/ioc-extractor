@@ -23,7 +23,7 @@ not a current publication test.
 | Module/capability | Category | Responsibility | Current consumers | IOC-specific coupling | Publication disposition |
 |---|---|---|---|---|---|
 | `platform/platform-errors` | Service-shared | Root unchecked exception contract | diagnostics, ETL, application, four adapters, bootstrap | High: `IocExtractorException` and `com.iocextractor.common` express this product | Keep internal; not a first publication unit |
-| `platform/platform-diagnostics-api` | Candidate cross-service platform | JDK-only values, results/policies, bounded samples/counts and sinks | Local diagnostics, ETL, application, adapters and bootstrap | JDK-only closure and isolated snapshot/RC consumer qualified | D1–D3 complete; D4/D5 pending |
+| `platform/platform-diagnostics-api` | Admitted cross-service platform | JDK-only values, results/policies, bounded samples/counts and sinks | Local diagnostics, ETL, application, adapters and bootstrap | JDK-only closure and isolated snapshot/RC consumer qualified | D1–D4 locally qualified; ADR 0044 accepted; D5 pending |
 | `platform/platform-diagnostics` | Service-shared product metadata | IOC catalogs, exception and rendering | ETL, application, diagnostics bridge, four adapters, bootstrap | IOC categories/messages and `platform-errors` closure | Retained locally after D1 split |
 | `platform/platform-etl` | Candidate cross-service platform | Framework-free Pipes-and-Filters execution model | application, observability | Medium: diagnostics/error result semantics and only one business consumer | Defer until second consumer and closure review |
 | `platform/platform-events` | Candidate cross-service platform, local only | In-process publish-only control-event mechanics | application, bootstrap | Low in API shape; current use remains service-local and explicitly non-wire | Defer publication; preserve anti-broker boundary |
@@ -36,7 +36,7 @@ not a current publication test.
 | ID | Candidate | Category | Owner | Consumers | Dependency closure | State |
 |---|---|---|---|---|---|---|
 | `LIB-1` | `platform-concurrency` | Cross-service platform | Platform coordination | Current application/adapter-ingest/bootstrap; planned Java + Spring Boot `feeds-collector`, execution policy undecided | No runtime dependencies beyond JDK | `published-qualified`; Central and GitHub Packages cold consumers passed |
-| `LIB-2` | Generic diagnostics model/result/sink subset | Cross-service platform | Misyurkeev Denis (`xORex-LC`) / Diagnostics | Current reactor consumers + planned `feeds-collector` | JDK-only shared module; IOC catalogs, exceptions and logging remain local | `design-admitted`; D0 fixed, D1 implemented and D2 qualified; D3 consumer/release qualification pending |
+| `LIB-2` | Generic diagnostics model/result/sink subset | Cross-service platform | Misyurkeev Denis (`xORex-LC`) / Diagnostics | Current reactor consumers + planned `feeds-collector` | JDK-only shared module; IOC catalogs, exceptions and logging remain local | `design-admitted`; D0–D4 locally qualified with ADR 0044; D5 remote publication/consumers pending |
 | `LIB-3` | Generic observability/MDC/value typing subset | Cross-service platform | Observability | Current adapters/bootstrap + planned service | ETL observer and IOC action/field vocabulary must be excluded or separated | `genericity-review` |
 | `LIB-4` | `platform-etl` | Cross-service platform | ETL | Current `ioc-application`; nearest consumer planned only | diagnostics + errors + their accepted publication closure | `deferred-second-consumer` |
 | `LIB-5` | `platform-events` local control API | Cross-service platform, non-wire | Event coordination | Current application/bootstrap; nearest consumer planned only | None | `deferred-second-consumer` |
@@ -196,3 +196,17 @@ This is local file-repository packaging evidence, not Central/GitHub publication
 or a second production-service integration. D4 final admission and explicitly
 authorized D5 publication remain pending. See the
 [D3 record](../libs/lib-2-diagnostics-design.md#d3-independent-packaging-record--2026-10-18).
+
+### LIB-2 D4 final admission — 2026-10-18
+
+[ADR 0044](../../../ADR/0044-reusable-diagnostics-contract.md) accepts the
+implemented 18-type contract and its service/publication boundaries. Public
+member/package documentation and guide examples are reviewed; snapshot packaging
+and the cold standalone consumer pass. The review clarifies sample order after
+replacement and closes symbolic manifest/repository/recovery-file redirection
+before publication side effects. There are 78 API tests and 51 publication
+contracts. Analyzer/coverage source scopes, suite inventory and gate thresholds
+remain unchanged. Final offline gates and raw-report dispositions are owned by
+the [D4 record](../libs/lib-2-diagnostics-design.md#d4-final-admission-record--2026-10-18)
+and exact-worktree tool evidence. D5 publication and separate remote consumers
+remain pending; LIB-2 is not `published-qualified`.

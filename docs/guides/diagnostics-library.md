@@ -83,7 +83,7 @@ FailureDecision decision = FailurePolicy.failFast().evaluate(notification);
 ```
 
 The mapped value is `ACCEPTED`; WARN does not stop either built-in policy.
-`failFast()` selects the first retained ERROR or FATAL in encounter order;
+`failFast()` selects the first ERROR or FATAL in the supplied notification's list;
 `collectAndContinue()` selects only FATAL. The service must act on the decision
 before committing durable changes, for example by throwing its own exception
 carrying `decision.diagnostic().orElseThrow()`. Impact alone never permits a write,
@@ -132,6 +132,12 @@ counts all three occurrences and reports one suppressed WARN. Direct accumulatio
 at budget 3 would retain all three. Both paths preserve the observed severity
 counts; their retained samples and suppression counts can differ.
 
+Run replacement uses the displaced sample's list position. With budget 2,
+WARN A, ERROR B and FATAL C leave the sample `[C, B]`. A fail-fast decision over
+that sample selects C, although B arrived first. Compaction preserves the
+built-in stopping signals; it does not promise the original failure reason or
+chronological sample order. Delivery follows the input batch's retained order.
+
 `DiagnosticBatch.of(retained, summary, suppressionCode)` copies and validates
 retained size, severity counts and rejecting signals. An observed ERROR/FATAL
 must have a retained ERROR/FATAL, and an observed FATAL must retain a FATAL.
@@ -155,7 +161,8 @@ change no counts and may use a new marker timestamp. The summary counts observed
 occurrences only; the marker does not add another occurrence.
 
 Builders, notifications, collectors and collecting sinks belong to one task and
-are not thread-safe. Hand immutable batches across task boundaries. A bulk add
+are not thread-safe. Hand immutable batches across task boundaries only when
+their shared context values and codes remain stable. A bulk add
 can fail after partial mutation; it is not a transaction.
 
 ## Isolate delivery failures
@@ -182,6 +189,11 @@ can count or deliver those additions again; the API provides no rollback or
 retry identity.
 
 ## IOC integration and compatibility
+
+[ADR 0044](../ADR/0044-reusable-diagnostics-contract.md) records the accepted
+boundary and compatibility policy. Product and library versions remain aligned.
+During 0.x, breaking API or documented-behavior changes require a minor version
+and migration notes; patches preserve the contract.
 
 IOC extends `DiagnosticCode` locally as `IocDiagnosticCode` for categories,
 message keys and templates. Those catalogs, `DiagnosticException`, redacting

@@ -14,8 +14,10 @@ import java.util.Objects;
 
 /**
  * Stage-local construction bound. Retains the first budgeted occurrences plus
- * the first error and fatal, in encounter order, so merging into a run budget
- * preserves its original samples and rejecting signal. OPERATION occurrences
+ * the first error and fatal, in encounter order. Merging into a run with the
+ * same budget preserves its direct-accumulation sample and rejecting signal.
+ * A smaller stage budget can lose detail that a larger run would retain.
+ * OPERATION occurrences
  * remain exempt, as in the run-level contract.
  *
  * <p>Each synchronous stage invocation owns its collector; it is not shared

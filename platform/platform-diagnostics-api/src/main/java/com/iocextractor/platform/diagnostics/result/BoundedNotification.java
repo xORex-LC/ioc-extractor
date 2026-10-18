@@ -25,6 +25,9 @@ import java.util.function.Consumer;
  * the earliest lowest-severity budgeted sample when needed. It retains at most
  * limit ELEMENT/RUN samples plus every OPERATION occurrence, so total memory is
  * not bounded when callers produce unbounded OPERATION diagnostics.</p>
+ * <p>Replacement keeps the displaced sample's list position. Snapshot order can
+ * therefore differ from encounter order; it does not identify the earliest
+ * rejecting occurrence in the original input.</p>
  */
 public final class BoundedNotification {
 
@@ -156,7 +159,7 @@ public final class BoundedNotification {
      * with integer limit, long suppressedCount and immutable suppressedBySeverity
      * keyed by severity names. Its severity is the highest omitted severity.
      * Each call may assign a new marker timestamp; it changes no counts and delivers nothing.
-     * @return immutable retained occurrences followed by the optional synthetic marker
+     * @return immutable sample in current list order, followed by the optional synthetic marker
      */
     public List<Diagnostic> diagnostics() {
         if (suppressed == 0) {
@@ -178,7 +181,7 @@ public final class BoundedNotification {
         return DiagnosticSummary.of(retained, suppressedBySeverity);
     }
 
-    /** Snapshots the accumulator for a later merge.
+    /** Snapshots the accumulator for a later merge, preserving current sample order.
      * @return immutable retained detail and exact counts, suitable for merging */
     public DiagnosticBatch batch() {
         return DiagnosticBatch.of(retained, summary(), suppressionCode);

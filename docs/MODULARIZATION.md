@@ -5,10 +5,11 @@ adapters и bootstrap собираются как отдельные Maven-мо�
 зависимостями.
 
 Пилотная библиотека `platform-concurrency` использует Maven groupId
-`io.github.xorex-lc`; выделяемый `platform-diagnostics-api` использует ту же
+`io.github.xorex-lc`; выделенный `platform-diagnostics-api` использует ту же
 группу, но ещё не опубликован отдельно. Остальные модули сохраняют `com.iocextractor`. Публикуемый
 POM библиотеки не зависит от parent реактора. Политика —
-[ADR 0028](ADR/0028-pilot-library-publication.md), процедура —
+[ADR 0028](ADR/0028-pilot-library-publication.md), контракт диагностики —
+[ADR 0044](ADR/0044-reusable-diagnostics-contract.md), процедура —
 [руководство по публикации](guides/library-publication.md).
 
 > Статус: **реализовано на этапе 9**. Фактическая структура ниже. Границы

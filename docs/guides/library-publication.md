@@ -13,8 +13,11 @@ The concurrency pilot established the publication model in
 in [ADR 0029](../ADR/0029-release-branch-library-publication.md). See the
 [concurrency reference](../../platform/platform-concurrency/README.md) and
 [diagnostics reference](../../platform/platform-diagnostics-api/README.md).
-Diagnostics has local packaging qualification; public release admission remains
-separate. Adding a component does not authorize publishing it or republishing
+The diagnostics boundary is accepted in
+[ADR 0044](../ADR/0044-reusable-diagnostics-contract.md) and has local packaging
+qualification. Its protected release and repository consumers remain pending.
+Concurrency already passed its own repository qualification. Adding a component
+does not authorize publishing it or republishing
 concurrency. Dependency-bearing artifacts require another reviewed contract.
 No version is claimed published until the repository checks below pass.
 
@@ -55,6 +58,14 @@ rejected before signing or repository access. The manifest retains the exact
 artifact, version, source commit and file hashes; existing concurrency manifests
 remain valid without rewriting them.
 
+Manifest, repository and artifact paths must be regular, with no symbolic links
+in the repository directory chain or recovery files. A linked path could redirect signing
+or recovery writes outside the retained bundle even when each artifact is a
+regular file. These checks run before key import or repository access. Manifest
+hashes and a recorded signer fingerprint do not authenticate arbitrary JSON:
+recovery also relies on the original trusted Actions artifact and protected
+review. Preserve that provenance with the bundle.
+
 When outbound HTTPS requires a proxy, the consumer translates `https_proxy` or
 `HTTPS_PROXY` into its temporary Maven settings. It still uses a fresh cache and
 empty global settings; it imports no developer mirrors or repositories. Proxy
@@ -88,8 +99,9 @@ all branches. Environment secrets remain unavailable until its review passes.
 Use default-branch protection as the project governance permits. GitHub requires
 the workflow file to exist on the default branch before it can be dispatched
 manually. Select the matching `release-X.Y.Z` branch when running it; `main` and
-development branches also fail workflow admission. Credential validity and the
-first protected run still need live qualification. GitHub
+development branches also fail workflow admission. Each new component still
+needs its own protected run and repository qualification; the concurrency pilot's
+success does not qualify diagnostics. GitHub
 publishing uses the repository's `GITHUB_TOKEN` with `packages: write`; a separate
 publishing PAT is unnecessary. Existing `SECURITY CHECKS` remains independent.
 
@@ -151,7 +163,7 @@ published bytes are skipped. GitHub upload compares existing files first and
 only sends missing files; any mismatch stops the operation. GitHub artifact
 downloads can redirect to external HTTPS blob storage; the client follows only
 read redirects, strips authorization on an origin change and verifies the
-downloaded bytes against the signed manifest. Write redirects remain rejected.
+downloaded bytes against the retained bundle manifest. Write redirects remain rejected.
 A successful upload without both consumers is still incomplete qualification.
 The first live run must establish registry behavior, signing acceptance and
 package visibility.

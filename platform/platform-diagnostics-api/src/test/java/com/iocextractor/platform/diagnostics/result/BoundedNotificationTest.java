@@ -26,6 +26,23 @@ class BoundedNotificationTest {
     private static final DiagnosticFactory FACTORY = new DiagnosticFactory(
             Clock.fixed(Instant.EPOCH, ZoneOffset.UTC));
 
+    @Test
+    void policy_uses_sample_order_after_replacement_rather_than_original_failure_order() {
+        var warning = FACTORY.create(TestCodes.ITEM_SKIPPED).build();
+        var error = FACTORY.create(TestCodes.STAGE_FAILED).build();
+        var fatal = FACTORY.create(TestCodes.STAGE_FAILED).severity(DiagnosticSeverity.FATAL).build();
+        var run = new BoundedNotification(2, FACTORY, TestCodes.DIAGNOSTICS_SUPPRESSED);
+
+        run.addAll(List.of(warning, error, fatal));
+
+        assertThat(run.batch().retained()).containsExactly(fatal, error);
+        var sample = new Notification().addAll(run.batch().retained());
+        assertThat(FailurePolicy.failFast().evaluate(sample).diagnostic()).containsSame(fatal);
+        assertThat(FailurePolicy.collectAndContinue().evaluate(sample).diagnostic()).containsSame(fatal);
+        assertThat(run.summary().total()).isEqualTo(3);
+        assertThat(run.summary().suppressed()).isOne();
+    }
+
     @ParameterizedTest
     @CsvSource({
             "WARN ERROR FATAL, 0 1 2, 2, 0 1 2",

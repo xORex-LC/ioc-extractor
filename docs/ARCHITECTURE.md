@@ -31,6 +31,11 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
   observability осознанно владеет общей SLF4J API boundary, не бизнес-логикой.
 - Внутренние слои **никогда** не импортируют из внешних.
 
+Граница общей модели diagnostics и локальных IOC-каталогов, исключений и
+логирования принята в [ADR 0044](ADR/0044-reusable-diagnostics-contract.md).
+Сервис владеет failure-policy checkpoint и durable effects; общая библиотека
+возвращает данные и решение, но не выполняет commit или восстановление.
+
 ## Слои и пакеты
 
 | Слой | Пакет | Содержимое |
