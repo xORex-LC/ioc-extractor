@@ -1,6 +1,6 @@
 package com.iocextractor.application.artifact;
 
-import com.iocextractor.diagnostics.result.DiagnosticSummary;
+import com.iocextractor.platform.diagnostics.result.DiagnosticSummary;
 import java.util.Objects;
 
 /** Count evidence pinned with prepared rows; retries reproduce the original checkpoint. */

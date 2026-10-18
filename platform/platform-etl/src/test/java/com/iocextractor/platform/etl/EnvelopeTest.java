@@ -1,6 +1,6 @@
 package com.iocextractor.platform.etl;
 
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import org.junit.jupiter.api.Test;
 
@@ -59,7 +59,7 @@ class EnvelopeTest {
 
     @Test
     void bounded_stage_counts_survive_every_envelope_copy_and_extend_only_with_new_occurrences() {
-        var collector = new com.iocextractor.diagnostics.result.BoundedDiagnosticCollector(1);
+        var collector = new com.iocextractor.platform.diagnostics.result.BoundedDiagnosticCollector(1, PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED);
         collector.add(diagnostic());
         collector.add(diagnostic());
         var envelope = Envelope.of("start", meta()).withDiagnostics(collector.batch());

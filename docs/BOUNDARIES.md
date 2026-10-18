@@ -61,6 +61,7 @@
 | Слои зависят только внутрь; package cycles запрещены | `bootstrap/ioc-app/.../ArchitectureTest` |
 | Domain не импортирует frameworks, logging, adapters/application pipeline или ingest | `ArchitectureTest` + `core/ioc-domain/.../DomainBoundaryTest` + domain Enforcer |
 | Application не импортирует adapters/bootstrap/Spring/logging | `ArchitectureTest` + Maven module graph |
+| Общий diagnostics API зависит только от себя и JDK; IOC-каталоги, исключения и logging остаются локальными | `ArchitectureTest.reusable_diagnostics_depends_only_on_itself_and_jdk`, `diagnostics_core_is_framework_and_adapter_free`; [ADR 0044](ADR/0044-reusable-diagnostics-contract.md) |
 | `platform-etl` не знает IOC/application/adapters/observability/frameworks | `ArchitectureTest.platform_etl_is_generic_and_framework_free` |
 | `platform-events` остаётся framework-free, не зависит от keyed execution и не становится serializable broker contract | `ArchitectureTest.platform_events_is_framework_free_and_not_a_broker`, `control_events_are_not_serializable`, `keyed_execution_is_not_part_of_platform_events` |
 | `platform-concurrency` не зависит от events/frameworks/business layers | `ArchitectureTest.platform_concurrency_is_framework_free_and_event_free` |
@@ -91,7 +92,7 @@ root reactor. PMD source-policy/watchlist manifest и exact rulesets
 полного анализа. Финальный build-only модуль `build-support/spotbugs-report`
 формирует reactor-wide SpotBugs XML/HTML aggregate; поздний report-integrity
 режим выводит ожидаемые пути из того же registry, требует non-empty,
-структурно корректные XML/HTML всех 21 production-модулей и aggregate и
+структурно корректные XML/HTML всех 22 production-модулей и aggregate и
 запрещает reports у excluded scopes. Exact-baseline gate сравнивает unfiltered
 raw findings поэкземплярно: новый, stale, moved или metadata-drifted signal
 блокирует сборку вместе с analyzer error, пропущенным применимым модулем или
@@ -111,7 +112,7 @@ report-only; analyzer, scope или report-integrity error блокирует `v
 
 Отдельный `build-support/pmd-report` владеет принятой PMD source
 policy и ownership/size watchlist. Каждый профиль выполняет один
-`aggregate-pmd-no-fork` над теми же 21 production roots и формирует
+`aggregate-pmd-no-fork` над теми же 22 production roots и формирует
 XML/HTML в раздельных `target/pmd/` и `target/pmd-watchlist/`.
 Verifier сверяет точный 27-project disposition, ordering dependencies,
 положительные source roots, UTF-8, engine dependencies и оба поимённых
@@ -129,7 +130,7 @@ Commons CSV, SMBJ, JDBC, HikariCP и sqlite-jdbc; отдельное ArchUnit-п
 копией.
 
 Opt-in profile `dependency-analysis` запускает Maven Dependency Plugin
-`analyze-only` над всеми 21 functional JAR-модулями, включая reusable TCK;
+`analyze-only` над всеми 23 functional JAR-модулями, включая reusable TCK;
 root и четыре build-only reporting POM пропускаются самим plugin как
 `packaging=pom`. Анализ остаётся advisory и не входит в обычный `verify`: после
 semantic triage сохранились доказанные starter/SPI/test-aggregate false

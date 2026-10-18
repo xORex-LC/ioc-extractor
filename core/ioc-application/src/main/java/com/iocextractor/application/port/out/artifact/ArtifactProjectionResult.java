@@ -1,6 +1,6 @@
 package com.iocextractor.application.port.out.artifact;
 
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.application.artifact.lifecycle.ProjectionGeneration;
 
 import java.util.List;

@@ -1,6 +1,6 @@
 package com.iocextractor.diagnostics.catalog;
 
-import com.iocextractor.diagnostics.DiagnosticCode;
+import com.iocextractor.diagnostics.IocDiagnosticCode;
 import com.iocextractor.diagnostics.codes.ClassificationDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.ExtractionDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.ExportDiagnosticCodes;
@@ -22,7 +22,7 @@ import java.util.List;
  */
 public final class DiagnosticCatalogs {
 
-    private static final List<DiagnosticCode> ALL = List.copyOf(concat(
+    private static final List<IocDiagnosticCode> ALL = List.copyOf(concat(
             SourceDiagnosticCodes.values(),
             ExtractionDiagnosticCodes.values(),
             ClassificationDiagnosticCodes.values(),
@@ -44,7 +44,7 @@ public final class DiagnosticCatalogs {
      *
      * @return registered diagnostic codes
      */
-    public static List<DiagnosticCode> all() {
+    public static List<IocDiagnosticCode> all() {
         return ALL;
     }
 
@@ -59,7 +59,7 @@ public final class DiagnosticCatalogs {
                 .toList();
     }
 
-    private static List<DiagnosticCode> concat(DiagnosticCode[]... groups) {
+    private static List<IocDiagnosticCode> concat(IocDiagnosticCode[]... groups) {
         return Arrays.stream(groups)
                 .flatMap(Arrays::stream)
                 .toList();

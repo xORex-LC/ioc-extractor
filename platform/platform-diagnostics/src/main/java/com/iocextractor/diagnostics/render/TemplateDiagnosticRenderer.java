@@ -1,6 +1,7 @@
 package com.iocextractor.diagnostics.render;
 
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
+import com.iocextractor.diagnostics.IocDiagnosticCode;
 
 import java.util.Objects;
 import java.util.regex.Matcher;
@@ -28,7 +29,10 @@ public final class TemplateDiagnosticRenderer implements DiagnosticRenderer {
     @Override
     public String render(Diagnostic diagnostic) {
         Objects.requireNonNull(diagnostic, "diagnostic");
-        var matcher = PLACEHOLDER.matcher(diagnostic.code().defaultMessageTemplate());
+        if (!(diagnostic.code() instanceof IocDiagnosticCode code)) {
+            return diagnostic.code().id();
+        }
+        var matcher = PLACEHOLDER.matcher(code.defaultMessageTemplate());
         var rendered = new StringBuilder();
         while (matcher.find()) {
             var key = matcher.group(1);

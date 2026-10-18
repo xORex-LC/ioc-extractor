@@ -119,9 +119,9 @@ class ExtractIndicatorsStageTest {
         assertThat(output.diagnostics()).hasSize(3);
         assertThat(output.diagnosticSummary().total()).isEqualTo(100_000);
         assertThat(output.diagnosticSummary().suppressed()).isEqualTo(99_997);
-        var sink = new com.iocextractor.diagnostics.sink.CollectingDiagnosticSink();
+        var sink = new com.iocextractor.platform.diagnostics.sink.CollectingDiagnosticSink();
         var runner = new com.iocextractor.platform.etl.PipelineRunner(
-                com.iocextractor.diagnostics.result.FailurePolicy.failFast(),
+                com.iocextractor.platform.diagnostics.result.FailurePolicy.failFast(),
                 new com.iocextractor.platform.etl.NoopPipelineObserver(), sink, StageTestSupport.DIAGNOSTICS, 3);
         var result = runner.runWithOutcome(input,
                 com.iocextractor.platform.etl.Pipeline.<RefangedText>start().then(stage));

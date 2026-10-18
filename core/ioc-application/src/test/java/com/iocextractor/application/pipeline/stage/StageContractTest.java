@@ -6,7 +6,7 @@ import com.iocextractor.application.pipeline.payload.ExtractedIndicators;
 import com.iocextractor.application.pipeline.payload.RefangedText;
 import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
 import com.iocextractor.application.pipeline.payload.SourceText;
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.domain.extract.RawIndicator;
 import com.iocextractor.domain.extract.ExtractionOutcome;
@@ -15,7 +15,7 @@ import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.domain.model.IndicatorType;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -60,7 +60,7 @@ class StageContractTest {
                         false),
                 diagnostic);
         assertPreservesContract(
-                com.iocextractor.application.TestDocumentWorkspace.stage(occurrence -> com.iocextractor.diagnostics.result.Result.success(List.of()),
+                com.iocextractor.application.TestDocumentWorkspace.stage(occurrence -> com.iocextractor.platform.diagnostics.result.Result.success(List.of()),
                         List.of(), (artifact, row) -> java.util.Optional.empty(), java.util.Map.of(), true),
                 StageTestSupport.envelope(StageTestSupport.attributedIndicators(), false), diagnostic);
         assertPreservesContract(

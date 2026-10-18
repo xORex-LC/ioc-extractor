@@ -1,6 +1,6 @@
 package com.iocextractor.application.port.out.artifact;
 
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.SinkDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.SourceDiagnosticCodes;
 import org.junit.jupiter.api.Test;

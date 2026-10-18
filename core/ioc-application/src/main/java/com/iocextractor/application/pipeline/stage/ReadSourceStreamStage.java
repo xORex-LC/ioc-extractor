@@ -5,7 +5,7 @@ import com.iocextractor.application.port.in.ExtractionCommand;
 import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspace;
 import com.iocextractor.application.port.out.artifact.DocumentSourceWorkspace;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.SourceDiagnosticCodes;
 import com.iocextractor.platform.etl.Envelope;
 import com.iocextractor.platform.etl.Stage;

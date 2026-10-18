@@ -55,6 +55,7 @@
 
     <modules>
         <module>platform/platform-errors</module>
+        <module>platform/platform-diagnostics-api</module>
         <module>platform/platform-diagnostics</module>
         <module>platform/platform-etl</module>
         <module>platform/platform-events</module>
@@ -99,6 +100,22 @@
     <build>
         <pluginManagement>
             <plugins>
+                <!-- Standalone library packaging; no execution is inherited by other modules. -->
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>flatten-maven-plugin</artifactId>
+                    <version>1.7.3</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-source-plugin</artifactId>
+                    <version>3.4.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>3.12.0</version>
+                </plugin>
                 <!-- Pinned for the opt-in dependency-analysis profile and direct CLI goals. -->
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
@@ -485,6 +502,11 @@
                 <groupId>com.iocextractor</groupId>
                 <artifactId>ioc-platform-errors</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.xorex-lc</groupId>
+                <artifactId>ioc-platform-diagnostics-api</artifactId>
+                <version>${revision}</version>
             </dependency>
             <dependency>
                 <groupId>com.iocextractor</groupId>

@@ -12,8 +12,8 @@ import com.iocextractor.application.port.out.artifact.DocumentProcessingPlanFact
 import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
 import com.iocextractor.application.port.out.artifact.lifecycle.CanonicalArtifactWriter;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
-import com.iocextractor.diagnostics.result.FailurePolicy;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.result.FailurePolicy;
 import com.iocextractor.domain.attribute.SourceAttributor;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.domain.refang.Refanger;

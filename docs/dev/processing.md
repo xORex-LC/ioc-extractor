@@ -44,7 +44,16 @@ constructing another complete indicator list.
 
 Diagnostic collectors retain bounded ordered details while carrying exact
 severity counts separately. Later ERROR/FATAL occurrences still reach failure
-policy before reservations. Runner emits retained diagnostics once and adds one
+policy before reservations. Shared diagnostic values, policies and bounded
+collectors now come from `ioc-platform-diagnostics-api`; IOC catalogs and the
+throwing exception boundary remain local. See the
+[consumer guide](../guides/diagnostics-library.md) for accumulation and delivery
+contracts. If terminal-summary delivery fails during an already failing run,
+the original pipeline exception remains primary; a distinct delivery exception
+is attached as suppressed. If both failures use the same exception instance,
+the runner preserves it without attempting self-suppression. On a successful
+run, an uncontained terminal-delivery failure propagates to the caller.
+Runner emits retained diagnostics once and adds one
 `PIPELINE.DIAGNOSTICS_SUPPRESSED` summary when required. Operation diagnostics
 and explicitly enabled TRACE are separate contracts; collector/delivery failures
 are not silently ignored.

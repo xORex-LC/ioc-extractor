@@ -1,30 +1,21 @@
-# platform/platform-diagnostics
+# ioc-platform-diagnostics
 
-## Назначение
+IOC-specific diagnostic catalogs, metadata, rendering and the product exception
+boundary. Generic values, results, policies and sinks live in
+[`ioc-platform-diagnostics-api`](../platform-diagnostics-api/README.md).
 
-Framework-free diagnostics subsystem: diagnostic model, codes, catalog, result,
-notification, failure policy, rendering and sink ports.
-
-Catalog codes несут immutable `ELEMENT | RUN | OPERATION` impact.
-`BoundedNotification`/`DiagnosticSummary` дают точный bounded run outcome:
-ELEMENT/RUN occurrences ограничены бюджетом, low-cardinality OPERATION
-occurrences остаются видимыми, first ERROR/FATAL не скрывается от failure policy.
-`BoundedDiagnosticCollector` ограничивает детали уже внутри stage loop;
-`DiagnosticBatch` переносит samples и точные severity counts независимо.
-
-**Правило слоя:** diagnostics core не пишет в SLF4J и не знает про pipeline,
-domain, adapters или bootstrap.
-
-## Структура
-
-| Подпапка / файл | Назначение |
+| Package/type | Responsibility |
 |---|---|
-| `pom.xml` | Maven module descriptor |
-| `src/main/java/com/iocextractor/diagnostics/` | Diagnostics API and implementation |
-| `src/test/java/com/iocextractor/diagnostics/` | Unit and documentation consistency tests |
+| `IocDiagnosticCode` | Adds category, message key and template to the shared code contract |
+| `DiagnosticCategory`, `DiagnosticContextKeys` | IOC ownership and producer/renderer context vocabulary |
+| `DiagnosticException` | Carries a shared diagnostic through `IocExtractorException` |
+| `codes/`, `catalog/` | Product code enums and generated catalog reference |
+| `render/` | Templates and application-supplied context formatting |
 
-## Зависимости
+Dependencies point to the shared API and `ioc-platform-errors`. No Spring,
+SLF4J, adapters, application use cases or bootstrap imports belong here. A generic
+consumer code has no IOC category; rendering it returns its literal ID.
 
-**Зависит от:** `ioc-platform-errors`.
-
-**Не импортируется:** Spring, SLF4J/Logback, `core`, `adapters`, `bootstrap`.
+The [generated catalog](../../docs/DIAGNOSTICS-CATALOG.md) remains IOC-owned.
+The [consumer guide](../../docs/guides/diagnostics-library.md) explains the shared
+API; the [observability doc](../../docs/dev/observability.md) describes delivery.

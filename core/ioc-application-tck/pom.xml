@@ -16,6 +16,7 @@
     <description>Reusable behavior contracts (TCK) for ioc-application driven ports; adapters depend on it in test scope</description>
 
     <dependencies>
+
         <dependency>
             <groupId>com.iocextractor</groupId>
             <artifactId>ioc-application</artifactId>

@@ -1,6 +1,6 @@
 package com.iocextractor.diagnostics.render;
 
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 
 /**
  * Port that renders diagnostic data into a human-readable message.

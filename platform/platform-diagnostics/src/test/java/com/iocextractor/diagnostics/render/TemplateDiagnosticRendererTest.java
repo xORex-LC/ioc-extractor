@@ -1,6 +1,6 @@
 package com.iocextractor.diagnostics.render;
 
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.codes.SourceDiagnosticCodes;
 import org.junit.jupiter.api.Test;
 
@@ -47,5 +47,19 @@ class TemplateDiagnosticRendererTest {
 
         assertThat(renderer.render(diagnostic))
                 .isEqualTo("Source {reason} could not be read: denied");
+    }
+    @Test
+    void generic_code_id_is_a_literal_fallback_not_a_message_template() {
+        var code = new com.iocextractor.platform.diagnostics.DiagnosticCode() {
+            public String id() { return "consumer/{row}"; }
+            public com.iocextractor.platform.diagnostics.DiagnosticSeverity defaultSeverity() {
+                return com.iocextractor.platform.diagnostics.DiagnosticSeverity.WARN;
+            }
+            public com.iocextractor.platform.diagnostics.DiagnosticImpact impact() {
+                return com.iocextractor.platform.diagnostics.DiagnosticImpact.ELEMENT;
+            }
+        };
+        var diagnostic = Diagnostic.builder(code, Clock.systemUTC()).with("row", 42).build();
+        assertThat(renderer.render(diagnostic)).isEqualTo("consumer/{row}");
     }
 }

@@ -2,7 +2,7 @@ package com.iocextractor.adapter.out.source;
 
 import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.diagnostics.DiagnosticException;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.SourceDiagnosticCodes;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;

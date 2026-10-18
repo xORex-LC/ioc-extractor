@@ -138,7 +138,7 @@ promise; unchecked casts inside a sound builder are not themselves the problem.
 ### High: append-only validation accepts a severity replacement
 
 The runner's prefix comparison (lines 185–189) uses `Diagnostic.equals`.
-[Diagnostic](../../../../platform/platform-diagnostics/src/main/java/com/iocextractor/diagnostics/Diagnostic.java),
+[Diagnostic](../../../../platform/platform-diagnostics-api/src/main/java/com/iocextractor/platform/diagnostics/Diagnostic.java),
 lines 100–108, compares code/context but ignores severity, cause and timestamp.
 A stage replacing an inherited WARN with an equal-code/context FATAL passes the
 append-only guard; compaction restores the old WARN and loses the replacement.

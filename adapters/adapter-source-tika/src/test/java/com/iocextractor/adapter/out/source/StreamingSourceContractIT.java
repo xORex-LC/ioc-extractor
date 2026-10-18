@@ -1,7 +1,7 @@
 package com.iocextractor.adapter.out.source;
 
 import com.iocextractor.application.tck.junit.IntegrationTest;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

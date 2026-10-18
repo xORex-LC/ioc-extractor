@@ -79,7 +79,7 @@ import com.iocextractor.application.port.out.dataframeimport.ManagedImportSource
 import com.iocextractor.application.port.out.dataframeimport.ProcessedImportRowPreparer;
 import com.iocextractor.application.port.out.dataframeimport.ImportValueValidatorRegistry;
 import com.iocextractor.application.port.out.observation.ObservationRegistrationStore;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.platform.concurrent.BoundedKeyedSerialExecutor;
 import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
 import com.iocextractor.platform.events.ControlEventPublisher;

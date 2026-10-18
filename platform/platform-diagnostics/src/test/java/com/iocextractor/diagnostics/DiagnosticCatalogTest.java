@@ -1,5 +1,7 @@
 package com.iocextractor.diagnostics;
 
+import com.iocextractor.platform.diagnostics.DiagnosticCode;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.catalog.DiagnosticCatalogs;
 import org.junit.jupiter.api.Test;
 
@@ -13,6 +15,16 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class DiagnosticCatalogTest {
+
+    @Test
+    void persisted_import_code_lookup_accepts_only_an_exact_known_id() {
+        assertThat(com.iocextractor.diagnostics.codes.ImportDiagnosticCodes.findById("IMPORT.INPUT_INVALID"))
+                .contains(com.iocextractor.diagnostics.codes.ImportDiagnosticCodes.INPUT_INVALID);
+        assertThat(com.iocextractor.diagnostics.codes.ImportDiagnosticCodes.findById(null)).isEmpty();
+        for (var invalid : java.util.List.of("", " ", "import.input_invalid", "IMPORT.UNKNOWN")) {
+            assertThat(com.iocextractor.diagnostics.codes.ImportDiagnosticCodes.findById(invalid)).isEmpty();
+        }
+    }
 
     @Test
     void severity_set_matches_the_published_contract() {

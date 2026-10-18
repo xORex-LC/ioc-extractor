@@ -3,7 +3,7 @@ package com.iocextractor.application.artifact.lifecycle;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
 import com.iocextractor.application.port.out.artifact.lifecycle.ArtifactProjectionWorkStore;
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.codes.SinkDiagnosticCodes;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;

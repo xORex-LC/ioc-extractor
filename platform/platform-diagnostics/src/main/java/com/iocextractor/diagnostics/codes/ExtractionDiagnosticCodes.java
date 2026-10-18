@@ -1,14 +1,14 @@
 package com.iocextractor.diagnostics.codes;
 
 import com.iocextractor.diagnostics.DiagnosticCategory;
-import com.iocextractor.diagnostics.DiagnosticCode;
-import com.iocextractor.diagnostics.DiagnosticImpact;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.diagnostics.IocDiagnosticCode;
+import com.iocextractor.platform.diagnostics.DiagnosticImpact;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 
 /**
  * Diagnostic codes for IOC extraction.
  */
-public enum ExtractionDiagnosticCodes implements DiagnosticCode {
+public enum ExtractionDiagnosticCodes implements IocDiagnosticCode {
     INDICATOR_SKIPPED(DiagnosticSeverity.DEBUG, DiagnosticImpact.ELEMENT, "extraction.indicator-skipped",
             "Indicator {indicator} was skipped: {reason}"),
     AMBIGUOUS_VALUE(DiagnosticSeverity.WARN, DiagnosticImpact.ELEMENT, "extraction.ambiguous-value",

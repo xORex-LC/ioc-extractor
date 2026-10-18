@@ -1,6 +1,7 @@
 # scope	line-covered	line-missed	branch-covered	branch-missed	instruction-missed	absolute-instructions	rationale
 reactor	19860	2541	6480	1861	12617	observed	Regex contract and bootstrap selection evidence over the conservative independent aggregate minima; fixed release floors remain separate.
 ioc-platform-errors	4	0	0	0	0	enforced	Small branchless production module; downstream coverage is complete.
+ioc-platform-diagnostics-api	314	4	124	2	27	enforced	D1 measured API baseline: consumer-owned codes, batch value semantics, overflow/marker boundaries and resilient callbacks; existing scope ratchets and release floors preserved.
 ioc-platform-diagnostics	481	10	56	20	63	enforced	Small branch denominator requires ratio and absolute missed context.
 ioc-platform-etl	165	16	16	8	75	enforced	Small branch denominator requires ratio and absolute missed context.
 ioc-platform-events	41	0	12	2	0	enforced	Small line and branch denominators require absolute missed context.

@@ -8,8 +8,8 @@ import com.iocextractor.application.artifact.lifecycle.LifecycleDeadline;
 import com.iocextractor.application.artifact.lifecycle.LifecycleReconcileCycleId;
 import com.iocextractor.application.artifact.lifecycle.LifecycleReconciliationResult;
 import com.iocextractor.application.port.out.artifact.lifecycle.ExpiredArtifactStore;
-import com.iocextractor.diagnostics.DiagnosticFactory;
-import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.sink.NoopDiagnosticSink;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 

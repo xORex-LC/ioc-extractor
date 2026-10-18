@@ -61,8 +61,8 @@ import com.iocextractor.application.port.out.artifact.lifecycle.ArtifactProjecti
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportCommand;
 import com.iocextractor.application.port.out.dataframeimport.CreateImportWorkspaceCommand;
 import com.iocextractor.application.tck.junit.IntegrationTest;
-import com.iocextractor.diagnostics.DiagnosticFactory;
-import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.sink.NoopDiagnosticSink;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

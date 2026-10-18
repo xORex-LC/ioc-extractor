@@ -29,7 +29,7 @@ stage names, logging implementation или IO adapters.
 
 ## Зависимости
 
-**Зависит от:** `ioc-platform-diagnostics`, `ioc-platform-errors`.
+**Зависит от:** `ioc-platform-diagnostics-api`, `ioc-platform-diagnostics`, `ioc-platform-errors`.
 
 **Не импортируется:** `ioc-domain`, `ioc-application`, adapters, bootstrap,
 Spring, SLF4J/Logback.

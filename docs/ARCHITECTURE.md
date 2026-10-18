@@ -31,6 +31,11 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
   observability осознанно владеет общей SLF4J API boundary, не бизнес-логикой.
 - Внутренние слои **никогда** не импортируют из внешних.
 
+Граница общей модели diagnostics и локальных IOC-каталогов, исключений и
+логирования принята в [ADR 0044](ADR/0044-reusable-diagnostics-contract.md).
+Сервис владеет failure-policy checkpoint и durable effects; общая библиотека
+возвращает данные и решение, но не выполняет commit или восстановление.
+
 ## Слои и пакеты
 
 | Слой | Пакет | Содержимое |
@@ -42,7 +47,8 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Domain | `domain/classify` | `MatchPolicy`, rule-based classification |
 | Domain | `domain/attribute` | `SourceAttributor` (порт) + `MarkerSourceAttributor` |
 | Platform | `platform/etl` | `Envelope`, `EnvelopeMeta`, `Stage`, `StageId`, `Pipeline`, `PipelineRunner` |
-| Platform | `diagnostics` | Diagnostic model, catalog, `Result`/`Notification`, `FailurePolicy`, sink ports |
+| Platform | `diagnostics-api` | JDK-only Diagnostic, results, policies, bounded collectors and sink contracts |
+| Platform | `diagnostics` | IOC catalogs, metadata, exception and rendering |
 | Platform | `observability` | MDC/log event helpers and logging taxonomy |
 | Platform | `events` | Framework-free control-event marker, metadata envelope, publish port and observers; no broker/delivery mechanics |
 | Platform | `concurrent` | In-memory keyed single-flight executor, observer hooks and health snapshots |

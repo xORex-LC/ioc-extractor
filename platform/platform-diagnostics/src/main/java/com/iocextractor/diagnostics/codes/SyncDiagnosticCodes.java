@@ -1,12 +1,12 @@
 package com.iocextractor.diagnostics.codes;
 
 import com.iocextractor.diagnostics.DiagnosticCategory;
-import com.iocextractor.diagnostics.DiagnosticCode;
-import com.iocextractor.diagnostics.DiagnosticImpact;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.diagnostics.IocDiagnosticCode;
+import com.iocextractor.platform.diagnostics.DiagnosticImpact;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 
 /** Diagnostic codes produced by remote fetch/publish synchronization. */
-public enum SyncDiagnosticCodes implements DiagnosticCode {
+public enum SyncDiagnosticCodes implements IocDiagnosticCode {
     ENDPOINT_UNREACHABLE(DiagnosticSeverity.ERROR, "sync.endpoint-unreachable",
             "Sync endpoint {endpoint} is unreachable: {reason}"),
     AUTH_FAILED(DiagnosticSeverity.FATAL, "sync.auth-failed",

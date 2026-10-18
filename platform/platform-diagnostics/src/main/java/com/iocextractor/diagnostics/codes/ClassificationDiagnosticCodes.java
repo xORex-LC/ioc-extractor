@@ -1,14 +1,14 @@
 package com.iocextractor.diagnostics.codes;
 
 import com.iocextractor.diagnostics.DiagnosticCategory;
-import com.iocextractor.diagnostics.DiagnosticCode;
-import com.iocextractor.diagnostics.DiagnosticImpact;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.diagnostics.IocDiagnosticCode;
+import com.iocextractor.platform.diagnostics.DiagnosticImpact;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 
 /**
  * Diagnostic codes for indicator classification.
  */
-public enum ClassificationDiagnosticCodes implements DiagnosticCode {
+public enum ClassificationDiagnosticCodes implements IocDiagnosticCode {
     UNSUPPORTED_INDICATOR_TYPE(DiagnosticSeverity.ERROR, DiagnosticImpact.ELEMENT, "classify.unsupported-indicator-type",
             "Indicator type {type} is not supported by classifier {classifier}");
 

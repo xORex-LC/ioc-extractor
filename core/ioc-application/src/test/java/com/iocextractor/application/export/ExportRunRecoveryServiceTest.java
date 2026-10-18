@@ -1,8 +1,8 @@
 package com.iocextractor.application.export;
 
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.ExportDiagnosticCodes;
 import com.iocextractor.platform.events.ControlEventPublisher;
 import com.iocextractor.platform.events.RecordingControlEventPublisher;

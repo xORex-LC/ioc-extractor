@@ -8,7 +8,7 @@ import com.iocextractor.application.artifact.RoutedArtifactCandidate;
 import com.iocextractor.application.pipeline.payload.IndicatorOccurrence;
 import com.iocextractor.application.port.out.artifact.DocumentProcessingPlan;
 import com.iocextractor.application.port.out.artifact.DocumentProcessingSession;
-import com.iocextractor.diagnostics.result.Result;
+import com.iocextractor.platform.diagnostics.result.Result;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;

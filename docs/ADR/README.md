@@ -61,8 +61,11 @@
 
 | [0042-native-sqlite-production-storage.md](0042-native-sqlite-production-storage.md) | Retain improved Native SQLite as the sole production backend; remove isolated versioned storage and experiment tooling while preserving shared preparation and recovery. |
 | [0043-configurable-csv-output-format.md](0043-configurable-csv-output-format.md) | Explicit LF/CRLF and independent header/data quoting, strict unquoted validation, unchanged v1 bytes and versioned layout manifests. |
+| [0044-reusable-diagnostics-contract.md](0044-reusable-diagnostics-contract.md) | Общий JDK-only контракт diagnostics: коды сервиса, чистые policy decisions, bounded samples и точные counts; локальные IOC-каталоги/исключения и отдельный допуск публикации. Принято 2026-10-18; удалённая публикация ожидает отдельного разрешения. |
 
 ## Формат
 
 `Статус` · `Контекст` · `Решения` (выбор + обоснование + отклонённые варианты) ·
-`Следствия` · `Открытые вопросы`. Язык — русский.
+`Следствия` · `Открытые вопросы`. Новые ADR пишутся на английском; существующие
+русские решения сохраняют свой язык и остаются append-only. Правило перехода —
+[CONVENTIONS.md](../CONVENTIONS.md).

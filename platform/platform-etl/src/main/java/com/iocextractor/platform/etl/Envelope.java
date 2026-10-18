@@ -1,8 +1,8 @@
 package com.iocextractor.platform.etl;
 
-import com.iocextractor.diagnostics.Diagnostic;
-import com.iocextractor.diagnostics.result.DiagnosticBatch;
-import com.iocextractor.diagnostics.result.DiagnosticSummary;
+import com.iocextractor.platform.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.result.DiagnosticBatch;
+import com.iocextractor.platform.diagnostics.result.DiagnosticSummary;
 
 import java.util.ArrayList;
 import java.util.Collection;

@@ -1,12 +1,12 @@
 package com.iocextractor.diagnostics.codes;
 
 import com.iocextractor.diagnostics.DiagnosticCategory;
-import com.iocextractor.diagnostics.DiagnosticCode;
-import com.iocextractor.diagnostics.DiagnosticImpact;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.diagnostics.IocDiagnosticCode;
+import com.iocextractor.platform.diagnostics.DiagnosticImpact;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 
 /** Stable diagnostics for canonical record lifecycle runtime safety. */
-public enum LifecycleDiagnosticCodes implements DiagnosticCode {
+public enum LifecycleDiagnosticCodes implements IocDiagnosticCode {
     ADMISSION_FAILED(DiagnosticSeverity.FATAL, "lifecycle.admission-failed",
             "Canonical lifecycle admission failed: {reason}"),
     CLOCK_UNSAFE(DiagnosticSeverity.FATAL, "lifecycle.clock-unsafe",

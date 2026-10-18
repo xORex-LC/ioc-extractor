@@ -23,15 +23,23 @@ runtime action
 Diagnostic -> LoggingDiagnosticSink -> ordinary typed LogEvent
 ```
 
-`platform-diagnostics` владеет model/catalog/result/policy/sink contracts;
+`platform-diagnostics-api` владеет общей моделью, result/policy, bounded collectors
+и sinks; `platform-diagnostics` — IOC-каталогом, metadata, exception и renderer;
 `platform-observability` — typed logging schema, events и MDC;
 `platform-diagnostics-logging` — bridge. Domain не зависит ни от одного из них:
 он возвращает pure decision outcomes, а application создаёт diagnostics/TRACE.
 
+Граница общей библиотеки и IOC-части принята в
+[ADR 0044](../ADR/0044-reusable-diagnostics-contract.md). Контракты для внешнего
+потребителя и исполняемые примеры — в
+[руководстве по diagnostics](../guides/diagnostics-library.md).
+
 ## Diagnostic contract
 
-- Stable `DiagnosticCode` задаёт category, default severity, impact, message key
-  и default template. Полный актуальный список генерируется в
+- Общий `DiagnosticCode` задаёт ID, default severity и impact. Локальный
+  `IocDiagnosticCode` добавляет category, message key и default template.
+  Общий код без IOC metadata отображается как буквальный ID, без category,
+  в том числе без унаследованной category из MDC. Полный актуальный список генерируется в
   [DIAGNOSTICS-CATALOG.md](../DIAGNOSTICS-CATALOG.md).
 - `impact` (`ELEMENT`, `RUN`, `OPERATION`) принадлежит code metadata и не
   выводится из severity.
@@ -44,6 +52,14 @@ Diagnostic -> LoggingDiagnosticSink -> ordinary typed LogEvent
   occurrences и явно добавляет `PIPELINE.DIAGNOSTICS_SUPPRESSED`.
 - Saga diagnostics фиксируют final fact после retries/state transition и не
   заменяют durable ledger status.
+
+Ограниченный run sample заменяет элементы на месте и не обещает
+хронологического порядка причин. Например, при бюджете 2 вход WARN A,
+ERROR B, FATAL C оставляет `[C, B]`; policy над этим списком выбирает C.
+Сохраняется сигнал остановки и точный severity summary, а не первая причина
+сбоя исходного потока. Политика, которой нужны все коды, должна исполняться до
+compaction. OPERATION occurrences не ограничены бюджетом; immutable batch
+копирует контейнеры, но не context values или Throwable.
 
 Default mapping severity в operational `log.level` является стабильным:
 
@@ -227,7 +243,9 @@ Diagnostic occurrence для retry/rejection/runtime failure создаёт од
 
 ## Источники истины
 
-- Diagnostic model/catalog: `platform-diagnostics` и generated catalog tests.
+- Общая модель/policy/bounded/sinks: `platform-diagnostics-api`, включая
+  [исполняемые примеры руководства](../guides/diagnostics-library.md).
+- IOC catalog/exception/rendering: `platform-diagnostics` и generated catalog tests.
 - Pipeline delivery: `PipelineRunnerTest`, failure-policy/budget tests.
 - Logging schema: `EventAction`, `LogField`, `LogEvent` и
   [LOGGING-CATALOG.md](../LOGGING-CATALOG.md).

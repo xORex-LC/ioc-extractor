@@ -5,7 +5,7 @@ import com.iocextractor.application.artifact.policy.*;
 import com.iocextractor.application.pipeline.payload.*;
 import com.iocextractor.application.pipeline.stage.PrepareRoutedArtifactsStage;
 import com.iocextractor.application.port.out.artifact.*;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.platform.etl.*;
 import java.util.*;
 

@@ -5,7 +5,7 @@ import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -80,7 +80,7 @@ public class IngestFlowConfiguration {
     @Bean
     public DurableDocumentDispatcher fileSourceMessageHandler(PrepareIngestionUseCase useCase,
                                                              RejectIngestionUseCase rejectUseCase,
-                                                             com.iocextractor.diagnostics.sink.DiagnosticSink diagnosticSink,
+                                                             com.iocextractor.platform.diagnostics.sink.DiagnosticSink diagnosticSink,
                                                              IngestAdapterProperties properties,
                                                              Clock ingestClock,
                                                              OrderedDocumentAdmissionHandler orderedAdmissions,

@@ -9,7 +9,7 @@ import com.iocextractor.application.pipeline.payload.IndicatorOccurrence;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.artifact.DocumentProcessingPlan;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
-import com.iocextractor.diagnostics.result.Result;
+import com.iocextractor.platform.diagnostics.result.Result;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.SourceContext;

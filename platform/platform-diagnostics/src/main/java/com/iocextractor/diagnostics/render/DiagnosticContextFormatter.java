@@ -1,6 +1,6 @@
 package com.iocextractor.diagnostics.render;
 
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 
 /** Strategy for formatting one diagnostic context value during rendering. */
 @FunctionalInterface

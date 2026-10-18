@@ -62,6 +62,9 @@ failure/recovery semantics и точки расширения, но не пер�
 - [guides/](guides/) — operator/integrator guidance: configuration,
   deployment/rollback, daemon operations, canonical lifecycle, aggregate and
   managed dataframe import, remote SMB storage and library publication.
+- [ADR 0044](ADR/0044-reusable-diagnostics-contract.md) фиксирует границу общей
+  диагностики; [руководство библиотеки](guides/diagnostics-library.md) объясняет
+  подключение, bounded counts, policy и delivery для другого сервиса.
 
 Локальные рабочие заметки и временные issue-списки не входят в авторитетный
 комплект документации, по умолчанию игнорируются Git и не используются

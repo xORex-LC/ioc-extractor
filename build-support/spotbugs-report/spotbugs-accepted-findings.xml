@@ -807,27 +807,27 @@
         </suppression>
         <rationale>Reviewed false positive: legacy archive tables and columns derive solely from the validated schema catalog and are quoted; lifecycle identity and activation time are bound.</rationale>
     </finding>
-    <finding id="DATA-TTL-P5-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="6d2bd2ae9abeb8c8156584ca883652c5" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P5-FAILURE-CONTRACT" review="ingestion-cleanup-propagation-change">
+    <finding id="DATA-TTL-P5-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="d1b449412e978faea40fad4dd04309f4" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="LIB-2-D1/P5-FAILURE-CONTRACT" review="ingestion-cleanup-propagation-change">
         <class name="com.iocextractor.bootstrap.AppConfig" />
-        <method name="lambda$extractIocsUseCase$4" signature="(Lcom/iocextractor/application/port/in/artifact/lifecycle/PrepareLifecycleAdmissionUseCase;Lcom/iocextractor/bootstrap/IocProperties;Lcom/iocextractor/application/port/in/ExtractIocsUseCase;Lcom/iocextractor/bootstrap/ProcessingPolicyIdentity;Ljava/util/List;Lcom/iocextractor/application/port/out/artifact/lifecycle/CanonicalObservationStore;Lcom/iocextractor/adapter/out/store/jdbc/JdbcLifecycleClock;Lcom/iocextractor/application/port/in/ExtractionCommand;)Lcom/iocextractor/application/port/in/ExtractionResult;" />
-        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="437" bytecode="223" />
+        <method name="lambda$extractIocsUseCase$5" signature="(Lcom/iocextractor/application/port/in/artifact/lifecycle/PrepareLifecycleAdmissionUseCase;Lcom/iocextractor/bootstrap/IocProperties;Lcom/iocextractor/application/port/in/ExtractIocsUseCase;Lcom/iocextractor/bootstrap/ProcessingPolicyIdentity;Ljava/util/List;Lcom/iocextractor/application/port/out/artifact/lifecycle/CanonicalObservationStore;Lcom/iocextractor/adapter/out/store/jdbc/JdbcLifecycleClock;Lcom/iocextractor/application/port/in/ExtractionCommand;)Lcom/iocextractor/application/port/in/ExtractionResult;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="453" bytecode="223" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.bootstrap.AppConfig" />
-            <Method name="lambda$extractIocsUseCase$4" />
+            <Method name="lambda$extractIocsUseCase$5" />
         </suppression>
-        <rationale>Reviewed policy signal: stateful one-shot extraction marks the observation terminal on every outcome while preserving the exact primary runtime failure and attaching cleanup failure as suppressed.</rationale>
+        <rationale>Reviewed policy signal: stateful one-shot extraction marks the observation terminal on every outcome while preserving the exact primary runtime failure and attaching cleanup failure as suppressed. D1 adds the diagnostic-delivery fallback lambda earlier in AppConfig, renumbering this unchanged lifecycle lambda and its exact selector.</rationale>
     </finding>
-    <finding id="DATA-TTL-P4-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="ff994348437ec8f05945a1daa1411847" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P4-FAILURE-CONTRACT" review="lifecycle-failure-contract-change">
+    <finding id="DATA-TTL-P4-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="9011c888e6a5fa18b9eccf2726590f1c" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="LIB-2-D1/P4-FAILURE-CONTRACT" review="lifecycle-failure-contract-change">
         <class name="com.iocextractor.bootstrap.AppConfig" />
-        <method name="lambda$prepareLifecycleAdmissionUseCase$7" signature="(Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionService;Lcom/iocextractor/bootstrap/LifecycleRuntimeObserver;)Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionResult;" />
-        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="901" bytecode="19" />
+        <method name="lambda$prepareLifecycleAdmissionUseCase$8" signature="(Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionService;Lcom/iocextractor/bootstrap/LifecycleRuntimeObserver;)Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionResult;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="918" bytecode="19" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.bootstrap.AppConfig" />
-            <Method name="lambda$prepareLifecycleAdmissionUseCase$7" />
+            <Method name="lambda$prepareLifecycleAdmissionUseCase$8" />
         </suppression>
-        <rationale>Reviewed policy signal: bootstrap reports admission failure and deliberately rethrows the exact runtime failure so startup and command admission remain fail-closed.</rationale>
+        <rationale>Reviewed policy signal: bootstrap reports admission failure and deliberately rethrows the exact runtime failure so startup and command admission remain fail-closed. D1 adds the diagnostic-delivery fallback lambda earlier in AppConfig, renumbering this unchanged lifecycle lambda and its exact selector.</rationale>
     </finding>
     <finding id="DATA-TTL-P4-SB-007" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="a4671c0c8959d51cfacdf4d3f12a5e8" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P4-FAILURE-CONTRACT" review="lifecycle-failure-contract-change">
         <class name="com.iocextractor.application.artifact.lifecycle.ArtifactProjectionConvergenceService" />
@@ -1290,16 +1290,16 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under I4/D-025 in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-115" module="platform/platform-diagnostics" type="SE_BAD_FIELD" hash="83f71337c877cf0b7fea59b1b8525a89" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="false-positive" owner="R030-BUILD" evidence="C2-MIX-F" review="exception-serialization-boundary-change">
+    <finding id="SB04-115" module="platform/platform-diagnostics" type="SE_BAD_FIELD" hash="dbe371a0a4f2cef9e96c95f49a3c9340" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="false-positive" owner="R030-BUILD" evidence="LIB-2-D1/C2-MIX-F" review="exception-serialization-boundary-change">
         <class name="com.iocextractor.diagnostics.DiagnosticException" />
-        <field name="diagnostic" signature="Lcom/iocextractor/diagnostics/Diagnostic;" />
+        <field name="diagnostic" signature="Lcom/iocextractor/platform/diagnostics/Diagnostic;" />
         <anchor />
         <suppression>
             <Bug pattern="SE_BAD_FIELD" />
             <Class name="com.iocextractor.diagnostics.DiagnosticException" />
             <Field name="diagnostic" />
         </suppression>
-        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C2-MIX-F in the BUILD-SPOTBUGS-04 worknote.</rationale>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C2-MIX-F in the BUILD-SPOTBUGS-04 worknote. The D1 package move changes the field descriptor; this product exception still carries a diagnostic in-process and is not a serialization boundary.</rationale>
     </finding>
     <finding id="SB04-100" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="55f447907b635a14f17b160bb4ee9e20" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E" review="pipeline-observer-failure-contract-change">
         <class name="com.iocextractor.platform.etl.PipelineRunner" />
@@ -1312,38 +1312,38 @@
         </suppression>
         <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E.</rationale>
     </finding>
-    <finding id="SB04-101" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="f71318b64109abe8368abb66a32e5ae4" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E/HARDEN-02/CAP-5-OWNERSHIP" review="pipeline-observer-failure-contract-change">
+    <finding id="SB04-101" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="f71318b64109abe8368abb66a32e5ae4" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="LIB-2-D1/C2-EX-E/HARDEN-02/CAP-5-OWNERSHIP" review="pipeline-observer-failure-contract-change">
         <class name="com.iocextractor.platform.etl.PipelineRunner" />
         <method name="executeInRunScope" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;Z)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
-        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="165" bytecode="262" />
+        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="165" bytecode="264" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.platform.etl.PipelineRunner" />
             <Method name="executeInRunScope" />
         </suppression>
-        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E/HARDEN-02. CAP-5 defers the diagnostic summary during preparation; PipelineRunnerTest preserves observer failure and final summary semantics.</rationale>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E/HARDEN-02. CAP-5 defers the diagnostic summary during preparation; PipelineRunnerTest preserves observer failure and final summary semantics. D1 supplies the marker explicitly, shifting the existing catch anchors by three bytecodes; observer and primary-failure ownership are preserved.</rationale>
     </finding>
-    <finding id="SB04-102" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="f71318b64109abe8368abb66a32e5ae4" occurrence="1" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E/HARDEN-02/CAP-5-OWNERSHIP" review="pipeline-observer-failure-contract-change">
+    <finding id="SB04-102" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="f71318b64109abe8368abb66a32e5ae4" occurrence="1" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="LIB-2-D1/C2-EX-E/HARDEN-02/CAP-5-OWNERSHIP" review="pipeline-observer-failure-contract-change">
         <class name="com.iocextractor.platform.etl.PipelineRunner" />
         <method name="executeInRunScope" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;Z)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
-        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="170" bytecode="314" />
+        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="170" bytecode="316" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.platform.etl.PipelineRunner" />
             <Method name="executeInRunScope" />
         </suppression>
-        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E/HARDEN-02. CAP-5 defers the diagnostic summary during preparation; observer cleanup preserves the original failure.</rationale>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E/HARDEN-02. CAP-5 defers the diagnostic summary during preparation; observer cleanup preserves the original failure. D1 supplies the marker explicitly, shifting the existing catch anchors by three bytecodes; observer and primary-failure ownership are preserved.</rationale>
     </finding>
-    <finding id="SB04-103" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="f71318b64109abe8368abb66a32e5ae4" occurrence="2" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E/HARDEN-02/CAP-5-OWNERSHIP" review="pipeline-observer-failure-contract-change">
+    <finding id="SB04-103" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="f71318b64109abe8368abb66a32e5ae4" occurrence="2" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="LIB-2-D1/C2-EX-E/HARDEN-02/CAP-5-OWNERSHIP" review="pipeline-observer-failure-contract-change">
         <class name="com.iocextractor.platform.etl.PipelineRunner" />
         <method name="executeInRunScope" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;Z)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
-        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="179" bytecode="396" />
+        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="179" bytecode="398" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.platform.etl.PipelineRunner" />
             <Method name="executeInRunScope" />
         </suppression>
-        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E/HARDEN-02. CAP-5 defers the diagnostic summary during preparation; failure callbacks cannot replace the original failure.</rationale>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E/HARDEN-02. CAP-5 defers the diagnostic summary during preparation; failure callbacks cannot replace the original failure. D1 supplies the marker explicitly, shifting the existing catch anchors by three bytecodes; observer and primary-failure ownership are preserved.</rationale>
     </finding>
     <finding id="SB04-104" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="a8dfe2398c456e8981b96ec90113c72e" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E/CAP-5-OWNERSHIP" review="pipeline-observer-failure-contract-change">
         <class name="com.iocextractor.platform.etl.PipelineRunner" />

@@ -26,20 +26,20 @@ import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptReplay
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.LifecycleWriteResult;
 import com.iocextractor.application.artifact.lifecycle.ProjectionGeneration;
-import com.iocextractor.diagnostics.result.FailurePolicy;
-import com.iocextractor.diagnostics.result.Result;
+import com.iocextractor.platform.diagnostics.result.FailurePolicy;
+import com.iocextractor.platform.diagnostics.result.Result;
 import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
 import com.iocextractor.diagnostics.DiagnosticException;
-import com.iocextractor.diagnostics.DiagnosticFactory;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
-import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
-import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.NoopDiagnosticSink;
 import com.iocextractor.application.pipeline.CompletionStatus;
 import com.iocextractor.domain.extract.RawIndicator;
 import com.iocextractor.domain.extract.ExtractionOutcome;
@@ -550,6 +550,49 @@ class IngestionServiceTest {
                             .asString()
                             .startsWith("PIPELINE.STAGE_FAILED {")
                             .contains("stage=READ_SOURCE", "reason=read failed");
+                    assertThat(failure).hasRootCauseMessage("read failed");
+                });
+        assertThat(diagnostics.diagnostics()).hasSize(1);
+    }
+
+    @Test
+    void recoveryReclassifiesAGenericDiagnosticWithoutAssumingIocMetadata() {
+        var code = new com.iocextractor.platform.diagnostics.DiagnosticCode() {
+            public String id() { return "consumer-failed"; }
+            public DiagnosticSeverity defaultSeverity() { return DiagnosticSeverity.ERROR; }
+            public com.iocextractor.platform.diagnostics.DiagnosticImpact impact() {
+                return com.iocextractor.platform.diagnostics.DiagnosticImpact.RUN;
+            }
+        };
+        var original = new DiagnosticException(new DiagnosticFactory(clock).create(code)
+                .cause(new IllegalStateException("read failed")).build());
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        ledger.record = new IngestionRecord(
+                key, IngestionStatus.CLAIMED,
+                Path.of("inbox/source.html"), Path.of("processing/source.html"), null,
+                Instant.EPOCH, Instant.EPOCH, null);
+        var diagnostics = new CollectingDiagnosticSink();
+        var service = new IngestionService(
+                ledger,
+                new MemoryLifecycle(),
+                source -> new SourcePreparers(List.of(new CountingPreparer())),
+                failingExtractionFactory(original),
+                new MemoryRunLedger(),
+                new CollectingProjection(),
+                new RecordingControlEventPublisher(),
+                clock,
+                diagnostics);
+
+        assertThatThrownBy(service::recoverIncomplete)
+                .isInstanceOfSatisfying(DiagnosticException.class, failure -> {
+                    assertThat(failure.diagnostic().code())
+                            .isEqualTo(IngestDiagnosticCodes.RECOVERY_FAILED);
+                    assertThat(failure.diagnostic().context())
+                            .containsEntry("source", "abc123");
+                    assertThat(failure.diagnostic().context().get("reason"))
+                            .asString()
+                            .isEqualTo("consumer-failed");
                     assertThat(failure).hasRootCauseMessage("read failed");
                 });
         assertThat(diagnostics.diagnostics()).hasSize(1);
@@ -1192,9 +1235,13 @@ class IngestionServiceTest {
     }
 
     private IocExtractionServiceFactory failingExtractionFactory() {
+        return failingExtractionFactory(new IllegalStateException("read failed"));
+    }
+
+    private IocExtractionServiceFactory failingExtractionFactory(RuntimeException failure) {
         return new IocExtractionServiceFactory(
                 com.iocextractor.application.TestDocumentSourceWorkspace.reader(source -> {
-                    throw new IllegalStateException("read failed");
+                    throw failure;
                 }),
                 new com.iocextractor.domain.refang.ReplacementRefanger(List.of()),
                 com.iocextractor.application.TestDocumentSourceWorkspace.extractor(text -> new ExtractionOutcome(

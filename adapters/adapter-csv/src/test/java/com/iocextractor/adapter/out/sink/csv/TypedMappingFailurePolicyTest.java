@@ -21,11 +21,12 @@ import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
 import com.iocextractor.diagnostics.DiagnosticException;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.SinkDiagnosticCodes;
-import com.iocextractor.diagnostics.result.FailurePolicy;
-import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.platform.diagnostics.result.FailurePolicy;
+import com.iocextractor.platform.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.ResilientDiagnosticSink;
 import com.iocextractor.domain.classify.ClassificationDecision;
 import com.iocextractor.domain.feature.HostKind;
 import com.iocextractor.domain.feature.IndicatorFeatures;
@@ -56,6 +57,45 @@ class TypedMappingFailurePolicyTest {
     private static final Clock CLOCK = Clock.fixed(
             Instant.parse("2026-07-14T00:00:00Z"), ZoneOffset.UTC);
     private static final long FIRST_ID = 100;
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void failing_observation_does_not_change_the_prewrite_policy_decision(boolean failFast) {
+        var ids = new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, FIRST_ID);
+        var repository = new RecordingRepository();
+        var projections = new AtomicInteger();
+        var deliveryFailure = new IllegalStateException("diagnostic delivery down");
+        var reported = new java.util.ArrayList<com.iocextractor.platform.diagnostics.Diagnostic>();
+        var sink = new ResilientDiagnosticSink(ignored -> { throw deliveryFailure; }, (value, cause) -> {
+            assertThat(cause).isSameAs(deliveryFailure);
+            reported.add(value);
+            throw new IllegalStateException("fallback down");
+        });
+        var runner = new PipelineRunner(failFast ? FailurePolicy.failFast() : FailurePolicy.collectAndContinue(),
+                new NoopPipelineObserver(), sink, new DiagnosticFactory(CLOCK));
+        var pipeline = pipeline(preparer(ids, typedRejectingProvider()), repository, projections);
+
+        if (failFast) {
+            assertThatThrownBy(() -> runner.run(input(), pipeline))
+                    .isInstanceOfSatisfying(DiagnosticException.class, failure -> {
+                        assertThat(failure.diagnostic().code()).isSameAs(SinkDiagnosticCodes.ROW_MAPPING_FAILED);
+                        assertThat(failure).hasNoSuppressedExceptions();
+                    });
+            assertThat(repository.writes).isZero();
+            assertThat(projections).hasValue(0);
+            assertThat(ids.reserve(1).start()).isEqualTo(FIRST_ID);
+        } else {
+            var outcome = runner.runWithOutcome(input(), pipeline);
+            assertThat(CompletionStatus.from(outcome.diagnosticSummary()))
+                    .isEqualTo(CompletionStatus.COMPLETED_WITH_ERRORS);
+            assertThat(repository.writes).isOne();
+            assertThat(projections).hasValue(1);
+            assertThat(repository.artifact.rows()).singleElement()
+                    .satisfies(row -> assertThat(row.value("id")).isEqualTo("100"));
+        }
+        assertThat(reported).singleElement()
+                .satisfies(value -> assertThat(value.code()).isSameAs(SinkDiagnosticCodes.ROW_MAPPING_FAILED));
+    }
 
     @Test
     void collect_commits_only_valid_rows_and_returns_degraded_completion() {
@@ -153,7 +193,7 @@ class TypedMappingFailurePolicyTest {
         return Pipeline.<AttributedIndicators>start()
                  .then(new PrepareRoutedArtifactsStage(occurrence -> {
                     var result = preparer.prepare(List.of(classified(occurrence.indicator().value())));
-                    return com.iocextractor.diagnostics.result.Result.of(result.value().rows().snapshot().stream().map(row ->
+                    return com.iocextractor.platform.diagnostics.result.Result.of(result.value().rows().snapshot().stream().map(row ->
                             new com.iocextractor.application.artifact.RoutedArtifactCandidate(preparer.name(), row)).toList(),
                             result.diagnostics());
                 }, List.of(preparer), false))

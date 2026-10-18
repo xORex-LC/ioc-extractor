@@ -1,9 +1,9 @@
 package com.iocextractor.diagnostics.catalog;
 
 import com.iocextractor.diagnostics.DiagnosticCategory;
-import com.iocextractor.diagnostics.DiagnosticCode;
-import com.iocextractor.diagnostics.DiagnosticImpact;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.diagnostics.IocDiagnosticCode;
+import com.iocextractor.platform.diagnostics.DiagnosticImpact;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 
 import java.util.Objects;
 
@@ -33,7 +33,7 @@ public record DiagnosticCatalogEntry(
      * @param code diagnostic code
      * @return catalog entry
      */
-    public static DiagnosticCatalogEntry from(DiagnosticCode code) {
+    public static DiagnosticCatalogEntry from(IocDiagnosticCode code) {
         Objects.requireNonNull(code, "code");
         return new DiagnosticCatalogEntry(
                 code.id(),

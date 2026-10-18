@@ -5,8 +5,8 @@ import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.LifecycleActivationState;
 import com.iocextractor.application.artifact.lifecycle.LifecycleAdmissionResult;
 import com.iocextractor.application.artifact.lifecycle.LifecycleHistoryRetentionResult;
-import com.iocextractor.diagnostics.DiagnosticFactory;
-import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.sink.NoopDiagnosticSink;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;

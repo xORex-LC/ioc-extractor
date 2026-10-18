@@ -4,8 +4,8 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import com.iocextractor.diagnostics.Diagnostic;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.platform.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.SinkDiagnosticCodes;
 import com.iocextractor.diagnostics.render.TemplateDiagnosticRenderer;
@@ -37,6 +37,29 @@ class LoggingDiagnosticSinkTest {
     @AfterEach
     void detachAppenders() {
         logger.detachAndStopAllAppenders();
+    }
+
+    @Test
+    void generic_code_omits_ambient_category_and_restores_mdc() {
+        var appender = appender();
+        var code = new com.iocextractor.platform.diagnostics.DiagnosticCode() {
+            public String id() { return "consumer-condition"; }
+            public DiagnosticSeverity defaultSeverity() { return DiagnosticSeverity.WARN; }
+            public com.iocextractor.platform.diagnostics.DiagnosticImpact impact() {
+                return com.iocextractor.platform.diagnostics.DiagnosticImpact.RUN;
+            }
+        };
+        try (var scope = com.iocextractor.observability.MdcScope.open()
+                .put(LogField.IOC_DIAGNOSTIC_CATEGORY, "INGEST")) {
+            new LoggingDiagnosticSink(logger, new TemplateDiagnosticRenderer())
+                    .emit(Diagnostic.builder(code, CLOCK).build());
+            assertThat(org.slf4j.MDC.get(LogField.IOC_DIAGNOSTIC_CATEGORY.key())).isEqualTo("INGEST");
+        }
+        assertThat(appender.list).singleElement().satisfies(event -> {
+            assertThat(eventFields(event)).doesNotContainKey(LogField.IOC_DIAGNOSTIC_CATEGORY.key());
+            assertThat(event.getMDCPropertyMap()).doesNotContainKey(LogField.IOC_DIAGNOSTIC_CATEGORY.key());
+            assertThat(event.getFormattedMessage()).isEqualTo("consumer-condition");
+        });
     }
 
     @Test

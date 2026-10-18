@@ -8,9 +8,9 @@ import com.iocextractor.application.port.in.sync.PublishCompletedSliceCommand;
 import com.iocextractor.application.port.out.sync.CompletedSliceCatalog;
 import com.iocextractor.application.port.out.sync.FileTransport;
 import com.iocextractor.application.port.out.sync.PublishLedger;
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.codes.SyncDiagnosticCodes;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

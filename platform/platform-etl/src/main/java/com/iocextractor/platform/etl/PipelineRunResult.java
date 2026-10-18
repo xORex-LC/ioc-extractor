@@ -1,6 +1,6 @@
 package com.iocextractor.platform.etl;
 
-import com.iocextractor.diagnostics.result.DiagnosticSummary;
+import com.iocextractor.platform.diagnostics.result.DiagnosticSummary;
 
 import java.util.Objects;
 

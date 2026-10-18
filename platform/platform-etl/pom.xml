@@ -17,6 +17,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>io.github.xorex-lc</groupId>
+            <artifactId>ioc-platform-diagnostics-api</artifactId>
+        </dependency>
+
+        <dependency>
             <groupId>com.iocextractor</groupId>
             <artifactId>ioc-platform-diagnostics</artifactId>
         </dependency>

@@ -7,7 +7,7 @@ import com.iocextractor.application.observation.OccurrencePosition;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.application.port.out.artifact.ArtifactIdBaseline;
 import com.iocextractor.application.tck.junit.IntegrationTest;
-import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.NoopDiagnosticSink;
 import com.iocextractor.domain.classify.ClassificationDecision;
 import com.iocextractor.domain.classify.MatchPolicy;
 import com.iocextractor.domain.feature.HostKind;

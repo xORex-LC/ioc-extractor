@@ -4,7 +4,7 @@ import com.iocextractor.application.port.in.artifact.lifecycle.ConvergeArtifactP
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
 import com.iocextractor.application.port.out.artifact.lifecycle.ArtifactProjectionWorkStore;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;

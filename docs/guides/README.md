@@ -8,7 +8,7 @@
 
 Основная версия operator/integration-гайдов — английская, в корне этого
 каталога; русские версии находятся в [ru/](ru/) и обновляются парой.
-Новые руководства по маршрутизации IOC и публикации библиотек пока существуют
+Новые руководства по маршрутизации IOC, diagnostics API и публикации библиотек пока существуют
 только на английском; русские ссылки на них оставлены в смежных гайдах.
 
 | Гайд | Русская версия | О чём |
@@ -23,3 +23,4 @@
 | [ioc-processing-routes.md](ioc-processing-routes.md) | — | Включение именованных IOC-планов для документа и processed import, проверка результата и восстановление |
 | [remote-storage-sync.md](remote-storage-sync.md) | [ru/remote-storage-sync.md](ru/remote-storage-sync.md) | Работа с удалённым хранилищем: как устроены fetch/publish и push-уведомления, справочник конфигурации с подбором значений, права/сбои/восстановление/мониторинг, настройка SMB-шары на Linux (Samba) и Windows Server, чек-листы |
 | [library-publication.md](library-publication.md) | — | Публикация и проверка independently consumable Maven libraries |
+| [diagnostics-library.md](diagnostics-library.md) | — | Подключение общей diagnostics-библиотеки: коды сервиса, результаты, policy, bounded counts и обработка delivery failures |

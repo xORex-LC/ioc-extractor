@@ -1,6 +1,7 @@
 # module-path	artifact-id	disposition	local-report	rationale
 .	ioc-extractor-parent	excluded	none	Root parent has no production bytecode.
 platform/platform-errors	ioc-platform-errors	covered	aggregate-only	Production bytecode is exercised only by downstream test JVMs.
+platform/platform-diagnostics-api	ioc-platform-diagnostics-api	covered	required	Production platform module with its own test execution data.
 platform/platform-diagnostics	ioc-platform-diagnostics	covered	required	Production platform module with its own test execution data.
 platform/platform-etl	ioc-platform-etl	covered	required	Production platform module with its own test execution data.
 platform/platform-events	ioc-platform-events	covered	required	Production platform module with its own test execution data.

@@ -10,10 +10,10 @@ import com.iocextractor.application.artifact.lifecycle.LifecycleClockUnsafeExcep
 import com.iocextractor.application.artifact.lifecycle.LifecyclePolicyMismatchException;
 import com.iocextractor.application.artifact.lifecycle.LifecycleReconcileCycleId;
 import com.iocextractor.application.artifact.lifecycle.LifecycleReconciliationResult;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.LifecycleDiagnosticCodes;
-import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
-import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.NoopDiagnosticSink;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;

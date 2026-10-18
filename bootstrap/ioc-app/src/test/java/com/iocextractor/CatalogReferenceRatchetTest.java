@@ -1,6 +1,6 @@
 package com.iocextractor;
 
-import com.iocextractor.diagnostics.DiagnosticCode;
+import com.iocextractor.platform.diagnostics.DiagnosticCode;
 import com.iocextractor.diagnostics.catalog.DiagnosticCatalogs;
 import com.iocextractor.observability.EventAction;
 import com.tngtech.archunit.core.domain.JavaFieldAccess;

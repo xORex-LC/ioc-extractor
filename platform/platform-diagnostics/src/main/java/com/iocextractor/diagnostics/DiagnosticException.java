@@ -1,5 +1,6 @@
 package com.iocextractor.diagnostics;
 
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.common.IocExtractorException;
 
 import java.util.Objects;

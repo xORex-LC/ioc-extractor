@@ -34,9 +34,9 @@ import com.iocextractor.application.port.out.observability.PipelineDecisionTrace
 import com.iocextractor.domain.attribute.SourceAttributor;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.domain.refang.Refanger;
-import com.iocextractor.diagnostics.result.FailurePolicy;
-import com.iocextractor.diagnostics.DiagnosticFactory;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.result.FailurePolicy;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
 
 import java.time.Clock;
 import java.util.LinkedHashMap;

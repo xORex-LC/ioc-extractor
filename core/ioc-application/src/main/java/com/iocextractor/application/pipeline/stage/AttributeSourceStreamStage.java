@@ -5,7 +5,7 @@ import com.iocextractor.application.observability.PipelineItemDecision;
 import com.iocextractor.application.pipeline.payload.AttributedIndicators;
 import com.iocextractor.application.port.out.artifact.DocumentSourceWorkspace;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.codes.SourceDiagnosticCodes;
 import com.iocextractor.domain.attribute.AttributionDecision;
 import com.iocextractor.domain.attribute.SourceAttributor;

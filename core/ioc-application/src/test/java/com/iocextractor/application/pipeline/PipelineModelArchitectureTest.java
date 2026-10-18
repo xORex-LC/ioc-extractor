@@ -80,8 +80,8 @@ class PipelineModelArchitectureTest {
         if (type == java.time.Clock.class) {
             return java.time.Clock.systemUTC();
         }
-        if (type == com.iocextractor.diagnostics.DiagnosticFactory.class) {
-            return new com.iocextractor.diagnostics.DiagnosticFactory(java.time.Clock.systemUTC());
+        if (type == com.iocextractor.platform.diagnostics.DiagnosticFactory.class) {
+            return new com.iocextractor.platform.diagnostics.DiagnosticFactory(java.time.Clock.systemUTC());
         }
         if (type.isInterface()) {
             return java.lang.reflect.Proxy.newProxyInstance(

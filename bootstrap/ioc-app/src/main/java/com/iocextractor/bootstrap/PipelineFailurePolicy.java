@@ -1,6 +1,6 @@
 package com.iocextractor.bootstrap;
 
-import com.iocextractor.diagnostics.result.FailurePolicy;
+import com.iocextractor.platform.diagnostics.result.FailurePolicy;
 
 /** External selector for the internal diagnostic failure-policy strategy. */
 public enum PipelineFailurePolicy {

@@ -15,7 +15,7 @@ import com.iocextractor.application.sync.RemoteSourceMonitor;
 import com.iocextractor.application.sync.Retrier;
 import com.iocextractor.application.sync.RetryPolicy;
 import com.iocextractor.application.sync.SyncDiagnosticReporter;
-import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.CollectingDiagnosticSink;
 import com.iocextractor.platform.events.ControlEventPublisher;
 import com.iocextractor.platform.events.RecordingControlEventPublisher;
 import org.junit.jupiter.api.Test;

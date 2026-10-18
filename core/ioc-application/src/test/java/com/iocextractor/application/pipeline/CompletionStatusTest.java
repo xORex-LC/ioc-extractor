@@ -2,8 +2,8 @@ package com.iocextractor.application.pipeline;
 
 import com.iocextractor.application.observability.PipelineDecisionKind;
 import com.iocextractor.application.observability.PipelineItemDecision;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
-import com.iocextractor.diagnostics.result.DiagnosticSummary;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
+import com.iocextractor.platform.diagnostics.result.DiagnosticSummary;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;

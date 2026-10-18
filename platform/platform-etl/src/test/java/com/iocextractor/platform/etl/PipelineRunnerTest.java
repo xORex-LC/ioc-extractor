@@ -1,13 +1,14 @@
 package com.iocextractor.platform.etl;
 
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
-import com.iocextractor.diagnostics.DiagnosticFactory;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
-import com.iocextractor.diagnostics.result.FailurePolicy;
-import com.iocextractor.diagnostics.result.BoundedNotification;
-import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.platform.diagnostics.result.FailurePolicy;
+import com.iocextractor.platform.diagnostics.result.BoundedNotification;
+import com.iocextractor.platform.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.ResilientDiagnosticSink;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -22,6 +23,121 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PipelineRunnerTest {
 
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-06-21T00:00:00Z"), ZoneOffset.UTC);
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void resilient_delivery_preserves_clean_completion_and_original_stage_failure(boolean stageFails) {
+        var warning = diagnostic(DiagnosticSeverity.WARN);
+        var stageFailure = new DiagnosticException(diagnostic(DiagnosticSeverity.FATAL));
+        var deliveryFailure = new IllegalStateException("delivery down");
+        var attempted = new ArrayList<Diagnostic>();
+        var fallbackCalls = new ArrayList<Diagnostic>();
+        var pipeline = Pipeline.<String>start()
+                .then(new DiagnosticStage(warning)).then(new DiagnosticStage(warning));
+        if (stageFails) { pipeline = pipeline.then(new ThrowingStage(stageFailure)); }
+        var sink = new ResilientDiagnosticSink(value -> {
+            attempted.add(value);
+            throw deliveryFailure;
+        }, (value, cause) -> {
+            assertThat(cause).isSameAs(deliveryFailure);
+            fallbackCalls.add(value);
+            throw new IllegalStateException("fallback down");
+        });
+        var runner = new PipelineRunner(FailurePolicy.collectAndContinue(), new NoopPipelineObserver(),
+                sink, new DiagnosticFactory(CLOCK), 1);
+        var selectedPipeline = pipeline;
+
+        if (stageFails) {
+            assertThatThrownBy(() -> runner.run(Envelope.of("start", meta()), selectedPipeline))
+                    .isSameAs(stageFailure).hasNoSuppressedExceptions();
+            assertThat(attempted).containsExactly(warning, stageFailure.diagnostic(), attempted.getLast());
+        } else {
+            var outcome = runner.runWithOutcome(Envelope.of("start", meta()), selectedPipeline);
+            assertThat(outcome.envelope().payload()).isEqualTo("start");
+            assertThat(outcome.diagnosticSummary().total()).isEqualTo(2);
+            assertThat(outcome.diagnosticSummary().suppressed()).isOne();
+            assertThat(attempted).containsExactly(warning, outcome.envelope().diagnostics().getLast());
+        }
+        assertThat(attempted.getLast().code()).isSameAs(PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED);
+        assertThat(attempted.getLast().context()).containsEntry("suppressedCount", 1L);
+        assertThat(fallbackCalls).containsExactlyElementsOf(attempted);
+    }
+
+    @Test
+    void terminal_delivery_cannot_replace_a_stage_failure_with_a_self_suppression_error() {
+        var stageFailure = new DiagnosticException(diagnostic(DiagnosticSeverity.FATAL));
+        var pipeline = Pipeline.<String>start()
+                .then(new DiagnosticStage(diagnostic(DiagnosticSeverity.WARN)))
+                .then(new DiagnosticStage(diagnostic(DiagnosticSeverity.WARN)))
+                .then(new ThrowingStage(stageFailure));
+        var summaries = new ArrayList<Diagnostic>();
+        var runner = new PipelineRunner(FailurePolicy.collectAndContinue(), new NoopPipelineObserver(),
+                value -> {
+                    if (value.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED) {
+                        summaries.add(value);
+                        throw stageFailure;
+                    }
+                }, new DiagnosticFactory(CLOCK), 1);
+
+        assertThatThrownBy(() -> runner.run(Envelope.of("start", meta()), pipeline))
+                .isSameAs(stageFailure).hasNoSuppressedExceptions();
+        assertThat(summaries).hasSize(1);
+    }
+
+    @Test
+    void continuation_merges_new_suppressed_counts_without_redelivering_prepared_samples() {
+        var warning = diagnostic(DiagnosticSeverity.WARN);
+        var error = diagnostic(DiagnosticSeverity.ERROR);
+        var sink = new CollectingDiagnosticSink();
+        var runner = new PipelineRunner(FailurePolicy.collectAndContinue(), new NoopPipelineObserver(),
+                sink, new DiagnosticFactory(CLOCK), 1);
+        var preparation = Pipeline.<String>start()
+                .then(new DiagnosticStage(warning)).then(new DiagnosticStage(warning));
+        var prepared = runner.runPreparation(Envelope.of("start", meta()), preparation);
+
+        var completed = runner.runWithOutcome(prepared.envelope(), Pipeline.<String>start()
+                .then(new DiagnosticStage(warning)).then(new DiagnosticStage(error)));
+
+        assertThat(prepared.diagnosticSummary().total()).isEqualTo(2);
+        assertThat(prepared.diagnosticSummary().suppressed()).isOne();
+        assertThat(completed.diagnosticSummary().total()).isEqualTo(4);
+        assertThat(completed.diagnosticSummary().suppressed()).isEqualTo(3);
+        assertThat(completed.diagnosticSummary().count(DiagnosticSeverity.WARN)).isEqualTo(3);
+        assertThat(completed.diagnosticSummary().count(DiagnosticSeverity.ERROR)).isOne();
+        assertThat(sink.diagnostics()).containsExactly(warning, error, completed.envelope().diagnostics().getLast());
+        assertThat(sink.diagnostics().getLast().context()).containsEntry("suppressedCount", 3L);
+    }
+
+    @Test
+    void a_null_custom_policy_decision_does_not_allow_the_next_stage_to_run() {
+        var seen = new ArrayList<StageId>();
+        var sink = new CollectingDiagnosticSink();
+        var warning = diagnostic(DiagnosticSeverity.WARN);
+        var pipeline = Pipeline.<String>start().then(new DiagnosticStage(warning))
+                .then(new RecordingStage(new StageId("WRITE"), "-written", seen));
+
+        assertThatThrownBy(() -> runner(ignored -> null, sink).run(Envelope.of("start", meta()), pipeline))
+                .isInstanceOf(NullPointerException.class).hasMessage("failure decision");
+
+        assertThat(seen).isEmpty();
+        assertThat(sink.diagnostics()).containsExactly(warning);
+    }
+
+    @Test
+    void a_throwing_custom_policy_propagates_its_failure_without_running_the_next_stage() {
+        var seen = new ArrayList<StageId>();
+        var failure = new IllegalStateException("policy defect");
+        var sink = new CollectingDiagnosticSink();
+        var warning = diagnostic(DiagnosticSeverity.WARN);
+        var pipeline = Pipeline.<String>start().then(new DiagnosticStage(warning))
+                .then(new RecordingStage(new StageId("WRITE"), "-written", seen));
+
+        assertThatThrownBy(() -> runner(ignored -> { throw failure; }, sink)
+                .run(Envelope.of("start", meta()), pipeline)).isSameAs(failure);
+
+        assertThat(seen).isEmpty();
+        assertThat(sink.diagnostics()).containsExactly(warning);
+    }
 
     @Test
     void runs_stages_in_pipeline_order_and_sets_stage_metadata() {
@@ -115,7 +231,7 @@ class PipelineRunnerTest {
     @Test
     void resumedEnvelopePreservesOmittedCountsWithoutCountingItsSyntheticSummary() {
         var warning = diagnostic(DiagnosticSeverity.WARN);
-        var retained = new BoundedNotification(1, new DiagnosticFactory(CLOCK));
+        var retained = new BoundedNotification(1, new DiagnosticFactory(CLOCK), PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED);
         retained.addAll(List.of(warning, warning));
         var input = new Envelope<>("start", meta(), retained.diagnostics(), retained.summary());
         var sink = new CollectingDiagnosticSink();
@@ -139,7 +255,9 @@ class PipelineRunnerTest {
                 .severity(DiagnosticSeverity.WARN)
                 .with("stage", "test").with("reason", "replacement").build();
         var input = Envelope.of("start", meta()).withDiagnostic(original);
-        for (var modified : List.of(List.<Diagnostic>of(), List.of(replacement))) {
+        var severityOnly = new DiagnosticFactory(CLOCK).create(original.code())
+                .context(original.context()).severity(DiagnosticSeverity.ERROR).build();
+        for (var modified : List.of(List.<Diagnostic>of(), List.of(replacement), List.of(severityOnly))) {
             Stage<String, String> invalidStage = new Stage<>() {
                 @Override
                 public StageId name() {

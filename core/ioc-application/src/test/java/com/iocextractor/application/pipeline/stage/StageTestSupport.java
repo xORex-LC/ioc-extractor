@@ -10,7 +10,7 @@ import com.iocextractor.domain.model.SourceContext;
 import com.iocextractor.application.pipeline.payload.AttributedIndicators;
 import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.domain.attribute.AttributionDecision;
 import com.iocextractor.domain.attribute.AttributionOutcome;
 import com.iocextractor.domain.attribute.SourceMarker;
