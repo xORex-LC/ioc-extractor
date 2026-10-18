@@ -187,3 +187,15 @@ jobs:
           version=$(./mvnw -q -pl "$module" help:evaluate -Dexpression=project.version -DforceStdout)
           python3 tools/ci/library-publication.py prepare --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle --version "$version"
           python3 tools/ci/library-publication.py consume --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle
+
+  library-consumer-gate:
+    name: library-consumer
+    needs: library-consumer
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every component consumer to pass
+        env:
+          CONSUMERS_RESULT: ${{ needs.library-consumer.result }}
+        run: test "$CONSUMERS_RESULT" = success

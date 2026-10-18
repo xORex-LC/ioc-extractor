@@ -645,6 +645,10 @@ JARs must retain `com.iocextractor`. Verifier negative fixtures reject a foreign
 group for an ordinary module and the retired group for either admitted library.
 
 The separate `library-consumer` CI matrix qualifies both JDK-only components.
+An aggregate job keeps the required status name `library-consumer` stable for
+branch protection. It runs even after an unsuccessful matrix and passes only
+when every component consumer succeeds; failed, cancelled or skipped consumers
+cannot produce a successful aggregate check.
 Each builds a parent-independent, zero-runtime-dependency POM, main JAR with
 the distribution license, sources and Javadoc. Publication contracts reject
 cross-component tags/bundles, coupled POMs and incomplete/foreign archives;
