@@ -228,11 +228,12 @@ After a version has passed publication qualification, add:
 <dependency>
   <groupId>io.github.xorex-lc</groupId>
   <artifactId>ioc-platform-concurrency</artifactId>
-  <version>0.3.0</version>
+  <version>0.3.0-rc.1</version>
 </dependency>
 ```
 
-This is an example coordinate, not a claim that `0.3.0` is already available.
+The example uses the qualified concurrency pilot release. The
+[diagnostics guide](diagnostics-library.md) supplies its released dependency.
 Central needs no additional repository configuration. For GitHub Packages use
 `https://maven.pkg.github.com/xorex-lc/ioc-extractor` and matching Maven server
 credentials with package read access. Even public GitHub Maven packages require
