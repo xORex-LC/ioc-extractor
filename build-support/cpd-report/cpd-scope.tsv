@@ -1,6 +1,7 @@
 # module-path	artifact-id	disposition	rationale
 .	ioc-extractor-parent	excluded	Root parent POM has no production Java sources
 platform/platform-errors	ioc-platform-errors	analyzed	Production runtime Java sources
+platform/platform-diagnostics-api	ioc-platform-diagnostics-api	analyzed	Production runtime Java sources
 platform/platform-diagnostics	ioc-platform-diagnostics	analyzed	Production runtime Java sources
 platform/platform-etl	ioc-platform-etl	analyzed	Production runtime Java sources
 platform/platform-events	ioc-platform-events	analyzed	Production runtime Java sources

@@ -1,12 +1,12 @@
 package com.iocextractor.diagnostics.codes;
 
 import com.iocextractor.diagnostics.DiagnosticCategory;
-import com.iocextractor.diagnostics.DiagnosticCode;
-import com.iocextractor.diagnostics.DiagnosticImpact;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.diagnostics.IocDiagnosticCode;
+import com.iocextractor.platform.diagnostics.DiagnosticImpact;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 
 /** Diagnostic codes produced by immutable artifact slice formation. */
-public enum ExportDiagnosticCodes implements DiagnosticCode {
+public enum ExportDiagnosticCodes implements IocDiagnosticCode {
     UNSUPPORTED_MODE(DiagnosticSeverity.FATAL, "export.unsupported-mode",
             "Export profile {profile} requests unsupported output mode {mode}"),
     SNAPSHOT_READ_FAILED(DiagnosticSeverity.ERROR, "export.snapshot-read-failed",

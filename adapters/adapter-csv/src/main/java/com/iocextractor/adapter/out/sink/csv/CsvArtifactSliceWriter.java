@@ -10,12 +10,12 @@ import com.iocextractor.application.export.StagedSlice;
 import com.iocextractor.application.port.out.export.ArtifactSliceWriter;
 import com.iocextractor.application.port.out.export.SliceManifestCodec;
 import com.iocextractor.application.port.out.export.SnapshotSliceReader;
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.ExportDiagnosticCodes;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
-import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.NoopDiagnosticSink;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

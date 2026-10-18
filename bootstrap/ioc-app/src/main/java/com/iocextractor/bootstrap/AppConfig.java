@@ -156,10 +156,10 @@ import com.iocextractor.application.port.out.export.SnapshotSliceReader;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
 import com.iocextractor.application.port.out.artifact.DocumentProcessingPlanFactory;
 import com.iocextractor.common.IocExtractorException;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.render.DiagnosticRenderer;
 import com.iocextractor.diagnostics.render.TemplateDiagnosticRenderer;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.domain.attribute.MarkerSourceAttributor;
 import com.iocextractor.domain.attribute.SourceAttributor;
 import com.iocextractor.adapter.out.psl.PslHostClassifier;
@@ -182,7 +182,7 @@ import com.iocextractor.domain.refang.ReplacementRefanger;
 import com.iocextractor.domain.refang.Refanger;
 import com.iocextractor.observability.diagnostics.LoggingDiagnosticSink;
 import com.iocextractor.observability.diagnostics.RedactingDiagnosticContextFormatter;
-import com.iocextractor.observability.diagnostics.ResilientDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.ResilientDiagnosticSink;
 import com.iocextractor.observability.logging.LoggingPipelineObserver;
 import com.iocextractor.platform.concurrent.KeyedExecutionGuard;
 import com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard;
@@ -326,7 +326,9 @@ public class AppConfig {
     @Bean
     public DiagnosticSink diagnosticSink(DiagnosticRenderer renderer) {
         var logging = new LoggingDiagnosticSink(LoggerFactory.getLogger(LoggingDiagnosticSink.class), renderer);
-        return new ResilientDiagnosticSink(logging, LoggerFactory.getLogger(ResilientDiagnosticSink.class));
+        var fallback = LoggerFactory.getLogger("com.iocextractor.observability.diagnostics.ResilientDiagnosticSink");
+        return new ResilientDiagnosticSink(logging, (diagnostic, failure) ->
+                fallback.error("diagnostic delivery failed for {}", diagnostic.code().id(), failure));
     }
 
     @Bean

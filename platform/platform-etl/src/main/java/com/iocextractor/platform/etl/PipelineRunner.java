@@ -1,15 +1,15 @@
 package com.iocextractor.platform.etl;
 
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
-import com.iocextractor.diagnostics.result.FailurePolicy;
-import com.iocextractor.diagnostics.result.BoundedNotification;
-import com.iocextractor.diagnostics.result.DiagnosticBatch;
-import com.iocextractor.diagnostics.result.Notification;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
-import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.platform.diagnostics.result.FailurePolicy;
+import com.iocextractor.platform.diagnostics.result.BoundedNotification;
+import com.iocextractor.platform.diagnostics.result.DiagnosticBatch;
+import com.iocextractor.platform.diagnostics.result.Notification;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.NoopDiagnosticSink;
 
 import java.time.Clock;
 import java.util.List;
@@ -138,10 +138,10 @@ public final class PipelineRunner {
     }
 
     private <I, O> PipelineRunResult<O> executeInRunScope(Envelope<I> input, Pipeline<I, O> pipeline, boolean complete) {
-        var bounded = new BoundedNotification(maxDiagnosticsPerRun, diagnosticFactory);
-        bounded.addAll(new DiagnosticBatch(input.diagnostics().stream()
+        var bounded = new BoundedNotification(maxDiagnosticsPerRun, diagnosticFactory, PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED);
+        bounded.addAll(DiagnosticBatch.of(input.diagnostics().stream()
                 .filter(diagnostic -> diagnostic.code() != PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED).toList(),
-                input.diagnosticSummary()));
+                input.diagnosticSummary(), PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED));
         Envelope<?> current = compact(input, bounded);
         RuntimeException runFailure = null;
         try {
@@ -209,8 +209,8 @@ public final class PipelineRunner {
         if (after.size() < before.size() || !after.subList(0, before.size()).equals(before)) {
             throw new IllegalStateException("Stage diagnostics must be append-only");
         }
-        return new DiagnosticBatch(after.subList(before.size(), after.size()),
-                output.diagnosticSummary().since(input.diagnosticSummary()));
+        return DiagnosticBatch.of(after.subList(before.size(), after.size()),
+                output.diagnosticSummary().since(input.diagnosticSummary()), PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED);
     }
 
     private Envelope<?> compact(Envelope<?> envelope, BoundedNotification bounded) {
@@ -218,9 +218,12 @@ public final class PipelineRunner {
     }
 
     private void rejectIfRequired(List<Diagnostic> diagnostics) {
-        new Notification()
-                .addAll(diagnostics)
-                .throwIfRejected(failurePolicy);
+        var notification = new Notification().addAll(diagnostics);
+        var decision = Objects.requireNonNull(failurePolicy.evaluate(notification), "failure decision");
+        if (decision.shouldStop()) {
+            throw new DiagnosticException(decision.diagnostic()
+                    .orElseThrow(() -> new IllegalStateException("Stop decision requires diagnostic")));
+        }
     }
 
     private void emitSuppressionSummary(List<Diagnostic> diagnostics, RuntimeException runFailure) {

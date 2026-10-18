@@ -1,15 +1,15 @@
 package com.iocextractor.diagnostics.codes;
 
 import com.iocextractor.diagnostics.DiagnosticCategory;
-import com.iocextractor.diagnostics.DiagnosticCode;
-import com.iocextractor.diagnostics.DiagnosticImpact;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.diagnostics.IocDiagnosticCode;
+import com.iocextractor.platform.diagnostics.DiagnosticImpact;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 
 import java.util.Arrays;
 import java.util.Optional;
 
 /** Stable value-free diagnostics for managed dataframe delivery coordination. */
-public enum ImportDiagnosticCodes implements DiagnosticCode {
+public enum ImportDiagnosticCodes implements IocDiagnosticCode {
     CLAIM_FAILED(DiagnosticSeverity.ERROR, "import.claim-failed",
             "Managed import claim failed; durable retry remains scheduled"),
     SOURCE_NOT_CONFIGURED(DiagnosticSeverity.ERROR, "import.source-not-configured",

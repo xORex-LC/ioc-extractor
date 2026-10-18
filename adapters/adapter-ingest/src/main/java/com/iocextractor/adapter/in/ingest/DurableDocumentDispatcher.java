@@ -7,9 +7,9 @@ import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
 import com.iocextractor.application.port.in.ingest.PreparedIngestion;
 import com.iocextractor.application.port.in.ingest.PrepareIngestionUseCase;
 import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
 
 import java.io.File;
 import java.nio.file.Path;

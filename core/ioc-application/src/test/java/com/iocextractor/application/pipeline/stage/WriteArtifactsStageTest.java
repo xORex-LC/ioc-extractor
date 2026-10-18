@@ -22,8 +22,8 @@ import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
 import com.iocextractor.diagnostics.DiagnosticException;
-import com.iocextractor.diagnostics.DiagnosticFactory;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
 import org.junit.jupiter.api.Test;
 

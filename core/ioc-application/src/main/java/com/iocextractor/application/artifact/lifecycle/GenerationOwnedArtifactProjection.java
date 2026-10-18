@@ -5,7 +5,7 @@ import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
 import com.iocextractor.application.port.out.artifact.lifecycle.ArtifactProjectionWorkStore;
 import com.iocextractor.common.IocExtractorException;
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 
 import java.time.Clock;
 import java.time.ZoneOffset;

@@ -6,9 +6,9 @@ import com.iocextractor.application.artifact.CanonicalKeyDefinition;
 import com.iocextractor.application.artifact.CanonicalKeyMode;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityStore;
 import com.iocextractor.application.tck.artifact.CanonicalIdentityStoreContractTest;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.StorageDiagnosticCodes;
-import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.CollectingDiagnosticSink;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -313,7 +313,7 @@ class JdbcArtifactIdentityStoreIT extends CanonicalIdentityStoreContractTest {
                 new DataframeArtifactSchema("masks", List.of(
                         new DataframeColumn("mask"), new DataframeColumn("source")))));
         return new JdbcArtifactIdentityStore(
-                dataSource, CLOCK, diagnostics, new com.iocextractor.diagnostics.DiagnosticFactory(CLOCK),
+                dataSource, CLOCK, diagnostics, new com.iocextractor.platform.diagnostics.DiagnosticFactory(CLOCK),
                 "dataframe");
     }
 

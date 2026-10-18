@@ -22,10 +22,38 @@ public final class BuildQualityVerifierTest {
               <modelVersion>4.0.0</modelVersion>
             """;
 
+    private static void admitDiagnosticsApi(Path root) throws IOException {
+        try (var paths = Files.walk(root)) {
+            for (Path path : paths.filter(Files::isRegularFile).toList()) {
+                String text = Files.readString(path);
+                text = text.replace("<artifactId>app</artifactId>",
+                        "<artifactId>ioc-platform-diagnostics-api</artifactId>");
+                text = text.replaceAll("com.iocextractor(</groupId>\\s*<artifactId>ioc-platform-diagnostics-api)",
+                        "io.github.xorex-lc$1");
+                text = text.replace("\tapp\t", "\tioc-platform-diagnostics-api\t");
+                if (path.getFileName().toString().equals("coverage-ratchets.tsv")
+                        || path.getFileName().toString().equals("coverage-floors.tsv")) {
+                    text = text.replace("\napp\t", "\nioc-platform-diagnostics-api\t");
+                }
+                Files.writeString(path, text);
+            }
+        }
+    }
+
     private BuildQualityVerifierTest() {
     }
 
     public static void main(String[] args) throws Exception {
+        try (Fixture fixture = Fixture.create(Control.SPOTBUGS)) {
+            admitDiagnosticsApi(fixture.root());
+            Result admitted = fixture.execute(Mode.VALIDATE);
+            require(admitted.exitCode() == 0, "diagnostics API admission failed: " + admitted.standardError());
+            fixture.replaceReport("io.github.xorex-lc", "com.iocextractor");
+            Result rejected = fixture.execute(Mode.VALIDATE);
+            require(rejected.exitCode() != 0 && rejected.standardError().contains("ordering dependency"),
+                    "old diagnostics API coordinate must be rejected");
+        }
+
         List<Scenario> scenarios = List.of(
                 new Scenario(
                         "foreign group cannot impersonate reactor app",
@@ -564,8 +592,8 @@ public final class BuildQualityVerifierTest {
                             + String.join("\n - ", failures));
         }
         System.out.printf(
-                "BuildQualityVerifier: 7 happy paths and %d negative scenarios passed%n",
-                scenarios.size() + 1);
+                "BuildQualityVerifier: 8 happy paths and %d negative scenarios passed%n",
+                scenarios.size() + 2);
     }
 
     private static void runPmdWatchlistHappyPath()

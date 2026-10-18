@@ -5,7 +5,8 @@ adapters и bootstrap собираются как отдельные Maven-мо�
 зависимостями.
 
 Пилотная библиотека `platform-concurrency` использует Maven groupId
-`io.github.xorex-lc`; остальные модули сохраняют `com.iocextractor`. Публикуемый
+`io.github.xorex-lc`; выделяемый `platform-diagnostics-api` использует ту же
+группу, но ещё не опубликован отдельно. Остальные модули сохраняют `com.iocextractor`. Публикуемый
 POM библиотеки не зависит от parent реактора. Политика —
 [ADR 0028](ADR/0028-pilot-library-publication.md), процедура —
 [руководство по публикации](guides/library-publication.md).
@@ -32,7 +33,8 @@ POM библиотеки не зависит от parent реактора. По�
 ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <modules>)
 ├── platform/                      ← агностичные, переиспользуемые подсистемы
 │   ├── platform-errors            (базовые ошибки/common-типы)
-│   ├── platform-diagnostics       (диагностика: catalog, result/policy, sinks/renderer)
+│   ├── platform-diagnostics-api   (JDK-only модель, result/policy, bounded collectors, sinks)
+│   ├── platform-diagnostics       (IOC-каталог, metadata, exception, renderer)
 │   ├── platform-etl               (generic Envelope/Stage/Pipeline/PipelineRunner)
 │   ├── platform-events            (framework-free control-event contracts)
 │   ├── platform-concurrency       (keyed single-flight primitives)
@@ -85,9 +87,9 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ io
 
 - `platform/*` образуют собственный направленный DAG и не тянут
   application/domain/adapters: events, concurrency и errors автономны;
-  diagnostics зависит от errors; ETL — от diagnostics/errors; observability —
+  diagnostics зависит от diagnostics-api/errors; ETL — от diagnostics-api/diagnostics/errors; observability —
   от ETL; diagnostics-logging bridge — от diagnostics/observability.
-- `platform-etl` зависит только на diagnostics/errors и не знает про IOC domain.
+- `platform-etl` зависит только на diagnostics-api/diagnostics/errors и не знает про IOC domain.
 - `ioc-domain` не зависит на application/adapters/bootstrap/platform-etl и
   остаётся framework-free.
 - `ioc-processing` зависит только от `ioc-domain` и `platform-errors`: он
@@ -112,14 +114,14 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ io
   JDK-only verifier и synthetic-reactor contract harness напрямую.
 - `coverage-report` зависит на все production-модули только для формирования
   полного JaCoCo aggregate.
-- `spotbugs-report` зависит на те же 21 production-модуль для reactor ordering,
+- `spotbugs-report` зависит на те же 22 production-модуля для reactor ordering,
   формирует общий SpotBugs XML/HTML и проверяет наличие всех module/aggregate
   reports.
-- `cpd-report` зависит на 21 production-модуль только для reactor ordering и
+- `cpd-report` зависит на 22 production-модуля только для reactor ordering и
   анализирует единым PMD CPD execution явный allowlist их `src/main/java`;
   fail-closed registry сверяет reactor, ordering dependencies, source roots и
   итоговый XML source universe.
-- `pmd-report` зависит на те же 21 production-модуль только для reactor
+- `pmd-report` зависит на те же 22 production-модуля только для reactor
   ordering и type resolution. Поимённая 22-rule policy выполняется
   отдельным regular CI job, а 3-rule ownership/size watchlist остаётся
   локально opt-in. Оба профиля анализируют явный allowlist
@@ -146,7 +148,8 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ io
 
 | Модуль | Ответственности |
 |---|---|
-| `platform-diagnostics` | Diagnostics (модель, каталог, порты, sinks/renderer); может зависеть на `platform-errors` для `DiagnosticException` |
+| `platform-diagnostics-api` | Общие значения, result/policy, bounded collectors и sinks; только JDK 21; [руководство](guides/diagnostics-library.md) |
+| `platform-diagnostics` | IOC-каталог и `IocDiagnosticCode`, exception и renderer; зависит от `platform-diagnostics-api` и `platform-errors` |
 | `platform-etl` | Generic ETL kernel: `Envelope`, `Stage`, `Pipeline`, `PipelineRunner`, `PipelineObserver` |
 | `platform-events` | Framework-free publish-only control-event contracts и observers; без broker/durable delivery mechanics |
 | `platform-concurrency` | Async FIFO по ключу с bounded admission; synchronous exclusion без FIFO; [контракты и health snapshots](../platform/platform-concurrency/README.md) |

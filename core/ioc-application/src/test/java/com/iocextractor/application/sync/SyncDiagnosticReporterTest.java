@@ -1,7 +1,7 @@
 package com.iocextractor.application.sync;
 
 import com.iocextractor.diagnostics.codes.SyncDiagnosticCodes;
-import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.CollectingDiagnosticSink;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 

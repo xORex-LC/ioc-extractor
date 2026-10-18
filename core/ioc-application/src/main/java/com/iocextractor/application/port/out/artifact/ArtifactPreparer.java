@@ -2,7 +2,7 @@ package com.iocextractor.application.port.out.artifact;
 
 import com.iocextractor.application.artifact.ArtifactWritePlan;
 import com.iocextractor.processing.model.ClassifiedIndicator;
-import com.iocextractor.diagnostics.result.Result;
+import com.iocextractor.platform.diagnostics.result.Result;
 
 import java.util.List;
 

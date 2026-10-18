@@ -14,7 +14,7 @@ import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceRe
 import com.iocextractor.application.port.out.dataframeimport.DispositionImportSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ImportChangeSignalSource;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
-import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.NoopDiagnosticSink;
 import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
 import com.iocextractor.platform.concurrent.WorkAdmission;
 import com.iocextractor.platform.concurrent.WorkKey;

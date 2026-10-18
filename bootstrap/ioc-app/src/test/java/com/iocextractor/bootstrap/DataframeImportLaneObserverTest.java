@@ -1,7 +1,7 @@
 package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.dataframeimport.DataframeImportConsistencyException;
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.platform.concurrent.WorkAdmission;
 import com.iocextractor.platform.concurrent.WorkKey;
 import org.junit.jupiter.api.Test;

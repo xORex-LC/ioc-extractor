@@ -23,7 +23,8 @@ not a current publication test.
 | Module/capability | Category | Responsibility | Current consumers | IOC-specific coupling | Publication disposition |
 |---|---|---|---|---|---|
 | `platform/platform-errors` | Service-shared | Root unchecked exception contract | diagnostics, ETL, application, four adapters, bootstrap | High: `IocExtractorException` and `com.iocextractor.common` express this product | Keep internal; not a first publication unit |
-| `platform/platform-diagnostics` | Mixed service-shared / candidate platform | Diagnostic/result/policy/sink mechanics plus category catalogs | ETL, application, diagnostics bridge, four adapters, bootstrap | Medium/high: IOC capability code catalogs and `platform-errors` closure | Genericity split/admission required |
+| `platform/platform-diagnostics-api` | Candidate cross-service platform | JDK-only values, results/policies, bounded samples/counts and sinks | Local diagnostics, ETL, application, adapters and bootstrap | No non-JDK production closure; independent packaging still pending | D1 implemented; D2 qualified; D3–D5 pending |
+| `platform/platform-diagnostics` | Service-shared product metadata | IOC catalogs, exception and rendering | ETL, application, diagnostics bridge, four adapters, bootstrap | IOC categories/messages and `platform-errors` closure | Retained locally after D1 split |
 | `platform/platform-etl` | Candidate cross-service platform | Framework-free Pipes-and-Filters execution model | application, observability | Medium: diagnostics/error result semantics and only one business consumer | Defer until second consumer and closure review |
 | `platform/platform-events` | Candidate cross-service platform, local only | In-process publish-only control-event mechanics | application, bootstrap | Low in API shape; current use remains service-local and explicitly non-wire | Defer publication; preserve anti-broker boundary |
 | `platform/platform-concurrency` | Cross-service platform candidate | Keyed asynchronous serialization and synchronous exclusion | application, adapter-ingest, bootstrap | Low: no project-owned dependency closure and no IOC types | Priority admission candidate `LIB-1` |
@@ -35,7 +36,7 @@ not a current publication test.
 | ID | Candidate | Category | Owner | Consumers | Dependency closure | State |
 |---|---|---|---|---|---|---|
 | `LIB-1` | `platform-concurrency` | Cross-service platform | Platform coordination | Current application/adapter-ingest/bootstrap; planned Java + Spring Boot `feeds-collector`, execution policy undecided | No runtime dependencies beyond JDK | `published-qualified`; Central and GitHub Packages cold consumers passed |
-| `LIB-2` | Generic diagnostics model/result/sink subset | Cross-service platform | Diagnostics | Current reactor consumers + planned `feeds-collector` | Must remove service exception/catalog coupling or explicitly version it | `genericity-review` |
+| `LIB-2` | Generic diagnostics model/result/sink subset | Cross-service platform | Misyurkeev Denis (`xORex-LC`) / Diagnostics | Current reactor consumers + planned `feeds-collector` | JDK-only shared module; IOC catalogs, exceptions and logging remain local | `design-admitted`; D0 fixed, D1 implemented and D2 qualified; D3 consumer/release qualification pending |
 | `LIB-3` | Generic observability/MDC/value typing subset | Cross-service platform | Observability | Current adapters/bootstrap + planned service | ETL observer and IOC action/field vocabulary must be excluded or separated | `genericity-review` |
 | `LIB-4` | `platform-etl` | Cross-service platform | ETL | Current `ioc-application`; nearest consumer planned only | diagnostics + errors + their accepted publication closure | `deferred-second-consumer` |
 | `LIB-5` | `platform-events` local control API | Cross-service platform, non-wire | Event coordination | Current application/bootstrap; nearest consumer planned only | None | `deferred-second-consumer` |
@@ -52,6 +53,46 @@ The owner has selected Maven Central plus GitHub Packages and reported the
 `LIBRARY PUBLISHING`; the protected runs subsequently verified the credentials,
 signing identity and both repository paths. Exact evidence is recorded in the
 execution record.
+
+### LIB-2 D0 design admission — 2026-10-18
+
+The owner requested fixing the diagnostics contract. Its
+[D0 record](../libs/lib-2-diagnostics-design.md) selects
+`io.github.xorex-lc:ioc-platform-diagnostics-api`, an 18-type JDK 21 surface,
+named maintainer `xORex-LC`, zero non-JDK production dependencies and lockstep
+versions. All 38 existing diagnostics types are disposed: 17 extracted after
+adaptation, 21 retained locally, plus the adapted resilient sink from the logging
+bridge. The [ADR draft](../libs/lib-2-diagnostics-adr-draft.md) records rationale
+for D4 promotion.
+
+`design-admitted` means the implementation target is fixed. It does not claim
+the dependency seams have been removed, public signatures compiled, migration
+tests passed or a standalone artifact qualified. D1–D5 retain those checks;
+actual publication remains separately authorized. The existing focused 123-test
+result covers unchanged code only. No LIB-2 release row is added to publication
+evidence.
+
+### LIB-2 D1 implementation — 2026-10-18
+
+The [D1 record](../libs/lib-2-diagnostics-design.md#d1-implementation-and-qualification-record--2026-10-18)
+tracks the coherent shared-model migration, code/API/package documentation and
+consumer guide with executable examples. IOC catalogs, exception and logging
+metadata remain local. The reactor's new API coordinate has no non-JDK runtime
+dependency. Existing quality floors and module ratchets are preserved; the
+new module has its own measured ratchet. D2 public-boundary qualification and
+D3 standalone packaging remain separate from publication admission.
+
+### LIB-2 D2 boundary qualification — 2026-10-18
+
+The [D2 record](../libs/lib-2-diagnostics-design.md#d2-public-boundary-qualification--2026-10-18)
+extends the API suite from 49 to 77 cases and qualifies IOC pipeline/checkpoint
+behavior, exact counts and delivery, partial failures and documented boundaries.
+One runner defect is fixed: terminal delivery cannot replace the original failure
+by attempting to suppress that same exception instance. Full offline verification,
+PMD policy/watchlist and documentation checks pass without changing existing
+floors, scopes, accepted findings or dependency closure. Independent packaging
+and publication evidence remain pending; this does not promote LIB-2 to
+`published-qualified`.
 
 ## Admission record template
 

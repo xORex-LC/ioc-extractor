@@ -2,7 +2,7 @@ package com.iocextractor.adapter.out.source;
 
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.diagnostics.DiagnosticException;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.SourceDiagnosticCodes;
 import org.apache.tika.exception.UnsupportedFormatException;
 import org.apache.tika.metadata.Metadata;

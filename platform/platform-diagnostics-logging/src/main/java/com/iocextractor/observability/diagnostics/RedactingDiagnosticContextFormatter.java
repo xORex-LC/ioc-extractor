@@ -1,8 +1,8 @@
 package com.iocextractor.observability.diagnostics;
 
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticContextKeys;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.render.DiagnosticContextFormatter;
 import com.iocextractor.observability.SensitiveLogValueSanitizer;
 

@@ -22,6 +22,11 @@
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>io.github.xorex-lc</groupId>
+            <artifactId>ioc-platform-diagnostics-api</artifactId>
+        </dependency>
+
         <!-- Platform production universe. -->
         <dependency>
             <groupId>com.iocextractor</groupId>

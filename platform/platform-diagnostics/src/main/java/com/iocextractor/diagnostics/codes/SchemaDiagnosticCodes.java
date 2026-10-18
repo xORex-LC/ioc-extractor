@@ -1,14 +1,14 @@
 package com.iocextractor.diagnostics.codes;
 
 import com.iocextractor.diagnostics.DiagnosticCategory;
-import com.iocextractor.diagnostics.DiagnosticCode;
-import com.iocextractor.diagnostics.DiagnosticImpact;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.diagnostics.IocDiagnosticCode;
+import com.iocextractor.platform.diagnostics.DiagnosticImpact;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 
 /**
  * Diagnostic codes for storage schema reconciliation.
  */
-public enum SchemaDiagnosticCodes implements DiagnosticCode {
+public enum SchemaDiagnosticCodes implements IocDiagnosticCode {
     SCHEMA_ADDED(DiagnosticSeverity.INFO, "storage.schema-added",
             "Artifact {artifact} schema added column {column}"),
     SCHEMA_DESTRUCTIVE_CHANGE(DiagnosticSeverity.FATAL, "storage.schema-destructive-change",

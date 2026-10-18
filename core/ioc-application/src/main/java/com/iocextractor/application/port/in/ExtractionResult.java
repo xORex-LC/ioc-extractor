@@ -1,8 +1,8 @@
 package com.iocextractor.application.port.in;
 
 import com.iocextractor.application.pipeline.CompletionStatus;
-import com.iocextractor.diagnostics.Diagnostic;
-import com.iocextractor.diagnostics.result.DiagnosticSummary;
+import com.iocextractor.platform.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.result.DiagnosticSummary;
 
 import java.util.ArrayList;
 import java.util.Collection;

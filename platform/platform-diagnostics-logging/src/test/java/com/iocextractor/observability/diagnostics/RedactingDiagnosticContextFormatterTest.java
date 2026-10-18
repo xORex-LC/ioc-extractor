@@ -1,7 +1,7 @@
 package com.iocextractor.observability.diagnostics;
 
-import com.iocextractor.diagnostics.Diagnostic;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.platform.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.SinkDiagnosticCodes;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;

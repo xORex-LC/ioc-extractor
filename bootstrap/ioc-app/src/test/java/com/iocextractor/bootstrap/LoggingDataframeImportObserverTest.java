@@ -21,7 +21,7 @@ import com.iocextractor.application.dataframeimport.model.ImportSourceId;
 import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportResult;
 import com.iocextractor.application.port.out.dataframeimport.PublishImportReportCommand;
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;

@@ -1,7 +1,7 @@
 package com.iocextractor.application.pipeline;
 
-import com.iocextractor.diagnostics.DiagnosticSeverity;
-import com.iocextractor.diagnostics.result.DiagnosticSummary;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
+import com.iocextractor.platform.diagnostics.result.DiagnosticSummary;
 
 import java.util.Objects;
 

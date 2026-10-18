@@ -1,14 +1,15 @@
 package com.iocextractor.application.pipeline.stage;
 
+import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.platform.etl.Envelope;
 import com.iocextractor.platform.etl.Stage;
 import com.iocextractor.platform.etl.StageId;
 import com.iocextractor.application.pipeline.payload.ExtractedIndicators;
 import com.iocextractor.application.pipeline.payload.RefangedText;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
-import com.iocextractor.diagnostics.DiagnosticFactory;
-import com.iocextractor.diagnostics.result.BoundedDiagnosticCollector;
-import com.iocextractor.diagnostics.result.DiagnosticBatch;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.result.BoundedDiagnosticCollector;
+import com.iocextractor.platform.diagnostics.result.DiagnosticBatch;
 import com.iocextractor.domain.extract.ExtractionDecision;
 import com.iocextractor.domain.extract.ExtractionDecisionStatus;
 import com.iocextractor.domain.extract.IndicatorExtractor;
@@ -76,7 +77,7 @@ public final class ExtractIndicatorsStage implements Stage<RefangedText, Extract
     }
 
     private DiagnosticBatch diagnostics(List<ExtractionDecision> decisions) {
-        var diagnostics = new BoundedDiagnosticCollector(diagnosticLimit);
+        var diagnostics = new BoundedDiagnosticCollector(diagnosticLimit, PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED);
         Map<SpanKey, ExtractionDecision> acceptedBySpan = new HashMap<>();
         for (ExtractionDecision decision : decisions) {
             if (decision.status() == ExtractionDecisionStatus.ACCEPTED) {

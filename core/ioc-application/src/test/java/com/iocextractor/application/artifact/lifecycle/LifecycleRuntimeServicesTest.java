@@ -11,7 +11,7 @@ import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleControl
 import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleHistoryStore;
 import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleReconciliationStore;
 import com.iocextractor.platform.events.ControlEvent;
-import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.NoopDiagnosticSink;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;

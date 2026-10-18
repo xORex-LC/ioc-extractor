@@ -3,6 +3,9 @@ package com.iocextractor;
 import com.iocextractor.platform.etl.Stage;
 import com.iocextractor.platform.events.ControlEvent;
 import com.tngtech.archunit.core.importer.ImportOption;
+import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.library.dependencies.SliceAssignment;
+import com.tngtech.archunit.library.dependencies.SliceIdentifier;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
@@ -74,6 +77,12 @@ class ArchitectureTest {
             .should().dependOnClassesThat().resideInAnyPackage(
                     "org.springframework..", "org.slf4j..", "ch.qos.logback..",
                     "..adapter..", "..bootstrap..", "..application.service..");
+
+    @ArchTest
+    static final ArchRule reusable_diagnostics_depends_only_on_itself_and_jdk = classes()
+            .that().resideInAPackage("com.iocextractor.platform.diagnostics..")
+            .should().onlyDependOnClassesThat().resideInAnyPackage(
+                    "java..", "com.iocextractor.platform.diagnostics..");
 
     @ArchTest
     static final ArchRule domain_does_not_depend_on_diagnostics_delivery = noClasses()
@@ -231,6 +240,23 @@ class ArchitectureTest {
 
     @ArchTest
     static final ArchRule no_package_cycles = slices()
-            .matching("com.iocextractor.(*)..")
+            .assignedFrom(new SliceAssignment() {
+                @Override
+                public SliceIdentifier getIdentifierOf(JavaClass type) {
+                    var parts = type.getPackageName().split("\\.");
+                    if (parts.length < 3) {
+                        return SliceIdentifier.ignore();
+                    }
+                    // Platform modules have independent ownership; collapsing them
+                    // hides their actual dependency direction behind one large slice.
+                    return SliceIdentifier.of(parts[2].equals("platform") && parts.length > 3
+                            ? parts[2] + "." + parts[3] : parts[2]);
+                }
+
+                @Override
+                public String getDescription() {
+                    return "top-level packages and individual platform subsystems";
+                }
+            })
             .should().beFreeOfCycles();
 }

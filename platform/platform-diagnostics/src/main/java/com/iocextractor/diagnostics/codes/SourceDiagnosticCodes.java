@@ -1,14 +1,14 @@
 package com.iocextractor.diagnostics.codes;
 
 import com.iocextractor.diagnostics.DiagnosticCategory;
-import com.iocextractor.diagnostics.DiagnosticCode;
-import com.iocextractor.diagnostics.DiagnosticImpact;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.diagnostics.IocDiagnosticCode;
+import com.iocextractor.platform.diagnostics.DiagnosticImpact;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 
 /**
  * Diagnostic codes for source document reading.
  */
-public enum SourceDiagnosticCodes implements DiagnosticCode {
+public enum SourceDiagnosticCodes implements IocDiagnosticCode {
     READ_FAILED(DiagnosticSeverity.FATAL, DiagnosticImpact.RUN, "source.read-failed",
             "Source {source} could not be read: {reason}"),
     UNSUPPORTED_FORMAT(DiagnosticSeverity.ERROR, DiagnosticImpact.RUN, "source.unsupported-format",

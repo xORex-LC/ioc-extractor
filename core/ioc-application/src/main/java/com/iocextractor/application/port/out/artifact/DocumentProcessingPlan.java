@@ -3,7 +3,7 @@ package com.iocextractor.application.port.out.artifact;
 import com.iocextractor.application.artifact.RoutedArtifactCandidate;
 import com.iocextractor.application.artifact.UncachedDocumentProcessingSession;
 import com.iocextractor.application.pipeline.payload.IndicatorOccurrence;
-import com.iocextractor.diagnostics.result.Result;
+import com.iocextractor.platform.diagnostics.result.Result;
 import java.util.List;
 import com.iocextractor.application.artifact.DocumentObservationSelection;
 

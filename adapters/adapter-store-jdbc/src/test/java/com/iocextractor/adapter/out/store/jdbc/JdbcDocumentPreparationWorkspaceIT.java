@@ -16,7 +16,7 @@ import com.iocextractor.application.observation.OccurrencePosition;
 import com.iocextractor.application.port.in.ExtractionCommand;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 import com.iocextractor.application.tck.junit.IntegrationTest;
-import com.iocextractor.diagnostics.result.DiagnosticSummary;
+import com.iocextractor.platform.diagnostics.result.DiagnosticSummary;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;

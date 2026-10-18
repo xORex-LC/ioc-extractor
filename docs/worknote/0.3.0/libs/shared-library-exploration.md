@@ -1055,3 +1055,128 @@ The owner also requested removal of the superseded branches. Delete their local
 and remote references only after their tips are verified as ancestors of the
 published shared branch. Historical branch names and qualification baselines in
 prior notes remain historical evidence. Library component tags remain intact.
+
+## LIB-5 design resumed — 2026-10-17
+
+The owner requested an events plan-project and questions after router/storage
+work. The [draft proposal](lib-5-events-design.md) refreshes the current baseline
+at `d98bf415`. The events module and Spring publisher source remain unchanged
+from the original assessment; this does not establish unchanged callers.
+
+Keep the previously confirmed local-event, metadata and Spring-adapter scope.
+The draft proposes the two dependency units, existing-type disposition, explicit
+failure contracts and E0–E5 qualification/migration slices. No implementation or
+publication has started.
+
+One owner question remains: is protection of the producer sufficient for the
+first extraction, with listener isolation configured by each service, or must
+the shared scope also provide an explicit way to continue independent handlers
+after one fails? Default synchronous Spring delivery may stop remaining handlers
+before the existing outer adapter catches the exception. Spring already has an
+error-handler facility; assess its application-wide effects before adding any
+shared configuration. Recommend service-owned configuration for v1. Answer pending.
+
+**Owner answer, 2026-10-17:** The recommended boundary is acceptable. Preserve
+producer protection in the shared Spring adapter; each service configures
+listener isolation with Spring tools. The library does not promise an attempt
+to invoke every handler and does not replace the application's multicaster.
+
+**Design checkpoint:** The scope question is closed. The proposal now records
+the agreed boundary and E0–E5 extraction/qualification plan. Remaining E0 work
+is technical verification of dependencies, callers and observation contracts,
+not another general usefulness interview. No production extraction, publication,
+commit, push or merge is implied by accepting this behavioral boundary.
+
+## LIB-5 E0 technical checkpoint — 2026-10-17
+
+The owner requested the next step using system-design, architecture-review,
+architecture-designer, event-driven-architecture and java-code-review. The
+[E0 worknote](lib-5-events-e0-analysis.md) completes the current dependency,
+caller/listener and exception-boundary analysis on `d98bf415`.
+
+The two-unit boundary remains viable. Proposed adapter package now includes
+`adapter.out` to participate in existing ArchUnit layers. The first proposed
+support baseline is Java 21, Spring Context 7.0.9 and SLF4J 2.0.18; IOC Boot
+4.0.8 is the host rather than a required consumer parent. Six event types and
+six handler methods in five listener classes remain service-owned, as do the
+eight publication caller classes and durable correctness backstops.
+
+E0 found three required E2 corrections: a real Spring annotated listener's
+Error is wrapped and swallowed, a failed observer hides original publication
+failure evidence, and a throwing fallback logger can escape or reclassify a
+successful publication. The logger case uses an artificial provider; it does
+not establish ordinary Logback failure. ARCH-4/OBS-7/OBS-8 record the issues in
+the durable registry. No production incident or actual resource exhaustion was
+established and no production fix is made by this analysis.
+
+Verification: 11 events tests and 3 selected publisher tests passed; 18 local
+source-compiled characterization observations reproduced, including four gap
+observations across the three corrections. Real Spring partial dispatch and
+service-configured ErrorHandler continuation were both exercised. These are
+design evidence, not release or independent published-consumer qualification.
+Local fixtures/logs stay ignored under `.dev`; the initial fatal expectation
+failure is retained. Docs/link checks and `git diff --check` passed. No new Java
+or build scope, full verify/PMD, commit, push, merge or publication.
+
+The [proposal](lib-5-events-design.md) now has the precise contracts and E1/E2
+regression requirements; the [ADR draft](lib-5-events-adr-draft.md) records the
+trade-offs as proposed. E1 is the next implementation slice. This checkpoint
+completes E0 rather than claiming the Spring bridge is already qualified.
+
+## Owner sequencing decision — 2026-10-18
+
+The owner accepted closing events at the plan-project/E0 stage and proceeding
+to sequential extraction, starting with diagnostics. Events E1 is therefore a
+future implementation slice, not the next active task. Retain the two-unit
+events proposal, unnumbered ADR draft and ARCH-4/OBS-7/OBS-8 findings; no events
+production change or publication is performed by this checkpoint.
+
+For diagnostics, first reconcile the September proposal against current code,
+then extract and migrate the shared types, qualify an independent consumer and
+prepare release admission/publication. Finish that cycle before moving to
+another candidate. Publication remains a separate explicitly authorized action;
+the concurrency pilot must not be republished. This task records the plan and
+prepares the next-agent handoff; it does not start diagnostics implementation.
+
+A narrow source refresh found `DiagnosticBatch` and
+`BoundedDiagnosticCollector`, absent from the original diagnostics type table.
+The former directly checks the IOC suppression enum. The next agent must cover
+their bounded-merge and marker-validation contracts instead of mechanically
+moving the historical sixteen-type selection. Further API decisions must follow
+the refreshed caller/dependency review. All work stays on `r030-libraries`.
+
+## LIB-2 D0 contract fixed — 2026-10-18
+
+The owner requested proceeding with D0 and recording the contract. The
+[diagnostics plan](lib-2-diagnostics-design.md) now fixes the artifact/packages,
+18-type surface, JDK-only closure, maintainer `xORex-LC`, lockstep compatibility,
+local IOC metadata extension, consumer-supplied suppression marker and resilient
+fallback. D0 is complete for design; the
+[ADR draft](lib-2-diagnostics-adr-draft.md) records alternatives and trade-offs
+for promotion in D4. Earlier proposed API descriptions remain historical.
+
+The fixed contract retains severity-sensitive code/context equality with
+time/cause excluded, both retention algorithms and exact occurrence counts.
+It clarifies matching-marker responsibility, validating batch creation, raw
+partial-delivery behavior and the difference between retained detail and total
+sink traffic. Public metadata and overflow validation need implementation/tests
+in D1/D2; no new runtime behavior is claimed from this documentation change.
+
+The current source inventory reconfirms 38 diagnostics types and ten functional
+direct consumers plus four report POMs. No production/build/test change, compiled
+shared API, independent consumer, full verify/PMD, commit or publication is part
+of D0. The next implementation slice is D1, followed by D2 hardening.
+
+## LIB-2 documentation scope — 2026-10-18
+
+The owner requested substantive code and external documentation for the library.
+The [plan](lib-2-diagnostics-design.md) now makes source contracts and consumer
+documentation D1 deliverables: Javadoc for all 18 public types and their API,
+package documentation, comments explaining non-obvious invariants, module
+references and an independent-service usage guide. Examples must compile/run
+with expected outcomes and be reused by the D3 outside-reactor consumer.
+
+D2 keeps documentation aligned with boundary hardening. D4 performs the final
+completeness/consistency review, ADR promotion and evidence checks. This scope
+clarification does not change the D0 API or start implementation; no Java,
+build or publication changes are made here.

@@ -3,7 +3,7 @@ package com.iocextractor.application.artifact;
 import com.iocextractor.application.pipeline.payload.IndicatorOccurrence;
 import com.iocextractor.application.port.out.artifact.DocumentProcessingPlan;
 import com.iocextractor.application.port.out.artifact.DocumentProcessingSession;
-import com.iocextractor.diagnostics.result.Result;
+import com.iocextractor.platform.diagnostics.result.Result;
 import java.util.List;
 import java.util.Objects;
 

@@ -1,9 +1,10 @@
 package com.iocextractor.application.pipeline.stage;
 
+import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.application.port.out.artifact.DocumentSourceWorkspace;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
-import com.iocextractor.diagnostics.DiagnosticFactory;
-import com.iocextractor.diagnostics.result.BoundedDiagnosticCollector;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.result.BoundedDiagnosticCollector;
 import com.iocextractor.domain.extract.ExtractionDecisionStatus;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.platform.etl.Envelope;
@@ -18,7 +19,7 @@ public record ExtractSourceStreamStage(IndicatorExtractor extractor, DiagnosticF
     public Envelope<DocumentSourceWorkspace> process(Envelope<DocumentSourceWorkspace> input) {
         var source = input.payload();
         extractor.extract(source.text(), source.maximumMatchCharacters(), source);
-        var collected = new BoundedDiagnosticCollector(diagnosticLimit);
+        var collected = new BoundedDiagnosticCollector(diagnosticLimit, PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED);
         try (var cursor = source.decisions().open()) {
             while (cursor.next()) {
                 var decision = cursor.value();

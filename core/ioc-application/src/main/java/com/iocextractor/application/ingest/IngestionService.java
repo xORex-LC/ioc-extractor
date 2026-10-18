@@ -28,13 +28,14 @@ import com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard;
 import com.iocextractor.platform.concurrent.WorkKey;
 import com.iocextractor.platform.events.ControlEventPublisher;
 import com.iocextractor.platform.events.NoopControlEventPublisher;
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticCategory;
+import com.iocextractor.diagnostics.IocDiagnosticCode;
 import com.iocextractor.diagnostics.DiagnosticException;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
-import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.NoopDiagnosticSink;
 
 import java.nio.file.Path;
 import java.time.Clock;
@@ -465,7 +466,8 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
 
     private boolean isIngestDiagnostic(RuntimeException failure) {
         return failure instanceof DiagnosticException diagnosticFailure
-                && diagnosticFailure.diagnostic().category() == DiagnosticCategory.INGEST;
+                && diagnosticFailure.diagnostic().code() instanceof IocDiagnosticCode code
+                && code.category() == DiagnosticCategory.INGEST;
     }
 
     private String reason(RuntimeException failure) {

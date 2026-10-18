@@ -1,10 +1,10 @@
 package com.iocextractor.observability.diagnostics;
 
-import com.iocextractor.diagnostics.Diagnostic;
-import com.iocextractor.diagnostics.DiagnosticFactory;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.platform.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
-import com.iocextractor.diagnostics.result.FailurePolicy;
+import com.iocextractor.platform.diagnostics.result.FailurePolicy;
 import com.iocextractor.observability.LogField;
 import com.iocextractor.observability.logging.LoggingPipelineObserver;
 import com.iocextractor.platform.etl.Envelope;

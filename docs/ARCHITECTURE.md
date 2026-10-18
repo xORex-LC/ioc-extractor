@@ -42,7 +42,8 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Domain | `domain/classify` | `MatchPolicy`, rule-based classification |
 | Domain | `domain/attribute` | `SourceAttributor` (порт) + `MarkerSourceAttributor` |
 | Platform | `platform/etl` | `Envelope`, `EnvelopeMeta`, `Stage`, `StageId`, `Pipeline`, `PipelineRunner` |
-| Platform | `diagnostics` | Diagnostic model, catalog, `Result`/`Notification`, `FailurePolicy`, sink ports |
+| Platform | `diagnostics-api` | JDK-only Diagnostic, results, policies, bounded collectors and sink contracts |
+| Platform | `diagnostics` | IOC catalogs, metadata, exception and rendering |
 | Platform | `observability` | MDC/log event helpers and logging taxonomy |
 | Platform | `events` | Framework-free control-event marker, metadata envelope, publish port and observers; no broker/delivery mechanics |
 | Platform | `concurrent` | In-memory keyed single-flight executor, observer hooks and health snapshots |

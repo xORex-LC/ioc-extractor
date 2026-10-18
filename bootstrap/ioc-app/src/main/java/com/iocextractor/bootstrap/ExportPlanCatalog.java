@@ -8,11 +8,11 @@ import com.iocextractor.application.export.ExportFormat;
 import com.iocextractor.application.export.ExportMode;
 import com.iocextractor.application.export.ExportPlan;
 import com.iocextractor.application.export.ExportProfile;
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.ExportDiagnosticCodes;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
 
 import java.nio.file.Path;
 import java.security.MessageDigest;

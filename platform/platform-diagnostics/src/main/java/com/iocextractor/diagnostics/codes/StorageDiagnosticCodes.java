@@ -1,14 +1,14 @@
 package com.iocextractor.diagnostics.codes;
 
 import com.iocextractor.diagnostics.DiagnosticCategory;
-import com.iocextractor.diagnostics.DiagnosticCode;
-import com.iocextractor.diagnostics.DiagnosticImpact;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.diagnostics.IocDiagnosticCode;
+import com.iocextractor.platform.diagnostics.DiagnosticImpact;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 
 /**
  * Diagnostic codes for durable storage operations.
  */
-public enum StorageDiagnosticCodes implements DiagnosticCode {
+public enum StorageDiagnosticCodes implements IocDiagnosticCode {
     MIGRATION_APPLIED(DiagnosticSeverity.INFO, "storage.migration-applied",
             "Storage {dbRole} applied schema migration {migrationVersion}; schema is now {schemaVersion}"),
     MIGRATION_ROLLBACK(DiagnosticSeverity.FATAL, "storage.migration-rollback",

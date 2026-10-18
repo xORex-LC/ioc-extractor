@@ -1,11 +1,12 @@
 package com.iocextractor.adapter.in.ingest;
 
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticCategory;
+import com.iocextractor.diagnostics.IocDiagnosticCode;
 import com.iocextractor.diagnostics.DiagnosticException;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
@@ -68,7 +69,8 @@ public final class LoggingIngestionStartupObserver implements IngestionStartupOb
 
     private void emitFailureDiagnostic(RuntimeException failure) {
         if (failure instanceof DiagnosticException diagnosticFailure
-                && diagnosticFailure.diagnostic().category() == DiagnosticCategory.INGEST) {
+                && diagnosticFailure.diagnostic().code() instanceof IocDiagnosticCode code
+                && code.category() == DiagnosticCategory.INGEST) {
             if (diagnosticFailure.diagnostic().code() != IngestDiagnosticCodes.RECOVERY_FAILED) {
                 diagnosticSink.emit(diagnosticFailure.diagnostic());
             }

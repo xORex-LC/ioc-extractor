@@ -1,14 +1,14 @@
 package com.iocextractor.diagnostics.codes;
 
 import com.iocextractor.diagnostics.DiagnosticCategory;
-import com.iocextractor.diagnostics.DiagnosticCode;
-import com.iocextractor.diagnostics.DiagnosticImpact;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.diagnostics.IocDiagnosticCode;
+import com.iocextractor.platform.diagnostics.DiagnosticImpact;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 
 /**
  * Diagnostic codes for pipeline orchestration and stage execution.
  */
-public enum PipelineDiagnosticCodes implements DiagnosticCode {
+public enum PipelineDiagnosticCodes implements IocDiagnosticCode {
     STAGE_FAILED(DiagnosticSeverity.ERROR, DiagnosticImpact.RUN, "pipeline.stage-failed",
             "Pipeline stage {stage} failed: {reason}"),
     DIAGNOSTICS_SUPPRESSED(DiagnosticSeverity.WARN, DiagnosticImpact.RUN, "pipeline.diagnostics-suppressed",

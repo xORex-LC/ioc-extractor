@@ -23,6 +23,11 @@
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>io.github.xorex-lc</groupId>
+            <artifactId>ioc-platform-diagnostics-api</artifactId>
+        </dependency>
+
         <!-- Platform production universe. -->
         <dependency>
             <groupId>com.iocextractor</groupId>
@@ -153,6 +158,7 @@
                             <!-- Positive scope: checked-in production Java only. -->
                             <compileSourceRoots>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-errors/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-diagnostics-api/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-diagnostics/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-etl/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-events/src/main/java</compileSourceRoot>

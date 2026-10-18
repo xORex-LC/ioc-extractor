@@ -4,10 +4,10 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
-import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.CollectingDiagnosticSink;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
@@ -36,6 +36,26 @@ class LoggingIngestionStartupObserverTest {
         logger.detachAndStopAllAppenders();
         logger.setAdditive(true);
         logger.setLevel(null);
+    }
+
+    @Test
+    void generic_diagnostic_failure_is_classified_at_the_ingest_boundary() {
+        var code = new com.iocextractor.platform.diagnostics.DiagnosticCode() {
+            public String id() { return "consumer-failed"; }
+            public com.iocextractor.platform.diagnostics.DiagnosticSeverity defaultSeverity() {
+                return com.iocextractor.platform.diagnostics.DiagnosticSeverity.ERROR;
+            }
+            public com.iocextractor.platform.diagnostics.DiagnosticImpact impact() {
+                return com.iocextractor.platform.diagnostics.DiagnosticImpact.RUN;
+            }
+        };
+        var original = new DiagnosticException(Diagnostic.builder(code, CLOCK).build());
+        var diagnostics = new CollectingDiagnosticSink();
+        new LoggingIngestionStartupObserver(diagnostics, CLOCK).recoveryFailed(STARTED, COMPLETED, original);
+        assertThat(diagnostics.diagnostics()).singleElement().satisfies(diagnostic -> {
+            assertThat(diagnostic.code()).isEqualTo(IngestDiagnosticCodes.RECOVERY_FAILED);
+            assertThat(diagnostic.cause()).containsSame(original);
+        });
     }
 
     @Test

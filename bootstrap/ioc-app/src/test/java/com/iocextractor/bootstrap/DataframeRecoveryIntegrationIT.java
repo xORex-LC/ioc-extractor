@@ -27,8 +27,8 @@ import com.iocextractor.application.port.out.artifact.CanonicalArtifactStreamRea
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
 import com.iocextractor.application.export.ExportFormat;
 import com.iocextractor.application.port.out.artifact.RunLedger;
-import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

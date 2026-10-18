@@ -6,9 +6,9 @@ import com.iocextractor.application.artifact.lifecycle.LifecycleClockUnsafeExcep
 import com.iocextractor.application.artifact.lifecycle.LifecycleHistoryRetentionResult;
 import com.iocextractor.application.artifact.lifecycle.LifecyclePolicyMismatchException;
 import com.iocextractor.application.artifact.lifecycle.LifecycleReconciliationResult;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.LifecycleDiagnosticCodes;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;

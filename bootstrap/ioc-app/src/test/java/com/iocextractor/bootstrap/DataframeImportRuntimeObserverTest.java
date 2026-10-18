@@ -5,7 +5,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.iocextractor.application.port.in.dataframeimport.RecoverDataframeImportsResult;
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;

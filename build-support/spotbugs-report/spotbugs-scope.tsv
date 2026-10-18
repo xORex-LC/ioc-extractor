@@ -1,6 +1,7 @@
 # module-path	artifact-id	disposition	rationale
 .	ioc-extractor-parent	excluded	Root parent POM has no production bytecode
 platform/platform-errors	ioc-platform-errors	analyzed	Production runtime JAR
+platform/platform-diagnostics-api	ioc-platform-diagnostics-api	analyzed	Production runtime JAR
 platform/platform-diagnostics	ioc-platform-diagnostics	analyzed	Production runtime JAR
 platform/platform-etl	ioc-platform-etl	analyzed	Production runtime JAR
 platform/platform-events	ioc-platform-events	analyzed	Production runtime JAR

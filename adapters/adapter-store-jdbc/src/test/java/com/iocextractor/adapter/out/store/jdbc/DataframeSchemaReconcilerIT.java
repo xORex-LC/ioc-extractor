@@ -2,9 +2,9 @@ package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.common.IocExtractorException;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.SchemaDiagnosticCodes;
-import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.CollectingDiagnosticSink;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

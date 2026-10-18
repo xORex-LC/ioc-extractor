@@ -38,7 +38,7 @@ import com.iocextractor.application.sync.PublishTarget;
 import com.iocextractor.application.sync.RemoteObject;
 import com.iocextractor.application.sync.Retrier;
 import com.iocextractor.application.sync.RetryPolicy;
-import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.CollectingDiagnosticSink;
 import com.iocextractor.bootstrap.ExportPlanCatalog;
 import com.iocextractor.bootstrap.LazyServiceStorage;
 import com.iocextractor.consumer.ReferenceArtifactConsumer;

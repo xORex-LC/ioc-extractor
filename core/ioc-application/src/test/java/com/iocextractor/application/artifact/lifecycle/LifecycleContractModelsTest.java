@@ -38,7 +38,7 @@ class LifecycleContractModelsTest {
     void documentCheckpointRejectsContradictoryCountsAndOpaqueIdentityPreservesCompleteKey() {
         for (int[] counts : List.of(new int[]{-1, 0}, new int[]{0, -1}, new int[]{1, 2})) {
             assertThatThrownBy(() -> new com.iocextractor.application.artifact.DocumentPreparationSummary(
-                    counts[0], counts[1], com.iocextractor.diagnostics.result.DiagnosticSummary.empty()))
+                    counts[0], counts[1], com.iocextractor.platform.diagnostics.result.DiagnosticSummary.empty()))
                     .hasMessage("Invalid document preparation counts");
         }
         com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver opaque =

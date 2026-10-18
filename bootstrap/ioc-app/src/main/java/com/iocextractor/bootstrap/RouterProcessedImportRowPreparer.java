@@ -15,7 +15,7 @@ import com.iocextractor.application.dataframeimport.model.ImportRowIssue;
 import com.iocextractor.application.dataframeimport.model.ImportRowWarning;
 import com.iocextractor.application.observation.OccurrencePosition;
 import com.iocextractor.application.port.out.dataframeimport.ProcessedImportRowPreparer;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.domain.feature.NetworkAddressParser;
 import com.iocextractor.domain.model.Indicator;

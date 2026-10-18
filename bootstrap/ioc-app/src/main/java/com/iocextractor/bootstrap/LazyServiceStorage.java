@@ -6,8 +6,8 @@ import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceFactory;
 import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceSettings;
 import com.iocextractor.adapter.out.store.jdbc.SqlitePragmaPolicy;
 import com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator;
-import com.iocextractor.diagnostics.DiagnosticFactory;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
 import com.zaxxer.hikari.HikariDataSource;
 
 import java.time.Clock;

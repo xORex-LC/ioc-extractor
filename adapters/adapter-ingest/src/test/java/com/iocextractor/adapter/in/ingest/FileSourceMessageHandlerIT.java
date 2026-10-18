@@ -14,7 +14,7 @@ import com.iocextractor.application.port.in.ingest.PreparedIngestion;
 import com.iocextractor.application.port.in.ingest.PrepareIngestionUseCase;
 import com.iocextractor.application.port.out.observation.ObservationRegistrationStore;
 import com.iocextractor.application.tck.junit.IntegrationTest;
-import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.CollectingDiagnosticSink;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -54,7 +54,7 @@ class FileSourceMessageHandlerIT {
         try {
             for (var status : com.iocextractor.application.pipeline.CompletionStatus.values()) {
                 var extraction = new com.iocextractor.application.port.in.ExtractionResult("run-17", 1, 1,
-                        Map.of("masks", 1), status, List.of(), com.iocextractor.diagnostics.result.DiagnosticSummary.empty());
+                        Map.of("masks", 1), status, List.of(), com.iocextractor.platform.diagnostics.result.DiagnosticSummary.empty());
                 DocumentCompletionObserver.completed(new IngestSourceResult(key, IngestionStatus.SOURCE_ARCHIVED,
                         false, extraction), directory.resolve("source.html"), key);
                 var event = appender.list.getLast();

@@ -10,9 +10,9 @@ import com.iocextractor.application.pipeline.payload.IndicatorOccurrence;
 import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.artifact.DocumentProcessingPlan;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
-import com.iocextractor.diagnostics.result.BoundedDiagnosticCollector;
+import com.iocextractor.platform.diagnostics.result.BoundedDiagnosticCollector;
 import com.iocextractor.platform.etl.Envelope;
 import com.iocextractor.platform.etl.Stage;
 import com.iocextractor.platform.etl.StageId;
@@ -68,7 +68,7 @@ public final class PrepareRoutedArtifactsStage implements Stage<AttributedIndica
                 Objects.requireNonNull(input.meta().attributes().get(PipelineMetaAttributes.DOCUMENT_PREPARATION_WORKSPACE),
                         "document preparation workspace");
         Map<String, ArtifactWritePlan> emptyPlans = emptyPlans();
-        var diagnostics = new BoundedDiagnosticCollector(diagnosticLimit);
+        var diagnostics = new BoundedDiagnosticCollector(diagnosticLimit, PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED);
         boolean retainObservations = processing.observationSelection()
                 == DocumentObservationSelection.RETAINED_OBSERVATIONS;
         int retained = 0;

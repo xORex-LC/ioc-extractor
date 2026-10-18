@@ -55,6 +55,7 @@
 
     <modules>
         <module>platform/platform-errors</module>
+        <module>platform/platform-diagnostics-api</module>
         <module>platform/platform-diagnostics</module>
         <module>platform/platform-etl</module>
         <module>platform/platform-events</module>
@@ -485,6 +486,11 @@
                 <groupId>com.iocextractor</groupId>
                 <artifactId>ioc-platform-errors</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.xorex-lc</groupId>
+                <artifactId>ioc-platform-diagnostics-api</artifactId>
+                <version>${revision}</version>
             </dependency>
             <dependency>
                 <groupId>com.iocextractor</groupId>

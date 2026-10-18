@@ -3,7 +3,7 @@ package com.iocextractor.application.sync;
 import com.iocextractor.application.port.in.sync.RemoteFetchCommand;
 import com.iocextractor.application.port.out.sync.FileTransport;
 import com.iocextractor.application.port.out.sync.RemoteFetchLedger;
-import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.CollectingDiagnosticSink;
 import com.iocextractor.diagnostics.codes.SyncDiagnosticCodes;
 import org.junit.jupiter.api.Test;
 

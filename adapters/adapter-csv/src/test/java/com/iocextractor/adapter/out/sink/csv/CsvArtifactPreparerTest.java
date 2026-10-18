@@ -18,7 +18,7 @@ import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.application.observability.PipelineItemDecision;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.SinkDiagnosticCodes;
 import com.iocextractor.domain.classify.ClassificationDecision;
 import com.iocextractor.domain.feature.HostKind;
@@ -244,7 +244,7 @@ class CsvArtifactPreparerTest {
             var row = prepared.value().orElseThrow();
             winners.add(identity.keyOf("aggregate", row.template()).orElseThrow(), row);
         }
-        var result = com.iocextractor.diagnostics.result.Result.success(new com.iocextractor.application.artifact.ArtifactWritePlan(
+        var result = com.iocextractor.platform.diagnostics.result.Result.success(new com.iocextractor.application.artifact.ArtifactWritePlan(
                 "aggregate", mapper.header(), winners.winners(), new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 1)));
 
         assertThat(result.diagnostics()).isEmpty();

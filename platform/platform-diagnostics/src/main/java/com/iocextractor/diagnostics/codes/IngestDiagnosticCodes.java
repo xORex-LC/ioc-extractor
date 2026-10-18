@@ -1,14 +1,14 @@
 package com.iocextractor.diagnostics.codes;
 
 import com.iocextractor.diagnostics.DiagnosticCategory;
-import com.iocextractor.diagnostics.DiagnosticCode;
-import com.iocextractor.diagnostics.DiagnosticImpact;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.diagnostics.IocDiagnosticCode;
+import com.iocextractor.platform.diagnostics.DiagnosticImpact;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 
 /**
  * Diagnostic codes for whole-file ingestion.
  */
-public enum IngestDiagnosticCodes implements DiagnosticCode {
+public enum IngestDiagnosticCodes implements IocDiagnosticCode {
     CLAIM_FAILED(DiagnosticSeverity.FATAL, DiagnosticImpact.OPERATION, "ingest.claim-failed",
             "Source {source} could not be claimed for ingestion: {reason}"),
     SOURCE_UNREADABLE(DiagnosticSeverity.ERROR, DiagnosticImpact.OPERATION, "ingest.source-unreadable",

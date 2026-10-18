@@ -1,14 +1,14 @@
 package com.iocextractor.diagnostics.codes;
 
 import com.iocextractor.diagnostics.DiagnosticCategory;
-import com.iocextractor.diagnostics.DiagnosticCode;
-import com.iocextractor.diagnostics.DiagnosticImpact;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.diagnostics.IocDiagnosticCode;
+import com.iocextractor.platform.diagnostics.DiagnosticImpact;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 
 /**
  * Diagnostic codes for artifact sinks and row mapping.
  */
-public enum SinkDiagnosticCodes implements DiagnosticCode {
+public enum SinkDiagnosticCodes implements IocDiagnosticCode {
     WRITE_FAILED(DiagnosticSeverity.FATAL, DiagnosticImpact.RUN, "sink.write-failed",
             "Sink {sink} failed to write artifact {artifact}: {reason}"),
     ROW_MAPPING_FAILED(DiagnosticSeverity.ERROR, DiagnosticImpact.ELEMENT, "sink.row-mapping-failed",

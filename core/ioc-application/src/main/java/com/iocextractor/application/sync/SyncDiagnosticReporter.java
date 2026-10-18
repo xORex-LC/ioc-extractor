@@ -1,8 +1,8 @@
 package com.iocextractor.application.sync;
 
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.SyncDiagnosticCodes;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
 
 import java.time.Clock;
 import java.util.Objects;

@@ -8,7 +8,7 @@ import com.iocextractor.application.pipeline.payload.ExtractedIndicators;
 import com.iocextractor.application.observability.PipelineDecisionKind;
 import com.iocextractor.application.observability.PipelineItemDecision;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.codes.SourceDiagnosticCodes;
 import com.iocextractor.domain.attribute.SourceAttributor;
 

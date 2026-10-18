@@ -16,6 +16,11 @@
     <description>Spring Boot executable application and composition root</description>
 
     <dependencies>
+        <dependency>
+            <groupId>io.github.xorex-lc</groupId>
+            <artifactId>ioc-platform-diagnostics-api</artifactId>
+        </dependency>
+
         <!-- Core -->
         <dependency>
             <groupId>com.iocextractor</groupId>

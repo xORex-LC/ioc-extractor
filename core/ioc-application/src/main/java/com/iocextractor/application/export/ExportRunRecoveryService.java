@@ -6,12 +6,12 @@ import com.iocextractor.application.port.out.export.ArtifactSliceWriter;
 import com.iocextractor.application.port.out.export.ExportObserver;
 import com.iocextractor.application.port.out.export.ExportProgressStore;
 import com.iocextractor.application.port.out.export.ExportRunLedger;
-import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
-import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.ExportDiagnosticCodes;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
-import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.NoopDiagnosticSink;
 import com.iocextractor.platform.events.ControlEventPublisher;
 import com.iocextractor.platform.events.NoopControlEventPublisher;
 

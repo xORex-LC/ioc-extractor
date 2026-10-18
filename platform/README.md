@@ -15,7 +15,8 @@ bridge diagnostics→logging.
 | Подпапка / файл | Назначение |
 |---|---|
 | `platform-errors/` | Базовая иерархия ошибок |
-| `platform-diagnostics/` | Модель diagnostics, catalog, result/policy, sink ports |
+| `platform-diagnostics-api/` | JDK-only модель diagnostics, result/policy, bounded collectors и sinks |
+| `platform-diagnostics/` | IOC-каталог, metadata, exception и renderer |
 | `platform-etl/` | Generic Pipes-and-Filters kernel |
 | `platform-events/` | Framework-free control-event model and publish-only port |
 | `platform-concurrency/` | Framework-free keyed execution/admission primitives |

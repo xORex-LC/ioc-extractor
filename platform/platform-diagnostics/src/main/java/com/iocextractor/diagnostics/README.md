@@ -1,41 +1,15 @@
-# src/main/java/com/iocextractor/diagnostics
+# IOC diagnostic metadata
 
-## Назначение
+This package owns `IocDiagnosticCode`, `DiagnosticCategory`,
+`DiagnosticContextKeys` and `DiagnosticException`. `codes/` defines product enums,
+`catalog/` enumerates them for generated documentation, and `render/` formats
+messages. Generic values and collectors moved to
+`com.iocextractor.platform.diagnostics` in `ioc-platform-diagnostics-api`.
 
-Пакет содержит framework-free ядро диагностики обработки данных: value object
-`Diagnostic`, стабильные коды, severity/category, result/notification/policy
-контракты и порты renderer/sink.
+Every IOC code implements the shared three-member code contract plus category,
+message key and template. Ownership checks use `instanceof IocDiagnosticCode`;
+they never invent an IOC category for a generic consumer code. Rendering falls
+back to the literal ID when product metadata is absent.
 
-**Правило слоя:** пакет не импортирует Spring, SLF4J/Logback, adapter или
-bootstrap. Producer-код может создавать диагностики, но не должен форматировать
-сообщения или решать, куда они будут доставлены.
-
-## Структура
-
-| Подпапка / файл | Назначение |
-|---|---|
-| `Diagnostic.java` | Неизменяемые диагностические данные |
-| `DiagnosticContextKeys.java` | Общие context keys на границе producer/renderer |
-| `DiagnosticBuilder.java` | Builder с управляемым `Clock` |
-| `DiagnosticFactory.java` | Фабрика builders с инжектируемым `Clock` |
-| `DiagnosticCode.java` | Контракт стабильного кода диагностики |
-| `DiagnosticException.java` | Исключение, переносящее stopping diagnostic |
-| `DiagnosticSeverity.java` | Уровни severity |
-| `DiagnosticCategory.java` | Категории диагностики, включая formation-only `EXPORT` и delivery `SYNC` |
-| `codes/` | Стартовые enum-каталоги кодов |
-| `catalog/` | Агрегация и проверяемые entries каталога |
-| `result/` | `Result`, `Notification`, `FailurePolicy` |
-| `render/` | Рендеринг диагностик в текст + strategy форматирования context |
-| `sink/` | Порты и базовые sinks |
-
-## Зависимости
-
-**Зависит от:** JDK и `common` для `IocExtractorException`.
-
-**Не импортируется:** adapter/bootstrap реализациями напрямую в обход портов
-там, где нужна доставка диагностик; logging bridge будет отдельным модулем.
-
-## Заметки
-
-`LoggingDiagnosticSink`, ECS/MDC и привязка к фоновой observability-подсистеме
-не живут здесь и реализуются отдельным этапом.
+Dependencies: JDK, the diagnostics API and `ioc-platform-errors`. Logging,
+redaction configuration and failure-policy enforcement belong to callers.

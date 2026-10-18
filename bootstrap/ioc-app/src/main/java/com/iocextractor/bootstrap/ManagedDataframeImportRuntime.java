@@ -9,7 +9,7 @@ import com.iocextractor.application.port.in.dataframeimport.RecoverDataframeImpo
 import com.iocextractor.application.port.in.dataframeimport.RunDataframeImportRetentionUseCase;
 import com.iocextractor.application.port.out.dataframeimport.ImportChangeSignalSource;
 import com.iocextractor.diagnostics.codes.ImportDiagnosticCodes;
-import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
 
 import java.time.Clock;

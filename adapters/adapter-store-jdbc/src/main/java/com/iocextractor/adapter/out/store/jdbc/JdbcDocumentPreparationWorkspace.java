@@ -247,7 +247,7 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
             }
             var counts = new StringBuilder().append(summary.extracted()).append(':').append(summary.retained())
                     .append(':').append(candidateOrdinal).append(':').append(originalOrdinal);
-            for (var severity : com.iocextractor.diagnostics.DiagnosticSeverity.values()) {
+            for (var severity : com.iocextractor.platform.diagnostics.DiagnosticSeverity.values()) {
                 counts.append(':').append(summary.diagnostics().count(severity));
             }
             catalog += "\ncounts:" + counts + ":suppressed:" + summary.diagnostics().suppressed();

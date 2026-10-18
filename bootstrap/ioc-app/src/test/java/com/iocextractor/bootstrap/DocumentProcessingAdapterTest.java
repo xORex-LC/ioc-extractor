@@ -13,8 +13,8 @@ import com.iocextractor.application.artifact.ArtifactIdSequence;
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.application.pipeline.payload.IndicatorOccurrence;
-import com.iocextractor.diagnostics.DiagnosticFactory;
-import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.platform.diagnostics.DiagnosticFactory;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.domain.classify.ClassificationDecision;
 import com.iocextractor.domain.classify.MatchPolicy;
@@ -343,7 +343,7 @@ class DocumentProcessingAdapterTest {
 
     private record Harness(DocumentProcessingAdapter adapter, CamelRouteRuntime runtime)
             implements AutoCloseable {
-        com.iocextractor.diagnostics.result.Result<
+        com.iocextractor.platform.diagnostics.result.Result<
                 List<com.iocextractor.application.artifact.RoutedArtifactCandidate>> prepare(
                 IndicatorOccurrence occurrence) {
             return adapter.prepare(occurrence);
