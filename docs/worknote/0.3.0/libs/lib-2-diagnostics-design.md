@@ -1,11 +1,13 @@
 # LIB-2: Diagnostics library contract and extraction plan
 
-Status: D0 contract fixed for implementation, 2026-10-18, following the owner's
-request to complete D0 and record the contract. D1 extraction, IOC migration and documentation are implemented
-under the owner's subsequent authorization. D2 public-boundary qualification is complete;
-D3–D5 remain pending. This worknote
-does not record an accepted published ADR or release/publication qualification. The original review was
-dated 2026-09-13; the current inventory replaces its sixteen-type selection.
+Status: D0–D4 are complete and locally qualified, 2026-10-18. Extraction, IOC
+migration, public-boundary tests, independent packaging and final admission are
+recorded below; [ADR 0044](../../../ADR/0044-reusable-diagnostics-contract.md)
+owns the accepted architectural decision. The owner authorized preparing and
+opening the integration PR into `release-0.3.0`. D5 remote publication and
+repository-consumer qualification will follow PR approval and merge; they have
+not been performed. The original review was dated 2026-09-13; the current
+inventory replaces its sixteen-type selection.
 
 Execution checkpoint, 2026-10-18: the owner selected diagnostics as the next
 implementation target after closing events design. Complete its extraction,
@@ -595,12 +597,12 @@ dependency-bearing publication is unnecessary for LIB-2 and is not a prerequisit
 
 | Slice | Work and boundary | Exit evidence | Current state |
 |---|---|---|---|
-| D0 — current baseline and admission | Refresh inventory/closure; record artifact/package, metadata/batch API, maintainer and compatibility decisions | All 38 existing types disposed; 18-type target, named owner and admitted API/closure | Complete for design, 2026-10-18; implementation/release evidence pending |
+| D0 — current baseline and admission | Refresh inventory/closure; record artifact/package, metadata/batch API, maintainer and compatibility decisions | All 38 existing types disposed; 18-type target, named owner and admitted API/closure | Complete, 2026-10-18; implementation and local qualification recorded in D1–D4 |
 | D1 — coherent extraction, IOC migration and documentation | Create the JDK-only module, local metadata extension and one diagnostic model; migrate all callers, batches and local exception enforcement; document source contracts and deliver module reference/consumer guide alongside affected IOC docs | Buildable reactor without local catalog/exception/logging dependency in shared code; preserved IOC behavior; reviewed Javadoc for all 18 types/members/packages, rendered API docs and compiled/executed guide examples | Implemented; qualification record below |
 | D2 — public boundary hardening | Complete adversarial qualification of the implemented D0 contracts; extend the generic and IOC regression matrix and keep source/consumer documentation aligned | Generic-code tests, exact budget/merge/delivery regressions and IOC integration tests pass; documented boundary/error outcomes agree with tests | Complete, 2026-10-18; qualification record below |
 | D3 — independent packaging | Add reviewed component selection to tooling/workflow and an outside-reactor consumer exercising the guide examples; retain concurrency qualification | Flattened zero-runtime-dependency POM, complete main/sources/Javadoc/license archives, manifest/recovery identity checks and isolated consumer pass | Complete, 2026-10-18; qualification record below |
 | D4 — documentation review and final gates | Finalize ADR/docs/index references and review the documentation coverage/example evidence; review all analyzer/coverage/test registries and publication security boundary | Complete and consistent source/consumer docs and links; focused tests, final verify, PMD policy and exception-ownership watchlist reviewed; raw findings and exact-worktree evidence retained | Complete, 2026-10-18; admission record below |
-| D5 — authorized publication | Integrate/release only under explicit owner instruction; publish immutable reviewed bytes, without changing concurrency's release/tag | Separate cold consumers and artifact identity from each claimed repository; retained release evidence | Not authorized by this planning update |
+| D5 — authorized publication | Integrate/release only under explicit owner instruction; publish immutable reviewed bytes, without changing concurrency's release/tag | Separate cold consumers and artifact identity from each claimed repository; retained release evidence | Integration PR authorized, 2026-10-18; publication follows PR approval and merge |
 
 Do not advance a slice by lowering a floor, accepting unexplained finding drift,
 or treating a local install as a published consumer. A new generic module with
