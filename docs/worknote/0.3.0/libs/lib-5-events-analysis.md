@@ -7,6 +7,11 @@ Baseline: `edca8d696423d7c2b1fd266666a37fa5f5108286`.
 Branch: `r030-events-analysis`, based on the remote release branch. ETL work stays
 on its separate pushed branch; no merge was performed to start this analysis.
 
+Design follow-up, 2026-10-17: the [extraction proposal](lib-5-events-design.md)
+records the refreshed baseline, proposed modules/API and qualification slices.
+The owner confirmed that listener-isolation configuration stays service-owned.
+Work now continues on the consolidated `r030-libraries` branch.
+
 ## Assessment
 
 `platform-events` is a credible candidate for sharing a small application-facing
