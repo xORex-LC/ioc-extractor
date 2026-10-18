@@ -196,6 +196,52 @@ class PublicationTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'symbolic artifact'):
             PUB.read_bundle(self.bundle)
 
+    def test_bundle_rejects_symbolic_manifest(self):
+        manifest = self.bundle / 'identity.json'
+        target = self.bundle / 'outside-identity.json'
+        manifest.rename(target)
+        manifest.symlink_to(target)
+        with self.assertRaisesRegex(ValueError, 'symbolic manifest'):
+            PUB.read_bundle(self.bundle)
+
+    def test_bundle_rejects_symbolic_recovery_files_before_side_effects(self):
+        for name in ('central-deployment-id.txt', 'central-bundle.zip'):
+            with self.subTest(name=name):
+                path = self.bundle / name
+                target = self.bundle / 'outside-recovery'
+                target.write_bytes(b'preserve this file')
+                path.symlink_to(target)
+                try:
+                    with patch.object(PUB, 'request') as request, patch.object(PUB, 'run') as run:
+                        with self.assertRaisesRegex(ValueError, 'symbolic recovery file'):
+                            PUB.publish_central(self.bundle, True, '')
+                        request.assert_not_called()
+                        run.assert_not_called()
+                    self.assertEqual(target.read_bytes(), b'preserve this file')
+                finally:
+                    path.unlink()
+
+    def test_bundle_rejects_symbolic_repository_directories_before_side_effects(self):
+        repository = self.bundle / 'repository'
+        for index, path in enumerate((repository, repository / 'io', self.folder)):
+            with self.subTest(path=path.relative_to(self.bundle)):
+                target = self.bundle / ('outside-directory-' + str(index))
+                path.rename(target)
+                path.symlink_to(target, target_is_directory=True)
+                try:
+                    for command in ('check', 'sign', 'central', 'github', 'consume'):
+                        with patch.object(sys, 'argv', [
+                                'library-publication.py', command, '--bundle', str(self.bundle),
+                                '--component', self.component_name]), \
+                                patch.object(PUB, 'request') as request, patch.object(PUB, 'run') as run:
+                            with self.assertRaisesRegex(ValueError, 'symbolic'):
+                                PUB.main()
+                            request.assert_not_called()
+                            run.assert_not_called()
+                finally:
+                    path.unlink()
+                    target.rename(path)
+
     def test_unsigned_bundle_cannot_publish(self):
         with self.assertRaisesRegex(ValueError, 'signed bundle'):
             PUB.read_bundle(self.bundle, signed=True)

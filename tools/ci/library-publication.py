@@ -94,7 +94,13 @@ def relative_path(version, component=None):
 
 
 def read_bundle(bundle, signed=False, expected_component=None):
-    metadata = json.loads((bundle / 'identity.json').read_text())
+    manifest = bundle / 'identity.json'
+    require(manifest.is_file() and not manifest.is_symlink(), 'missing or symbolic manifest')
+    repository = bundle / 'repository'
+    require(repository.is_dir() and not repository.is_symlink(), 'missing or symbolic repository')
+    for name in ('central-deployment-id.txt', 'central-bundle.zip'):
+        require(not (bundle / name).is_symlink(), 'symbolic recovery file')
+    metadata = json.loads(manifest.read_text())
     version_check(metadata['version'])
     component = component_for(metadata)
     require(expected_component is None or component == expected_component, 'unexpected bundle component')
@@ -105,7 +111,11 @@ def read_bundle(bundle, signed=False, expected_component=None):
     for name, expected in metadata['files'].items():
         path = Path(name)
         require(path.parent == prefix and path.name.startswith(artifact_id + '-'), 'invalid artifact path')
-        artifact = bundle / 'repository' / path
+        artifact = repository / path
+        # Check directory links before reading bytes: the file itself can be
+        # regular while a parent redirects signing or recovery outside the bundle.
+        require(not any(parent.is_symlink() for parent in artifact.parents
+                        if parent.is_relative_to(repository)), 'symbolic artifact directory')
         require(artifact.is_file() and not artifact.is_symlink(), 'missing or symbolic artifact')
         require(digest(artifact.read_bytes()) == expected, 'artifact checksum mismatch: ' + name)
     stem = str(prefix / (artifact_id + '-' + metadata['version']))
