@@ -316,15 +316,17 @@ pre-push: ci ## Local pre-push gate (scheduled NVD scan remains separate)
 ##@ Library publication
 .PHONY: library-bundle library-consumer library-publication-test
 LIBRARY_VERSION ?= 0.3.0-SNAPSHOT
+LIBRARY_COMPONENT ?= concurrency
 LIBRARY_BUNDLE ?= .dev/library-bundle
 LIBRARY_REPOSITORY ?= local
 
 library-bundle: ## Build library JAR, consumer POM, sources and Javadoc into a new immutable bundle
-	$(MAVEN_SEQUENTIAL) -pl platform/platform-concurrency -am -Plibrary-publication -Drevision="$(LIBRARY_VERSION)" package
-	python3 tools/ci/library-publication.py prepare --bundle "$(LIBRARY_BUNDLE)" --version "$(LIBRARY_VERSION)"
+	module=$$(python3 tools/ci/library-publication.py module --component "$(LIBRARY_COMPONENT)") && \
+	  $(MAVEN_SEQUENTIAL) -pl "$$module" -am -Plibrary-publication -Drevision="$(LIBRARY_VERSION)" package
+	python3 tools/ci/library-publication.py prepare --component "$(LIBRARY_COMPONENT)" --bundle "$(LIBRARY_BUNDLE)" --version "$(LIBRARY_VERSION)"
 
 library-consumer: ## Resolve the bundle with an independent consumer and empty Maven cache
-	python3 tools/ci/library-publication.py consume --bundle "$(LIBRARY_BUNDLE)" --repository "$(LIBRARY_REPOSITORY)"
+	python3 tools/ci/library-publication.py consume --component "$(LIBRARY_COMPONENT)" --bundle "$(LIBRARY_BUNDLE)" --repository "$(LIBRARY_REPOSITORY)"
 
 library-publication-test: ## Run offline publication and recovery contract tests
 	python3 tools/tests/library-publication-test.py

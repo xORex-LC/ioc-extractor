@@ -24,7 +24,17 @@ All examples below use classes from `com.iocextractor.platform.diagnostics`,
 `.result` and `.sink`. Their executable counterpart is
 [`DiagnosticsLibraryExampleTest`](../../platform/platform-diagnostics-api/src/test/java/com/iocextractor/platform/diagnostics/DiagnosticsLibraryExampleTest.java).
 Run `make test-module MODULE=platform/platform-diagnostics-api` in this checkout.
-Independent consumption outside the reactor is a later packaging qualification.
+For independent packaging qualification, run:
+
+```sh
+make library-bundle LIBRARY_COMPONENT=diagnostics LIBRARY_BUNDLE=.dev/diagnostics-bundle
+make library-consumer LIBRARY_COMPONENT=diagnostics LIBRARY_BUNDLE=.dev/diagnostics-bundle
+```
+
+The [standalone consumer](../../tools/fixtures/diagnostics-consumer/README.md)
+executes all three examples below outside the checkout with an empty Maven
+cache. The [publication guide](library-publication.md) describes artifact and
+repository checks. Local qualification does not make the coordinate public.
 The [module reference](../../platform/platform-diagnostics-api/README.md) lists
 package responsibilities; public Javadoc supplies member-level contracts.
 

@@ -598,7 +598,7 @@ dependency-bearing publication is unnecessary for LIB-2 and is not a prerequisit
 | D0 — current baseline and admission | Refresh inventory/closure; record artifact/package, metadata/batch API, maintainer and compatibility decisions | All 38 existing types disposed; 18-type target, named owner and admitted API/closure | Complete for design, 2026-10-18; implementation/release evidence pending |
 | D1 — coherent extraction, IOC migration and documentation | Create the JDK-only module, local metadata extension and one diagnostic model; migrate all callers, batches and local exception enforcement; document source contracts and deliver module reference/consumer guide alongside affected IOC docs | Buildable reactor without local catalog/exception/logging dependency in shared code; preserved IOC behavior; reviewed Javadoc for all 18 types/members/packages, rendered API docs and compiled/executed guide examples | Implemented; qualification record below |
 | D2 — public boundary hardening | Complete adversarial qualification of the implemented D0 contracts; extend the generic and IOC regression matrix and keep source/consumer documentation aligned | Generic-code tests, exact budget/merge/delivery regressions and IOC integration tests pass; documented boundary/error outcomes agree with tests | Complete, 2026-10-18; qualification record below |
-| D3 — independent packaging | Add reviewed component selection to tooling/workflow and an outside-reactor consumer exercising the guide examples; retain concurrency qualification | Flattened zero-runtime-dependency POM, complete main/sources/Javadoc/license archives, manifest/recovery identity checks and isolated consumer pass | Not started |
+| D3 — independent packaging | Add reviewed component selection to tooling/workflow and an outside-reactor consumer exercising the guide examples; retain concurrency qualification | Flattened zero-runtime-dependency POM, complete main/sources/Javadoc/license archives, manifest/recovery identity checks and isolated consumer pass | Complete, 2026-10-18; qualification record below |
 | D4 — documentation review and final gates | Finalize ADR/docs/index references and review the documentation coverage/example evidence; review all analyzer/coverage/test registries and publication security boundary | Complete and consistent source/consumer docs and links; focused tests, final verify, PMD policy and exception-ownership watchlist reviewed; raw findings and exact-worktree evidence retained | Not started |
 | D5 — authorized publication | Integrate/release only under explicit owner instruction; publish immutable reviewed bytes, without changing concurrency's release/tag | Separate cold consumers and artifact identity from each claimed repository; retained release evidence | Not authorized by this planning update |
 
@@ -819,3 +819,70 @@ are repeated after this evidence/index update to retain fresh evidence for the
 complete worktree. No standalone consumer, provisioned external test or published
 artifact is claimed. D2 is complete; D3 independent packaging is next, with D4
 ADR/documentation admission and explicitly authorized D5 publication still pending.
+
+
+## D3 independent packaging record — 2026-10-18
+
+The owner authorized D3 after committing the accumulated work. The retained
+changes were separated into events design/E0 (`5325941c`), the ETL primary-failure
+regression/fix (`2047f986`) and diagnostics extraction with D1/D2 qualification
+(`8b913e69`). All work stays on `r030-libraries`; no release tag or publication
+is part of D3. The owner confirms that the existing signing key and Central
+user-token pair remain usable; this is not a new live credential test.
+
+The publication tool now has an explicit two-component allowlist. `concurrency`
+remains the default for existing commands and manifests; `diagnostics` selects
+`ioc-platform-diagnostics-api`, its module, package/archive markers and standalone
+fixture. Every bundle operation checks the selected component before signing or
+repository access. Tag admission binds the component's artifact prefix to the
+matching product release branch. Recovery keeps artifact/version/commit/file
+hash identity and still reuses the original signed bundle and Central deployment.
+The zero-runtime-dependency POM checks are unchanged. This does not admit a
+Spring-dependent component or loosen the packaging contract for future libraries.
+
+The diagnostics module now supplies publication metadata, an embedded MIT license,
+a flattened parent-independent consumer POM, sources and strict Javadoc archives.
+Plugin versions are managed by the parent without activating those plugins in
+other modules. The existing concurrency module/POM and fixture are unchanged.
+The regular unprivileged CI consumer job is a two-component matrix. The protected
+manual workflow carries the component selector through preparation, identity
+checks, signing, repository writes and separate repository consumers.
+
+The diagnostics fixture resolves all four primary artifacts with a fresh cache
+outside the checkout. Its own import codes exercise every guide example: result
+mapping and pure failure decisions, bounded stage/run sampling with exact counts,
+and synchronous delivery fallback. All four resolved artifacts must match the
+manifest. This is an independent packaging/API consumer; use in another real
+production service remains future validation. Public consumers from each target
+repository remain D5 evidence after publication.
+
+Local qualification:
+
+- Snapshot and `0.3.0-rc.1` bundles and empty-cache consumers pass for diagnostics
+  and concurrency. Diagnostics executes all three guide examples; concurrency
+  retains FIFO, rejection, independent-key, shutdown and nested-exclusion checks.
+- Forty-five offline publication tests cover both components, including signing
+  with disposable test keys, immutable manifests, component/tag/branch mismatch,
+  cross-component rejection before side effects, coupled POMs, incomplete/foreign
+  archives, checksum conflicts and partial-release/deployment recovery.
+- The first consumer attempt failed while downloading an exec plugin because
+  Maven did not use the environment's HTTPS proxy. That failure remains retained.
+  The consumer now translates `https_proxy`/`HTTPS_PROXY` only into temporary
+  transport settings; it still imports no developer repositories/mirrors/cache.
+  Three offline tests cover proxy translation, absence and invalid input.
+- Runtime dependency-tree inspection contains only the diagnostics artifact;
+  `jdeps --list-deps` reports only `java.base`. Both diagnostics archive builds
+  pass strict Javadoc without warnings. Workflow YAML and embedded shell/Python
+  syntax checks pass; workflows were not dispatched.
+- Maven warns about missing repository checksum sidecars for unsigned local RC
+  bundles. The consumer still independently verifies all four resolved artifact
+  hashes against the manifest. Signed release bundles include the sidecars;
+  missing/mismatched release files remain hard failures.
+
+Logs and local bundles are retained under `.dev/lib2-d3/`, outside versioned
+release evidence. Required full `make verify` and adopted PMD policy are run on
+the final committed D3 tree; exact identity/freshness is recorded by `make context`
+and the task report. No coverage/analyzer ratchet, accepted-finding identity,
+production Java, suite universe or external-test classification changes in D3.
+D4 remains the final ADR/documentation and publication-security admission review;
+D5 repository publication is a separate explicitly authorized step.

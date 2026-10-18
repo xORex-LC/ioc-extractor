@@ -30,13 +30,14 @@ contract. D1 extraction and IOC migration are implemented, including API
 Javadoc/package docs, module READMEs and a consumer guide with compiled/executed
 examples. D2 public-boundary qualification is complete: generic and IOC
 regressions, budget/merge/delivery limits and failure ownership are verified.
-D3 checks the guide with an independent consumer; D4 reviews final documentation and
-promotes the ADR draft. Publication remains pending explicit authorization.
+D3 independent packaging is complete: both components pass snapshot/RC
+empty-cache consumers, and diagnostics executes all guide examples. D4 reviews
+final documentation and promotes the ADR draft. Publication remains pending explicit authorization.
 
 ## Candidate documents
 
 - [Diagnostics contract and extraction plan](lib-2-diagnostics-design.md): D0
-  decisions, completed D1/D2 evidence, migration seams and remaining packaging gates.
+  decisions, completed D1–D3 evidence, migration seams and remaining release gates.
 - [Diagnostics ADR draft](lib-2-diagnostics-adr-draft.md): boundary, alternatives,
   compatibility obligations and operational trade-offs for D4 promotion.
 - [Spring Boot configuration proposal](configuration-library-design.md): existing
@@ -66,4 +67,5 @@ Diagnostics D1 now has a coherent shared-model implementation, documented public
 API and [consumer guide](../../../guides/diagnostics-library.md) with executable
 examples. Its [qualification record](lib-2-diagnostics-design.md#d1-implementation-and-qualification-record--2026-10-18)
 retains migration, documentation and analyzer review. D2 boundary qualification
-is complete; the library remains unpublished and D3 standalone consumption is pending.
+is complete. D3 standalone packaging/consumption is also qualified; public
+publication and D4 final admission remain pending.

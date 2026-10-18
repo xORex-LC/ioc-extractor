@@ -3,8 +3,14 @@ name: Library publication
 on:
   workflow_dispatch:
     inputs:
+      component:
+        description: 'Reviewed JDK-only library'
+        required: true
+        type: choice
+        options: [concurrency, diagnostics]
+        default: concurrency
       release_tag:
-        description: 'Annotated component tag: ioc-platform-concurrency-vX.Y.Z[-rc.N]'
+        description: 'Annotated tag: <selected artifactId>-vX.Y.Z[-rc.N]'
         required: true
         type: string
       operation:
@@ -18,6 +24,9 @@ on:
       central_deployment_id:
         description: 'Existing Central deployment ID (required for resume; recover from evidence or Portal)'
         type: string
+
+env:
+  LIBRARY_COMPONENT: ${{ inputs.component || 'concurrency' }}
 
 permissions:
   contents: read
@@ -49,19 +58,13 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PY'
-          import json, os, re, subprocess, urllib.request
+          import json, os, re, runpy, subprocess, urllib.request
           def git(*args):
               return subprocess.check_output(['git', *args], text=True).strip()
           tag = os.environ['RELEASE_TAG']
           branch = os.environ['RELEASE_BRANCH']
-          tag_match = re.fullmatch(
-              r'ioc-platform-concurrency-v(\d+\.\d+\.\d+(?:-rc\.\d+)?)', tag)
-          branch_match = re.fullmatch(r'release-(\d+\.\d+\.\d+)', branch)
-          assert tag_match, 'Invalid concurrency component tag'
-          assert branch_match, 'Select a release-X.Y.Z branch, not main or a development branch'
-          version = tag_match.group(1)
-          assert re.sub(r'-rc\.\d+$', '', version) == branch_match.group(1), \
-              'Component version does not match selected release branch'
+          publication = runpy.run_path('tools/ci/library-publication.py')
+          version = publication['release_version'](os.environ['LIBRARY_COMPONENT'], tag, branch)
           assert git('cat-file', '-t', 'refs/tags/' + tag) == 'tag', 'Annotated tag required'
           commit = git('rev-parse', 'refs/tags/' + tag + '^{commit}')
           subprocess.run(
@@ -106,9 +109,9 @@ jobs:
         run: |
           ./mvnw -B -ntp -Plibrary-publication -Drevision="$LIBRARY_VERSION" \
             -Dproject.build.outputTimestamp="$(git show -s --format=%cI HEAD)" clean verify
-          python3 tools/ci/library-publication.py prepare --bundle .dev/library-bundle --version "$LIBRARY_VERSION"
+          python3 tools/ci/library-publication.py prepare --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle --version "$LIBRARY_VERSION"
           python3 tools/tests/library-publication-test.py
-          python3 tools/ci/library-publication.py consume --bundle .dev/library-bundle
+          python3 tools/ci/library-publication.py consume --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle
           ./mvnw -B -ntp -Drevision="$LIBRARY_VERSION" -DskipTests -Djacoco.skip=true -Dspotbugs.skip=true -Ppmd-analysis -pl build-support/pmd-report -am verify
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -152,13 +155,13 @@ jobs:
         env:
           LIBRARY_VERSION: ${{ needs.admission.outputs.version }}
           LIBRARY_COMMIT: ${{ needs.admission.outputs.commit }}
-        run: python3 tools/ci/library-publication.py check --bundle .dev/library-bundle --version "$LIBRARY_VERSION" --commit "$LIBRARY_COMMIT"
+        run: python3 tools/ci/library-publication.py check --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle --version "$LIBRARY_VERSION" --commit "$LIBRARY_COMMIT"
       - name: Sign original build once
         if: inputs.resume_run_id == ''
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: python3 tools/ci/library-publication.py sign --bundle .dev/library-bundle
+        run: python3 tools/ci/library-publication.py sign --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle
       - name: Retain immutable signed bundle before any repository write
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -175,13 +178,13 @@ jobs:
         run: |
           args=()
           if [[ "$OPERATION" == publish ]]; then args+=(--publish); fi
-          python3 tools/ci/library-publication.py central --bundle .dev/library-bundle \
+          python3 tools/ci/library-publication.py central --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle \
             --deployment-id "$DEPLOYMENT_ID" "${args[@]}"
       - name: Mirror exact files to GitHub Packages
         if: inputs.operation == 'publish'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 tools/ci/library-publication.py github --bundle .dev/library-bundle
+        run: python3 tools/ci/library-publication.py github --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle
       - name: Retain deployment recovery evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -219,8 +222,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           mkdir -p library-consumer-evidence
-          python3 tools/ci/library-publication.py consume --bundle .dev/library-bundle --repository central 2>&1 | tee library-consumer-evidence/central.log
-          python3 tools/ci/library-publication.py consume --bundle .dev/library-bundle --repository github 2>&1 | tee library-consumer-evidence/github.log
+          python3 tools/ci/library-publication.py consume --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle --repository central 2>&1 | tee library-consumer-evidence/central.log
+          python3 tools/ci/library-publication.py consume --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle --repository github 2>&1 | tee library-consumer-evidence/github.log
       - name: Retain consumer evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

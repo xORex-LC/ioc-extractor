@@ -1,11 +1,21 @@
-# Publishing the concurrency library
+# Publishing the JDK-only libraries
 
-The pilot artifact is `io.github.xorex-lc:ioc-platform-concurrency`, Java 21,
-with no runtime dependencies. Maven Central is primary; GitHub Packages is a
-second destination for the identical release. See
-[ADR 0028](../ADR/0028-pilot-library-publication.md), its release-branch
-[ADR 0029](../ADR/0029-release-branch-library-publication.md), and the
-[API reference](../../platform/platform-concurrency/README.md).
+The reviewed components use Java 21 and have no runtime dependencies:
+
+| Component selector | Artifact (`io.github.xorex-lc`) | Module |
+|---|---|---|
+| `concurrency` (default) | `ioc-platform-concurrency` | `platform/platform-concurrency` |
+| `diagnostics` | `ioc-platform-diagnostics-api` | `platform/platform-diagnostics-api` |
+
+Maven Central is primary; GitHub Packages receives the identical release bytes.
+The concurrency pilot established the publication model in
+[ADR 0028](../ADR/0028-pilot-library-publication.md) and the release-branch policy
+in [ADR 0029](../ADR/0029-release-branch-library-publication.md). See the
+[concurrency reference](../../platform/platform-concurrency/README.md) and
+[diagnostics reference](../../platform/platform-diagnostics-api/README.md).
+Diagnostics has local packaging qualification; public release admission remains
+separate. Adding a component does not authorize publishing it or republishing
+concurrency. Dependency-bearing artifacts require another reviewed contract.
 No version is claimed published until the repository checks below pass.
 
 ## Local packaging qualification
@@ -17,6 +27,9 @@ network access for build tools and the empty-cache consumer:
 make library-publication-test
 make library-bundle
 make library-consumer
+
+make library-bundle LIBRARY_COMPONENT=diagnostics LIBRARY_BUNDLE=.dev/diagnostics-bundle
+make library-consumer LIBRARY_COMPONENT=diagnostics LIBRARY_BUNDLE=.dev/diagnostics-bundle
 ```
 
 `LIBRARY_VERSION` defaults to `0.3.0-SNAPSHOT`; `LIBRARY_BUNDLE` defaults to
@@ -24,13 +37,29 @@ make library-consumer
 path for a new build. This creates the main JAR, sources, Javadoc and a flattened
 POM without the private reactor parent. The consumer copies its project outside
 the checkout, uses an empty Maven cache, and compares all four resolved artifacts
-to the bundle manifest. It checks FIFO, queue rejection, independent keys,
-shutdown and synchronous nested execution/failure propagation.
+to the bundle manifest. The default concurrency fixture checks FIFO, queue
+rejection, independent keys, shutdown and synchronous nested execution/failure
+propagation. The diagnostics fixture runs the three
+[guide examples](diagnostics-library.md) with its own codes: results and policy
+decisions, bounded stage/run counts and delivery failure callbacks. Both consumer
+POMs stand alone, with no IOC parent or reactor class directories.
 
 The fixture is a packaging/API consumer, not a feeds-collector implementation.
 Its Maven plugins resolve from Central independently of the selected library
 repository. These checks need network access and do not replace `make verify`
-or `make pmd-analysis`. CI runs them in a separate unprivileged job.
+or `make pmd-analysis`. CI runs one unprivileged matrix job per component.
+The selector is allowlisted; the CLI's `--component` defaults to `concurrency`
+for compatibility. Pass `--component diagnostics` on every diagnostics operation,
+including `check`, signing and recovery. A bundle from another component is
+rejected before signing or repository access. The manifest retains the exact
+artifact, version, source commit and file hashes; existing concurrency manifests
+remain valid without rewriting them.
+
+When outbound HTTPS requires a proxy, the consumer translates `https_proxy` or
+`HTTPS_PROXY` into its temporary Maven settings. It still uses a fresh cache and
+empty global settings; it imports no developer mirrors or repositories. Proxy
+credentials, if present, remain in the temporary directory and are removed with
+it. A network or plugin-download failure is not a passing consumer result.
 
 ## Account and workflow setup
 
@@ -69,24 +98,24 @@ publishing PAT is unnecessary. Existing `SECURITY CHECKS` remains independent.
 1. Merge the implementation into `release-X.Y.Z` and pass its normal CI gates.
    Add the publication workflow file to `main` so GitHub registers the manual
    workflow; this does not move application code into `main`.
-2. Create an annotated `ioc-platform-concurrency-vX.Y.Z` or
-   `ioc-platform-concurrency-vX.Y.Z-rc.N` tag on the reviewed release-branch
-   commit. The first proposed RC is
-   `ioc-platform-concurrency-v0.3.0-rc.1`. Do not move a tag after preparing a
-   bundle. Library and product versions remain aligned even though their tags
-   and release moments are separate.
+2. Create an annotated `<artifactId>-vX.Y.Z` or `<artifactId>-vX.Y.Z-rc.N`
+   tag for the selected component on the reviewed release-branch commit, for
+   example `ioc-platform-diagnostics-api-v0.3.0-rc.1`. Do not move an existing
+   tag or reuse concurrency's published tag for another component. Library and
+   product versions remain aligned even though their tags and release moments
+   are separate.
 3. Dispatch **Library publication**, select the corresponding
-   `release-X.Y.Z` branch, enter that component tag, and keep
+   `release-X.Y.Z` branch, choose `component`, enter its matching tag, and keep
    `operation=validate`. Leave recovery inputs empty. The job builds
    and verifies without publishing credentials, runs the independent consumer,
    signs once, and retains `signed-library` before contacting either repository.
 4. Download and preserve `signed-library` and `central-deployment` artifacts.
    Record the source SHA, run ID, manifest hashes and Central deployment ID.
    `VALIDATED` means staged successfully; it does not mean publicly released.
-5. Dispatch again against the same release branch with the same tag,
+5. Dispatch again against the same release branch with the same component and tag,
    `operation=publish`, the original `resume_run_id` and
    `central_deployment_id`. The workflow verifies recovery provenance and
-   source/version identity, reuses the signed bundle, publishes Central,
+   component/source/version identity, reuses the signed bundle, publishes Central,
    mirrors missing files to GitHub Packages, then resolves each repository
    separately using fresh consumer caches.
 6. Retain both repository URLs, the successful consumer logs and artifact hashes

@@ -21,5 +21,9 @@ use their own code enum and clock, without the IOC catalog.
 
 Run `make test-module MODULE=platform/platform-diagnostics-api` from the repository
 root. IOC integration remains in `platform-diagnostics`, `platform-etl` and
-`platform-diagnostics-logging`. Independent packaging and publication are later
-qualification steps; this module does not supply a logging or Spring starter.
+`platform-diagnostics-logging`. Build a standalone flattened POM, main,
+sources and strict Javadoc with `make library-bundle LIBRARY_COMPONENT=diagnostics`
+using a new `LIBRARY_BUNDLE` directory. `make library-consumer` with the same
+selector and directory runs the guide examples outside the checkout with a fresh
+cache. See the [publication procedure](../../docs/guides/library-publication.md).
+Public publication remains a later step; this module supplies no Spring starter.

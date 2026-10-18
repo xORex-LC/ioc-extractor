@@ -27,6 +27,24 @@ CENTRAL = 'https://repo.maven.apache.org/maven2'
 GITHUB = 'https://maven.pkg.github.com/xorex-lc/ioc-extractor'
 PORTAL = 'https://central.sonatype.com/api/v1/publisher'
 SUFFIXES = ('.pom', '.jar', '-sources.jar', '-javadoc.jar')
+# Admission is deliberately limited to these two JDK-only components. A new
+# dependency-bearing library needs its own reviewed packaging contract.
+COMPONENTS = {
+    'concurrency': {
+        'artifact': ARTIFACT,
+        'module': 'platform/platform-concurrency',
+        'package': 'com/iocextractor/platform/concurrent/',
+        'markers': ('BoundedKeyedSerialExecutor',),
+        'fixture': 'library-consumer',
+    },
+    'diagnostics': {
+        'artifact': 'ioc-platform-diagnostics-api',
+        'module': 'platform/platform-diagnostics-api',
+        'package': 'com/iocextractor/platform/diagnostics/',
+        'markers': ('Diagnostic', 'result/DiagnosticBatch', 'sink/ResilientDiagnosticSink'),
+        'fixture': 'diagnostics-consumer',
+    },
+}
 
 
 def require(condition, message):
@@ -48,24 +66,49 @@ def version_check(version, release=False):
     return version
 
 
-def relative_path(version):
-    return Path(*GROUP.split('.')) / ARTIFACT / version
+def release_version(component_name, tag, branch):
+    """Admit only this component's tag on its matching product release branch."""
+    require(component_name in COMPONENTS, 'unknown component')
+    artifact = COMPONENTS[component_name]['artifact']
+    tag_match = re.fullmatch(re.escape(artifact) + r'-v(\d+\.\d+\.\d+(?:-rc\.\d+)?)', tag)
+    branch_match = re.fullmatch(r'release-(\d+\.\d+\.\d+)', branch)
+    require(tag_match is not None, 'invalid component tag')
+    require(branch_match is not None, 'select a release-X.Y.Z branch')
+    version = tag_match.group(1)
+    require(re.sub(r'-rc\.\d+$', '', version) == branch_match.group(1),
+            'component version does not match selected release branch')
+    return version
 
 
-def read_bundle(bundle, signed=False):
+def component_for(metadata):
+    require(metadata['group'] == GROUP, 'unexpected coordinates')
+    for component in COMPONENTS.values():
+        if component['artifact'] == metadata['artifact']:
+            return component
+    raise ValueError('unexpected coordinates')
+
+
+def relative_path(version, component=None):
+    component = component or COMPONENTS['concurrency']
+    return Path(*GROUP.split('.')) / component['artifact'] / version
+
+
+def read_bundle(bundle, signed=False, expected_component=None):
     metadata = json.loads((bundle / 'identity.json').read_text())
     version_check(metadata['version'])
-    require(metadata['group'] == GROUP and metadata['artifact'] == ARTIFACT, 'unexpected coordinates')
+    component = component_for(metadata)
+    require(expected_component is None or component == expected_component, 'unexpected bundle component')
+    artifact_id = component['artifact']
     require(re.fullmatch('[0-9a-f]{40}', metadata['commit']), 'invalid source identity')
     require(bool(metadata['files']), 'empty manifest')
-    prefix = relative_path(metadata['version'])
+    prefix = relative_path(metadata['version'], component)
     for name, expected in metadata['files'].items():
         path = Path(name)
-        require(path.parent == prefix and path.name.startswith(ARTIFACT + '-'), 'invalid artifact path')
+        require(path.parent == prefix and path.name.startswith(artifact_id + '-'), 'invalid artifact path')
         artifact = bundle / 'repository' / path
         require(artifact.is_file() and not artifact.is_symlink(), 'missing or symbolic artifact')
         require(digest(artifact.read_bytes()) == expected, 'artifact checksum mismatch: ' + name)
-    stem = str(prefix / (ARTIFACT + '-' + metadata['version']))
+    stem = str(prefix / (artifact_id + '-' + metadata['version']))
     originals = {stem + suffix for suffix in SUFFIXES}
     expected_names = set(originals)
     if metadata.get('signed'):
@@ -85,21 +128,23 @@ def write_identity(bundle, metadata):
     (bundle / 'identity.json').write_text(json.dumps(metadata, indent=2, sort_keys=True) + '\n')
 
 
-def prepare(bundle, version):
+def prepare(bundle, version, component=None):
+    component = component or COMPONENTS['concurrency']
+    artifact_id = component['artifact']
     version_check(version)
     require(not bundle.exists(), 'output already exists; preserve or choose a new bundle path')
-    target = ROOT / 'platform/platform-concurrency/target'
+    target = ROOT / component['module'] / 'target'
     pom = target / 'publication.pom'
     xml = ET.parse(pom).getroot()
     ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
     require('${' not in pom.read_text(), 'unresolved consumer POM property')
-    for field, value in [('groupId', GROUP), ('artifactId', ARTIFACT), ('version', version)]:
+    for field, value in [('groupId', GROUP), ('artifactId', artifact_id), ('version', version)]:
         require(xml.findtext('m:' + field, namespaces=ns) == value, 'consumer POM identity mismatch')
     for field in ('parent', 'dependencies', 'dependencyManagement', 'repositories', 'build', 'profiles'):
         require(xml.find('m:' + field, ns) is None, 'unexpected consumer POM coupling: ' + field)
     for field in ('name', 'description', 'url', 'licenses', 'developers', 'scm'):
         require(xml.find('m:' + field, ns) is not None, 'missing POM metadata: ' + field)
-    stem = ARTIFACT + '-' + version
+    stem = artifact_id + '-' + version
     sources = {'.pom': pom, **{suffix: target / (stem + suffix) for suffix in SUFFIXES[1:]}}
     for suffix, source in sources.items():
         require(source.is_file(), 'missing build artifact: ' + str(source))
@@ -107,23 +152,26 @@ def prepare(bundle, version):
             with zipfile.ZipFile(source) as archive:
                 require(archive.testzip() is None, 'corrupt archive')
                 names = archive.namelist()
-                marker = 'BoundedKeyedSerialExecutor' + ('.class' if suffix == '.jar' else '.java' if suffix == '-sources.jar' else '.html')
-                require(any(n.endswith(marker) for n in names), 'missing real archive contents: ' + suffix)
+                extension = '.class' if suffix == '.jar' else '.java' if suffix == '-sources.jar' else '.html'
+                require(all(component['package'] + marker + extension in names for marker in component['markers']),
+                        'missing real archive contents: ' + suffix)
                 if suffix == '.jar':
                     require(not any(n.startswith('BOOT-INF/') for n in names), 'bootable JAR is not a library')
-                    embedded_pom = 'META-INF/maven/' + GROUP + '/' + ARTIFACT + '/pom.xml'
+                    embedded_pom = 'META-INF/maven/' + GROUP + '/' + artifact_id + '/pom.xml'
                     require(archive.read(embedded_pom) == pom.read_bytes(), 'embedded consumer POM differs')
                     require('META-INF/LICENSE' in names, 'missing distribution license')
-                    classes = [archive.read(n) for n in names if n.endswith('.class')]
+                    class_names = [n for n in names if n.endswith('.class')]
+                    require(all(n.startswith(component['package']) for n in class_names), 'foreign library classes')
+                    classes = [archive.read(n) for n in class_names]
                     require(classes and all(int.from_bytes(c[6:8], 'big') == 65 for c in classes),
                             'library bytecode must target Java 21')
-    destination = bundle / 'repository' / relative_path(version)
+    destination = bundle / 'repository' / relative_path(version, component)
     destination.mkdir(parents=True)
     for suffix, source in sources.items():
         shutil.copyfile(source, destination / (stem + suffix))
     commit = run(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
     dirty = bool(run(['git', '-C', str(ROOT), 'status', '--porcelain'], capture_output=True, text=True).stdout)
-    write_identity(bundle, {'group': GROUP, 'artifact': ARTIFACT, 'version': version, 'commit': commit,
+    write_identity(bundle, {'group': GROUP, 'artifact': artifact_id, 'version': version, 'commit': commit,
                             'dirty': dirty, 'signed': False})
     read_bundle(bundle)
 
@@ -251,13 +299,13 @@ def publish_central(bundle, publish, deployment_id):
         boundary = uuid.uuid4().hex
         body = ('--' + boundary + '\r\nContent-Disposition: form-data; name="bundle"; filename="central-bundle.zip"\r\n'
                 'Content-Type: application/octet-stream\r\n\r\n').encode() + archive.read_bytes() + ('\r\n--' + boundary + '--\r\n').encode()
-        name = ARTIFACT + '-' + metadata['version'] + '-' + digest((bundle / 'identity.json').read_bytes())
+        name = metadata['artifact'] + '-' + metadata['version'] + '-' + digest((bundle / 'identity.json').read_bytes())
         url = PORTAL + '/upload?' + urllib.parse.urlencode({'name': name, 'publishingType': 'USER_MANAGED'})
         deployment_id = request(url, 'POST', body, {**headers, 'Content-Type': 'multipart/form-data; boundary=' + boundary}).decode().strip()
         require(re.fullmatch('[a-fA-F0-9-]{36}', deployment_id), 'invalid deployment identifier')
         (bundle / 'central-deployment-id.txt').write_text(deployment_id + '\n')
     require(re.fullmatch('[a-fA-F0-9-]{36}', deployment_id), 'invalid deployment identifier')
-    expected_name = ARTIFACT + '-' + metadata['version'] + '-' + digest((bundle / 'identity.json').read_bytes())
+    expected_name = metadata['artifact'] + '-' + metadata['version'] + '-' + digest((bundle / 'identity.json').read_bytes())
     (bundle / 'central-deployment-id.txt').write_text(deployment_id + '\n')
     deadline = time.monotonic() + 900
     released = False
@@ -279,16 +327,37 @@ def publish_central(bundle, publish, deployment_id):
     raise ValueError('Central did not finish within 15 minutes; retain deployment ID and bundle for recovery')
 
 
+def configure_proxy(settings):
+    """Keep the fresh-cache consumer usable where outbound HTTPS needs a proxy."""
+    value = os.environ.get('https_proxy') or os.environ.get('HTTPS_PROXY')
+    if not value:
+        return
+    proxy = urllib.parse.urlparse(value)
+    require(proxy.scheme in ('http', 'https') and proxy.hostname and not proxy.query and not proxy.fragment
+            and proxy.path in ('', '/'), 'invalid HTTPS proxy configuration')
+    element = ET.SubElement(ET.SubElement(settings, 'proxies'), 'proxy')
+    fields = [('id', 'consumer-transport'), ('active', 'true'), ('protocol', proxy.scheme),
+              ('host', proxy.hostname), ('port', str(proxy.port or (443 if proxy.scheme == 'https' else 80)))]
+    if proxy.username is not None:
+        fields.append(('username', urllib.parse.unquote(proxy.username)))
+    if proxy.password is not None:
+        fields.append(('password', urllib.parse.unquote(proxy.password)))
+    for name, text in fields:
+        ET.SubElement(element, name).text = text
+
+
 def consume(bundle, repository):
     metadata = read_bundle(bundle)
+    component = component_for(metadata)
     require(repository in ('local', 'central', 'github'), 'unknown consumer repository')
     url = {'local': (bundle / 'repository').resolve().as_uri(), 'central': CENTRAL, 'github': GITHUB}[repository]
     if repository != 'local':
         require(not compare_remote(bundle, url, authorization('github') if repository == 'github' else None), 'remote bundle incomplete')
     with tempfile.TemporaryDirectory(prefix='ioc-library-consumer-') as folder:
         work = Path(folder)
-        shutil.copytree(ROOT / 'tools/fixtures/library-consumer', work / 'consumer')
+        shutil.copytree(ROOT / 'tools/fixtures' / component['fixture'], work / 'consumer')
         settings = ET.Element('settings', xmlns='http://maven.apache.org/SETTINGS/1.2.0')
+        configure_proxy(settings)
         mirror = ET.SubElement(ET.SubElement(settings, 'mirrors'), 'mirror')
         for name, value in [('id', 'library-target'), ('mirrorOf', 'central'), ('url', url)]:
             ET.SubElement(mirror, name).text = value
@@ -308,27 +377,36 @@ def consume(bundle, repository):
         run([str(ROOT / 'mvnw'), '-B', '-ntp', '-s', str(settings_path), '-gs', str(empty),
              '-Dmaven.repo.local=' + str(work / 'cache'), '-Dlibrary.version=' + metadata['version'],
              'compile', 'org.codehaus.mojo:exec-maven-plugin:3.5.0:java'], cwd=work / 'consumer', env=env)
-        resolved = work / 'cache' / relative_path(metadata['version'])
+        resolved = work / 'cache' / relative_path(metadata['version'], component)
         for suffix in SUFFIXES:
-            name = ARTIFACT + '-' + metadata['version'] + suffix
-            require(digest((resolved / name).read_bytes()) == metadata['files'][str(relative_path(metadata['version']) / name)], 'consumer resolved different artifact bytes')
+            name = metadata['artifact'] + '-' + metadata['version'] + suffix
+            require(digest((resolved / name).read_bytes()) == metadata['files'][str(relative_path(metadata['version'], component) / name)], 'consumer resolved different artifact bytes')
+        print('Qualified ' + metadata['artifact'] + ':' + metadata['version'] + ' from ' + repository +
+              '; four resolved artifacts match the bundle')
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=('prepare', 'check', 'sign', 'central', 'github', 'consume'))
-    parser.add_argument('--bundle', type=Path, required=True)
+    parser.add_argument('command', choices=('module', 'artifact', 'prepare', 'check', 'sign', 'central', 'github', 'consume'))
+    parser.add_argument('--component', choices=tuple(COMPONENTS), default='concurrency')
+    parser.add_argument('--bundle', type=Path)
     parser.add_argument('--version')
     parser.add_argument('--commit')
     parser.add_argument('--repository', default='local')
     parser.add_argument('--publish', action='store_true')
     parser.add_argument('--deployment-id', default='')
     args = parser.parse_args()
+    component = COMPONENTS[args.component]
+    if args.command in ('module', 'artifact'):
+        print(component[args.command])
+        return
+    require(args.bundle is not None, '--bundle is required')
     bundle = args.bundle.resolve()
     if args.command == 'prepare':
-        prepare(bundle, args.version or '')
-    elif args.command == 'check':
-        metadata = read_bundle(bundle)
+        prepare(bundle, args.version or '', component)
+        return
+    metadata = read_bundle(bundle, expected_component=component)
+    if args.command == 'check':
         require(not args.version or metadata['version'] == args.version, 'unexpected bundle version')
         require(not args.commit or metadata['commit'] == args.commit, 'unexpected bundle commit')
     elif args.command == 'sign':

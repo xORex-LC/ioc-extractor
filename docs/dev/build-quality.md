@@ -640,7 +640,17 @@ individual accepted finding unless the mechanism itself changes.
 ## Published library coordinates
 
 Report membership admits `io.github.xorex-lc` only for
-`ioc-platform-concurrency`; other reactor JARs must retain `com.iocextractor`.
-The exact module universe, scopes and all reviewed analyzer/coverage ratchets
-remain unchanged. Verifier negative fixtures reject both a foreign group for
-an ordinary module and the retired group for the admitted library.
+`ioc-platform-concurrency` and `ioc-platform-diagnostics-api`; other reactor
+JARs must retain `com.iocextractor`. Verifier negative fixtures reject a foreign
+group for an ordinary module and the retired group for either admitted library.
+
+The separate `library-consumer` CI matrix qualifies both JDK-only components.
+Each builds a parent-independent, zero-runtime-dependency POM, main JAR with
+the distribution license, sources and Javadoc. Publication contracts reject
+cross-component tags/bundles, coupled POMs and incomplete/foreign archives;
+signature and partial-publication recovery checks run for both components.
+The copied consumer uses empty Maven settings/cache outside the checkout and
+checks all four resolved artifacts against the manifest. Network-dependent
+plugin resolution and local file-repository qualification do not substitute for
+the deterministic reactor gate or prove public publication. See the
+[publication guide](../guides/library-publication.md).

@@ -23,7 +23,7 @@ not a current publication test.
 | Module/capability | Category | Responsibility | Current consumers | IOC-specific coupling | Publication disposition |
 |---|---|---|---|---|---|
 | `platform/platform-errors` | Service-shared | Root unchecked exception contract | diagnostics, ETL, application, four adapters, bootstrap | High: `IocExtractorException` and `com.iocextractor.common` express this product | Keep internal; not a first publication unit |
-| `platform/platform-diagnostics-api` | Candidate cross-service platform | JDK-only values, results/policies, bounded samples/counts and sinks | Local diagnostics, ETL, application, adapters and bootstrap | No non-JDK production closure; independent packaging still pending | D1 implemented; D2 qualified; D3–D5 pending |
+| `platform/platform-diagnostics-api` | Candidate cross-service platform | JDK-only values, results/policies, bounded samples/counts and sinks | Local diagnostics, ETL, application, adapters and bootstrap | JDK-only closure and isolated snapshot/RC consumer qualified | D1–D3 complete; D4/D5 pending |
 | `platform/platform-diagnostics` | Service-shared product metadata | IOC catalogs, exception and rendering | ETL, application, diagnostics bridge, four adapters, bootstrap | IOC categories/messages and `platform-errors` closure | Retained locally after D1 split |
 | `platform/platform-etl` | Candidate cross-service platform | Framework-free Pipes-and-Filters execution model | application, observability | Medium: diagnostics/error result semantics and only one business consumer | Defer until second consumer and closure review |
 | `platform/platform-events` | Candidate cross-service platform, local only | In-process publish-only control-event mechanics | application, bootstrap | Low in API shape; current use remains service-local and explicitly non-wire | Defer publication; preserve anti-broker boundary |
@@ -179,3 +179,20 @@ resolved, compiled and ran against each repository. Retained artifacts are
 unit therefore satisfies the `R030-LIB` definition of done and closes
 `TEST-PUBLICATION-08`. Snapshot policy and real `feeds-collector` execution
 semantics remain separate future decisions.
+
+
+### LIB-2 D3 packaging qualification — 2026-10-18
+
+The diagnostics component has a flattened zero-runtime-dependency POM, main
+archive with MIT license, sources and strict Javadoc. A copied standalone Maven
+project with a fresh cache resolves all four artifacts and executes all three
+consumer-guide examples with its own codes. Snapshot and RC local qualification
+also pass for concurrency, whose existing release/tag is unchanged.
+
+The explicit component selector binds artifact/module/package/fixture and
+component-tag admission. Signed bundle/recovery contracts run for both components;
+45 offline tests pass. The regular CI consumer job now covers both components.
+This is local file-repository packaging evidence, not Central/GitHub publication
+or a second production-service integration. D4 final admission and explicitly
+authorized D5 publication remain pending. See the
+[D3 record](../libs/lib-2-diagnostics-design.md#d3-independent-packaging-record--2026-10-18).
