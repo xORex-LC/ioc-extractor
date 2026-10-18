@@ -1,13 +1,14 @@
 # LIB-2: Diagnostics library contract and extraction plan
 
-Status: D0–D4 are complete and locally qualified, 2026-10-18. Extraction, IOC
+Status: D0–D5 are complete, 2026-10-18. Extraction, IOC
 migration, public-boundary tests, independent packaging and final admission are
 recorded below; [ADR 0044](../../../ADR/0044-reusable-diagnostics-contract.md)
-owns the accepted architectural decision. The owner authorized preparing and
-opening the integration PR into `release-0.3.0`. D5 remote publication and
-repository-consumer qualification will follow PR approval and merge; they have
-not been performed. The original review was dated 2026-09-13; the current
-inventory replaces its sixteen-type selection.
+owns the accepted architectural decision. PR 16 is merged into `release-0.3.0`.
+D5 published `io.github.xorex-lc:ioc-platform-diagnostics-api:0.3.0-rc.1` from the
+retained signed bundle. Separate cold consumers passed against Central and GitHub
+Packages; the release record below retains the exact source and artifact identity.
+The original review was dated 2026-09-13; the current inventory replaces its
+sixteen-type selection.
 
 Execution checkpoint, 2026-10-18: the owner selected diagnostics as the next
 implementation target after closing events design. Complete its extraction,
@@ -38,7 +39,7 @@ contracts are part of the extraction, not optional follow-up hardening.
 | Delivery failure | Raw failures propagate; resilient wrapper contains delegate/fallback RuntimeException and propagates Error |
 | Version and compatibility | Lockstep `${revision}`; review public signatures and observable behavior; during 0.x, breaking changes require a new minor version and migration notes; patches preserve the contract |
 | Release destinations | Maven Central primary, GitHub Packages mirror of the same immutable bytes; diagnostics component tags `ioc-platform-diagnostics-api-vX.Y.Z[-rc.N]` on the matching release branch |
-| Admission state | `design-admitted`; source closure reviewed, implementation/consumer/release evidence pending |
+| Admission state at D0 | `design-admitted`; later implementation and release evidence is recorded in D1–D5 |
 
 Existing consumers are the ten direct functional JAR consumers inventoried below.
 The confirmed nearest external consumer is the planned `feeds-collector`; its
@@ -64,7 +65,7 @@ are confirmed in the [interview](shared-library-exploration.md). IOC categories,
 catalogs, text rendering, exceptions and logging composition stay in the service.
 No reload, messaging protocol, Spring starter or API/implementation split.
 
-Selected coordinates (not yet built/published):
+Selected coordinates:
 `io.github.xorex-lc:ioc-platform-diagnostics-api`, new reactor module
 `platform/platform-diagnostics-api`. The JAR includes small implementations,
 despite its API suffix. Keep existing `ioc-platform-diagnostics` as the
@@ -602,7 +603,7 @@ dependency-bearing publication is unnecessary for LIB-2 and is not a prerequisit
 | D2 — public boundary hardening | Complete adversarial qualification of the implemented D0 contracts; extend the generic and IOC regression matrix and keep source/consumer documentation aligned | Generic-code tests, exact budget/merge/delivery regressions and IOC integration tests pass; documented boundary/error outcomes agree with tests | Complete, 2026-10-18; qualification record below |
 | D3 — independent packaging | Add reviewed component selection to tooling/workflow and an outside-reactor consumer exercising the guide examples; retain concurrency qualification | Flattened zero-runtime-dependency POM, complete main/sources/Javadoc/license archives, manifest/recovery identity checks and isolated consumer pass | Complete, 2026-10-18; qualification record below |
 | D4 — documentation review and final gates | Finalize ADR/docs/index references and review the documentation coverage/example evidence; review all analyzer/coverage/test registries and publication security boundary | Complete and consistent source/consumer docs and links; focused tests, final verify, PMD policy and exception-ownership watchlist reviewed; raw findings and exact-worktree evidence retained | Complete, 2026-10-18; admission record below |
-| D5 — authorized publication | Integrate/release only under explicit owner instruction; publish immutable reviewed bytes, without changing concurrency's release/tag | Separate cold consumers and artifact identity from each claimed repository; retained release evidence | Integration PR authorized, 2026-10-18; publication follows PR approval and merge |
+| D5 — authorized publication | Integrate/release only under explicit owner instruction; publish immutable reviewed bytes, without changing concurrency's release/tag | Separate cold consumers and artifact identity from each claimed repository; retained release evidence | Complete, 2026-10-18; `0.3.0-rc.1` published and qualified from Central and GitHub Packages in run 39137777538 |
 
 Do not advance a slice by lowering a floor, accepting unexplained finding drift,
 or treating a local install as a published consumer. A new generic module with
@@ -1003,3 +1004,69 @@ D4 closes local architectural/documentation admission. D5 remains separately
 authorized integration, tagging, protected publication and cold resolution from
 each claimed remote repository. Another real production-service integration and
 provisioned external service checks remain outside this evidence.
+
+## D5 protected publication record — 2026-10-18
+
+The owner approved PR 16 and authorized publication after its merge into
+`release-0.3.0`. Annotated tag
+`ioc-platform-diagnostics-api-v0.3.0-rc.1` fixes source commit
+`988df4af943fd61258850e6607bd547084763dbb`. Its tree equals reviewed PR head
+`662aa880`; merge CI run
+[`39132675560`](https://github.com/xORex-LC/ioc-extractor/actions/runs/39132675560)
+passed. The existing concurrency release and tag remain unchanged.
+
+Protected validation run
+[`39133285503`](https://github.com/xORex-LC/ioc-extractor/actions/runs/39133285503)
+passed the clean RC build, strict Javadoc, 51 publication contracts, local cold
+consumer, owner-key signing and Central validation. The four primary artifacts
+are unchanged by signing. Central deployment is
+`a48b06c1-c6e4-4a7b-b9b3-f9d1806be842`; the signer fingerprint is
+`F69BA7E0F7494982E6E1B483DF54073D8BBFA9F9`.
+
+The retained signed manifest has SHA256
+`1a2b7e96eadb62cb4be62d9b22b748728ca95f242c1b5043d84c82ff2908936b`
+and covers 20 files. Publication run
+[`39137777538`](https://github.com/xORex-LC/ioc-extractor/actions/runs/39137777538)
+uses the original validation run and deployment. Both environment reviews were
+performed by the owner. The recovery build is skipped; its retained manifest
+and all 20 files are byte-identical to the original signed bundle.
+The run completed successfully: Central publication, GitHub Packages mirror and
+both cold consumers passed. Each consumer copied the fixture outside the
+checkout, used a separate empty cache/settings, resolved all four primary
+artifacts and executed the three guide examples with its own diagnostic codes.
+The repository comparison checked all 20 signed/checksummed files; resolved
+primary artifacts match the retained manifest exactly. An additional anonymous
+Central download independently matched all four primary artifact hashes.
+
+Retained publication artifacts are `signed-library` `12141056162`,
+`central-deployment` `12140668942` and `repository-consumers` `12140822161`.
+Their Actions expiry is `2027-01-16T14:50:17Z`; local copies preserve the bytes
+and both successful consumer logs beyond that retention window.
+
+Published repositories:
+
+- [Central version directory](https://repo.maven.apache.org/maven2/io/github/xorex-lc/ioc-platform-diagnostics-api/0.3.0-rc.1/).
+- [GitHub Packages Maven repository](https://maven.pkg.github.com/xorex-lc/ioc-extractor)
+  (authenticated package reads).
+
+Primary artifact SHA256 values:
+
+| Artifact | SHA256 |
+|---|---|
+| POM | `67cc035140a3a552e7a85f4a0fe5ead82c1aa1178b5e3e1deaee200f287d0fda` |
+| Main JAR | `ec7c8295f7d372d6fac285027db9af57d6a934da625ac9568e183f813fe8ac37` |
+| Sources JAR | `a431560fd6d308724e6c330783a3e92c4dcb63923d9ee3d19e3e78ac73285cd2` |
+| Javadoc JAR | `d220c5372961ea72905a491cc969e7ebdea802e80e6bd833443185ce7dc6d9c9` |
+
+Release bytes, deployment identity, dispatch inputs, workflow logs and source
+verification evidence are retained under `.dev/lib2-d5-publication/`, including
+`signed-release.tar.gz` and its checksum, outside Actions artifact retention.
+The signed bundle must be reused unchanged for any recovery.
+
+Local `make verify` and `make pmd-analysis` passed on the clean tagged source,
+at `2026-10-18T13:56:29Z` and `2026-10-18T13:57:46Z` respectively. Both were
+fresh in the retained source `context.log`. Raw analyzer counts remain SpotBugs
+137 accepted / zero filtered, CPD 22 and PMD 19, with no API finding or ratchet
+drift. API coverage is 314/318 lines and 125/126 branches. Later D5 edits update
+publication documentation only. A second production-service integration remains
+outside this qualification.

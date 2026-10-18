@@ -3,7 +3,9 @@
 JDK 21 diagnostic values, consumer-owned codes, failure decisions, bounded
 collectors and synchronous sinks. Coordinates:
 `io.github.xorex-lc:ioc-platform-diagnostics-api:${revision}`. The version follows
-the IOC reactor; this component has not been independently published yet.
+the IOC reactor. Release `0.3.0-rc.1` is available from Maven Central and GitHub
+Packages; both repositories passed separate cold-consumer checks in
+[publication run 39137777538](https://github.com/xORex-LC/ioc-extractor/actions/runs/39137777538).
 
 The module has **no production dependencies** outside the JDK. It must not
 import IOC catalogs, product exceptions, Spring, SLF4J or other platform modules.
@@ -28,4 +30,4 @@ sources and strict Javadoc with `make library-bundle LIBRARY_COMPONENT=diagnosti
 using a new `LIBRARY_BUNDLE` directory. `make library-consumer` with the same
 selector and directory runs the guide examples outside the checkout with a fresh
 cache. See the [publication procedure](../../docs/guides/library-publication.md).
-Public publication remains a later step; this module supplies no Spring starter.
+This module supplies no Spring starter.

@@ -14,8 +14,9 @@ in [ADR 0029](../ADR/0029-release-branch-library-publication.md). See the
 [concurrency reference](../../platform/platform-concurrency/README.md) and
 [diagnostics reference](../../platform/platform-diagnostics-api/README.md).
 The diagnostics boundary is accepted in
-[ADR 0044](../ADR/0044-reusable-diagnostics-contract.md) and has local packaging
-qualification. Its protected release and repository consumers remain pending.
+[ADR 0044](../ADR/0044-reusable-diagnostics-contract.md). Its `0.3.0-rc.1` release
+passed protected publication and separate Central/GitHub Packages cold consumers
+in [run 39137777538](https://github.com/xORex-LC/ioc-extractor/actions/runs/39137777538).
 Concurrency already passed its own repository qualification. Adding a component
 does not authorize publishing it or republishing
 concurrency. Dependency-bearing artifacts require another reviewed contract.
@@ -176,11 +177,12 @@ After a version has passed publication qualification, add:
 <dependency>
   <groupId>io.github.xorex-lc</groupId>
   <artifactId>ioc-platform-concurrency</artifactId>
-  <version>0.3.0</version>
+  <version>0.3.0-rc.1</version>
 </dependency>
 ```
 
-This is an example coordinate, not a claim that `0.3.0` is already available.
+The example uses the qualified concurrency pilot release. The
+[diagnostics guide](diagnostics-library.md) supplies its released dependency.
 Central needs no additional repository configuration. For GitHub Packages use
 `https://maven.pkg.github.com/xorex-lc/ioc-extractor` and matching Maven server
 credentials with package read access. Even public GitHub Maven packages require
