@@ -31,11 +31,11 @@ public final class CanonicalArtifactsChangedExportListener {
     }
 
     private MdcScope mdc(CanonicalArtifactsChanged event) {
-        return MdcScope.open()
+        return MdcScope.open(scope -> scope
                 .put(LogField.IOC_EVENT_ID, event.metadata().eventId())
                 .put(LogField.IOC_EVENT_TYPE, event.metadata().eventType())
                 .put(LogField.IOC_EVENT_CORRELATION_ID, event.metadata().correlationId())
                 .put(LogField.IOC_EVENT_CAUSATION_ID, event.metadata().causationId())
-                .put(LogField.IOC_EVENT_HANDLER, HANDLER);
+                .put(LogField.IOC_EVENT_HANDLER, HANDLER));
     }
 }

@@ -107,7 +107,6 @@ public final class LocalImportChangeSignalSource implements ImportChangeSignalSo
                 LogEvents.warn(log)
                         .action(EventAction.IMPORT_CHANGE_SIGNAL)
                         .outcome(EventOutcome.FAILURE)
-                        .field(LogField.ERROR_TYPE, failure.getClass().getName())
                         .message("local managed import change notification stopped; "
                                 + "periodic reconcile remains active")
                         .log(failure);

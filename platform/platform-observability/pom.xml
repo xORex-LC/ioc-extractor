@@ -16,6 +16,11 @@
     <description>Operational logging helpers: MdcScope, LogEvent, taxonomy constants, pipeline log observer</description>
 
     <dependencies>
+        <!-- Generic logging mechanics; IOC catalogs and ETL integration stay here. -->
+        <dependency>
+            <groupId>io.github.xorex-lc</groupId>
+            <artifactId>ioc-platform-logging-slf4j</artifactId>
+        </dependency>
         <!-- Pipeline observer bridges the ETL kernel's PipelineObserver port to logging. -->
         <dependency>
             <groupId>com.iocextractor</groupId>

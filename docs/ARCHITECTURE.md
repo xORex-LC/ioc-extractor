@@ -28,7 +28,9 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
   дублируется здесь; errors contract приходит транзитивно через platform DAG.
 - Технологии parsing/storage/transport/CLI и Spring wiring живут в adapters и
   bootstrap (Tika, RE2/J, commons-csv, picocli, JDBC, SMBJ). Platform-модуль
-  observability осознанно владеет общей SLF4J API boundary, не бизнес-логикой.
+  observability использует SLF4J API. Отдельный `platform-logging-slf4j` реализует
+  общий API typed events, MDC и scalar ECS profile; IOC-обёртки в observability
+  делегируют ему механику, сохраняя локальные каталоги и ETL observer. Ни один из этих модулей не входит в domain/application.
 - Внутренние слои **никогда** не импортируют из внешних.
 
 Граница общей модели diagnostics и локальных IOC-каталогов, исключений и
@@ -49,6 +51,7 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Platform | `platform/etl` | `Envelope`, `EnvelopeMeta`, `Stage`, `StageId`, `Pipeline`, `PipelineRunner` |
 | Platform | `diagnostics-api` | JDK-only Diagnostic, results, policies, bounded collectors and sink contracts |
 | Platform | `diagnostics` | IOC catalogs, metadata, exception and rendering |
+| Platform | `platform/logging` | Общий SLF4J API, restoring MDC, ECS scalar profile и explicit masks; [контракт потребителя](guides/logging-library.md) |
 | Platform | `observability` | MDC/log event helpers and logging taxonomy |
 | Platform | `events` | Framework-free control-event marker, metadata envelope, publish port and observers; no broker/delivery mechanics |
 | Platform | `concurrent` | In-memory keyed single-flight executor, observer hooks and health snapshots |

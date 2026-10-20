@@ -1,14 +1,20 @@
 package com.iocextractor.observability;
 
+import ch.qos.logback.classic.util.LogbackMDCAdapter;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
+
+import java.util.Map;
 import org.slf4j.MDC;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@ResourceLock("slf4j-mdc-adapter")
 class MdcScopeTest {
 
     @BeforeEach
@@ -95,6 +101,57 @@ class MdcScopeTest {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> scope.put(LogField.IOC_SYNC_SHED_TO_RECONCILE, true))
                 .withMessageContaining("BOOLEAN");
+    }
+
+    @Test
+    void callback_factory_restores_context_when_population_fails() {
+        MDC.put(LogField.IOC_RUN_ID.key(), "ambient");
+        var failure = new IllegalStateException("cannot establish worker context");
+
+        assertThatThrownBy(() -> MdcScope.open(scope -> {
+            scope.put(LogField.IOC_RUN_ID, "worker");
+            throw failure;
+        })).isSameAs(failure);
+
+        assertThat(MDC.get(LogField.IOC_RUN_ID.key())).isEqualTo("ambient");
+    }
+
+    @Test
+    void callback_factory_suppresses_cleanup_failure_on_the_population_failure() throws Exception {
+        var primary = new IllegalStateException("worker context could not be initialized");
+        var cleanup = new IllegalStateException("MDC provider could not restore context");
+        var failingAdapter = new LogbackMDCAdapter() {
+            @Override public void put(String key, String value) {
+                if ("ambient".equals(value)) {
+                    throw cleanup;
+                }
+                super.put(key, value);
+            }
+        };
+        failingAdapter.setContextMap(Map.of(LogField.IOC_RUN_ID.key(), "ambient"));
+        var previousAdapter = MDC.getMDCAdapter();
+        // SLF4J 2.0.18 has no public adapter setter. Keep fault injection in this
+        // test, and restore the provider even if the assertion fails.
+        var adapterField = MDC.class.getDeclaredField("MDC_ADAPTER");
+        adapterField.setAccessible(true);
+        try {
+            adapterField.set(null, failingAdapter);
+            assertThatThrownBy(() -> MdcScope.open(scope -> {
+                scope.put(LogField.IOC_RUN_ID, "temporary");
+                throw primary;
+            })).isSameAs(primary).satisfies(failure ->
+                    assertThat(failure.getSuppressed()).containsExactly(cleanup));
+        } finally {
+            adapterField.set(null, previousAdapter);
+        }
+    }
+
+    @Test
+    void callback_factory_returns_an_owned_scope_and_preserves_text_conversion() {
+        try (var scope = MdcScope.open(context -> context.put(LogField.IOC_RUN_ID, 42))) {
+            assertThat(MDC.get(LogField.IOC_RUN_ID.key())).isEqualTo("42");
+        }
+        assertThat(MDC.get(LogField.IOC_RUN_ID.key())).isNull();
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.iocextractor.observability;
 
 import com.iocextractor.observability.logging.LogEvent;
+import com.iocextractor.platform.logging.ecs.EcsFields;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -33,8 +34,19 @@ class LoggingTaxonomyTest {
             assertThat(field.key().startsWith("ioc.")
                     || ECS_FIELD_PREFIXES.stream().anyMatch(field.key()::startsWith)).isTrue();
             assertThat(field.valueType()).isNotNull();
+            assertThat(field.spec().key()).isEqualTo(field.key());
+            assertThat(field.spec().valueType()).isEqualTo(field.valueType());
             assertThat(field.description()).isNotBlank();
         });
+    }
+
+    @Test
+    void ioc_standard_fields_use_the_shared_ecs_descriptors() {
+        assertThat(LogField.EVENT_ACTION.spec()).isEqualTo(EcsFields.EVENT_ACTION);
+        assertThat(LogField.EVENT_OUTCOME.spec()).isEqualTo(EcsFields.EVENT_OUTCOME);
+        assertThat(LogField.EVENT_DURATION.spec()).isEqualTo(EcsFields.EVENT_DURATION);
+        assertThat(LogField.ERROR_TYPE.spec()).isEqualTo(EcsFields.ERROR_TYPE);
+        assertThat(LogField.FILE_PATH.spec()).isEqualTo(EcsFields.FILE_PATH);
     }
 
     @Test

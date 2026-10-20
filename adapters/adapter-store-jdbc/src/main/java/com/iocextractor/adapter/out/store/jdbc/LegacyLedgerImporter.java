@@ -276,8 +276,7 @@ public final class LegacyLedgerImporter {
                 .build());
         LogEvents.debug(LOGGER)
                 .action(EventAction.LEDGER_IMPORT)
-                .outcome(EventOutcome.UNKNOWN)
-                .field(LogField.EVENT_TYPE, "skipped")
+                .field(LogField.IOC_OPERATION_DISPOSITION, "skipped")
                 .field(LogField.FILE_PATH, file.toString())
                 .message("legacy ingestion ledger import skipped completed source")
                 .log();

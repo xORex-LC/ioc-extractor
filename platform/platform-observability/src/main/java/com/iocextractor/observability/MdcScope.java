@@ -1,81 +1,72 @@
 package com.iocextractor.observability;
 
-import org.slf4j.MDC;
-
-import java.util.LinkedHashMap;
-import java.util.SequencedMap;
-import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
- * Try-with-resources scope for MDC values.
- *
- * <p>The scope restores only keys it changed. Nested scopes are supported by
- * storing previous values before each write.
+ * Binds IOC correlation fields to the shared MDC scope on the current thread.
+ * Nested scopes close in reverse order; no context is propagated to workers.
  */
 public final class MdcScope implements AutoCloseable {
+    private final com.iocextractor.platform.logging.MdcScope delegate =
+            com.iocextractor.platform.logging.MdcScope.open();
 
-    private final SequencedMap<String, String> previous = new LinkedHashMap<>();
-    private boolean closed;
+    private MdcScope() { }
 
-    private MdcScope() {
-    }
-
+    /**
+     * Opens an empty scope. Acquire it before adding fields in a try-with-resources body.
+     * @return a scope owned by the calling thread
+     */
     public static MdcScope open() {
         return new MdcScope();
     }
 
-    public MdcScope put(LogField field, Object value) {
-        Objects.requireNonNull(field, "field");
-        if (field.valueType() != LogValueType.STRING) {
-            throw new IllegalArgumentException(
-                    "MDC accepts only STRING fields; " + field.key() + " is " + field.valueType());
+    /**
+     * Populates a scope for a callback that must return an AutoCloseable, such as
+     * an ETL observer. If population fails, restores touched keys before rethrowing;
+     * a cleanup failure is suppressed on the original failure.
+     *
+     * @param initializer writes the caller's explicit correlation fields
+     * @return the populated scope; the caller must close it on this thread
+     */
+    public static MdcScope open(Consumer<MdcScope> initializer) {
+        var scope = open();
+        try {
+            initializer.accept(scope);
+            return scope;
+        } catch (RuntimeException | Error failure) {
+            try {
+                scope.close();
+            } catch (RuntimeException | Error cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+            throw failure;
         }
-        return put(field.key(), value == null ? null : String.valueOf(value));
     }
 
     /**
-     * Temporarily removes one catalogued field from MDC.
-     *
-     * <p>The previous value is restored when the scope closes. This supports
-     * event-local structured fields that intentionally override ambient MDC.
-     *
-     * @param field field to hide
+     * Stores an IOC STRING field, or hides it when value is null.
+     * @param field catalogued STRING field
+     * @param value correlation value, converted to text for MDC
      * @return this scope
      */
-    public MdcScope hide(LogField field) {
-        Objects.requireNonNull(field, "field");
-        return put(field.key(), null);
-    }
-
-    private MdcScope put(String key, String value) {
-        if (closed) {
-            throw new IllegalStateException("MDC scope is already closed");
-        }
-        if (!previous.containsKey(key)) {
-            previous.put(key, MDC.get(key));
-        }
-        if (value == null) {
-            MDC.remove(key);
-        } else {
-            MDC.put(key, value);
-        }
+    public MdcScope put(LogField field, Object value) {
+        delegate.put(field.spec(), value == null ? null : String.valueOf(value));
         return this;
     }
 
+    /**
+     * Hides an ambient field until this scope closes.
+     * @param field catalogued field of any scalar type
+     * @return this scope
+     */
+    public MdcScope hide(LogField field) {
+        delegate.hide(field.spec());
+        return this;
+    }
+
+    /** Restores touched keys through the shared scope; repeated successful closes are harmless. */
     @Override
     public void close() {
-        if (closed) {
-            return;
-        }
-        for (var entry : previous.reversed().entrySet()) {
-            var key = entry.getKey();
-            var value = entry.getValue();
-            if (value == null) {
-                MDC.remove(key);
-            } else {
-                MDC.put(key, value);
-            }
-        }
-        closed = true;
+        delegate.close();
     }
 }

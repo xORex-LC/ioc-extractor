@@ -20,7 +20,8 @@ bridge diagnostics→logging.
 | `platform-etl/` | Generic Pipes-and-Filters kernel |
 | `platform-events/` | Framework-free control-event model and publish-only port |
 | `platform-concurrency/` | Framework-free keyed execution/admission primitives |
-| `platform-observability/` | Typed log event schema/transport, string MDC correlation and logging taxonomy |
+| `platform-logging-slf4j/` | Общие typed SLF4J events, restoring MDC, пять ECS scalar fields и явное маскирование; IOC использует библиотеку через обёртки observability |
+| `platform-observability/` | Каталоги IOC, обёртки над logging-slf4j и ETL logging observer |
 | `platform-diagnostics-logging/` | Bridge `DiagnosticSink` → operational logs |
 
 ## Зависимости

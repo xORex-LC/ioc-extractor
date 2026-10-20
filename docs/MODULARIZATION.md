@@ -6,7 +6,8 @@ adapters и bootstrap собираются как отдельные Maven-мо�
 
 Пилотная библиотека `platform-concurrency` использует Maven groupId
 `io.github.xorex-lc`; выделенный `platform-diagnostics-api` использует ту же
-группу, но ещё не опубликован отдельно. Остальные модули сохраняют `com.iocextractor`. Публикуемый
+группу. Новый `platform-logging-slf4j` также использует `io.github.xorex-lc`,
+но пока реализован только в reactor. Остальные модули сохраняют `com.iocextractor`. Публикуемый
 POM библиотеки не зависит от parent реактора. Политика —
 [ADR 0028](ADR/0028-pilot-library-publication.md), контракт диагностики —
 [ADR 0044](ADR/0044-reusable-diagnostics-contract.md), процедура —
@@ -39,6 +40,7 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 │   ├── platform-etl               (generic Envelope/Stage/Pipeline/PipelineRunner)
 │   ├── platform-events            (framework-free control-event contracts)
 │   ├── platform-concurrency       (keyed single-flight primitives)
+│   ├── platform-logging-slf4j     (общие SLF4J events, MDC, scalar ECS profile, explicit masks)
 │   ├── platform-observability     (MdcScope, LogEvent, taxonomy, PipelineObserver impl)
 │   └── platform-diagnostics-logging (bridge: DiagnosticSink → LogEvent)
 ├── core/
@@ -89,7 +91,9 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ io
 - `platform/*` образуют собственный направленный DAG и не тянут
   application/domain/adapters: events, concurrency и errors автономны;
   diagnostics зависит от diagnostics-api/errors; ETL — от diagnostics-api/diagnostics/errors; observability —
-  от ETL; diagnostics-logging bridge — от diagnostics/observability.
+  от ETL и logging-slf4j; diagnostics-logging bridge — от diagnostics/observability.
+  Logging-slf4j зависит только от SLF4J API; IOC-обёртки делегируют ему запись,
+  нормализацию, MDC и очистку компонентов URL.
 - `platform-etl` зависит только на diagnostics-api/diagnostics/errors и не знает про IOC domain.
 - `ioc-domain` не зависит на application/adapters/bootstrap/platform-etl и
   остаётся framework-free.
@@ -115,14 +119,14 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ io
   JDK-only verifier и synthetic-reactor contract harness напрямую.
 - `coverage-report` зависит на все production-модули только для формирования
   полного JaCoCo aggregate.
-- `spotbugs-report` зависит на те же 22 production-модуля для reactor ordering,
+- `spotbugs-report` зависит на те же 23 production-модуля для reactor ordering,
   формирует общий SpotBugs XML/HTML и проверяет наличие всех module/aggregate
   reports.
-- `cpd-report` зависит на 22 production-модуля только для reactor ordering и
+- `cpd-report` зависит на 23 production-модуля только для reactor ordering и
   анализирует единым PMD CPD execution явный allowlist их `src/main/java`;
   fail-closed registry сверяет reactor, ordering dependencies, source roots и
   итоговый XML source universe.
-- `pmd-report` зависит на те же 22 production-модуля только для reactor
+- `pmd-report` зависит на те же 23 production-модуля только для reactor
   ordering и type resolution. Поимённая 22-rule policy выполняется
   отдельным regular CI job, а 3-rule ownership/size watchlist остаётся
   локально opt-in. Оба профиля анализируют явный allowlist
@@ -154,6 +158,7 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ io
 | `platform-etl` | Generic ETL kernel: `Envelope`, `Stage`, `Pipeline`, `PipelineRunner`, `PipelineObserver` |
 | `platform-events` | Framework-free publish-only control-event contracts и observers; без broker/durable delivery mechanics |
 | `platform-concurrency` | Async FIFO по ключу с bounded admission; synchronous exclusion без FIFO; [контракты и health snapshots](../platform/platform-concurrency/README.md) |
+| `platform-logging-slf4j` | Общий logging API; SLF4J API — единственная main-зависимость; [руководство](guides/logging-library.md); IOC делегирует ему через observability |
 | `platform-observability` | Observability/logging: MdcScope, LogEvent, logging taxonomy, `LoggingPipelineObserver` |
 | `platform-diagnostics-logging` | Bridge `DiagnosticSink` → LogEvent/SLF4J (`LoggingDiagnosticSink`); зависит на `platform-diagnostics` + `platform-observability` |
 | `platform-errors` | базовые ошибки/common-типы и трансляция; нижний слой для `DiagnosticException` |

@@ -18,13 +18,16 @@ Every Failsafe suite must also carry integration semantics through
 discovery; tags describe test semantics. They are complementary and neither is
 a substitute for the complete release gate.
 
-The reviewed source universe is 230 fast classes and 78 integration classes,
-including five external shells (303 deterministic classes). Diagnostics extraction
+The reviewed source universe is 230 fast classes and 79 integration classes,
+including five external shells (304 deterministic classes). Diagnostics extraction
 moves eight existing suites to the JDK-only API module and adds one executable
 consumer-guide suite. Logging adds seven suites for the public API, scalar ECS
 profile, explicit masks,
 MDC/provider failures, architecture boundaries and compiled consumer-guide examples.
-The exact source inventory records these changes. Coverage floors, report integrity,
+`IocLogFieldBindingTest` replaces the removed private-normalizer suite with
+observable IOC-facade assertions. `LoggingMigrationIT` adds five real producer /
+Boot encoder / byte-writing appender regressions, including watch-provider
+failure with bounded worker cleanup. The exact source inventory records these changes. Coverage floors, report integrity,
 architecture checks and analyzer rules remain enforced. The Native lifecycle and import TCK bindings
 run against the retained backend.
 
