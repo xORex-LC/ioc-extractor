@@ -1180,3 +1180,85 @@ D2 keeps documentation aligned with boundary hardening. D4 performs the final
 completeness/consistency review, ADR promotion and evidence checks. This scope
 clarification does not change the D0 API or start implementation; no Java,
 build or publication changes are made here.
+
+## LIB-3 shared ECS requirement and analysis — 2026-10-19
+
+After diagnostics publication, the owner selected logging tools and asked whether
+the ECS model could provide one consistent approach for future services. The
+earlier proposal kept all field/outcome definitions service-owned; it therefore
+covered reusable mechanics but only part of this requirement.
+
+The [ECS analysis](lib-3-logging-ecs-analysis.md) recommends a small supported ECS
+profile inside the same SLF4J library, with custom fields/actions and IOC observers
+remaining local. Backend serialization stays outside the main JAR and needs a
+tested integration recipe. It records 108 current fields, standard-field
+ownership, invalid `event.type` use (OBS-9) and a reproduced encoder collision
+that can discard a failure record (OBS-10).
+
+Existing focused tests passed: 23 observability cases, one control-event observer
+case and two Boot ECS integration cases. Seventeen exploratory scenarios confirmed
+the documented baseline behaviors and limits. The [updated proposal](lib-3-logging-design.md)
+makes ECS subset/array support, ownership, error/dataset handling and explicit wire
+corrections L3-0 decisions. This is analysis, not L3-0 closure or authorization to
+publish. No production code, accepted ADR, build scope or logging API changed.
+
+## LIB-3 L3-0 contract fixed — 2026-10-19
+
+The owner authorized L3-0. The [fixed contract](lib-3-logging-contract.md) selects
+`io.github.xorex-lc:ioc-platform-logging-slf4j`, Java 21, SLF4J-only main
+dependencies and eight public types. A five-field ECS scalar subset and shared
+outcome vocabulary sit beside the generic facade. Type/category arrays are
+deferred. Each service retains its catalog, actions, messages, backend and
+sensitivity decisions; repository owner `xORex-LC` maintains/releases the library.
+
+The contract fixes key-based event identity with retained type declarations,
+strict type errors, String-only MDC writes, same-thread LIFO restoration,
+nanosecond helpers, no-input full masking and the current lexical URL algorithm.
+The two informational skip producers will use `ioc.operation.disposition` and
+omit outcome; control-event names move to `ioc.event.type`. Throwable records
+leave `error.*` to the encoder. OBS-9/10 remain open until L3-2 implements and
+tests those explicit wire corrections.
+
+The [isolated probe](l3-0-probe/README.md) passed 62 cases with an unrelated
+`collector.*` catalog, current algorithms and the real Boot/Logback encoder.
+Source/dependency hashes prevent silent baseline drift. Expected defect
+reproductions are not fixes; the proposed public API and new helper behavior
+remain L3-1 test requirements. The focused observer case and `make doctor-core`
+also passed. Full verify/PMD remain stale; no production/build changes or new
+packaged consumer are claimed. The [ADR draft](lib-3-logging-adr-draft.md) stays
+Proposed until implementation qualification. L3-1 is next, with API documentation
+written alongside code and integration documentation completed in L3-3.
+
+
+## LIB-3 L3-1 implementation checkpoint — 2026-10-19
+
+The owner authorized L3-1. The generic SLF4J module now implements the eight-type
+contract, five scalar ECS fields, explicit masks and restoring MDC without IOC
+imports. Seven suites cover 112 public-API cases; three consumer-guide classes
+compile from Markdown. A deterministic long-key regex stack overflow was
+reproduced and fixed with a retained regression. Main dependency closure is
+SLF4J API only; parent-independent local packaging includes source/Javadoc JARs.
+
+Reactor/report membership, measured coverage, suite inventory and affected
+architecture/capability maps are updated together without relaxing prior floors,
+ratchets or analyzer exclusions. The [L3-1 qualification record](lib-3-logging-design.md#l3-1-implementation-and-qualification--2026-10-19)
+records commands, analyzer disposition and the stale local NVD limitation. Final
+unchanged-tree verify/PMD evidence is checked through `make context` after the
+documentation freeze. This does not admit publication or external consumption.
+
+L3-2 IOC migration is next. Existing producers/backend remain unchanged, OBS-9
+and OBS-10 remain open, and the ADR draft stays Proposed until L3-3. Events remain
+deferred; existing library artifacts/tags are untouched. No commit/push requested.
+
+
+## LIB-3 L3-2 IOC migration checkpoint — 2026-10-19
+
+IOC facades now delegate to the common library. Product field/action catalogs,
+ETL observer, diagnostics renderer/disclosure and Boot wiring remain local.
+Scope-returning callbacks close partial initialization before rethrowing.
+OBS-9/10 are fixed with real producer / JSON bytes / encoder-status regressions;
+the logging catalog, query migration docs and release notes are updated.
+The [L3-2 record](lib-3-logging-design.md#l3-2-ioc-migration-and-qualification--2026-10-19)
+records ownership, test inventory and final gate requirements. L3-3 is next;
+ADR promotion, reusable Boot qualification and independent publication remain
+separate gates. No commit/push/publication requested; earlier work is preserved.
