@@ -29,7 +29,9 @@ Logback, JSON encoder or automatic context-propagation dependency.
 
 Coordinates: `io.github.xorex-lc:ioc-platform-logging-slf4j`, using the parent
 `${revision}` in product lockstep. Artifact metadata follows the existing platform
-libraries; this module's presence does not admit a publication workflow.
+libraries. The publication tooling admits this component's exact required SLF4J
+compile dependency; protected release and live repository qualification remain
+separate from local admission.
 
 ## Use and limits
 
@@ -56,7 +58,11 @@ mechanics to this library. Bootstrap retains the backend and configuration.
 
 Run `make test-module MODULE=platform/platform-logging-slf4j`. The
 `library-publication` Maven profile can build source/Javadoc attachments for local
-review; actual publication and cold-repository qualification remain separate.
+review. `make library-bundle LIBRARY_COMPONENT=logging` and
+`make library-consumer LIBRARY_COMPONENT=logging` exercise actual plain/Boot
+guide examples through packaged JARs with separate empty caches. The tooling
+also rejects missing/unavailable SLF4J and wrong repository provenance. Public
+repository qualification remains a protected release step.
 
 ## Test ownership
 

@@ -27,8 +27,14 @@ to the library and real producer/encoder regressions cover the selected wire fix
 **L3-3 is complete locally, subject to current unchanged-tree gate receipts**: generic/IOC/backend
 test ownership is documented, the reusable Boot recipe has executable examples,
 and [ADR 0045](../../../ADR/0045-reusable-slf4j-logging-contract.md) records the
-accepted boundary. The next slice is L3-4 publication tooling and cold repository
-consumption; those checks and protected publication are not claimed here.
+accepted boundary. **L3-4 tooling and independent local consumers are implemented**:
+the existing workflow admits the exact SLF4J dependency contract, both logging
+guides run from packaged JARs in fresh-cache consumers, and the retained
+concurrency/diagnostics bundles remain covered. The
+[L3-4 record](lib-3-logging-design.md#l3-4-packaging-and-independent-consumers--2026-10-20)
+records local qualification and final gate requirements. Next is a reviewed PR
+into `release-0.3.0`, then explicitly authorized protected publication and separate
+Central/GitHub consumers. Public availability is not claimed by local checks.
 Events E1–E5 remain deferred.
 
 Diagnostics publication is recorded in the release branch's D5 documentation

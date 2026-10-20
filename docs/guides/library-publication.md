@@ -1,11 +1,12 @@
-# Publishing the JDK-only libraries
+# Publishing reusable platform libraries
 
-The reviewed components use Java 21 and have no runtime dependencies:
+The reviewed components use Java 21 and have exact dependency contracts:
 
-| Component selector | Artifact (`io.github.xorex-lc`) | Module |
-|---|---|---|
-| `concurrency` (default) | `ioc-platform-concurrency` | `platform/platform-concurrency` |
-| `diagnostics` | `ioc-platform-diagnostics-api` | `platform/platform-diagnostics-api` |
+| Component selector | Artifact (`io.github.xorex-lc`) | Module | Required main dependencies |
+|---|---|---|---|
+| `concurrency` (default) | `ioc-platform-concurrency` | `platform/platform-concurrency` | None |
+| `diagnostics` | `ioc-platform-diagnostics-api` | `platform/platform-diagnostics-api` | None |
+| `logging` | `ioc-platform-logging-slf4j` | `platform/platform-logging-slf4j` | `org.slf4j:slf4j-api:2.0.18`, compile JAR |
 
 Maven Central is primary; GitHub Packages receives the identical release bytes.
 The concurrency pilot established the publication model in
@@ -14,11 +15,13 @@ in [ADR 0029](../ADR/0029-release-branch-library-publication.md). See the
 [concurrency reference](../../platform/platform-concurrency/README.md) and
 [diagnostics reference](../../platform/platform-diagnostics-api/README.md).
 The diagnostics boundary is accepted in
-[ADR 0044](../ADR/0044-reusable-diagnostics-contract.md) and has local packaging
-qualification. Its protected release and repository consumers remain pending.
-Concurrency already passed its own repository qualification. Adding a component
-does not authorize publishing it or republishing
-concurrency. Dependency-bearing artifacts require another reviewed contract.
+[ADR 0044](../ADR/0044-reusable-diagnostics-contract.md); the logging boundary in
+[ADR 0045](../ADR/0045-reusable-slf4j-logging-contract.md) admits the required
+SLF4J dependency while keeping providers and Boot outside the reusable JAR.
+Release evidence owns each component's repository qualification. Adding a
+component does not authorize publishing it or republishing an existing version.
+New dependencies or versions require explicit contract review, not a broader
+allowlist. The older zero-dependency contracts remain enforced.
 No version is claimed published until the repository checks below pass.
 
 ## Local packaging qualification
@@ -33,6 +36,9 @@ make library-consumer
 
 make library-bundle LIBRARY_COMPONENT=diagnostics LIBRARY_BUNDLE=.dev/diagnostics-bundle
 make library-consumer LIBRARY_COMPONENT=diagnostics LIBRARY_BUNDLE=.dev/diagnostics-bundle
+
+make library-bundle LIBRARY_COMPONENT=logging LIBRARY_BUNDLE=.dev/logging-bundle
+make library-consumer LIBRARY_COMPONENT=logging LIBRARY_BUNDLE=.dev/logging-bundle
 ```
 
 `LIBRARY_VERSION` defaults to `0.3.0-SNAPSHOT`; `LIBRARY_BUNDLE` defaults to
@@ -47,16 +53,54 @@ propagation. The diagnostics fixture runs the three
 decisions, bounded stage/run counts and delivery failure callbacks. Both consumer
 POMs stand alone, with no IOC parent or reactor class directories.
 
+Logging runs two standalone consumers, each with its own empty cache. The plain
+SLF4J consumer executes the three actual guide classes. Its provider and
+sources/Javadoc dependencies exclude SLF4J API so only the library's main POM
+can supply it. Two further offline checks use that warmed cache: excluding API
+must fail compilation, and selecting an unavailable API version must fail
+dependency resolution. An unrelated failure is not a passing negative check.
+The Boot consumer compiles the actual [recipe](logging-library-boot.md), loads
+its YAML/XML and checks five JSON records plus encoder status. It selects its
+own Boot/Logback dependencies; these are not dependencies of the library.
+
 The fixture is a packaging/API consumer, not a feeds-collector implementation.
 Its Maven plugins resolve from Central independently of the selected library
 repository. These checks need network access and do not replace `make verify`
 or `make pmd-analysis`. CI runs one unprivileged matrix job per component.
 The selector is allowlisted; the CLI's `--component` defaults to `concurrency`
 for compatibility. Pass `--component diagnostics` on every diagnostics operation,
-including `check`, signing and recovery. A bundle from another component is
+including `check`, signing and recovery. Use `--component logging` for the new
+component in the same way. A bundle from another component is
 rejected before signing or repository access. The manifest retains the exact
 artifact, version, source commit and file hashes; existing concurrency manifests
 remain valid without rewriting them.
+
+Packaging and every bundle read validate the resolved POM against the selected
+component's dependency contract before signing or repository access. Logging
+requires exactly the pinned required compile JAR; optional/provided/runtime/test
+scope, classifiers, exclusions, unresolved properties, extra dependencies and
+provider/IOC dependencies fail admission. Parent, dependency management, build,
+profile and repository coupling are rejected for every component. The embedded
+main-JAR POM must match the standalone POM at packaging time. No new manifest
+field is required, preserving older signed-bundle identities.
+
+For logging consumers, the selected repository supplies the library; a separate
+`public-dependencies` repository supplies third-party artifacts from Central.
+Plugin downloads also remain separate. Maven Resolver tracks artifact origin;
+the wrapper's Maven 3.9.9 `_remote.repositories` markers must identify
+`library-target` for every POM/main/sources/Javadoc download, and all hashes must
+match the bundle. A Central fallback cannot qualify a GitHub download. Missing
+or changed provenance format fails closed and requires a tooling review when
+upgrading Maven. See [Resolver local repository ownership](https://maven.apache.org/resolver/local-repository.html).
+
+```mermaid
+flowchart LR
+    Consumer[Temporary standalone consumer] --> Target[Selected library repository]
+    Consumer --> Public[Central third-party dependencies]
+    Consumer --> Plugins[Central build plugins]
+    Target --> Check[Four artifact hashes and repository origin]
+    Check --> Bundle[Retained immutable bundle]
+```
 
 Manifest, repository and artifact paths must be regular, with no symbolic links
 in the repository directory chain or recovery files. A linked path could redirect signing
@@ -108,8 +152,9 @@ publishing PAT is unnecessary. Existing `SECURITY CHECKS` remains independent.
 ## First release
 
 1. Merge the implementation into `release-X.Y.Z` and pass its normal CI gates.
-   Add the publication workflow file to `main` so GitHub registers the manual
-   workflow; this does not move application code into `main`.
+   Keep the publication workflow discovery copy on `main` current so GitHub
+   registers the manual workflow and its component choices; this does not move
+   application code into `main`.
 2. Create an annotated `<artifactId>-vX.Y.Z` or `<artifactId>-vX.Y.Z-rc.N`
    tag for the selected component on the reviewed release-branch commit, for
    example `ioc-platform-diagnostics-api-v0.3.0-rc.1`. Do not move an existing

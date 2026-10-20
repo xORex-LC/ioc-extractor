@@ -118,8 +118,11 @@ Native macOS и Windows не являются поддерживаемыми с�
 
 `make library-bundle`, `make library-consumer` и `make library-publication-test`
 проверяют независимую упаковку и публичные контракты. Параметр
-`LIBRARY_COMPONENT` выбирает `concurrency` (по умолчанию) или `diagnostics`;
+`LIBRARY_COMPONENT` выбирает `concurrency` (по умолчанию), `diagnostics` или `logging`;
 для каждого bundle задавайте отдельный `LIBRARY_BUNDLE`. Изолированные проекты
 расположены в [fixtures](fixtures/README.md), процедура публикации — в
 [руководстве](../docs/guides/library-publication.md). Требуются полный JDK 21
 с `javadoc`, Python 3, GnuPG 2 и сеть для зависимостей пустого Maven-кэша.
+Для logging запускаются отдельные SLF4J- и Boot-потребители с примерами из
+руководств. Разрешена только зависимость `slf4j-api:2.0.18`; провайдер выбирает
+потребитель. Первые две библиотеки по-прежнему не допускают зависимостей.

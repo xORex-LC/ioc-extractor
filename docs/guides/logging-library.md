@@ -31,6 +31,12 @@ Run `make test-module MODULE=platform/platform-logging-slf4j`. The
 public Javadoc supplies member contracts. Packaging/publication qualification is
 separate from these in-checkout consumer examples.
 
+The [publication tooling](library-publication.md) also compiles these exact
+classes against a packaged JAR outside the checkout, using an empty Maven cache.
+The application-selected provider cannot supply a missing SLF4J API dependency
+on the library's behalf. Local file-repository qualification remains separate
+from release downloads from Central and GitHub Packages.
+
 ## Declare fields and emit an operation record
 
 ```java

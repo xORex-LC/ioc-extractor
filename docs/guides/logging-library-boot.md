@@ -179,3 +179,11 @@ record and an observable appender error. This is in-checkout backend evidence,
 not cold repository consumption, a production deployment, collector ingestion
 or Elasticsearch mapping qualification. The [accepted boundary](../ADR/0045-reusable-slf4j-logging-contract.md)
 keeps those responsibilities separate.
+
+Publication tooling additionally copies these same blocks and the neutral driver
+into the standalone [Boot consumer](../../tools/fixtures/logging-boot-consumer/README.md).
+It compiles against the packaged library, resolves the backend independently
+with its own empty cache, and checks the five supported records. The six
+unsupported-input scenarios remain owned by the bootstrap integration suite.
+File-repository success is independent packaging evidence; live Central/GitHub
+downloads remain a separate protected release qualification.

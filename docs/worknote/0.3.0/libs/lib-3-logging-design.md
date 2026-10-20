@@ -1,6 +1,6 @@
 # LIB-3: SLF4J logging tools and ECS extraction plan
 
-Status: **L3-3 complete locally**, 2026-10-20. Initially
+Status: **L3-4 implemented; local qualification recorded below**, 2026-10-20. Initially
 proposed 2026-09-13, refined for shared ECS after the owner's October request.
 The [fixed contract](lib-3-logging-contract.md) owns the implementation target;
 the [ECS analysis](lib-3-logging-ecs-analysis.md) retains the preceding findings.
@@ -28,11 +28,12 @@ logging backend, metrics/tracing system, general execution-context framework,
 automatic secret detector, separate redaction artifact or API/implementation split.
 The library does not require the diagnostics or configuration libraries.
 
-Disposition: **L3-3 complete locally; L3-4 publication qualification is next**.
+Disposition: **L3-4 tooling and independent consumers implemented; protected
+publication and public-repository consumption remain pending**.
 Confirmed future consumers are the planned collectors; they are not implemented
 external consumers. The repository owner maintains/releases the library, matching
-existing platform-library metadata. Admission still needs an independently
-packaged consumer and the publication evidence described below.
+existing platform-library metadata. Independent local consumers are part of
+L3-4; release admission still requires the public-repository evidence below.
 
 ## Confirmed requirements
 
@@ -348,7 +349,7 @@ confirmed consumer need. [SLF4J library guidance](https://www.slf4j.org/manual.h
 | L3-1: complete | Add fixed types/helpers; move normalization internally; fix key/type identity and resource acquisition; document the public API as it is implemented | Sole main dependency SLF4J API; no service imports; actual API boundary/helper regressions; English Javadoc/package docs, module README and executed plain Java examples |
 | L3-2: complete | Delegate existing conveniences or migrate atomically; retain IOC catalogs and pipeline observer locally; implement qualified OBS-9/10 corrections | Preserve unaffected wire fields/actions, logger categories and context reconstruction; explicitly qualify/document changed keys/shapes and complete error JSON output |
 | L3-3: complete locally | Consolidate generic tests; keep IOC catalog and Boot wire tests local; review L3-1 API docs and consumer guide; qualify Boot recipe; update architecture/module/analyzer maps; promote ADR | Focused suites then `make verify` and `make pmd-analysis` on final production/build tree; reviewed analyzer/coverage scope changes |
-| L3-4: publication qualification | Dependency-aware descriptors/POM, sources/Javadoc and independent consumer; protected publication only after admission | Cold target-repository consumption, negative dependency-resolution checks and immutable bundle identity |
+| L3-4: implemented; local admission and release evidence below | Dependency-aware descriptors/POM, sources/Javadoc and independent consumers; protected publication only after admission | Cold target-repository consumption, negative dependency-resolution checks and immutable bundle identity; public Central/GitHub checks pending |
 
 IOC compatibility wrappers must delegate mechanics, not keep independent copies
 of the implementation. They can remain internal while preserving current imports,
@@ -673,3 +674,65 @@ Next is L3-4: dependency-aware publication descriptors/guards, cold independent
 consumers and immutable bundle admission. This slice does not publish, move a
 component tag, qualify a live collector/Elasticsearch, load or another provider,
 or claim a second production consumer. No commit or push was requested.
+
+### L3-4 packaging and independent consumers — 2026-10-20
+
+The owner authorized committing L3-3 and starting L3-4. L3-3 is preserved as two
+commits: `721e5093` fixes callback cleanup; `0d32551f` adds the Boot recipe and
+integration qualification. L3-4 does not change production Java, library
+dependencies, versions, reactor membership, JUnit inventory or analyzer scope.
+
+The existing publication tool and workflows now accept the `logging` component.
+Its flattened POM must contain exactly the required compile JAR
+`org.slf4j:slf4j-api:2.0.18`. IOC dependencies, providers, optional/runtime/test
+scopes, ranges, classifiers, exclusions, inherited parents, repositories and
+build/profile coupling are rejected. The concurrency and diagnostics descriptors
+retain their zero-dependency rule. The same validation runs when preparing a
+bundle and when reading a retained bundle before signing or repository access.
+Manifest format, recovery, protected-environment review and immutable release
+identities remain unchanged. CI adds logging to its existing consumer matrix;
+publication adds a choice to the existing manual workflow.
+
+Two independent Maven fixtures have no IOC parent or reactor classpath. Both use
+fresh local caches and compile the actual consumer-guide Java blocks. The plain
+fixture checks typed fields, omission, masks, Throwable delivery and MDC
+restoration with a consumer-owned Logback provider. The Boot fixture also loads
+the guide's actual YAML/XML and dataset encoder, writes five JSON records and
+checks duplicate keys, native numbers/Boolean, metadata, masks, omission and
+Throwable encoding with no appender errors or IOC classes. The six invalid Boot
+recipe scenarios remain in the L3-3 integration suite rather than being copied.
+
+The provider and classifier dependencies exclude SLF4J API so that they cannot
+hide a missing transitive dependency in the library POM. After the positive plain
+consumer, two offline negative compilations must fail for the expected reason:
+excluding the API causes compilation errors; requesting a known unavailable API
+version causes dependency resolution failure. Unexpected success or an unrelated
+failure fails qualification. Every consumer also compares the resolved POM/main/
+sources/Javadoc SHA-256 values and checks that Maven 3.9.9 attributes each file to
+the selected repository. Resolving the same library from the public dependency
+fallback cannot qualify a GitHub consumer. Resolver-marker changes fail closed
+and require an explicit wrapper/tooling review.
+
+Local evidence is retained under `.dev/l3-4/`: snapshot and RC packaging with full
+Javadoc doclint; the six-case cold matrix for logging, concurrency and diagnostics
+at snapshot/RC versions; 83 offline publication contract tests with disposable
+test signing keys; and the shell tooling contract suite. Logging contributes two
+fixtures per version, for eight cold consumer projects across that matrix.
+The diagnostics RC input is the previously retained signed release bundle;
+manifest hashes are checked before and after every case. The new unsigned logging
+bundles identify the dirty qualification tree and must not be reused as signed
+release inputs. These local checks do not establish public repository availability.
+
+Final admission requires `make docs`, `make verify`, `make pmd-analysis` and the
+resource watchlist review on the frozen tree. Command receipts and `make context`
+own current pass/freshness. Analyzer identities must match the accepted reports;
+no floor, baseline, suppression or exclusion is relaxed. No dependency upgrade
+or fresh vulnerability clearance is claimed; the previously recorded stale NVD
+limitation still applies.
+
+Next is review/PR into `release-0.3.0`, followed by an explicitly authorized
+protected publication of a clean tagged bundle and separate Central/GitHub cold
+consumers. The manual workflow's default-branch discovery copy must expose the
+new component choice. No push, PR, tag, signing with release keys or external
+publication is performed in this slice. A live collector, Elasticsearch, load
+qualification and a second production consumer remain outside this evidence.

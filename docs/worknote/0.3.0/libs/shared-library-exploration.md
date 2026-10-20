@@ -1281,3 +1281,26 @@ receipts are required; `make context` is the freshness authority. L3-4 retains
 dependency-aware publication tooling and cold repository consumption. No public
 release, collector/Elasticsearch, load or second production consumer is claimed.
 Events remain deferred. No commit or push was requested for this slice.
+
+## LIB-3 L3-4 publication-tooling checkpoint — 2026-10-20
+
+The owner authorized committing L3-3 and starting L3-4. Two scoped commits preserve
+callback cleanup (`721e5093`) and the Boot integration recipe (`0d32551f`). The
+[L3-4 record](lib-3-logging-design.md#l3-4-packaging-and-independent-consumers--2026-10-20)
+adds logging to the existing publication/CI workflows with an exact required
+SLF4J API dependency contract. Concurrency and diagnostics remain dependency-free;
+retained-bundle reads enforce the same guards without changing manifest identity.
+
+Plain SLF4J and Boot consumers compile the actual guides from packaged main,
+sources and Javadoc artifacts with independent caches. Negative dependency checks
+reject missing/unavailable SLF4J API; artifact hashes and Maven repository markers
+prevent fallback from qualifying the wrong repository. Local qualification covers
+snapshot/RC logging and both older libraries, including retained signed diagnostics.
+No production dependencies, JUnit universe, analyzer groups or floors change.
+Final unchanged-tree docs/verify/PMD/watchlist receipts remain authoritative.
+
+Next is a reviewed release-branch PR, clean tagged release preparation and
+explicitly authorized protected publication with separate Central/GitHub consumers.
+Local admission is not public availability, a second deployed service or live
+collector/Elasticsearch qualification. Events remain deferred. No external
+publication, tag or push was performed.

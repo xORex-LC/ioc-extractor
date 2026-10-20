@@ -20,6 +20,18 @@ PUB = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(PUB)
 
 
+def consumer_pom(component, version):
+    dependencies = ''.join('<dependency><groupId>' + group + '</groupId><artifactId>' + artifact
+                           + '</artifactId><version>' + dependency_version + '</version>'
+                           '<scope>compile</scope></dependency>'
+                           for group, artifact, dependency_version in component['dependencies'])
+    return ('<project xmlns="http://maven.apache.org/POM/4.0.0">'
+            '<groupId>' + PUB.GROUP + '</groupId><artifactId>' + component['artifact'] + '</artifactId>'
+            '<version>' + version + '</version><name>Fixture</name><description>Fixture</description>'
+            '<url>https://example.invalid</url><licenses/><developers/><scm/>'
+            + ('<dependencies>' + dependencies + '</dependencies>' if dependencies else '') + '</project>')
+
+
 class PublicationTest(unittest.TestCase):
     component_name = 'concurrency'
     def setUp(self):
@@ -33,6 +45,8 @@ class PublicationTest(unittest.TestCase):
         self.folder.mkdir(parents=True)
         for suffix in PUB.SUFFIXES:
             (self.folder / (self.artifact + '-' + self.version + suffix)).write_bytes(b'fixture ' + suffix.encode())
+        (self.folder / (self.artifact + '-' + self.version + '.pom')).write_text(
+            consumer_pom(self.component, self.version))
         PUB.write_identity(self.bundle, dict(group=PUB.GROUP, artifact=self.artifact,
                                            version=self.version, commit='a' * 40, dirty=False, signed=False))
 
@@ -88,10 +102,7 @@ class PublicationTest(unittest.TestCase):
         root = Path(self.temp.name) / 'checkout'
         target = root / self.component['module'] / 'target'
         target.mkdir(parents=True)
-        pom = ('<project xmlns="http://maven.apache.org/POM/4.0.0">'
-               '<groupId>' + PUB.GROUP + '</groupId><artifactId>' + self.artifact + '</artifactId>'
-               '<version>' + self.version + '</version><name>Fixture</name><description>Fixture</description>'
-               '<url>https://example.invalid</url><licenses/><developers/><scm/></project>')
+        pom = consumer_pom(self.component, self.version)
         (target / 'publication.pom').write_text(pom)
         for suffix, extension in (('.jar', '.class'), ('-sources.jar', '.java'), ('-javadoc.jar', '.html')):
             with zipfile.ZipFile(target / (self.artifact + '-' + self.version + suffix), 'w') as archive:
@@ -115,12 +126,56 @@ class PublicationTest(unittest.TestCase):
         root, target = self.build_outputs()
         self.prepare_fixture(root, 'valid')
         original = (target / 'publication.pom').read_text()
-        for field in ('parent', 'dependencies', 'dependencyManagement', 'repositories', 'build', 'profiles'):
+        fields = ['parent', 'dependencyManagement', 'repositories', 'pluginRepositories',
+                  'distributionManagement', 'build', 'profiles']
+        if not self.component['dependencies']:
+            fields.append('dependencies')
+        for field in fields:
             with self.subTest(field=field):
                 (target / 'publication.pom').write_text(original.replace('</project>', '<' + field + '/></project>'))
                 with self.assertRaisesRegex(ValueError, 'POM coupling'):
                     self.prepare_fixture(root, field)
                 self.assertFalse((Path(self.temp.name) / field).exists())
+
+    def test_manifest_hashes_cannot_admit_an_unreviewed_dependency(self):
+        pom = self.folder / (self.artifact + '-' + self.version + '.pom')
+        provider = ('<dependency><groupId>ch.qos.logback</groupId><artifactId>logback-classic</artifactId>'
+                    '<version>1.5.38</version></dependency>')
+        content = pom.read_text()
+        content = content.replace('</dependencies>', provider + '</dependencies>') if self.component['dependencies'] \
+            else content.replace('</project>', '<dependencies>' + provider + '</dependencies></project>')
+        pom.write_text(content)
+        PUB.write_identity(self.bundle, dict(group=PUB.GROUP, artifact=self.artifact,
+                                           version=self.version, commit='a' * 40, dirty=False, signed=False))
+        for command in ('check', 'sign', 'central', 'github', 'consume'):
+            with self.subTest(command=command), patch.object(sys, 'argv', [
+                    'library-publication.py', command, '--bundle', str(self.bundle),
+                    '--component', self.component_name]), patch.object(PUB, 'request') as request, \
+                    patch.object(PUB, 'run') as run:
+                with self.assertRaisesRegex(ValueError, 'dependencies'):
+                    PUB.main()
+                request.assert_not_called()
+                run.assert_not_called()
+
+    def test_consumer_checks_bytes_and_repository_origin_for_all_four_artifacts(self):
+        metadata = PUB.read_bundle(self.bundle)
+        cache = Path(self.temp.name) / 'cache'
+        resolved = cache / PUB.relative_path(self.version, self.component)
+        PUB.shutil.copytree(self.folder, resolved)
+        originals = [self.artifact + '-' + self.version + suffix for suffix in PUB.SUFFIXES]
+        origins = resolved / '_remote.repositories'
+        origins.write_text('\n'.join(name + '>library-target=' for name in originals))
+        PUB.verify_resolved_artifacts(metadata, self.component, cache)
+        for name in originals:
+            with self.subTest(artifact=name):
+                origins.write_text('\n'.join(item + ('>public-dependencies=' if item == name else '>library-target=')
+                                             for item in originals))
+                with self.assertRaisesRegex(ValueError, 'selected repository'):
+                    PUB.verify_resolved_artifacts(metadata, self.component, cache)
+        origins.write_text('\n'.join(name + '>library-target=' for name in originals))
+        (resolved / originals[1]).write_bytes(b'rebuilt library')
+        with self.assertRaisesRegex(ValueError, 'different artifact bytes'):
+            PUB.verify_resolved_artifacts(metadata, self.component, cache)
 
     def test_packaging_rejects_wrong_pom_and_incomplete_or_foreign_archives(self):
         root, target = self.build_outputs()
@@ -337,6 +392,57 @@ class PublicationTest(unittest.TestCase):
 
 class DiagnosticsPublicationTest(PublicationTest):
     component_name = 'diagnostics'
+
+
+class LoggingPublicationTest(PublicationTest):
+    component_name = 'logging'
+
+    def test_dependency_contract_rejects_missing_optional_wrong_scope_and_extra_fields(self):
+        original = consumer_pom(self.component, self.version).encode()
+        invalid = [
+            original.replace(b'<scope>compile</scope>', b'<scope>provided</scope>'),
+            original.replace(b'<scope>compile</scope>', b'<scope>runtime</scope>'),
+            original.replace(b'<scope>compile</scope>', b'<scope>test</scope>'),
+            original.replace(b'<scope>compile</scope>', b'<optional>true</optional>'),
+            original.replace(b'<scope>compile</scope>', b'<type>pom</type>'),
+            original.replace(b'<scope>compile</scope>', b'<classifier>sources</classifier>'),
+            original.replace(b'<scope>compile</scope>', b'<exclusions/>'),
+            original.replace(b'2.0.18', b'${slf4j.version}'),
+            original.replace(b'2.0.18', b'[2.0,3.0)'),
+            original.replace(b'2.0.18', b'2.0.17'),
+            original.replace(b'<scope>compile</scope>', b'<scope>compile</scope><scope>test</scope>'),
+            original.replace(b'<artifactId>slf4j-api</artifactId>', b'<artifactId>slf4j-simple</artifactId>'),
+            original.replace(b'<groupId>org.slf4j</groupId>', b'<groupId>com.iocextractor</groupId>'),
+            original.replace(b'<dependencies>', b'<ignored>').replace(b'</dependencies>', b'</ignored>'),
+            original.replace(b'<dependency>', b'<ignored>').replace(b'</dependency>', b'</ignored>'),
+        ]
+        for index, content in enumerate(invalid):
+            with self.subTest(case=index), self.assertRaises(ValueError):
+                PUB.validate_consumer_pom(content, self.version, self.component)
+        empty = original[:original.index(b'<dependencies>')] + b'</project>'
+        with self.assertRaisesRegex(ValueError, 'dependencies'):
+            PUB.validate_consumer_pom(empty, self.version, self.component)
+        dependency = original[original.index(b'<dependency>'):original.index(b'</dependency>') + len(b'</dependency>')]
+        with self.assertRaisesRegex(ValueError, 'dependencies'):
+            PUB.validate_consumer_pom(original.replace(b'</dependencies>', dependency + b'</dependencies>'),
+                                      self.version, self.component)
+        for content in [original.replace(b'<scope>compile</scope>', b''),
+                        original.replace(b'<scope>compile</scope>', b'<type>jar</type><optional>false</optional>')]:
+            PUB.validate_consumer_pom(content, self.version, self.component)
+
+
+class ConsumerGuardTest(unittest.TestCase):
+    def test_negative_checks_reject_success_and_an_unrelated_failure(self):
+        with tempfile.TemporaryDirectory() as folder:
+            project = Path(folder)
+            for code, output in [(0, 'COMPILATION ERROR org.slf4j'),
+                                 (1, 'org.slf4j download failed: HTTP 503')]:
+                (project / 'target').mkdir()
+                with self.subTest(code=code), patch.object(PUB.subprocess, 'run', return_value=
+                        subprocess.CompletedProcess([], code, stdout=output, stderr='')) as run:
+                    with self.assertRaisesRegex(ValueError, 'expected reason'):
+                        PUB.negative_dependency_checks(['mvn'], project, {})
+                    self.assertIn('-o', run.call_args.args[0])
 
 
 class ProxyTest(unittest.TestCase):

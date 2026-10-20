@@ -645,10 +645,10 @@ Report membership admits `io.github.xorex-lc` only for
 JARs must retain `com.iocextractor`. Verifier negative fixtures reject a foreign
 group for an ordinary module and the retired group for each admitted library.
 
-The logging module joins the report manifests and regular reactor gates. Its
-local packaging preserves the required SLF4J dependency, but its standalone
-consumer and publication-tool integration remain separate work. It is not yet
-in the library-consumer matrix.
+The logging module joins the report manifests, regular reactor gates and the
+standalone library-consumer matrix. Its resolved POM must preserve exactly one
+required compile dependency, SLF4J API 2.0.18. Providers and Boot remain outside
+the JAR; the older libraries still reject every dependency.
 
 The Boot logging recipe is qualified in bootstrap's `LoggingBootRecipeIT`.
 It compiles guide sources and runs a bounded JVM with only shared logging classes
@@ -656,17 +656,22 @@ and third-party JARs; backend configuration is not a new library dependency or
 report module. Its suite is included in the ordinary integration inventory.
 This local fixture does not substitute for the separate cold repository matrix.
 
-The separate `library-consumer` CI matrix qualifies both JDK-only components.
+The separate `library-consumer` CI matrix qualifies all three admitted components.
 An aggregate job keeps the required status name `library-consumer` stable for
 branch protection. It runs even after an unsuccessful matrix and passes only
 when every component consumer succeeds; failed, cancelled or skipped consumers
 cannot produce a successful aggregate check.
-Each builds a parent-independent, zero-runtime-dependency POM, main JAR with
+Each builds a parent-independent POM with its exact dependency contract, main JAR with
 the distribution license, sources and Javadoc. Publication contracts reject
 cross-component tags/bundles, coupled POMs and incomplete/foreign archives;
-signature and partial-publication recovery checks run for both components.
+signature and partial-publication recovery checks run for all three components.
 The copied consumer uses empty Maven settings/cache outside the checkout and
-checks all four resolved artifacts against the manifest. Network-dependent
+checks all four resolved artifacts against the manifest and selected repository
+origin. Logging runs plain SLF4J and Boot recipe projects with separate empty
+caches, extracting actual guide sources/configuration. Its required API must
+arrive through the library POM; two offline negative checks reject excluded or
+unavailable SLF4J. These tool fixtures do not change reactor suite or report
+membership. Network-dependent
 plugin resolution and local file-repository qualification do not substitute for
 the deterministic reactor gate or prove public publication. See the
 [publication guide](../guides/library-publication.md).

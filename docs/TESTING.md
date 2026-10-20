@@ -309,6 +309,11 @@ make test-one MODULE=bootstrap/ioc-app TEST=LogbackConfigurationIT
 The out-of-reactor Maven publication consumer is a different contract. It is
 introduced only after `R030-LIB` admits coordinates and a public API; these
 wire-format fixtures do not create or imply such a library contract.
+The admitted logging component now runs separate plain SLF4J and Boot recipe
+projects with empty caches. Both compile actual guide blocks from packaged JARs;
+the plain fixture also checks excluded/unavailable API failures. These are
+network-dependent tool checks, outside the reactor suite inventory, and local
+file-repository success does not prove public publication.
 
 ## Test design and failure policy
 
