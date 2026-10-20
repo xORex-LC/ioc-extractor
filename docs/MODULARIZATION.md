@@ -10,7 +10,8 @@ adapters и bootstrap собираются как отдельные Maven-мо�
 но пока реализован только в reactor. Остальные модули сохраняют `com.iocextractor`. Публикуемый
 POM библиотеки не зависит от parent реактора. Политика —
 [ADR 0028](ADR/0028-pilot-library-publication.md), контракт диагностики —
-[ADR 0044](ADR/0044-reusable-diagnostics-contract.md), процедура —
+[ADR 0044](ADR/0044-reusable-diagnostics-contract.md), контракт логирования —
+[ADR 0045](ADR/0045-reusable-slf4j-logging-contract.md), процедура —
 [руководство по публикации](guides/library-publication.md).
 
 > Статус: **реализовано на этапе 9**. Фактическая структура ниже. Границы

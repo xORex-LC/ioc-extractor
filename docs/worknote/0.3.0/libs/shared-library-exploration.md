@@ -1262,3 +1262,22 @@ The [L3-2 record](lib-3-logging-design.md#l3-2-ioc-migration-and-qualification--
 records ownership, test inventory and final gate requirements. L3-3 is next;
 ADR promotion, reusable Boot qualification and independent publication remain
 separate gates. No commit/push/publication requested; earlier work is preserved.
+
+
+## LIB-3 L3-3 integration checkpoint — 2026-10-20
+
+The [L3-3 record](lib-3-logging-design.md#l3-3-integration-documentation-and-qualification--2026-10-20)
+consolidates generic/IOC/backend test ownership, reviews API Javadoc and promotes
+[ADR 0045](../../../ADR/0045-reusable-slf4j-logging-contract.md). The application-owned
+Boot recipe is executable from its actual Markdown Java/YAML/XML, with JSON/status
+assertions in a bounded JVM without IOC classes. Six negative scenarios make its
+supported synchronous mutable-event boundary explicit. A callback self-suppression
+regression preserves the original exception even when the MDC provider reuses it.
+
+One new Failsafe suite changes the reviewed universe to 230 fast / 80 integration /
+5 external shells and 305 deterministic classes; report groups and all floors
+remain unchanged. Final-tree verify, PMD, resource watchlist and documentation
+receipts are required; `make context` is the freshness authority. L3-4 retains
+dependency-aware publication tooling and cold repository consumption. No public
+release, collector/Elasticsearch, load or second production consumer is claimed.
+Events remain deferred. No commit or push was requested for this slice.

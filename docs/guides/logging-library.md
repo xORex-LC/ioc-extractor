@@ -187,12 +187,13 @@ Without a Throwable, an explicit `EcsFields.ERROR_TYPE` can describe a type-only
 error. Check actual output bytes and encoder status: an appender can drop a
 conflicting record without throwing back to the producer.
 
-The IOC Boot encoder/configuration currently stays application-owned; it is not
-in this JAR. Its dataset extension depends on mutable Logback events, and the
-plain Boot static dataset addition is not a qualified substitute when dynamic
-event fields are present. IOC producer migrations are covered by service-level
-JSON/appender regressions. The reusable Boot recipe remains a separate L3-3
-qualification; this guide's plain Java examples do not certify it.
+The IOC Boot encoder/configuration stays application-owned; it is not in this
+JAR. The [Boot ECS recipe](logging-library-boot.md) provides executable YAML,
+XML and an application-owned encoder example for the qualified synchronous
+mutable-event path. It documents dataset/error ownership and unsupported paths.
+IOC producer migrations remain covered by separate service-level regressions.
+The [accepted boundary](../ADR/0045-reusable-slf4j-logging-contract.md) records
+which guarantees belong to the library and which require backend evidence.
 
 ## Failure behavior
 

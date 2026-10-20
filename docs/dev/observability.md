@@ -51,6 +51,20 @@ diagnostics bridge, fingerprint/severity policy и Boot encoder остаются
 [руководстве потребителя](../guides/logging-library.md). Состав модуля — в
 [README](../../platform/platform-logging-slf4j/README.md).
 
+Принятая граница API и владения описана в
+[ADR 0045](../ADR/0045-reusable-slf4j-logging-contract.md).
+[Рецепт Boot ECS](../guides/logging-library-boot.md) содержит исполняемые YAML/XML
+и пример encoder для другого сервиса. `LoggingBootRecipeIT` компилирует текст
+руководства и запускает отдельную JVM без IOC-классов; проверяются фактические
+байты, типы, отсутствие duplicate keys и внутренние статусы appender.
+Поддержан только синхронный FileAppender с изменяемым LoggingEvent. Проверки
+async-передачи в общей библиотеке не распространяют эту гарантию на backend.
+
+Общие scalar/ECS/MDC/masking/provider тесты остаются в библиотеке. IOC-каталог,
+привязка facade, ETL correlation и cleanup callback — в observability; реальные
+producer-ветки и Boot JSON — в bootstrap. Callback сохраняет исходный сбой,
+даже если provider при очистке повторно выбрасывает тот же объект исключения.
+
 Ключ поля определяет его идентичность в одной записи, включая вызовы с null.
 Несовместимый тип отклоняется до level filtering. Event-local значения временно
 скрывают одноимённые строки MDC и восстанавливают их после попытки записи.

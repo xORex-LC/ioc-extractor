@@ -1,6 +1,6 @@
 # LIB-3: SLF4J logging tools and ECS extraction plan
 
-Status: **L3-2 complete locally**, 2026-10-19. Initially
+Status: **L3-3 complete locally**, 2026-10-20. Initially
 proposed 2026-09-13, refined for shared ECS after the owner's October request.
 The [fixed contract](lib-3-logging-contract.md) owns the implementation target;
 the [ECS analysis](lib-3-logging-ecs-analysis.md) retains the preceding findings.
@@ -28,7 +28,7 @@ logging backend, metrics/tracing system, general execution-context framework,
 automatic secret detector, separate redaction artifact or API/implementation split.
 The library does not require the diagnostics or configuration libraries.
 
-Disposition: **L3-2 complete; L3-3 is next**.
+Disposition: **L3-3 complete locally; L3-4 publication qualification is next**.
 Confirmed future consumers are the planned collectors; they are not implemented
 external consumers. The repository owner maintains/releases the library, matching
 existing platform-library metadata. Admission still needs an independently
@@ -347,7 +347,7 @@ confirmed consumer need. [SLF4J library guidance](https://www.slf4j.org/manual.h
 | L3-0: complete | Eight-type API, five ECS scalar descriptors; outcome/duration/ownership; arrays deferred; descriptor identity; masking/null/MDC/URL contracts; OBS-9/10 migration fixed | [Contract](lib-3-logging-contract.md), [ADR draft](lib-3-logging-adr-draft.md) and [62-case probe](l3-0-probe/README.md); current mechanics/defects distinguished from future API requirements |
 | L3-1: complete | Add fixed types/helpers; move normalization internally; fix key/type identity and resource acquisition; document the public API as it is implemented | Sole main dependency SLF4J API; no service imports; actual API boundary/helper regressions; English Javadoc/package docs, module README and executed plain Java examples |
 | L3-2: complete | Delegate existing conveniences or migrate atomically; retain IOC catalogs and pipeline observer locally; implement qualified OBS-9/10 corrections | Preserve unaffected wire fields/actions, logger categories and context reconstruction; explicitly qualify/document changed keys/shapes and complete error JSON output |
-| L3-3: tests/docs/build | Consolidate generic tests; keep IOC catalog and Boot wire tests local; review L3-1 API docs and consumer guide; qualify Boot recipe; update architecture/module/analyzer maps; promote ADR | Focused suites then `make verify` and `make pmd-analysis` on final production/build tree; reviewed analyzer/coverage scope changes |
+| L3-3: complete locally | Consolidate generic tests; keep IOC catalog and Boot wire tests local; review L3-1 API docs and consumer guide; qualify Boot recipe; update architecture/module/analyzer maps; promote ADR | Focused suites then `make verify` and `make pmd-analysis` on final production/build tree; reviewed analyzer/coverage scope changes |
 | L3-4: publication qualification | Dependency-aware descriptors/POM, sources/Javadoc and independent consumer; protected publication only after admission | Cold target-repository consumption, negative dependency-resolution checks and immutable bundle identity |
 
 IOC compatibility wrappers must delegate mechanics, not keep independent copies
@@ -611,3 +611,65 @@ review final integration docs and promote the Proposed ADR. L3-4 retains
 publication tooling and cold independent-consumer admission. No external
 collector, live Elasticsearch, load, additional provider or publication is
 qualified by these repository tests. No commit or push was requested.
+
+
+### L3-3 integration, documentation and qualification — 2026-10-20
+
+Test ownership is consolidated without copying IOC vocabulary into the library.
+The shared module owns generic fields/events, ECS helpers, masking, provider
+failures, async snapshots and executable plain Java examples. IOC observability
+owns catalog binding, ETL correlation and callback cleanup; bootstrap owns real
+IOC producer JSON and the consuming application's backend recipe. The eight-type
+API and package Javadoc were reviewed against the fixed contract. Existing
+examples still compile; publication-profile packaging passes full doclint with
+warnings treated as errors and produces main, sources and Javadoc JARs. The
+resolved parent-independent POM has only SLF4J API as a required main dependency.
+No dependency version, provider, report membership or coverage floor changes.
+
+The new [Boot integration guide](../../../guides/logging-library-boot.md) contains
+complete YAML, XML and an application-owned dataset encoder. Its qualified path
+is Java 21 / Boot 4.0.8 / Logback 1.5.38 / SLF4J 2.0.18 with synchronous mutable
+LoggingEvent input. The file appends across restarts; rotation, retention and
+resource budgets remain service-owned. The encoder restores the source event's
+key/value list and rejects immutable snapshots or producer/MDC dataset overrides.
+Reserved metadata, prefix conflicts and Throwable/error ownership remain explicit
+service schema constraints, not new generic library checks.
+
+`LoggingBootRecipeIT` compiles the actual guide Java blocks and loads the actual
+YAML/XML through Boot in a separate JVM. Its classpath contains only shared
+logging classes and third-party JARs; explicit checks reject leaked IOC classes.
+Seven cases check five supported JSON records and six invalid-input scenarios:
+event/MDC dataset overrides, immutable snapshots, Throwable/error collision,
+scalar/object prefix collision and reserved metadata. Assertions parse output
+with duplicate-key detection and inspect appender status, native scalar types,
+omission, masking, metadata and source-event/MDC restoration. Owned processes
+have timed termination and finally cleanup under a containing JUnit timeout.
+This is in-checkout integration evidence, not a cold repository consumer.
+
+The callback cleanup review found one additional defect: a provider reusing the
+same exception object caused Java self-suppression to replace the original
+failure with `IllegalArgumentException`. A red regression reproduced it. The
+local facade now suppresses only a distinct cleanup exception; both failure
+shapes pass. The focused observability run passes 29 cases. The shared contract
+and public API do not change.
+
+[ADR 0045](../../../ADR/0045-reusable-slf4j-logging-contract.md) promotes the fixed
+boundary, backend responsibilities and selected IOC wire corrections. The draft
+is retained as a historical promotion record; accepted ADRs 0018/0019 are not
+rewritten. Module references, guides, architecture/boundary maps, testing/build
+ownership and release notes are updated together. One new Failsafe suite changes
+the exact source universe to 230 fast / 80 integration / 5 external shells,
+305 deterministic classes. Production/report topology remains 24 functional JARs,
+23 aggregate groups and 22 local coverage reports. No analyzer baseline,
+suppression, exclusion or test/coverage ratchet is relaxed.
+
+Acceptance requires `make docs`, `make verify`, `make pmd-analysis` and resource
+`make pmd-watchlist` on the final frozen tree. Current command receipts and
+`make context` own pass/freshness; earlier focused results do not substitute for
+the complete gate. Analyzer identities and findings intersecting changed code
+must be reviewed against the preceding accepted reports.
+
+Next is L3-4: dependency-aware publication descriptors/guards, cold independent
+consumers and immutable bundle admission. This slice does not publish, move a
+component tag, qualify a live collector/Elasticsearch, load or another provider,
+or claim a second production consumer. No commit or push was requested.

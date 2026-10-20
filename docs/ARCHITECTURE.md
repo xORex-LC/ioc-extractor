@@ -37,6 +37,10 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 логирования принята в [ADR 0044](ADR/0044-reusable-diagnostics-contract.md).
 Сервис владеет failure-policy checkpoint и durable effects; общая библиотека
 возвращает данные и решение, но не выполняет commit или восстановление.
+Общий SLF4J API, scalar ECS profile и граница IOC/backend приняты в
+[ADR 0045](ADR/0045-reusable-slf4j-logging-contract.md). Подключение другого
+сервиса описано в [руководстве](guides/logging-library.md) и отдельном
+[рецепте Boot ECS](guides/logging-library-boot.md).
 
 ## Слои и пакеты
 

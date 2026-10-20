@@ -1,6 +1,8 @@
 # LIB-3 L3-0: logging API and ECS contract
 
-Status: **fixed implementation target**, 2026-10-19. The owner authorized L3-0
+Status: **fixed implementation target**, 2026-10-19. The implemented boundary
+is accepted in [ADR 0045](../../../ADR/0045-reusable-slf4j-logging-contract.md)
+on 2026-10-20. The owner authorized L3-0
 after the [ECS assessment](lib-3-logging-ecs-analysis.md). This closes contract
 qualification. The L3-1 module now implements this target locally, with public
 API tests and an executed consumer guide. L3-2 now delegates IOC mechanics and

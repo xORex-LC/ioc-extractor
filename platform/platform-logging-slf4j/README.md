@@ -36,6 +36,10 @@ libraries; this module's presence does not admit a publication workflow.
 Start with the [consumer guide](../../docs/guides/logging-library.md); its three
 complete Java examples are compiled and executed by the module tests. Public
 Javadoc describes null handling, exceptions, ownership and scalar conversions.
+The [accepted contract](../../docs/ADR/0045-reusable-slf4j-logging-contract.md)
+records the boundary and compatibility policy. The separate
+[Boot ECS recipe](../../docs/guides/logging-library-boot.md) is compiled and
+executed by `LoggingBootRecipeIT` in bootstrap; Boot remains outside this JAR.
 
 Field identity is its key; null omission retains the declared type. Wrong types
 throw even at disabled levels. Null does not hide ambient MDC. Scopes do not
@@ -53,3 +57,13 @@ mechanics to this library. Bootstrap retains the backend and configuration.
 Run `make test-module MODULE=platform/platform-logging-slf4j`. The
 `library-publication` Maven profile can build source/Javadoc attachments for local
 review; actual publication and cold-repository qualification remain separate.
+
+## Test ownership
+
+Generic field/type identity, scalar conversions, ECS helpers, masks, provider
+failures and async field/MDC snapshots live here. IOC catalog bindings, ETL
+correlation and callback initialization belong to `platform-observability`.
+The bootstrap integration suites own real IOC producer JSON and application
+backend configuration. The Boot recipe's separate JVM uses this module and
+third-party JARs without IOC classes; it is still an in-checkout consumer.
+An async library test does not qualify the synchronous recipe for event snapshots.

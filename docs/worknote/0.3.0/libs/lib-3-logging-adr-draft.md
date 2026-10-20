@@ -1,6 +1,10 @@
 # ADR draft: reusable SLF4J logging tools and a small ECS profile
 
-Status: **Proposed**, L3-0 contract fixed on 2026-10-19. This unnumbered draft is
+Status: **promoted to accepted ADR 0045**, 2026-10-20:
+[reusable SLF4J logging contract](../../../ADR/0045-reusable-slf4j-logging-contract.md).
+The text below retains the L3-0 proposal and its pre-L3-3 acceptance conditions.
+
+Historical status: **Proposed**, L3-0 contract fixed on 2026-10-19. This unnumbered draft is
 an implementation target, not a published accepted ADR. Assign the next available
 ADR number and promote after implementation qualification; do not reserve a
 number or edit accepted ADR-0018/0019 to describe this future implementation.

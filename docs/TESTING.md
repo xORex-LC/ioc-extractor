@@ -18,8 +18,8 @@ Every Failsafe suite must also carry integration semantics through
 discovery; tags describe test semantics. They are complementary and neither is
 a substitute for the complete release gate.
 
-The reviewed source universe is 230 fast classes and 79 integration classes,
-including five external shells (304 deterministic classes). Diagnostics extraction
+The reviewed source universe is 230 fast classes and 80 integration classes,
+including five external shells (305 deterministic classes). Diagnostics extraction
 moves eight existing suites to the JDK-only API module and adds one executable
 consumer-guide suite. Logging adds seven suites for the public API, scalar ECS
 profile, explicit masks,
@@ -27,9 +27,21 @@ MDC/provider failures, architecture boundaries and compiled consumer-guide examp
 `IocLogFieldBindingTest` replaces the removed private-normalizer suite with
 observable IOC-facade assertions. `LoggingMigrationIT` adds five real producer /
 Boot encoder / byte-writing appender regressions, including watch-provider
-failure with bounded worker cleanup. The exact source inventory records these changes. Coverage floors, report integrity,
+failure with bounded worker cleanup. `LoggingBootRecipeIT` compiles the actual
+plain/Boot guides and runs their YAML/XML in a bounded separate JVM with only the
+shared logging classes and third-party JARs. It checks JSON types, duplicate keys,
+metadata, disclosure and observable appender failures for unsupported inputs.
+This is backend integration evidence, not repository-consumption evidence.
+The exact source inventory records these changes. Coverage floors, report integrity,
 architecture checks and analyzer rules remain enforced. The Native lifecycle and import TCK bindings
 run against the retained backend.
+
+Logging test ownership is deliberate: the shared module owns generic mechanics
+and executable plain examples; IOC observability owns catalogs, facade binding,
+ETL correlation and callback cleanup; bootstrap owns IOC producer JSON and the
+application-owned [Boot recipe](guides/logging-library-boot.md). The integration
+recipe does not move Boot dependencies into the shared module. Its immutable
+snapshot rejection is not a failure of the library's separate async contract.
 
 `StreamingSourceContractIT` and `JdbcDocumentSourceWorkspaceIT` check real
 HTML/DOCX parsing, independent source outcomes, disk-backed text, overlap priority,

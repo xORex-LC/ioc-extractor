@@ -65,6 +65,10 @@ failure/recovery semantics и точки расширения, но не пер�
 - [ADR 0044](ADR/0044-reusable-diagnostics-contract.md) фиксирует границу общей
   диагностики; [руководство библиотеки](guides/diagnostics-library.md) объясняет
   подключение, bounded counts, policy и delivery для другого сервиса.
+- [ADR 0045](ADR/0045-reusable-slf4j-logging-contract.md) фиксирует общий SLF4J
+  API и scalar ECS profile; [руководство](guides/logging-library.md) и
+  [рецепт Boot ECS](guides/logging-library-boot.md) содержат проверяемые примеры
+  для другого сервиса.
 
 Локальные рабочие заметки и временные issue-списки не входят в авторитетный
 комплект документации, по умолчанию игнорируются Git и не используются

@@ -650,6 +650,12 @@ local packaging preserves the required SLF4J dependency, but its standalone
 consumer and publication-tool integration remain separate work. It is not yet
 in the library-consumer matrix.
 
+The Boot logging recipe is qualified in bootstrap's `LoggingBootRecipeIT`.
+It compiles guide sources and runs a bounded JVM with only shared logging classes
+and third-party JARs; backend configuration is not a new library dependency or
+report module. Its suite is included in the ordinary integration inventory.
+This local fixture does not substitute for the separate cold repository matrix.
+
 The separate `library-consumer` CI matrix qualifies both JDK-only components.
 An aggregate job keeps the required status name `library-consumer` stable for
 branch protection. It runs even after an unsuccessful matrix and passes only

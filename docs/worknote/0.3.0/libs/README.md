@@ -13,7 +13,7 @@ assessments identify historical baselines; they are no longer working branches.
 These are release worknotes. A recorded design admission is an implementation
 target; accepted published ADRs and release/publication evidence remain separate.
 
-## Current work order — 2026-10-19
+## Current work order — 2026-10-20
 
 The owner selected logging tools and a common ECS approach, then authorized L3-0.
 The [fixed contract](lib-3-logging-contract.md) closes L3-0: eight public types,
@@ -24,7 +24,11 @@ public API. **L3-1 is complete locally**.
 The new module and its consumer guide provide public-API tests and documentation.
 **L3-2 IOC migration is complete locally**; local facades delegate
 to the library and real producer/encoder regressions cover the selected wire fixes.
-L3-3 will consolidate tests/docs and qualify the reusable Boot recipe.
+**L3-3 is complete locally, subject to current unchanged-tree gate receipts**: generic/IOC/backend
+test ownership is documented, the reusable Boot recipe has executable examples,
+and [ADR 0045](../../../ADR/0045-reusable-slf4j-logging-contract.md) records the
+accepted boundary. The next slice is L3-4 publication tooling and cold repository
+consumption; those checks and protected publication are not claimed here.
 Events E1–E5 remain deferred.
 
 Diagnostics publication is recorded in the release branch's D5 documentation
@@ -73,8 +77,8 @@ Publication remains pending explicit authorization.
   standard semantics, actual JSON/appender failures, ownership and L3-0 acceptance.
 - [LIB-3 fixed L3-0 contract](lib-3-logging-contract.md): exact public surface,
   ECS subset, validation/ownership, masking and chosen producer migrations.
-- [LIB-3 ADR draft](lib-3-logging-adr-draft.md): proposed boundary, alternatives
-  and acceptance; promotion follows implementation qualification.
+- [LIB-3 ADR promotion record](lib-3-logging-adr-draft.md): historical draft
+  pointing to accepted ADR 0045.
 - [LIB-3 L3-0 fixture](l3-0-probe/README.md): reproducible 62-case baseline,
   pinned source/dependency identities and qualification limits.
 
