@@ -6,6 +6,7 @@ ioc-platform-diagnostics	481	10	56	20	63	enforced	Small branch denominator requi
 ioc-platform-etl	165	16	16	8	75	enforced	Small branch denominator requires ratio and absolute missed context.
 ioc-platform-events	41	0	12	2	0	enforced	Small line and branch denominators require absolute missed context.
 ioc-platform-concurrency	197	21	48	18	67	enforced	Small branch denominator requires ratio and absolute missed context.
+ioc-platform-logging-slf4j	140	0	67	0	0	enforced	L3-1 measured public-API baseline: scalar/null/type contracts, provider failures, nested MDC, asynchronous snapshot and compiled consumer-guide examples.
 ioc-platform-observability	327	14	69	2	42	enforced	Small branch denominator requires ratio and absolute missed context.
 ioc-platform-diagnostics-logging	56	4	20	1	9	enforced	Small line and branch denominators require absolute missed context.
 ioc-domain	239	4	108	2	20	observed	Behavioral contract remediation exceeds the core line and branch release floors; explicit fixed-floor gates remain separate.

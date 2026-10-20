@@ -6,6 +6,7 @@ platform/platform-diagnostics	ioc-platform-diagnostics	analyzed	Production runti
 platform/platform-etl	ioc-platform-etl	analyzed	Production runtime JAR
 platform/platform-events	ioc-platform-events	analyzed	Production runtime JAR
 platform/platform-concurrency	ioc-platform-concurrency	analyzed	Production runtime JAR
+platform/platform-logging-slf4j	ioc-platform-logging-slf4j	analyzed	Production runtime JAR
 platform/platform-observability	ioc-platform-observability	analyzed	Production runtime JAR
 platform/platform-diagnostics-logging	ioc-platform-diagnostics-logging	analyzed	Production runtime JAR
 core/ioc-domain	ioc-domain	analyzed	Production runtime JAR

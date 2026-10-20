@@ -49,6 +49,10 @@
             <artifactId>ioc-platform-concurrency</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.github.xorex-lc</groupId>
+            <artifactId>ioc-platform-logging-slf4j</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.iocextractor</groupId>
             <artifactId>ioc-platform-observability</artifactId>
         </dependency>

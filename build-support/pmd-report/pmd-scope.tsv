@@ -6,6 +6,7 @@ platform/platform-diagnostics	ioc-platform-diagnostics	analyzed	Production runti
 platform/platform-etl	ioc-platform-etl	analyzed	Production runtime Java sources
 platform/platform-events	ioc-platform-events	analyzed	Production runtime Java sources
 platform/platform-concurrency	ioc-platform-concurrency	analyzed	Production runtime Java sources
+platform/platform-logging-slf4j	ioc-platform-logging-slf4j	analyzed	Production runtime Java sources
 platform/platform-observability	ioc-platform-observability	analyzed	Production runtime Java sources
 platform/platform-diagnostics-logging	ioc-platform-diagnostics-logging	analyzed	Production runtime Java sources
 core/ioc-domain	ioc-domain	analyzed	Production runtime Java sources

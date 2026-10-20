@@ -1239,7 +1239,8 @@ public final class BuildQualityVerifier {
             String scope = optionalDirectText(dependency, "scope", "compile");
 
             String expectedGroup = ("ioc-platform-concurrency".equals(artifactId)
-                    || "ioc-platform-diagnostics-api".equals(artifactId))
+                    || "ioc-platform-diagnostics-api".equals(artifactId)
+                    || "ioc-platform-logging-slf4j".equals(artifactId))
                     ? "io.github.xorex-lc" : PROJECT_GROUP;
             if (!expectedGroup.equals(groupId)
                     || !"jar".equals(type)

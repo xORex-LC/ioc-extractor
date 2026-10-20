@@ -10,18 +10,18 @@ import java.util.List;
 /** Synthetic-reactor contract tests for {@link CoverageVerifier}. */
 public final class CoverageVerifierTest {
 
-    private static void admitDiagnosticsApi(Path root) throws IOException {
+    private static void admitLibrary(Path root, String artifactId) throws IOException {
         try (var paths = Files.walk(root)) {
             for (Path path : paths.filter(Files::isRegularFile).toList()) {
                 String text = Files.readString(path);
                 text = text.replace("<artifactId>app</artifactId>",
-                        "<artifactId>ioc-platform-diagnostics-api</artifactId>");
-                text = text.replaceAll("com.iocextractor(</groupId>\\s*<artifactId>ioc-platform-diagnostics-api)",
+                        "<artifactId>" + artifactId + "</artifactId>");
+                text = text.replaceAll("com.iocextractor(</groupId>\\s*<artifactId>" + artifactId + ")",
                         "io.github.xorex-lc$1");
-                text = text.replace("\tapp\t", "\tioc-platform-diagnostics-api\t");
+                text = text.replace("\tapp\t", "\t" + artifactId + "\t");
                 if (path.getFileName().toString().equals("coverage-ratchets.tsv")
                         || path.getFileName().toString().equals("coverage-floors.tsv")) {
-                    text = text.replace("\napp\t", "\nioc-platform-diagnostics-api\t");
+                    text = text.replace("\napp\t", "\n" + artifactId + "\t");
                 }
                 Files.writeString(path, text);
             }
@@ -42,13 +42,15 @@ public final class CoverageVerifierTest {
             happyPaths += 2;
         }
 
-        try (Fixture fixture = Fixture.create()) {
-            admitDiagnosticsApi(fixture.root());
-            assertSuccess(fixture, "validate");
-            happyPaths++;
-            fixture.replace("build-support/coverage-report/pom.xml", "io.github.xorex-lc", "com.iocextractor");
-            assertFailure(fixture, "validate", "old diagnostics coordinate", "ordering dependency");
-            negativeScenarios++;
+        for (String library : List.of("ioc-platform-diagnostics-api", "ioc-platform-logging-slf4j")) {
+            try (Fixture fixture = Fixture.create()) {
+                admitLibrary(fixture.root(), library);
+                assertSuccess(fixture, "validate");
+                happyPaths++;
+                fixture.replace("build-support/coverage-report/pom.xml", "io.github.xorex-lc", "com.iocextractor");
+                assertFailure(fixture, "validate", "old " + library + " coordinate", "ordering dependency");
+                negativeScenarios++;
+            }
         }
 
         List<Scenario> scenarios = List.of(
