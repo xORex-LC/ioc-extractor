@@ -25,7 +25,8 @@ Diagnostic -> LoggingDiagnosticSink -> ordinary typed LogEvent
 
 `platform-diagnostics-api` владеет общей моделью, result/policy, bounded collectors
 и sinks; `platform-diagnostics` — IOC-каталогом, metadata, exception и renderer;
-`platform-observability` — typed logging schema, events и MDC;
+`platform-observability` — IOC-каталогом, обёртками и ETL logging observer;
+`platform-logging-slf4j` — общими typed events, нормализацией, MDC и очисткой URL;
 `platform-diagnostics-logging` — bridge. Domain не зависит ни от одного из них:
 он возвращает pure decision outcomes, а application создаёт diagnostics/TRACE.
 
@@ -33,6 +34,63 @@ Diagnostic -> LoggingDiagnosticSink -> ordinary typed LogEvent
 [ADR 0044](../ADR/0044-reusable-diagnostics-contract.md). Контракты для внешнего
 потребителя и исполняемые примеры — в
 [руководстве по diagnostics](../guides/diagnostics-library.md).
+
+## Общие инструменты логирования
+
+`platform-logging-slf4j` реализует отдельный API для будущих сервисов:
+`LogFieldSpec`, typed `LogEvent`, restoring `MdcScope`, пять ECS scalar fields,
+стандартный `EventOutcome` и явные helpers маскирования. Единственная main-зависимость
+— SLF4J API; backend и настройки encoder выбирает сервис. Код библиотеки не
+зависит от IOC-каталогов, ETL или diagnostics.
+
+IOC использует обёртки из `platform-observability`, которые делегируют механику
+общему API. `LogField` хранит shared descriptor, `EventAction` остаётся локальным,
+а `EventOutcome` связывается с общей ECS vocabulary. Каталоги IOC, ETL observer,
+diagnostics bridge, fingerprint/severity policy и Boot encoder остаются в сервисе. Контракт, ограничения
+и примеры, компилируемые тестом непосредственно из Markdown, описаны в
+[руководстве потребителя](../guides/logging-library.md). Состав модуля — в
+[README](../../platform/platform-logging-slf4j/README.md).
+
+Принятая граница API и владения описана в
+[ADR 0045](../ADR/0045-reusable-slf4j-logging-contract.md).
+[Рецепт Boot ECS](../guides/logging-library-boot.md) содержит исполняемые YAML/XML
+и пример encoder для другого сервиса. `LoggingBootRecipeIT` компилирует текст
+руководства и запускает отдельную JVM без IOC-классов; проверяются фактические
+байты, типы, отсутствие duplicate keys и внутренние статусы appender.
+Поддержан только синхронный FileAppender с изменяемым LoggingEvent. Проверки
+async-передачи в общей библиотеке не распространяют эту гарантию на backend.
+
+Общие scalar/ECS/MDC/masking/provider тесты остаются в библиотеке. IOC-каталог,
+привязка facade, ETL correlation и cleanup callback — в observability; реальные
+producer-ветки и Boot JSON — в bootstrap. Callback сохраняет исходный сбой,
+даже если provider при очистке повторно выбрасывает тот же объект исключения.
+
+Ключ поля определяет его идентичность в одной записи, включая вызовы с null.
+Несовместимый тип отклоняется до level filtering. Event-local значения временно
+скрывают одноимённые строки MDC и восстанавливают их после попытки записи.
+Контекст между потоками автоматически не переносится. Маскирование применяется
+только по явному вызову producer; текст сообщений и Throwable не очищаются.
+
+## Изменение запросов к журналам
+
+После миграции L3-2 имя control event у `LoggingControlEventObserver` находится
+в `ioc.event.type`, в JSON — `/ioc/event/type`. Запросы по прежнему `event.type`
+для этих событий нужно перевести на новый путь; старое поле не дублируется.
+
+`LegacyLedgerImporter` при повторе уже импортированного файла и
+`SqliteUserVersionSchemaMigrator` при актуальной схеме пишут
+`ioc.operation.disposition=skipped`. Запросы `event.type=skipped` следует заменить
+на этот путь. На этих двух DEBUG-записях больше нет `event.outcome=unknown`:
+исход операции здесь не утверждается. Actions `ledger_import`/`schema_migrate`,
+сообщения и остальные поля сохранены. Из локального каталога удалён STRING
+`event.type`: поддержка ECS-массивов не добавлялась.
+
+При сбое WatchService в `LocalImportChangeSignalSource` Throwable передаётся
+encoder без отдельного `error.type`, чтобы Boot не отбросил конфликтующую запись.
+Encoder формирует `error.type` и stack trace. Type-only события без Throwable
+по-прежнему поддерживаются. Регрессии выполняют реальные producer-ветки через
+`IocEcsStructuredLogEncoder` и `OutputStreamAppender`, проверяя записанные JSON
+строки и отсутствие внутренних предупреждений/ошибок encoder/appender.
 
 ## Diagnostic contract
 

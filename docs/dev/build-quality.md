@@ -103,7 +103,7 @@ runs only after the applicable modules.
 | Maven Enforcer | Toolchain and POM metadata | Violations block every ordinary build |
 | JUnit/Surefire/Failsafe contracts | Fast, integration, architecture, golden and documentation suites | Surefire owns `*Test`; Failsafe owns `*IT`; failures and lifecycle/report-union drift block `verify` |
 | ArchUnit | Compiled production classes | Dependency or package-boundary violation blocks `verify` |
-| JaCoCo | Test execution data and 22 production JARs | Exact universe/report integrity, aggregate/per-module no-regression ratchets and fixed aggregate/domain/application floors block `verify` |
+| JaCoCo | Test execution data and 23 production JARs | Exact universe/report integrity, aggregate/per-module no-regression ratchets and fixed aggregate/domain/application floors block `verify` |
 | Codecov | The verified reactor aggregate JaCoCo XML | Informational project/base-relative/patch reporting only; external upload failure never changes the local gate result |
 | SpotBugs | Applicable production bytecode | New, stale, moved or metadata-drifted findings block the exact ratchet; analyzer/report failures also block |
 | PMD CPD | Applicable checked-in production Java sources | Every duplicate stays visible; analyzer/scope/report failure or a change from the reviewed group-count snapshot blocks `verify` |
@@ -477,10 +477,10 @@ coverage module combines the applicable production universe under
 `build-support/coverage-report/target/site/jacoco-aggregate/`.
 
 The reusable TCK is not part of the production coverage denominator. The
-fail-closed `coverage-scope.tsv` registry gives all 28 reactor projects an
+fail-closed `coverage-scope.tsv` registry gives all 29 reactor projects an
 explicit disposition and must match both the root module list and the coverage
-report POM dependencies. Twenty-two production JARs are covered with no class or
-package exclusions. Twenty-one must produce non-empty module XML/HTML plus
+report POM dependencies. Twenty-three production JARs are covered with no class or
+package exclusions. Twenty-two must produce non-empty module XML/HTML plus
 execution data. `ioc-platform-errors` is explicitly aggregate-only because it
 has no local test JVM; it must still be present in the aggregate through
 downstream execution. Root, TCK and build-only outputs are rejected if they
@@ -489,7 +489,7 @@ unexpectedly appear as coverage evidence.
 Root `validate` compiles the JDK-only `CoverageVerifier`, runs its synthetic
 reactor matrix and checks the scope, snapshot and Maven wiring. The final
 coverage-report execution requires current aggregate XML/HTML, checks the exact
-22-group union and counter sums, validates expected local reports and applies
+23-group union and counter sums, validates expected local reports and applies
 `coverage-ratchets.tsv`. Line and branch ratios use exact cross-multiplied
 integer fractions, so decimal rounding cannot hide a drop. An increased absolute
 missed-branch count also fails; small modules additionally reject increased
@@ -640,21 +640,38 @@ individual accepted finding unless the mechanism itself changes.
 ## Published library coordinates
 
 Report membership admits `io.github.xorex-lc` only for
-`ioc-platform-concurrency` and `ioc-platform-diagnostics-api`; other reactor
+`ioc-platform-concurrency`, `ioc-platform-diagnostics-api` and
+`ioc-platform-logging-slf4j`; other reactor
 JARs must retain `com.iocextractor`. Verifier negative fixtures reject a foreign
-group for an ordinary module and the retired group for either admitted library.
+group for an ordinary module and the retired group for each admitted library.
 
-The separate `library-consumer` CI matrix qualifies both JDK-only components.
+The logging module joins the report manifests, regular reactor gates and the
+standalone library-consumer matrix. Its resolved POM must preserve exactly one
+required compile dependency, SLF4J API 2.0.18. Providers and Boot remain outside
+the JAR; the older libraries still reject every dependency.
+
+The Boot logging recipe is qualified in bootstrap's `LoggingBootRecipeIT`.
+It compiles guide sources and runs a bounded JVM with only shared logging classes
+and third-party JARs; backend configuration is not a new library dependency or
+report module. Its suite is included in the ordinary integration inventory.
+This local fixture does not substitute for the separate cold repository matrix.
+
+The separate `library-consumer` CI matrix qualifies all three admitted components.
 An aggregate job keeps the required status name `library-consumer` stable for
 branch protection. It runs even after an unsuccessful matrix and passes only
 when every component consumer succeeds; failed, cancelled or skipped consumers
 cannot produce a successful aggregate check.
-Each builds a parent-independent, zero-runtime-dependency POM, main JAR with
+Each builds a parent-independent POM with its exact dependency contract, main JAR with
 the distribution license, sources and Javadoc. Publication contracts reject
 cross-component tags/bundles, coupled POMs and incomplete/foreign archives;
-signature and partial-publication recovery checks run for both components.
+signature and partial-publication recovery checks run for all three components.
 The copied consumer uses empty Maven settings/cache outside the checkout and
-checks all four resolved artifacts against the manifest. Network-dependent
+checks all four resolved artifacts against the manifest and selected repository
+origin. Logging runs plain SLF4J and Boot recipe projects with separate empty
+caches, extracting actual guide sources/configuration. Its required API must
+arrive through the library POM; two offline negative checks reject excluded or
+unavailable SLF4J. These tool fixtures do not change reactor suite or report
+membership. Network-dependent
 plugin resolution and local file-repository qualification do not substitute for
 the deterministic reactor gate or prove public publication. See the
 [publication guide](../guides/library-publication.md).

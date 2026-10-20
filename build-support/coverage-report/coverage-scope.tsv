@@ -6,6 +6,7 @@ platform/platform-diagnostics	ioc-platform-diagnostics	covered	required	Producti
 platform/platform-etl	ioc-platform-etl	covered	required	Production platform module with its own test execution data.
 platform/platform-events	ioc-platform-events	covered	required	Production platform module with its own test execution data.
 platform/platform-concurrency	ioc-platform-concurrency	covered	required	Production platform module with its own test execution data.
+platform/platform-logging-slf4j	ioc-platform-logging-slf4j	covered	required	Production platform module with its own test execution data.
 platform/platform-observability	ioc-platform-observability	covered	required	Production platform module with its own test execution data.
 platform/platform-diagnostics-logging	ioc-platform-diagnostics-logging	covered	required	Production platform module with its own test execution data.
 core/ioc-domain	ioc-domain	covered	required	Production core module with downstream execution retained by the aggregate.

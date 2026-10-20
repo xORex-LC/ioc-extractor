@@ -1,24 +1,20 @@
 # com.iocextractor.observability.logging
 
-## Назначение
+IOC conveniences over the shared SLF4J event builder, plus the ETL observer.
 
-Тонкие helpers для записи operational log events через typed SLF4J key/value
-pairs без ручного дублирования transport boilerplate в producer-коде.
+**Layer rule:** the facade binds IOC enum values to shared descriptors. All
+normalization, validation, MDC collision handling and emission live in
+`com.iocextractor.platform.logging`; no independent mechanics remain here.
 
-**Правило слоя:** helpers нормализуют catalogued event fields и выполняют один
-log call. Они не формируют JSON вручную и не выбирают appenders. Ambient
-correlation остаётся в string-only MDC.
+## Structure
 
-## Структура
-
-| Файл | Назначение |
+| Type | Responsibility |
 |---|---|
-| `LogEvent.java` | Builder одного typed log event; event-local fields побеждают одноимённый MDC |
-| `LogValueNormalizer.java` | Fail-fast normalization по `LogValueType` |
-| `LogEvents.java` | Factory methods для уровней |
-| `LoggingPipelineObserver.java` | Bridge `PipelineObserver` → stage log events |
+| `LogEvent` | Bind IOC fields, actions and outcomes to the shared builder |
+| `LogEvents` | Preserve IOC level factories and caller-selected logger categories |
+| `LoggingPipelineObserver` | Open owned run/stage context and emit stage lifecycle records |
 
-## Зависимости
+## Dependencies
 
-**Зависит от:** `observability`, SLF4J.  
-**Не импортируется:** domain, adapter, bootstrap.
+Main dependencies: IOC observability catalog, generic logging API, SLF4J and ETL.
+No domain, adapter or bootstrap imports; no JSON or appender configuration.

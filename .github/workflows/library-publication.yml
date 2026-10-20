@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       component:
-        description: 'Reviewed JDK-only library'
+        description: 'Reviewed library with an exact dependency contract'
         required: true
         type: choice
-        options: [concurrency, diagnostics]
+        options: [concurrency, diagnostics, logging]
         default: concurrency
       release_tag:
         description: 'Annotated tag: <selected artifactId>-vX.Y.Z[-rc.N]'

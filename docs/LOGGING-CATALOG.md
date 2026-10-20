@@ -60,11 +60,11 @@ Generated from `EventAction` and `LogField`.
 | Field | Namespace | JSON type | Description |
 |---|---|---|---|
 | `event.action` | ecs | `string` | Stable machine-readable action of the event. |
-| `event.type` | ecs | `string` | ECS event type classification. |
 | `event.outcome` | ecs | `string` | Stable success, failure, or unknown outcome. |
 | `event.duration` | ecs | `long` | Event duration in nanoseconds. |
 | `error.type` | ecs | `string` | Exception class associated with a failed operation. |
 | `file.path` | ecs | `string` | Input or output file path. |
+| `ioc.operation.disposition` | ioc | `string` | Informational operation disposition, such as skipped; independent of ECS outcome. |
 | `ioc.run.id` | ioc | `string` | Unique pipeline run identifier. |
 | `ioc.source.id` | ioc | `string` | Logical source identifier. |
 | `ioc.mode` | ioc | `string` | Runtime mode: oneshot or daemon. |

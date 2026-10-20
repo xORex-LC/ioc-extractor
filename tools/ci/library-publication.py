@@ -27,22 +27,32 @@ CENTRAL = 'https://repo.maven.apache.org/maven2'
 GITHUB = 'https://maven.pkg.github.com/xorex-lc/ioc-extractor'
 PORTAL = 'https://central.sonatype.com/api/v1/publisher'
 SUFFIXES = ('.pom', '.jar', '-sources.jar', '-javadoc.jar')
-# Admission is deliberately limited to these two JDK-only components. A new
-# dependency-bearing library needs its own reviewed packaging contract.
+# Each component has an exact dependency contract; adding a component does not
+# relax the zero-dependency checks for the existing JDK-only libraries.
 COMPONENTS = {
     'concurrency': {
         'artifact': ARTIFACT,
         'module': 'platform/platform-concurrency',
         'package': 'com/iocextractor/platform/concurrent/',
         'markers': ('BoundedKeyedSerialExecutor',),
-        'fixture': 'library-consumer',
+        'fixtures': ('library-consumer',),
+        'dependencies': (),
     },
     'diagnostics': {
         'artifact': 'ioc-platform-diagnostics-api',
         'module': 'platform/platform-diagnostics-api',
         'package': 'com/iocextractor/platform/diagnostics/',
         'markers': ('Diagnostic', 'result/DiagnosticBatch', 'sink/ResilientDiagnosticSink'),
-        'fixture': 'diagnostics-consumer',
+        'fixtures': ('diagnostics-consumer',),
+        'dependencies': (),
+    },
+    'logging': {
+        'artifact': 'ioc-platform-logging-slf4j',
+        'module': 'platform/platform-logging-slf4j',
+        'package': 'com/iocextractor/platform/logging/',
+        'markers': ('LogEvents', 'MdcScope', 'ecs/EcsFields', 'redaction/LogRedaction'),
+        'fixtures': ('logging-consumer', 'logging-boot-consumer'),
+        'dependencies': (('org.slf4j', 'slf4j-api', '2.0.18'),),
     },
 }
 
@@ -129,6 +139,8 @@ def read_bundle(bundle, signed=False, expected_component=None):
     actual_names = {str(p.relative_to(bundle / 'repository')) for p in (bundle / 'repository').rglob('*') if p.is_file()}
     require(actual_names == expected_names, 'unmanifested repository files')
     require(not signed or metadata.get('signed'), 'signed bundle required')
+    pom = repository / (stem + '.pom')
+    validate_consumer_pom(pom.read_bytes(), metadata['version'], component)
     return metadata
 
 
@@ -138,6 +150,39 @@ def write_identity(bundle, metadata):
     (bundle / 'identity.json').write_text(json.dumps(metadata, indent=2, sort_keys=True) + '\n')
 
 
+def validate_consumer_pom(content, version, component):
+    """Check the same dependency contract before packaging and during recovery."""
+    xml = ET.fromstring(content)
+    ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
+    require(b'${' not in content, 'unresolved consumer POM property')
+    for field, value in [('groupId', GROUP), ('artifactId', component['artifact']), ('version', version)]:
+        require(xml.findtext('m:' + field, namespaces=ns) == value, 'consumer POM identity mismatch')
+    for field in ('parent', 'dependencyManagement', 'repositories', 'pluginRepositories',
+                  'distributionManagement', 'build', 'profiles'):
+        require(xml.find('m:' + field, ns) is None, 'unexpected consumer POM coupling: ' + field)
+    for field in ('name', 'description', 'url', 'licenses', 'developers', 'scm'):
+        require(xml.find('m:' + field, ns) is not None, 'missing POM metadata: ' + field)
+    dependencies = xml.findall('m:dependencies', ns)
+    if not component['dependencies']:
+        require(not dependencies, 'unexpected consumer POM coupling: dependencies')
+        return
+    require(len(dependencies) == 1, 'missing or duplicate consumer POM dependencies')
+    actual = []
+    for dependency in dependencies[0]:
+        require(dependency.tag == '{' + ns['m'] + '}dependency', 'unexpected dependency element')
+        fields = [child.tag.removeprefix('{' + ns['m'] + '}') for child in dependency]
+        require(len(fields) == len(set(fields)) and set(fields) <=
+                {'groupId', 'artifactId', 'version', 'scope', 'type', 'optional'},
+                'unexpected dependency fields')
+        require(dependency.findtext('m:scope', 'compile', ns) == 'compile'
+                and dependency.findtext('m:type', 'jar', ns) == 'jar'
+                and dependency.findtext('m:optional', 'false', ns) == 'false',
+                'dependency must be a required compile JAR')
+        actual.append(tuple(dependency.findtext('m:' + field, namespaces=ns)
+                            for field in ('groupId', 'artifactId', 'version')))
+    require(tuple(actual) == component['dependencies'], 'unexpected consumer POM dependencies')
+
+
 def prepare(bundle, version, component=None):
     component = component or COMPONENTS['concurrency']
     artifact_id = component['artifact']
@@ -145,15 +190,7 @@ def prepare(bundle, version, component=None):
     require(not bundle.exists(), 'output already exists; preserve or choose a new bundle path')
     target = ROOT / component['module'] / 'target'
     pom = target / 'publication.pom'
-    xml = ET.parse(pom).getroot()
-    ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
-    require('${' not in pom.read_text(), 'unresolved consumer POM property')
-    for field, value in [('groupId', GROUP), ('artifactId', artifact_id), ('version', version)]:
-        require(xml.findtext('m:' + field, namespaces=ns) == value, 'consumer POM identity mismatch')
-    for field in ('parent', 'dependencies', 'dependencyManagement', 'repositories', 'build', 'profiles'):
-        require(xml.find('m:' + field, ns) is None, 'unexpected consumer POM coupling: ' + field)
-    for field in ('name', 'description', 'url', 'licenses', 'developers', 'scm'):
-        require(xml.find('m:' + field, ns) is not None, 'missing POM metadata: ' + field)
+    validate_consumer_pom(pom.read_bytes(), version, component)
     stem = artifact_id + '-' + version
     sources = {'.pom': pom, **{suffix: target / (stem + suffix) for suffix in SUFFIXES[1:]}}
     for suffix, source in sources.items():
@@ -363,9 +400,58 @@ def consume(bundle, repository):
     url = {'local': (bundle / 'repository').resolve().as_uri(), 'central': CENTRAL, 'github': GITHUB}[repository]
     if repository != 'local':
         require(not compare_remote(bundle, url, authorization('github') if repository == 'github' else None), 'remote bundle incomplete')
+    for fixture in component['fixtures']:
+        consume_fixture(metadata, component, fixture, repository, url)
+
+
+def populate_examples(component, fixture, project):
+    """Compile the actual guide sources rather than a second copy of the examples."""
+    if component != COMPONENTS['logging']:
+        return
+    guides = ['logging-library.md']
+    if fixture == 'logging-boot-consumer':
+        guides.append('logging-library-boot.md')
+        driver = ROOT / 'bootstrap/ioc-app/src/test/resources/consumer/logging/BootRecipeMain.java'
+        destination = project / 'src/main/java/qualification/BootRecipeMain.java'
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(driver, destination)
+    for guide in guides:
+        document = (ROOT / 'docs/guides' / guide).read_text()
+        blocks = re.findall(r'```java\n(.*?)\n```', document, re.DOTALL)
+        require(len(blocks) == (3 if guide == 'logging-library.md' else 1), 'guide Java example count changed')
+        for source in blocks:
+            package = re.search(r'^package ([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*);', source, re.MULTILINE)
+            name = re.search(r'public final class (\w+)', source)
+            require(package is not None and name is not None, 'incomplete guide Java example')
+            path = project / 'src/main/java' / package.group(1).replace('.', '/') / (name.group(1) + '.java')
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(source)
+        if guide == 'logging-library-boot.md':
+            resources = project / 'src/main/resources/recipe'
+            resources.mkdir(parents=True, exist_ok=True)
+            for language, filename in [('yaml', 'application.yml'), ('xml', 'logback-spring.xml')]:
+                blocks = re.findall(r'```' + language + r'\n(.*?)\n```', document, re.DOTALL)
+                require(len(blocks) == 1, 'guide configuration count changed')
+                (resources / filename).write_text(blocks[0])
+
+
+def verify_resolved_artifacts(metadata, component, cache):
+    resolved = cache / relative_path(metadata['version'], component)
+    origins = (resolved / '_remote.repositories').read_text().splitlines()
+    for suffix in SUFFIXES:
+        name = metadata['artifact'] + '-' + metadata['version'] + suffix
+        require(digest((resolved / name).read_bytes()) == metadata['files'][str(relative_path(metadata['version'], component) / name)],
+                'consumer resolved different artifact bytes')
+        # Maven 3.9.9 Resolver records the repository ID per downloaded file.
+        # A Central fallback must not masquerade as a successful GitHub consumer.
+        require(name + '>library-target=' in origins, 'consumer artifact did not resolve from selected repository')
+
+
+def consume_fixture(metadata, component, fixture, repository, url):
     with tempfile.TemporaryDirectory(prefix='ioc-library-consumer-') as folder:
         work = Path(folder)
-        shutil.copytree(ROOT / 'tools/fixtures' / component['fixture'], work / 'consumer')
+        shutil.copytree(ROOT / 'tools/fixtures' / fixture, work / 'consumer')
+        populate_examples(component, fixture, work / 'consumer')
         settings = ET.Element('settings', xmlns='http://maven.apache.org/SETTINGS/1.2.0')
         configure_proxy(settings)
         mirror = ET.SubElement(ET.SubElement(settings, 'mirrors'), 'mirror')
@@ -384,15 +470,28 @@ def consume(bundle, repository):
         env = {k: v for k, v in os.environ.items() if not k.startswith(('GPG_', 'MAVEN_CENTRAL_'))}
         for name in ('MAVEN_ARGS', 'MAVEN_OPTS', 'JAVA_TOOL_OPTIONS', 'JDK_JAVA_OPTIONS'):
             env.pop(name, None)
-        run([str(ROOT / 'mvnw'), '-B', '-ntp', '-s', str(settings_path), '-gs', str(empty),
-             '-Dmaven.repo.local=' + str(work / 'cache'), '-Dlibrary.version=' + metadata['version'],
-             'compile', 'org.codehaus.mojo:exec-maven-plugin:3.5.0:java'], cwd=work / 'consumer', env=env)
-        resolved = work / 'cache' / relative_path(metadata['version'], component)
-        for suffix in SUFFIXES:
-            name = metadata['artifact'] + '-' + metadata['version'] + suffix
-            require(digest((resolved / name).read_bytes()) == metadata['files'][str(relative_path(metadata['version'], component) / name)], 'consumer resolved different artifact bytes')
+        env['COLLECTOR_LOG_FILE'] = str(work / 'collector.ecs.json')
+        command = [str(ROOT / 'mvnw'), '-B', '-ntp', '-s', str(settings_path), '-gs', str(empty),
+                   '-Dmaven.repo.local=' + str(work / 'cache'), '-Dlibrary.version=' + metadata['version']]
+        run(command + ['compile', 'org.codehaus.mojo:exec-maven-plugin:3.5.0:java'], cwd=work / 'consumer', env=env)
+        verify_resolved_artifacts(metadata, component, work / 'cache')
+        if fixture == 'logging-consumer':
+            negative_dependency_checks(command, work / 'consumer', env)
         print('Qualified ' + metadata['artifact'] + ':' + metadata['version'] + ' from ' + repository +
-              '; four resolved artifacts match the bundle')
+              ' (' + fixture + '); four resolved artifacts match the bundle and selected repository')
+
+
+def negative_dependency_checks(command, project, env):
+    """A warmed cache must not hide a missing or unresolvable required API."""
+    for profile, diagnostic in [('exclude-slf4j', 'COMPILATION ERROR'),
+                                ('unavailable-slf4j', 'Could not resolve dependencies')]:
+        shutil.rmtree(project / 'target')
+        result = subprocess.run(command + ['-o', '-P' + profile, 'compile'], cwd=project, env=env,
+                                capture_output=True, text=True, timeout=120)
+        output = result.stdout + result.stderr
+        require(result.returncode != 0 and diagnostic in output and 'org.slf4j' in output,
+                'negative SLF4J dependency check did not fail for the expected reason: ' + profile)
+        print('Rejected missing/unavailable SLF4J API: ' + profile)
 
 
 def main():

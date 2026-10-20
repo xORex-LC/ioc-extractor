@@ -24,3 +24,5 @@
 | [remote-storage-sync.md](remote-storage-sync.md) | [ru/remote-storage-sync.md](ru/remote-storage-sync.md) | Работа с удалённым хранилищем: как устроены fetch/publish и push-уведомления, справочник конфигурации с подбором значений, права/сбои/восстановление/мониторинг, настройка SMB-шары на Linux (Samba) и Windows Server, чек-листы |
 | [library-publication.md](library-publication.md) | — | Публикация и проверка independently consumable Maven libraries |
 | [diagnostics-library.md](diagnostics-library.md) | — | Подключение общей diagnostics-библиотеки: коды сервиса, результаты, policy, bounded counts и обработка delivery failures |
+| [logging-library.md](logging-library.md) | — | Общий SLF4J API: каталог сервиса, typed fields, MDC, ECS helpers и явное маскирование |
+| [logging-library-boot.md](logging-library-boot.md) | — | Проверенный синхронный Boot ECS recipe: Java/YAML/XML, dataset/error ownership и ограничения backend |

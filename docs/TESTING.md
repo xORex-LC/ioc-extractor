@@ -18,12 +18,30 @@ Every Failsafe suite must also carry integration semantics through
 discovery; tags describe test semantics. They are complementary and neither is
 a substitute for the complete release gate.
 
-The reviewed source universe is 223 fast classes and 78 integration classes,
-including five external shells (296 deterministic classes). Diagnostics extraction
+The reviewed source universe is 230 fast classes and 80 integration classes,
+including five external shells (305 deterministic classes). Diagnostics extraction
 moves eight existing suites to the JDK-only API module and adds one executable
-consumer-guide suite. The exact source inventory records these changes. Coverage floors, report integrity, architecture checks
-and analyzer rules remain enforced. The Native lifecycle and import TCK bindings
+consumer-guide suite. Logging adds seven suites for the public API, scalar ECS
+profile, explicit masks,
+MDC/provider failures, architecture boundaries and compiled consumer-guide examples.
+`IocLogFieldBindingTest` replaces the removed private-normalizer suite with
+observable IOC-facade assertions. `LoggingMigrationIT` adds five real producer /
+Boot encoder / byte-writing appender regressions, including watch-provider
+failure with bounded worker cleanup. `LoggingBootRecipeIT` compiles the actual
+plain/Boot guides and runs their YAML/XML in a bounded separate JVM with only the
+shared logging classes and third-party JARs. It checks JSON types, duplicate keys,
+metadata, disclosure and observable appender failures for unsupported inputs.
+This is backend integration evidence, not repository-consumption evidence.
+The exact source inventory records these changes. Coverage floors, report integrity,
+architecture checks and analyzer rules remain enforced. The Native lifecycle and import TCK bindings
 run against the retained backend.
+
+Logging test ownership is deliberate: the shared module owns generic mechanics
+and executable plain examples; IOC observability owns catalogs, facade binding,
+ETL correlation and callback cleanup; bootstrap owns IOC producer JSON and the
+application-owned [Boot recipe](guides/logging-library-boot.md). The integration
+recipe does not move Boot dependencies into the shared module. Its immutable
+snapshot rejection is not a failure of the library's separate async contract.
 
 `StreamingSourceContractIT` and `JdbcDocumentSourceWorkspaceIT` check real
 HTML/DOCX parsing, independent source outcomes, disk-backed text, overlap priority,
@@ -126,7 +144,7 @@ blocking a release. Stable HTML/XML reports are written to
 
 The `stability-pilot` profile randomizes Surefire/Failsafe class order and JUnit
 class/method order from the same published seed. The wrapper advances the seed
-by one for each repetition, runs all 23 functional JAR modules sequentially,
+by one for each repetition, runs all 24 functional JAR modules sequentially,
 and verifies the exact source/report union after every pass. It archives each
 pass under `target/test-pilots/stability/run-N-seed-S/` before the next Maven
 lifecycle deletes current reports. The first failure stops the pilot and keeps
@@ -204,9 +222,9 @@ later step fails.
 
 The aggregate report and its groups are the authoritative release measurement.
 `build-support/coverage-report/coverage-scope.tsv` gives every reactor project
-an explicit disposition. The production denominator is exactly 22 JAR modules;
+an explicit disposition. The production denominator is exactly 23 JAR modules;
 the reusable TCK, root and build-only POMs are excluded, with no class or package
-exclusions. Twenty-one production modules must generate local XML/HTML reports.
+exclusions. Twenty-two production modules must generate local XML/HTML reports.
 `ioc-platform-errors` has no local test JVM and is declared aggregate-only, but
 its downstream execution must still appear as an aggregate group.
 
@@ -291,6 +309,11 @@ make test-one MODULE=bootstrap/ioc-app TEST=LogbackConfigurationIT
 The out-of-reactor Maven publication consumer is a different contract. It is
 introduced only after `R030-LIB` admits coordinates and a public API; these
 wire-format fixtures do not create or imply such a library contract.
+The admitted logging component now runs separate plain SLF4J and Boot recipe
+projects with empty caches. Both compile actual guide blocks from packaged JARs;
+the plain fixture also checks excluded/unavailable API failures. These are
+network-dependent tool checks, outside the reactor suite inventory, and local
+file-repository success does not prove public publication.
 
 ## Test design and failure policy
 

@@ -170,7 +170,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        component: [concurrency, diagnostics]
+        component: [concurrency, diagnostics, logging]
     env:
       LIBRARY_COMPONENT: ${{ matrix.component }}
     steps:

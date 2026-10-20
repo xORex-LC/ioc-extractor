@@ -6,10 +6,13 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.classic.AsyncAppender;
 import ch.qos.logback.core.read.ListAppender;
 import com.iocextractor.observability.EventAction;
+import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
 import com.iocextractor.observability.MdcScope;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.Timeout;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.slf4j.spi.LoggingEventBuilder;
@@ -23,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
+@ResourceLock("slf4j-mdc-adapter")
 class LogEventTest {
 
     private final Logger logger = (Logger) LoggerFactory.getLogger("test.typed-log-event");
@@ -39,7 +43,8 @@ class LogEventTest {
     void emits_typed_event_fields_and_keeps_ambient_correlation_in_mdc() {
         var appender = appender();
 
-        try (var ignored = MdcScope.open().put(LogField.IOC_RUN_ID, "run-1")) {
+        try (var scope = MdcScope.open()) {
+            scope.put(LogField.IOC_RUN_ID, "run-1");
             LogEvents.info(logger)
                     .action(EventAction.STAGE_COMPLETE)
                     .field(LogField.IOC_ROWS, 7)
@@ -55,6 +60,28 @@ class LogEventTest {
                     .containsEntry(LogField.IOC_ROWS.key(), 7L)
                     .containsEntry(LogField.IOC_SYNC_SHED_TO_RECONCILE.key(), false);
         });
+    }
+
+    @Test
+    void ioc_factories_preserve_levels_outcomes_duration_and_the_selected_category() {
+        var appender = appender();
+        LogEvents.trace(logger).outcome(EventOutcome.UNKNOWN).log();
+        LogEvents.debug(logger).outcome(EventOutcome.SUCCESS).durationNanos(0).log();
+        LogEvents.info(logger).durationNanos(Long.MAX_VALUE).log();
+        LogEvents.warn(logger).outcome(EventOutcome.FAILURE).log();
+        LogEvents.error(logger).message("failed").log(new IllegalStateException("cause"));
+
+        assertThat(appender.list).extracting(ILoggingEvent::getLevel)
+                .containsExactly(Level.TRACE, Level.DEBUG, Level.INFO, Level.WARN, Level.ERROR);
+        assertThat(appender.list).allSatisfy(event ->
+                assertThat(event.getLoggerName()).isEqualTo(logger.getName()));
+        assertThat(eventFields(appender.list.get(0))).containsEntry("event.outcome", "unknown");
+        assertThat(eventFields(appender.list.get(1)))
+                .containsEntry("event.outcome", "success").containsEntry("event.duration", 0L);
+        assertThat(eventFields(appender.list.get(2))).containsEntry("event.duration", Long.MAX_VALUE);
+        assertThat(eventFields(appender.list.get(3))).containsEntry("event.outcome", "failure");
+        assertThat(appender.list.get(4).getThrowableProxy().getMessage()).isEqualTo("cause");
+        assertThatIllegalArgumentException().isThrownBy(() -> LogEvents.debug(logger).durationNanos(-1));
     }
 
     @Test
@@ -93,33 +120,44 @@ class LogEventTest {
     }
 
     @Test
+    @Timeout(6)
     void async_handoff_preserves_typed_fields_and_producer_mdc_snapshot() throws Exception {
         var downstream = new AwaitingListAppender();
         downstream.start();
         var async = new AsyncAppender();
         async.setContext(logger.getLoggerContext());
         async.addAppender(downstream);
+        async.setMaxFlushTime(1000);
         async.start();
         logger.detachAndStopAllAppenders();
         logger.setAdditive(false);
         logger.setLevel(Level.INFO);
         logger.addAppender(async);
 
-        try (var ignored = MdcScope.open().put(LogField.IOC_RUN_ID, "run-before-handoff")) {
-            LogEvents.info(logger)
-                    .field(LogField.IOC_ROWS, 11)
-                    .message("async event")
-                    .log();
-        }
-        MDC.put(LogField.IOC_RUN_ID.key(), "run-after-handoff");
+        try {
+            try (var scope = MdcScope.open()) {
+                scope.put(LogField.IOC_RUN_ID, "run-before-handoff");
+                LogEvents.info(logger)
+                        .field(LogField.IOC_ROWS, 11)
+                        .message("async event")
+                        .log();
+            }
+            MDC.put(LogField.IOC_RUN_ID.key(), "run-after-handoff");
 
-        assertThat(downstream.completed.await(2, TimeUnit.SECONDS)).isTrue();
-        assertThat(downstream.list).singleElement().satisfies(event -> {
-            assertThat(event.getMDCPropertyMap())
-                    .containsEntry(LogField.IOC_RUN_ID.key(), "run-before-handoff");
-            assertThat(eventFields(event)).containsEntry(LogField.IOC_ROWS.key(), 11L);
-        });
-        async.stop();
+            assertThat(downstream.completed.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(downstream.list).singleElement().satisfies(event -> {
+                assertThat(event.getMDCPropertyMap())
+                        .containsEntry(LogField.IOC_RUN_ID.key(), "run-before-handoff");
+                assertThat(eventFields(event)).containsEntry(LogField.IOC_ROWS.key(), 11L);
+            });
+        } finally {
+            async.stop();
+            var worker = downstream.worker;
+            if (worker != null) {
+                worker.join(2000);
+                assertThat(worker.isAlive()).as("async logging worker terminates").isFalse();
+            }
+        }
     }
 
     @Test
@@ -161,9 +199,11 @@ class LogEventTest {
 
     private static final class AwaitingListAppender extends ListAppender<ILoggingEvent> {
         private final CountDownLatch completed = new CountDownLatch(1);
+        private volatile Thread worker;
 
         @Override
         protected void append(ILoggingEvent eventObject) {
+            worker = Thread.currentThread();
             super.append(eventObject);
             completed.countDown();
         }
@@ -188,8 +228,8 @@ class LogEventTest {
                     new Class<?>[] { org.slf4j.Logger.class },
                     (proxy, method, arguments) -> switch (method.getName()) {
                         case "getName" -> "test.copy-returning-builder";
-                        case "isInfoEnabled" -> true;
-                        case "atInfo" -> builder(Map.of(), null);
+                        case "isEnabledForLevel" -> true;
+                        case "atLevel" -> builder(Map.of(), null);
                         default -> throw new AssertionError("Unexpected Logger call: " + method);
                     });
         }
