@@ -5,6 +5,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Map;
 import org.slf4j.MDC;
@@ -116,10 +118,11 @@ class MdcScopeTest {
         assertThat(MDC.get(LogField.IOC_RUN_ID.key())).isEqualTo("ambient");
     }
 
-    @Test
-    void callback_factory_suppresses_cleanup_failure_on_the_population_failure() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void callback_factory_preserves_primary_failure_when_restoration_fails(boolean reuseFailure) throws Exception {
         var primary = new IllegalStateException("worker context could not be initialized");
-        var cleanup = new IllegalStateException("MDC provider could not restore context");
+        var cleanup = reuseFailure ? primary : new IllegalStateException("MDC provider could not restore context");
         var failingAdapter = new LogbackMDCAdapter() {
             @Override public void put(String key, String value) {
                 if ("ambient".equals(value)) {
@@ -140,7 +143,8 @@ class MdcScopeTest {
                 scope.put(LogField.IOC_RUN_ID, "temporary");
                 throw primary;
             })).isSameAs(primary).satisfies(failure ->
-                    assertThat(failure.getSuppressed()).containsExactly(cleanup));
+                    assertThat(failure.getSuppressed()).containsExactly(
+                            reuseFailure ? new Throwable[0] : new Throwable[]{cleanup}));
         } finally {
             adapterField.set(null, previousAdapter);
         }

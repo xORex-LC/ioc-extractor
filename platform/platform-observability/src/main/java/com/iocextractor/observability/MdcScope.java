@@ -23,7 +23,8 @@ public final class MdcScope implements AutoCloseable {
     /**
      * Populates a scope for a callback that must return an AutoCloseable, such as
      * an ETL observer. If population fails, restores touched keys before rethrowing;
-     * a cleanup failure is suppressed on the original failure.
+     * a distinct cleanup failure is suppressed on the original failure. If the
+     * provider reuses the original exception, it is rethrown without self-suppression.
      *
      * @param initializer writes the caller's explicit correlation fields
      * @return the populated scope; the caller must close it on this thread
@@ -37,7 +38,9 @@ public final class MdcScope implements AutoCloseable {
             try {
                 scope.close();
             } catch (RuntimeException | Error cleanupFailure) {
-                failure.addSuppressed(cleanupFailure);
+                if (cleanupFailure != failure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
             }
             throw failure;
         }

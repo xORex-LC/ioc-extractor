@@ -34,6 +34,9 @@ values throw before level filtering. Event-local values override exact MDC keys
 for one log attempt. Workers reconstruct context explicitly; scopes restore only
 touched keys on the same thread. Acquire a scope before population, or use the
 callback factory when an observer must return an owned `AutoCloseable`.
+If initialization and cleanup fail, the original failure remains primary; only
+a distinct cleanup exception is suppressed. A provider reusing one exception
+cannot turn cleanup into a self-suppression error.
 
 Control-event names use `ioc.event.type`; informational no-op records use
 `ioc.operation.disposition=skipped` without an ECS outcome. When a record carries
