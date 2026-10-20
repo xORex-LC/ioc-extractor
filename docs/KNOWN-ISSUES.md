@@ -178,6 +178,7 @@ created-at и устаревшей версии при эквивалентно�
 | TOOL-3 | **Воспроизводимый manual load-smoke.** Замкнуть deterministic fixture → isolated oneshot → стабильный отчёт времени, input/unique/committed rows и diagnostics; daemon mode и thresholds добавлять только после baseline measurements. Не включать в обычный CI/pre-push и не смешивать с malformed/fuzz/parser-bomb корпусом (`SEC-VER-3`, `SRC-2`). **Триггер:** необходимость сравнивать производительность релизов или расследовать эксплуатационную деградацию. | seam | M | tools facade review 2026-07-22; `GenerateIocFixture` |
 | TOOL-4 | **Централизованный external-test harness.** Сейчас provisioned suites являются bring-your-own-fixture тестами: вызывающая сторона задаёт endpoint/selectors и credentials, обычный `verify` видит только ожидаемые skips, а target fingerprint, полнота исполнения и cleanup evidence квалифицируются отдельно. Нужен единый capability-driven control plane для SMB и будущих feed/Prometheus/Elasticsearch интеграций без объединения их assertions в mega-E2E suite. **Триггер:** до добавления следующего семейства внешних интеграций либо до превращения external evidence в регулярный/обязательный CI status. | seam | L | `R030-TEST` / [TEST-EXTERNAL-05](worknote/0.3.0/evidence/test-quality-ledger.md), design review 2026-09-05 |
 | TOOL-5 | **Поэтапное расширение PIT за пределы `core/ioc-domain`.** Текущий воспроизводимый pilot осознанно ограничен чистой domain-логикой; для остальных production-модулей нет admission matrix, измеренных baseline и adoption decisions. Нужно оценивать модули по risk/signal/noise/cost, начиная с чистых `ioc-application`/platform scopes; integration-heavy adapters и bootstrap не включать по умолчанию. Repository-wide score и PIT на каждый PR не вводить без отдельного reviewed policy; differential mutation analysis оценить отдельно после стабилизации baseline и plugin/licensing model. **Триггер:** post-0.3.0 test-quality slice или доказанный assertion-quality gap в critical модуле. | seam | L | [R030-TEST mutation pilot](worknote/0.3.0/goals/R030-TEST-test-quality.md#mutation-pilot); [pilot evidence](worknote/0.3.0/evidence/test-quality-ledger.md#diagnostic-pilots), 2026-09-06 |
+| TOOL-6 | **Автоматическая проверка совместимости опубликованных библиотек.** Тесты и отдельные consumer-проекты проверяют текущую сборку, но не сравнивают весь публичный API с предыдущим выпуском. Удаление метода, который consumer не использует, может пройти CI и сломать другой сервис после обновления зависимости. Добавить проверку совместимости исходного кода и бинарной совместимости для `ioc-platform-concurrency` и `ioc-platform-diagnostics-api` с явно выбранными опубликованными версиями; кандидат — [japicmp](https://github.com/siom79/japicmp). Изменения поведения по-прежнему проверяются тестами и review. **Триггер:** до следующего выпуска этих библиотек, особенно при изменении опубликованного API. | открыт | M | [ADR 0028](ADR/0028-pilot-library-publication.md), [ADR 0044](ADR/0044-reusable-diagnostics-contract.md); обсуждение 2026-10-19 |
 
 ### Критерии закрытия `TOOL-4`
 
@@ -222,6 +223,26 @@ created-at и устаревшей версии при эквивалентно�
 - Для differential PR analysis зафиксировано отдельное `adopt` или
   `reject` решение после проверки incremental correctness, baseline/cache
   behavior и plugin/licensing model.
+
+### Критерии закрытия `TOOL-6`
+
+- Для каждой опубликованной библиотеки явно закреплены версия сравнения,
+  проверяемые public/protected типы и члены и воспроизводимая команда проверки.
+  Отчёт показывает изменения API, совместимость исходного кода и бинарную
+  совместимость.
+- Проверка включена в CI и подготовку выпуска. Неожиданная несовместимость
+  завершает проверку ошибкой; отсутствие версии сравнения или сбой её получения
+  не превращается в успешный пропуск. Получение старого артефакта не добавляет
+  обязательную сеть в детерминированный offline `make verify`.
+- Регрессии подтверждают отказ при удалении публичного метода
+  или несовместимом изменении его сигнатуры и успешный результат для совместимого
+  внутреннего изменения. Сравнение обнаруживает удаление и тогда, когда текущий
+  consumer этот метод не вызывает.
+- Намеренное несовместимое изменение проходит явный review и следует принятой
+  политике версий: в 0.x нужны новая minor-версия и заметки о миграции. Версии
+  библиотек остаются согласованы с продуктом; версия сравнения не обновляется
+  автоматически ради зелёной проверки. Тесты поведения и consumer-проверки
+  сохраняются как отдельные проверки контракта.
 
 ---
 
