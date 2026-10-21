@@ -196,7 +196,8 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
                 .sorted(Map.Entry.comparingByKey())
                 .map(entry -> new ConfigurationProperty(
                         ConfigurationPropertyName.of(entry.getKey()),
-                        entry.getValue() == null ? "<unknown>" : entry.getValue(),
+                        entry.getValue() == null ? "<unknown>"
+                                : new IocConfigurationFailureAnalyzer.EnvironmentName(entry.getValue()),
                         null))
                 .forEach(properties::add);
         return properties;

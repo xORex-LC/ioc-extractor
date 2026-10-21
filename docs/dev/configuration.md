@@ -49,12 +49,13 @@ Environment prepared
 - Spring binder владеет shape, conversion и bean validation;
 - `IocYamlSyntaxCheck` предоставляет side-effect-free синтаксическую проверку
   candidate-файла до Spring startup, SQLite и transport initialization;
-- `IocSemanticConfigurationCheck` загружает classpath defaults, один явный YAML
-  overlay и external overrides в минимальный Spring context только с
+- `IocSemanticConfigurationCheck` загружает classpath defaults, явный YAML
+  overlay, разрешённые Boot imports и external overrides в минимальный Spring context только с
   `IocProperties` и config-preflight infrastructure; runtime components не
   сканируются, а controlled output не содержит property values;
 - `IocYamlConfigurationFailureAnalyzer` переводит ранний SnakeYAML failure в
-  value-free `CONFIG.YAML_INVALID` с line/column без вывода самой строки;
+  `CONFIG.YAML_INVALID` с line/column без parser text, самой строки и исходного
+  throwable в `FailureAnalysis`;
 - `IocUnknownConfigurationPreflight` проверяет неизвестные keys по reflection
   shape typed model, включая YAML overlay, CLI, system properties и env;
 - `IocConfigPreflight` собирает межсекционные инварианты: artifact identity,
@@ -67,6 +68,12 @@ Environment prepared
 
 Validation constructors не должны бросать на operator mistakes: иначе binder
 остановится на первой ошибке и скроет collect-all report.
+
+Контракт [контролируемых отчётов](configuration-failure-reports.md) сохраняет
+пути объявленных полей и `CONFIG.*`, но исключает exception/default messages,
+rejected values и arguments. Ошибка binding не означает, что semantic и registry
+проверки выполнились; неизвестный failure получает `CONFIG.CHECK_FAILED`.
+Это граница наших отчётов, а не гарантия для всех Spring DEBUG-логов и appenders.
 
 Для packaged systemd deployment unit запускает semantic configuration check
 через `ExecCondition`. При exit code `78` systemd пропускает activation и не

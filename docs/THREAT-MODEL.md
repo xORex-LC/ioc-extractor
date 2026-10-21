@@ -173,6 +173,7 @@ Workflow code, runner, caches, artifacts, `GITHUB_TOKEN` и environment secrets
 |---|---|---|---|
 | **T/E** — неизвестное/несогласованное значение продолжает работу | опечатка в `ioc.*`/`IOC_*`, устаревший ключ | `SEC-CFG-1`: strict startup preflight на всех каналах, typed binding, `CONFIG.*` failure analysis | — |
 | **I** — секрет в POM/YAML defaults/Git | commit credential | §9 п.1: secret только в Environment/host-owned config; `SEC-LOG-1` redaction | нет автоматического detecting-контроля: `SEC-CI-5` secret scanning = `Planned` |
+| **I** — ввод или secret в сообщении config failure | parser alias, converter exception, validator message/arguments, DEBUG cause | `SEC-LOG-1`: [контролируемые отчёты](dev/configuration-failure-reports.md), schema paths без dynamic map keys, fixed categories, typed name transport, owned analyses без исходного cause; regression tests | filenames и unknown names видимы по IOC policy; произвольные framework startup/DEBUG-логи и appenders вне этой гарантии |
 | **E** — daemon от привилегированного пользователя | запуск от root | `SEC-OPS-1`: dedicated non-root user, `NoNewPrivileges`, systemd sandbox | — |
 | **E** — actuator наружу | публичный bind health/info | `SEC-OPS-2`: loopback bind, health/info only, без shutdown endpoint | появление публичного HTTP — изменение attack surface, требует отдельного review (`SEC-VER-2` пересматривается) |
 

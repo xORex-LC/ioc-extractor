@@ -17,6 +17,14 @@ adapters.
 | `src/main/resources/` | Runtime `application.yml`, Logback config and Spring configuration metadata/hints |
 | `src/test/java/com/iocextractor/` | Context, architecture, configuration/documentation contracts and golden e2e tests |
 
+## Configuration failure reports
+
+YAML and semantic-check failures use
+[controlled failure reports](../../docs/dev/configuration-failure-reports.md).
+Bootstrap retains IOC codes and migration guidance. The report omits parser and
+exception messages, validation values/arguments and dynamic map keys; owned Boot
+analyses omit the original cause so their DEBUG reporter cannot print it.
+
 ## Artifact export graph
 
 `ExportPlanCatalog` eagerly и без IO преобразует `ioc.export.profiles` в

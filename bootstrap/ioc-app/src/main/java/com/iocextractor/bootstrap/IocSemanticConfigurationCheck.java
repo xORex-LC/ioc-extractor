@@ -24,11 +24,13 @@ import java.util.List;
 import java.util.OptionalInt;
 
 /**
- * Side-effect-free strict binding and semantic preflight for one IOC YAML file.
+ * Strict binding and semantic preflight using an explicit IOC YAML candidate.
  *
  * <p>The check starts a deliberately minimal Spring context containing only the
  * configuration-properties model and its preflight infrastructure. Runtime
- * composition, storage, schedulers and transport adapters are not scanned.</p>
+ * composition, storage, schedulers and transport adapters are not scanned. Boot
+ * imports and effective environment overrides still participate. Console output
+ * is temporarily suppressed, so this is a command path, not an embedded runner.</p>
  */
 public final class IocSemanticConfigurationCheck {
 
@@ -162,7 +164,7 @@ public final class IocSemanticConfigurationCheck {
         return OptionalInt.of(CONFIGURATION_ERROR_EXIT_CODE);
     }
 
-    private static void reportFailure(Path path, RuntimeException failure, PrintWriter err) {
+    static void reportFailure(Path path, RuntimeException failure, PrintWriter err) {
         err.println("CONFIG.SEMANTIC_INVALID: " + path);
         if (findCause(failure, SemanticSourceOverrideException.class) != null) {
             err.println("CONFIG.SEMANTIC_SOURCE_OVERRIDE");
@@ -175,23 +177,7 @@ public final class IocSemanticConfigurationCheck {
             err.println(analysis.getAction());
             return;
         }
-        Throwable informative = informativeCause(failure);
-        err.println(informative.getClass().getSimpleName());
-        if (informative.getMessage() != null && !informative.getMessage().isBlank()) {
-            err.println(informative.getMessage());
-        }
-    }
-
-    private static Throwable informativeCause(Throwable failure) {
-        Throwable current = failure;
-        Throwable informative = failure;
-        while (current != null) {
-            if (current.getMessage() != null && !current.getMessage().isBlank()) {
-                informative = current;
-            }
-            current = current.getCause();
-        }
-        return informative;
+        err.println(IocConfigurationCheckFailure.from(failure).description());
     }
 
     private static <T extends Throwable> T findCause(Throwable failure, Class<T> type) {
@@ -221,7 +207,7 @@ public final class IocSemanticConfigurationCheck {
         private static final long serialVersionUID = 1L;
     }
 
-    /** Prevents effective logging configuration from exposing values during validation. */
+    /** Suppresses command-console noise; this does not control arbitrary logging appenders. */
     private static final class ConsoleOutputScope {
 
         private final PrintStream standardOutput;

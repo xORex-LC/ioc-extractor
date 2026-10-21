@@ -25,7 +25,7 @@ public final class IocConfigurationFailureAnalyzer
         if (keys.isEmpty()) {
             return null;
         }
-        return new FailureAnalysis(description(keys), action(keys), cause);
+        return new FailureAnalysis(description(keys), action(keys), null);
     }
 
     private Set<UnknownKey> unknownIocKeys(UnboundConfigurationPropertiesException cause) {
@@ -74,7 +74,7 @@ public final class IocConfigurationFailureAnalyzer
     }
 
     private String rawEnvironmentName(Object value) {
-        return value instanceof String string && string.indexOf('_') >= 0 ? string : null;
+        return value instanceof EnvironmentName name ? name.rawName() : null;
     }
 
     private boolean isLegacySmbReadTimeout(UnknownKey key) {
@@ -88,5 +88,9 @@ public final class IocConfigurationFailureAnalyzer
         String displayName() {
             return rawEnvironmentName == null ? canonicalName : rawEnvironmentName + " (" + canonicalName + ")";
         }
+    }
+
+    /** Carries an inspected name without treating an arbitrary rejected string as a name. */
+    record EnvironmentName(String rawName) {
     }
 }
