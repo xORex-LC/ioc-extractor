@@ -63,6 +63,7 @@
 | Application не импортирует adapters/bootstrap/Spring/logging | `ArchitectureTest` + Maven module graph |
 | Общий diagnostics API зависит только от себя и JDK; IOC-каталоги, исключения и logging остаются локальными | `ArchitectureTest.reusable_diagnostics_depends_only_on_itself_and_jdk`, `diagnostics_core_is_framework_and_adapter_free`; [ADR 0044](ADR/0044-reusable-diagnostics-contract.md) |
 | Общий logging API зависит только от себя, JDK и SLF4J; IOC и backend остаются снаружи | `ArchitectureTest.reusable_logging_depends_only_on_itself_jdk_and_slf4j`, module-local `LoggingArchitectureTest`; [ADR 0045](ADR/0045-reusable-slf4j-logging-contract.md) |
+| Общая проверка конфигурации зависит только от себя, JDK и Spring; core/platform не зависят от неё, IOC-политика остаётся в bootstrap | `ArchitectureTest.reusable_configuration_depends_only_on_itself_jdk_and_spring`, `configuration_inspection_stays_outside_framework_free_layers`; пакет `com.iocextractor.config.boot` относится к adapter-слою |
 | `platform-etl` не знает IOC/application/adapters/observability/logging/frameworks | `ArchitectureTest.platform_etl_is_generic_and_framework_free` |
 | `platform-events` остаётся framework-free, не зависит от keyed execution и не становится serializable broker contract | `ArchitectureTest.platform_events_is_framework_free_and_not_a_broker`, `control_events_are_not_serializable`, `keyed_execution_is_not_part_of_platform_events` |
 | `platform-concurrency` не зависит от events/frameworks/business layers | `ArchitectureTest.platform_concurrency_is_framework_free_and_event_free` |
@@ -93,7 +94,7 @@ root reactor. PMD source-policy/watchlist manifest и exact rulesets
 полного анализа. Финальный build-only модуль `build-support/spotbugs-report`
 формирует reactor-wide SpotBugs XML/HTML aggregate; поздний report-integrity
 режим выводит ожидаемые пути из того же registry, требует non-empty,
-структурно корректные XML/HTML всех 23 production-модулей и aggregate и
+структурно корректные XML/HTML всех 24 production-модулей и aggregate и
 запрещает reports у excluded scopes. Exact-baseline gate сравнивает unfiltered
 raw findings поэкземплярно: новый, stale, moved или metadata-drifted signal
 блокирует сборку вместе с analyzer error, пропущенным применимым модулем или
@@ -101,7 +102,7 @@ raw findings поэкземплярно: новый, stale, moved или metadat
 [build-quality capability](dev/build-quality.md).
 
 Финальный build-only модуль `build-support/cpd-report` выполняет один
-repository-wide PMD CPD analysis над положительным allowlist всех 23
+repository-wide PMD CPD analysis над положительным allowlist всех 24
 production `src/main/java` roots. Общий fail-closed verifier даёт disposition
 каждому reactor project и сверяет analyzed set с ordering dependencies и
 configured source roots. Перед analysis удаляются stale outputs; после него
@@ -113,9 +114,9 @@ report-only; analyzer, scope или report-integrity error блокирует `v
 
 Отдельный `build-support/pmd-report` владеет принятой PMD source
 policy и ownership/size watchlist. Каждый профиль выполняет один
-`aggregate-pmd-no-fork` над теми же 23 production roots и формирует
+`aggregate-pmd-no-fork` над теми же 24 production roots и формирует
 XML/HTML в раздельных `target/pmd/` и `target/pmd-watchlist/`.
-Verifier сверяет точный 29-project disposition, ordering dependencies,
+Verifier сверяет точный 30-project disposition, ordering dependencies,
 положительные source roots, UTF-8, engine dependencies и оба поимённых
 ruleset без category refs/exclusions; analyzer/configuration error, пропавший
 или out-of-scope report красит выбранную command. Policy работает
@@ -131,7 +132,7 @@ Commons CSV, SMBJ, JDBC, HikariCP и sqlite-jdbc; отдельное ArchUnit-п
 копией.
 
 Opt-in profile `dependency-analysis` запускает Maven Dependency Plugin
-`analyze-only` над всеми 24 functional JAR-модулями, включая reusable TCK;
+`analyze-only` над всеми 25 functional JAR-модулями, включая reusable TCK;
 root и четыре build-only reporting POM пропускаются самим plugin как
 `packaging=pom`. Анализ остаётся advisory и не входит в обычный `verify`: после
 semantic triage сохранились доказанные starter/SPI/test-aggregate false

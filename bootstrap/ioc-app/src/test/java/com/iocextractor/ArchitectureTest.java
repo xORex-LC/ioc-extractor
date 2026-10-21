@@ -31,7 +31,7 @@ class ArchitectureTest {
     static final ArchRule layers_point_inward = layeredArchitecture().consideringOnlyDependenciesInLayers()
             .layer("domain").definedBy("..domain..")
             .layer("application").definedBy("..application..")
-            .layer("adapter").definedBy("..adapter..")
+            .layer("adapter").definedBy("..adapter..", "com.iocextractor.config.boot..")
             .layer("bootstrap").definedBy("..bootstrap..")
             .whereLayer("bootstrap").mayNotBeAccessedByAnyLayer()
             .whereLayer("adapter").mayOnlyBeAccessedByLayers("bootstrap")
@@ -89,6 +89,19 @@ class ArchitectureTest {
             .that().resideInAPackage("com.iocextractor.platform.logging..")
             .should().onlyDependOnClassesThat().resideInAnyPackage(
                     "java..", "com.iocextractor.platform.logging..", "org.slf4j..");
+
+    @ArchTest
+    static final ArchRule reusable_configuration_depends_only_on_itself_jdk_and_spring = classes()
+            .that().resideInAPackage("com.iocextractor.config.boot..")
+            .should().onlyDependOnClassesThat().resideInAnyPackage(
+                    "java..", "com.iocextractor.config.boot..", "org.springframework..");
+
+    @ArchTest
+    static final ArchRule configuration_inspection_stays_outside_framework_free_layers = noClasses()
+            .that().resideInAnyPackage(
+                    "..domain..", "..processing..", "..application..", "..platform..",
+                    "..diagnostics..", "..observability..")
+            .should().dependOnClassesThat().resideInAPackage("com.iocextractor.config.boot..");
 
     @ArchTest
     static final ArchRule domain_does_not_depend_on_diagnostics_delivery = noClasses()

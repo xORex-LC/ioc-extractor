@@ -1,5 +1,9 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.config.boot.PropertyInspection;
+import com.iocextractor.config.boot.PropertyInspector;
+import com.iocextractor.config.boot.PropertySchema;
+
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
@@ -8,7 +12,6 @@ import org.springframework.boot.context.properties.source.ConfigurationProperty;
 import org.springframework.boot.context.properties.source.ConfigurationPropertyName;
 import org.springframework.core.Ordered;
 import org.springframework.core.env.ConfigurableEnvironment;
-import org.springframework.core.env.EnumerablePropertySource;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.env.SystemEnvironmentPropertySource;
 
@@ -33,6 +36,7 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
 
     private static final String PREFIX = "ioc";
     private static final String PREFIX_DOT = PREFIX + ".";
+    private static final PropertySchema SCHEMA = new PropertySchema(PREFIX, IocProperties.class);
 
     private final ConfigurableEnvironment environment;
     private final IocEnvironmentPropertyMatcher environmentMatcher = new IocEnvironmentPropertyMatcher();
@@ -58,10 +62,12 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
     }
 
     private void collectUnknownKeys(PropertySource<?> source, Map<String, String> unknownNames) {
-        if (!(source instanceof EnumerablePropertySource<?> enumerable) || shouldSkip(source)) {
+        if (IocConfigurationPropertyShape.skipInspection(source)) {
             return;
         }
-        for (String rawName : enumerable.getPropertyNames()) {
+        PropertyInspection inspection = PropertyInspector.inspect(SCHEMA, List.of(source));
+        for (PropertyInspection.Declaration declaration : inspection.declarations()) {
+            String rawName = declaration.rawName();
             if (source instanceof SystemEnvironmentPropertySource) {
                 collectUnknownEnvironmentKey(rawName, unknownNames);
                 continue;
@@ -71,10 +77,28 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
                 continue;
             }
             String canonical = name.toString();
-            if (canonical.startsWith(PREFIX_DOT) && !isKnownIocProperty(canonical)) {
+            // IOC retains its stricter spelling policy. Unsupported generic shapes,
+            // including IdStart's service converter, keep the existing local check.
+            boolean known = declaration.status() == PropertyInspection.Status.KNOWN
+                    && hasLegacyCanonicalName(declaration, canonical);
+            if (declaration.status() == PropertyInspection.Status.UNSUPPORTED
+                    || declaration.status() == PropertyInspection.Status.KNOWN && !known) {
+                known = isKnownIocProperty(canonical);
+            }
+            if (canonical.startsWith(PREFIX_DOT) && !known) {
                 unknownNames.putIfAbsent(canonical, null);
             }
         }
+    }
+
+    private boolean hasLegacyCanonicalName(PropertyInspection.Declaration declaration, String canonical) {
+        for (String candidate : declaration.canonicalNames()) {
+            ConfigurationPropertyName name = canonicalName(candidate, '.');
+            if (name != null && canonical.equals(name.toString())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void collectUnknownEnvironmentKey(String rawName, Map<String, String> unknownNames) {
@@ -90,10 +114,6 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
             return;
         }
         unknownNames.putIfAbsent(environmentUnknownName(rawName), rawName);
-    }
-
-    private boolean shouldSkip(PropertySource<?> source) {
-        return "configurationProperties".equals(source.getName());
     }
 
     private ConfigurationPropertyName canonicalName(String rawName, PropertySource<?> source) {

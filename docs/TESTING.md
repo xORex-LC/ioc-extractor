@@ -18,8 +18,8 @@ Every Failsafe suite must also carry integration semantics through
 discovery; tags describe test semantics. They are complementary and neither is
 a substitute for the complete release gate.
 
-The reviewed source universe is 230 fast classes and 80 integration classes,
-including five external shells (305 deterministic classes). Diagnostics extraction
+The reviewed source universe is 233 fast classes and 80 integration classes,
+including five external shells (308 deterministic classes). Diagnostics extraction
 moves eight existing suites to the JDK-only API module and adds one executable
 consumer-guide suite. Logging adds seven suites for the public API, scalar ECS
 profile, explicit masks,
@@ -32,6 +32,11 @@ plain/Boot guides and runs their YAML/XML in a bounded separate JVM with only th
 shared logging classes and third-party JARs. It checks JSON types, duplicate keys,
 metadata, disclosure and observable appender failures for unsupported inputs.
 This is backend integration evidence, not repository-consumption evidence.
+Configuration extraction adds three module-local suites: `PropertyInspectionTest`,
+`PropertySchemaTest` and `GenericConsumerTest`. They check the shared name and
+source-coverage contract, unsupported schema boundaries and a consumer with an
+unrelated prefix and record model. These deterministic fixtures do not establish
+a second deployed service or published-artifact consumption.
 The exact source inventory records these changes. Coverage floors, report integrity,
 architecture checks and analyzer rules remain enforced. The Native lifecycle and import TCK bindings
 run against the retained backend.
@@ -144,7 +149,7 @@ blocking a release. Stable HTML/XML reports are written to
 
 The `stability-pilot` profile randomizes Surefire/Failsafe class order and JUnit
 class/method order from the same published seed. The wrapper advances the seed
-by one for each repetition, runs all 24 functional JAR modules sequentially,
+by one for each repetition, runs all 25 functional JAR modules sequentially,
 and verifies the exact source/report union after every pass. It archives each
 pass under `target/test-pilots/stability/run-N-seed-S/` before the next Maven
 lifecycle deletes current reports. The first failure stops the pilot and keeps
@@ -222,9 +227,9 @@ later step fails.
 
 The aggregate report and its groups are the authoritative release measurement.
 `build-support/coverage-report/coverage-scope.tsv` gives every reactor project
-an explicit disposition. The production denominator is exactly 23 JAR modules;
+an explicit disposition. The production denominator is exactly 24 JAR modules;
 the reusable TCK, root and build-only POMs are excluded, with no class or package
-exclusions. Twenty-two production modules must generate local XML/HTML reports.
+exclusions. Twenty-three production modules must generate local XML/HTML reports.
 `ioc-platform-errors` has no local test JVM and is declared aggregate-only, but
 its downstream execution must still appear as an aggregate group.
 

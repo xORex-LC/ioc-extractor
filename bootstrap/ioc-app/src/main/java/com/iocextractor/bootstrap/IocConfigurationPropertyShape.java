@@ -1,5 +1,8 @@
 package com.iocextractor.bootstrap;
 
+import org.springframework.core.env.CompositePropertySource;
+import org.springframework.core.env.PropertySource;
+
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
@@ -10,6 +13,15 @@ import java.util.List;
 final class IocConfigurationPropertyShape {
 
     private IocConfigurationPropertyShape() {
+    }
+
+    static boolean skipInspection(PropertySource<?> source) {
+        if ("configurationProperties".equals(source.getName())) {
+            return true;
+        }
+        // IOC has always required a composite to enumerate all of its children.
+        // Keep that failure policy here; the reusable inspector reports partial coverage.
+        return source instanceof CompositePropertySource composite && composite.getPropertyNames().length == 0;
     }
 
     static List<String> tokens(String canonical) {

@@ -17,7 +17,14 @@ adapters.
 | `src/main/resources/` | Runtime `application.yml`, Logback config and Spring configuration metadata/hints |
 | `src/test/java/com/iocextractor/` | Context, architecture, configuration/documentation contracts and golden e2e tests |
 
-## Configuration failure reports
+## Configuration inspection
+
+Source traversal and shared name observations come from
+[`adapter-config-spring-boot`](../../adapters/adapter-config-spring-boot/README.md).
+Bootstrap owns `IocProperties`, strict IOC spelling rules, compatibility checks
+for unsupported shared shapes, semantic validation, startup failures and source
+display selection. Shared observations do not establish Binder provenance;
+the local report retains the first external declaration.
 
 YAML and semantic-check failures use
 [controlled failure reports](../../docs/dev/configuration-failure-reports.md).

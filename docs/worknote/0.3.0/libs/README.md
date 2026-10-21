@@ -31,8 +31,9 @@ and GitHub Packages. Separate cold consumers passed against both repositories in
 The [release record](lib-3-logging-design.md#protected-publication-record--2026-10-21)
 retains source/tag, deployment, hashes and consumer evidence. A deployed second
 service, live collector/Elasticsearch, load and other providers remain outside
-this qualification. No next extraction is selected here; events E1–E5 remain
-deferred, configuration retains its proposal and ETL waits for a second consumer.
+this qualification. The owner selected Spring Boot configuration next: C1
+implements the bounded inspection contract with C0 corrections. Events E1–E5
+remain deferred and ETL waits for a second consumer.
 
 Diagnostics publication is recorded in the release branch's D5 documentation
 (commit `ce5675e2a74243ede83211cca090570976c6bbce`). The older diagnostics checkpoint
@@ -73,7 +74,7 @@ production-service integration remains future work.
 - [Diagnostics ADR promotion record](lib-2-diagnostics-adr-draft.md): preserved
   draft path pointing to the accepted ADR 0044.
 - [Spring Boot configuration proposal](configuration-library-design.md): existing
-  mechanics, supported-contract limits, service ownership, extraction slices and
+  mechanics, C1 inspection contract, service ownership, extraction slices and
   publication-tooling prerequisites.
 - [C0 qualification results](configuration-c0-analysis.md): 54 synthetic scenarios,
   actual Boot binding, extraction blockers and revised v1 support requirements.

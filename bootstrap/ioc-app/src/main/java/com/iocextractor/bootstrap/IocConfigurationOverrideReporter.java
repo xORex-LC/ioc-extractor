@@ -1,12 +1,15 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.config.boot.PropertyInspection;
+import com.iocextractor.config.boot.PropertyInspector;
+import com.iocextractor.config.boot.PropertySchema;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationStartedEvent;
 import org.springframework.boot.context.properties.source.ConfigurationPropertyName;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.env.ConfigurableEnvironment;
-import org.springframework.core.env.EnumerablePropertySource;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.env.SystemEnvironmentPropertySource;
 import org.springframework.stereotype.Component;
@@ -17,16 +20,17 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Reports effective external {@code ioc.*} overrides after context refresh.
+ * Reports the first declared external occurrence of each {@code ioc.*} name.
  *
- * <p>Only property names and winning source labels are logged. Values may carry
- * credentials or other deployment secrets and must never enter this report.</p>
+ * <p>This preserves the service's display policy; it is not final Binder provenance,
+ * especially for lists and null declarations. Values are never read for this report.</p>
  */
 @Component
 final class IocConfigurationOverrideReporter {
 
     private static final Logger log = LoggerFactory.getLogger(IocConfigurationOverrideReporter.class);
     private static final String PREFIX_DOT = "ioc.";
+    private static final PropertySchema SCHEMA = new PropertySchema("ioc", IocProperties.class);
 
     private final ConfigurableEnvironment environment;
     private final IocEnvironmentPropertyMatcher environmentMatcher = new IocEnvironmentPropertyMatcher();
@@ -52,13 +56,12 @@ final class IocConfigurationOverrideReporter {
     List<Override> effectiveOverrides(Iterable<PropertySource<?>> sources) {
         Map<String, String> winners = new LinkedHashMap<>();
         for (PropertySource<?> source : sources) {
-            if (!(source instanceof EnumerablePropertySource<?> enumerable)
-                    || isBaseline(source)
-                    || "configurationProperties".equals(source.getName())) {
+            if (isBaseline(source) || IocConfigurationPropertyShape.skipInspection(source)) {
                 continue;
             }
-            for (String rawName : enumerable.getPropertyNames()) {
-                for (String key : canonicalNames(rawName, source)) {
+            PropertyInspection inspection = PropertyInspector.inspect(SCHEMA, List.of(source));
+            for (PropertyInspection.Declaration declaration : inspection.declarations()) {
+                for (String key : canonicalNames(declaration.rawName(), source)) {
                     winners.putIfAbsent(key, sourceLabel(source));
                 }
             }

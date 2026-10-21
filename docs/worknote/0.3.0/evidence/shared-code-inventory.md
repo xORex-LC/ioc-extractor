@@ -22,6 +22,7 @@ not a current publication test.
 
 | Module/capability | Category | Responsibility | Current consumers | IOC-specific coupling | Publication disposition |
 |---|---|---|---|---|---|
+| `adapters/adapter-config-spring-boot` | Cross-service integration candidate | Record-schema name inspection and ordered source observations | IOC bootstrap plus unrelated-schema Binder tests | Spring Boot/Core; schema and enforcement remain service-owned | C1 implemented; C2–C4 and publication qualification remain pending |
 | `platform/platform-errors` | Service-shared | Root unchecked exception contract | diagnostics, ETL, application, four adapters, bootstrap | High: `IocExtractorException` and `com.iocextractor.common` express this product | Keep internal; not a first publication unit |
 | `platform/platform-diagnostics-api` | Cross-service platform | JDK-only values, results/policies, bounded samples/counts and sinks | Local diagnostics, ETL, application, adapters and bootstrap | JDK-only closure; isolated local and remote RC consumers qualified | `published-qualified`; `0.3.0-rc.1` from Central and GitHub Packages |
 | `platform/platform-diagnostics` | Service-shared product metadata | IOC catalogs, exception and rendering | ETL, application, diagnostics bridge, four adapters, bootstrap | IOC categories/messages and `platform-errors` closure | Retained locally after D1 split |

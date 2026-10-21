@@ -1,12 +1,14 @@
 # Spring Boot configuration library proposal
 
-Status: proposed, 2026-09-13. Analysis and extraction plan; not an accepted ADR,
-implementation, publication admission or new numbered LIB commitment.
+Status: C1 implemented, 2026-10-21; C2–C4 remain pending. The owner
+selected configuration after logging publication. This worknote is not an accepted
+ADR, publication admission or new numbered LIB commitment.
 
 C0 update, 2026-09-13: [independent qualification](configuration-c0-analysis.md)
 reproduced 54 scenarios. The proposed boundary remains useful, but copying the
 current classes unchanged is not qualified. The C0 support matrix and required
-corrections refine the initial API sketch below; C1 has not started.
+corrections refine the initial API sketch below; C1 implements the bounded
+inspection API and retains IOC compatibility policy locally.
 
 ## Recommendation and scope
 
@@ -15,9 +17,9 @@ inspection and ordered source observations**. Keep schema, validation of values,
 severity, startup refusal, operator messages and command composition in each
 service. This is a narrower boundary than moving the existing bootstrap classes.
 
-Suggested module: `adapters/adapter-config-spring-boot`; publication coordinates:
+C1 module: `adapters/adapter-config-spring-boot`; publication coordinates:
 `io.github.xorex-lc:ioc-config-spring-boot`; package:
-`com.iocextractor.config.boot`. These names are proposals. Keep product/library
+`com.iocextractor.config.boot`. These names identify the local implementation. Keep product/library
 lockstep versions. Do not create a generic configuration engine, API/implementation
 module pair, starter, reload subsystem or mandatory diagnostics dependency.
 
@@ -32,11 +34,13 @@ Disposition: **genericity-review**, with a concrete extraction sequence below.
 The existing library goal is already satisfied by LIB-1. This proposal does not
 reopen that goal or change the published concurrency artifact.
 
-## Evidence and current behavior
+## C0 evidence and pre-extraction behavior
 
 Baseline: `release-0.3.0`, commit
 `0df7183fcc02cfd010104733c3608e710b059be9`; Java 21, Boot parent 4.0.8.
-Production code and build files are unchanged. Existing untracked discussion
+This section characterizes the C0 baseline before extraction; the C1 checkpoint
+below describes the implementation. C0 did not change production code or build
+files. Existing untracked discussion
 notes were preserved. An independent read-only boundary review corroborated
 the source traversal, schema and reporting limitations.
 
@@ -294,7 +298,8 @@ enforce the required routing, resolve that limitation before publication admissi
 
 ## Implementation slices and acceptance criteria
 
-Each slice below is future work; this document authorizes no publication action.
+C1 is implemented with the C0 corrections below; C2–C4 remain later work.
+This document authorizes no publication action.
 
 | Slice | Work | Exit evidence |
 |---|---|---|
@@ -345,7 +350,90 @@ support. No new production implementation or test was added. Full verify/PMD
 were not rerun for this documentation-only proposal; local freshness still points
 to an older commit and is not represented as current release evidence.
 
-The C0 analysis is now recorded in the linked qualification worknote. The next
-proposed step is C1 with its explicit correction requirements; generic admission
-is conditional on those fixes and actual API tests. No additional future-service
-feature interview is needed to define that bounded work.
+The C0 analysis records the correction requirements used by C1 below. Generic
+admission depends on those corrections and actual API tests. No additional
+future-service feature interview is needed to define that bounded work.
+
+## C1 implementation checkpoint — 2026-10-21
+
+The owner selected configuration after completing logging publication and merging
+its release records. Source baseline is `f693b1cd` on `r030-libraries`.
+
+The implementation uses three public top-level types in
+`com.iocextractor.config.boot`: `PropertySchema`, `PropertyInspector` and
+`PropertyInspection` with nested immutable result records/enums. The two proposed
+inspection entry points are consolidated into one traversal/result: names and
+ordered declarations share source coverage and schema gaps. Reflection and name
+matching remain package-private. There is no severity, enforcement, Binder value
+provenance, global registry, starter or mandatory diagnostics dependency.
+
+C0 corrections are implemented as explicit outcomes. Canonical/camel/dashless
+names and compact/split qualified environment words map to record paths;
+ambiguity retains all candidates and does not discard other unknowns. Dynamic
+map keys retain their original qualified identity. Unsupported schema shapes,
+record-as-scalar declarations, whole scalar record-list declarations, broader
+map grammar and source conventions disclose incomplete coverage. Source
+references contain only fixed categories and encounter ordinals. Collections
+are copied; a value-read trap and an enumeration-failure identity test protect
+the boundary. Boot remains responsible for conversions and list semantics.
+
+IOC preflight and the override reporter delegate source inspection. The IOC
+spelling/environment matcher remains a service policy; unsupported generic shapes,
+including `IdStart`, retain the existing local compatibility check. This is an
+intentional migration seam for C2, not a second generic-library implementation.
+IOC also retains its enumeration failure for an opaque composite; shared
+inspection reports the child's incomplete coverage instead.
+The reporter still selects first external declarations and retains local labels;
+its name does not promise final aggregate provenance. Public capability/module
+documentation describes these limits.
+
+Three normal module suites cover an unrelated collector schema and real Binder
+behavior, including lower list fields that remain observable but do not survive
+binding. The shared API accepts relaxed names that IOC still rejects; bootstrap
+regressions explicitly preserve that delta. These are reactor/module consumers,
+not cold Maven consumers or another production service. C4 owns independent
+packaging and repository qualification.
+
+Build/coverage/analyzer manifests admit 30 Maven projects, 25 functional JARs,
+24 production aggregate groups and 23 local reports. Three added suites change
+the source universe to 233 fast / 80 integration / five external shells /
+308 deterministic classes. The new per-module ratchet is measured from C1's
+focused tests (220/225 lines, 193/204 branches, 20 missed instructions); existing
+ratchets and fixed floors are unchanged. Verifier synthetic tests cover the new
+public coordinate and reject the old product coordinate.
+
+### C1 verification and limits
+
+The three module suites pass 23 tests. The IOC regression suite checks strict
+spellings, split environment names, converted leaves, enum-map keys and both
+enumerable/opaque composites. A separate differential characterization compares
+85 inputs with the pre-extraction IOC implementation; all outcomes agree. Its
+local source and results are retained under `.dev/config-c1-differential/`.
+
+The full deterministic reactor gate passes with 308 classes, 24 production
+aggregate groups and 23 local coverage reports. Raw SpotBugs retains its 137
+accepted findings with zero visible findings; the new module has no raw findings.
+CPD retains the same 22 groups, membership and fragments. PMD's 19 finding
+identities also match the published logging baseline. These comparisons do not
+broaden the accepted analyzer scope or hide findings behind new suppressions.
+
+A standalone Java consumer outside the checkout compiles and runs using the
+packaged library JAR and resolved third-party JARs, without IOC artifacts.
+Strict Javadoc uses `-Werror -Xdoclint:all`. This is local classpath/package
+evidence, not cold Maven resolution, publication or a second production service.
+
+PMD policy retains 19 existing findings; its separate ownership/size watchlist
+has 73 findings. Neither reports findings in the new module or changed IOC
+inspection classes. No analyzer count, accepted finding, exclusion or existing
+coverage floor/ratchet is relaxed. An initial complexity finding was fixed by
+separating source traversal from name enumeration.
+
+Full `make verify` and `make pmd-analysis` are mandatory on the final unchanged
+worktree before C1 is accepted. Retained local commands/results are
+`.dev/config-c1-verify-complete.log`, `.dev/config-c1-pmd-final.log`,
+`.dev/config-c1-watchlist.log`, `.dev/config-c1-docs-final.log`,
+`.dev/config-c1-packaged-consumer.log` and `.dev/config-c1-javadoc.log`;
+`make context` owns their current freshness. Earlier failing checks remain
+separate logs, not successful qualification. C2 still owns restricted-context
+and real IOC aggregate-binding qualification; C3 owns ADR/publication-guide
+promotion; C4 owns independent POM/dependency/repository qualification.
