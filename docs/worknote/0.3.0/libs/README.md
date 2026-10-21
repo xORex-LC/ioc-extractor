@@ -13,29 +13,25 @@ assessments identify historical baselines; they are no longer working branches.
 These are release worknotes. A recorded design admission is an implementation
 target; accepted published ADRs and release/publication evidence remain separate.
 
-## Current work order — 2026-10-20
+## Current work order — 2026-10-21
 
-The owner selected logging tools and a common ECS approach, then authorized L3-0.
-The [fixed contract](lib-3-logging-contract.md) closes L3-0: eight public types,
-five ECS scalar descriptors, field/MDC/masking rules and explicit IOC wire
-corrections. The [62-case fixture](l3-0-probe/README.md) characterizes existing
-mechanics and defects with an unrelated catalog. It does not qualify the future
-public API. **L3-1 is complete locally**.
-The new module and its consumer guide provide public-API tests and documentation.
-**L3-2 IOC migration is complete locally**; local facades delegate
-to the library and real producer/encoder regressions cover the selected wire fixes.
-**L3-3 is complete locally, subject to current unchanged-tree gate receipts**: generic/IOC/backend
-test ownership is documented, the reusable Boot recipe has executable examples,
-and [ADR 0045](../../../ADR/0045-reusable-slf4j-logging-contract.md) records the
-accepted boundary. **L3-4 tooling and independent local consumers are implemented**:
-the existing workflow admits the exact SLF4J dependency contract, both logging
-guides run from packaged JARs in fresh-cache consumers, and the retained
-concurrency/diagnostics bundles remain covered. The
-[L3-4 record](lib-3-logging-design.md#l3-4-packaging-and-independent-consumers--2026-10-20)
-records local qualification and final gate requirements. Next is a reviewed PR
-into `release-0.3.0`, then explicitly authorized protected publication and separate
-Central/GitHub consumers. Public availability is not claimed by local checks.
-Events E1–E5 remain deferred.
+Logging L3-0–L3-4 is complete. The
+[fixed contract](lib-3-logging-contract.md) defines eight public types, five ECS
+scalar descriptors and field/MDC/masking rules. L3-1 implements and documents the
+shared module; L3-2 migrates IOC facades and the selected OBS-9/10 wire fixes.
+L3-3 qualifies the Boot recipe and promotes
+[ADR 0045](../../../ADR/0045-reusable-slf4j-logging-contract.md). L3-4 adds the
+exact SLF4J dependency contract, isolated plain/Boot consumers and protected
+publication after reviewed integration through PR 17.
+
+`io.github.xorex-lc:ioc-platform-logging-slf4j:0.3.0-rc.1` is published to Central
+and GitHub Packages. Separate cold consumers passed against both repositories in
+[run 39455105300](https://github.com/xORex-LC/ioc-extractor/actions/runs/39455105300).
+The [release record](lib-3-logging-design.md#protected-publication-record--2026-10-21)
+retains source/tag, deployment, hashes and consumer evidence. A deployed second
+service, live collector/Elasticsearch, load and other providers remain outside
+this qualification. No next extraction is selected here; events E1–E5 remain
+deferred, configuration retains its proposal and ETL waits for a second consumer.
 
 Diagnostics publication is recorded in the release branch's D5 documentation
 (commit `ce5675e2a74243ede83211cca090570976c6bbce`). The older diagnostics checkpoint

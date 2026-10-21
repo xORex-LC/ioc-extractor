@@ -2,8 +2,10 @@
 
 Typed SLF4J records, restoring MDC scopes and a small scalar ECS profile for
 services that maintain their own field/action catalogs. Requires Java 21.
-The IOC service now consumes this module through local catalog facades.
-Independent publication remains a separate qualification step.
+The IOC service consumes this module through local catalog facades.
+Release `0.3.0-rc.1` is published to Maven Central and GitHub Packages; separate
+cold plain Java and Boot consumers passed against both in
+[run 39455105300](https://github.com/xORex-LC/ioc-extractor/actions/runs/39455105300).
 
 **Layer rule:** main code depends only on JDK and SLF4J API. IOC catalogs,
 ETL/diagnostic integrations, application code and backend wiring stay outside
@@ -30,8 +32,8 @@ Logback, JSON encoder or automatic context-propagation dependency.
 Coordinates: `io.github.xorex-lc:ioc-platform-logging-slf4j`, using the parent
 `${revision}` in product lockstep. Artifact metadata follows the existing platform
 libraries. The publication tooling admits this component's exact required SLF4J
-compile dependency; protected release and live repository qualification remain
-separate from local admission.
+compile dependency. The released version passed protected publication and live
+repository qualification using the same signed files in both repositories.
 
 ## Use and limits
 
@@ -61,8 +63,8 @@ Run `make test-module MODULE=platform/platform-logging-slf4j`. The
 review. `make library-bundle LIBRARY_COMPONENT=logging` and
 `make library-consumer LIBRARY_COMPONENT=logging` exercise actual plain/Boot
 guide examples through packaged JARs with separate empty caches. The tooling
-also rejects missing/unavailable SLF4J and wrong repository provenance. Public
-repository qualification remains a protected release step.
+also rejects missing/unavailable SLF4J and wrong repository provenance. Each new
+version requires its own protected release and public repository qualification.
 
 ## Test ownership
 

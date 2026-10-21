@@ -24,6 +24,13 @@ New dependencies or versions require explicit contract review, not a broader
 allowlist. The older zero-dependency contracts remain enforced.
 No version is claimed published until the repository checks below pass.
 
+Logging `0.3.0-rc.1` passed protected publication and separate Central/GitHub
+Packages cold plain Java and Boot consumers in
+[run 39455105300](https://github.com/xORex-LC/ioc-extractor/actions/runs/39455105300).
+Its [consumer guide](logging-library.md) supplies the released dependency;
+the [module reference](../../platform/platform-logging-slf4j/README.md) describes
+the qualified API/backend boundary. This does not qualify a later version.
+
 ## Local packaging qualification
 
 Use a complete JDK 21 (including `javadoc`), Python 3, GnuPG 2, the Maven wrapper and

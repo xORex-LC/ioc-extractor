@@ -1,11 +1,12 @@
 # LIB-3: SLF4J logging tools and ECS extraction plan
 
-Status: **L3-4 implemented; local qualification recorded below**, 2026-10-20. Initially
+Status: **L3-0–L3-4 complete; `0.3.0-rc.1` published and qualified**, 2026-10-21. Initially
 proposed 2026-09-13, refined for shared ECS after the owner's October request.
 The [fixed contract](lib-3-logging-contract.md) owns the implementation target;
 the [ECS analysis](lib-3-logging-ecs-analysis.md) retains the preceding findings.
-The new module is implemented locally. This worknote is not an accepted ADR or
-publication admission; IOC migration is implemented in L3-2.
+The module and IOC migration are merged through PR 17 into `release-0.3.0`.
+[ADR 0045](../../../ADR/0045-reusable-slf4j-logging-contract.md) owns the accepted
+boundary; this worknote records implementation and release evidence.
 
 ## Recommendation
 
@@ -19,7 +20,9 @@ configuration; standard field meanings are shared.
 Fixed target coordinates: `io.github.xorex-lc:ioc-platform-logging-slf4j`;
 module: `platform/platform-logging-slf4j`;
 package: `com.iocextractor.platform.logging`, with `redaction` and `ecs` subpackages.
-These are implementation targets, not a published artifact. Keep lockstep `${revision}`.
+Keep lockstep `${revision}`. Tag `ioc-platform-logging-slf4j-v0.3.0-rc.1`
+fixes the reviewed release source. Separate Central/GitHub consumers qualified
+the released artifacts; the release record below retains their exact identity.
 Retain `platform-observability` as the internal IOC catalog/integration module;
 new generic types use a separate package to avoid split packages.
 
@@ -28,12 +31,12 @@ logging backend, metrics/tracing system, general execution-context framework,
 automatic secret detector, separate redaction artifact or API/implementation split.
 The library does not require the diagnostics or configuration libraries.
 
-Disposition: **L3-4 tooling and independent consumers implemented; protected
-publication and public-repository consumption remain pending**.
+Disposition: **published-qualified**. Protected publication and separate cold
+plain Java/Boot consumers passed against Central and GitHub Packages.
 Confirmed future consumers are the planned collectors; they are not implemented
 external consumers. The repository owner maintains/releases the library, matching
 existing platform-library metadata. Independent local consumers are part of
-L3-4; release admission still requires the public-repository evidence below.
+L3-4; the public-repository qualification is recorded below.
 
 ## Confirmed requirements
 
@@ -49,12 +52,12 @@ The [interview, sections 16–20](shared-library-exploration.md) establishes:
 - URL credential/query sanitation is useful as an explicit helper.
 - Other selected sensitive values need a constant full mask. Fingerprint-based
   correlation is unnecessary. The service selects values to hide.
-- L3-0 fixes the extraction contract. Production extraction and the explicit
-  wire corrections remain L3-1/L3-2 work.
+- L3-0 fixes the extraction contract. L3-1/L3-2 implement production extraction
+  and the selected wire corrections; their dated records retain the evidence.
 
-Constant whole-value masking is one small requested extension. It is not claimed
-to exist as a current generic helper. Existing IOC diagnostic fingerprinting and
-DEBUG/TRACE rendering remain a separate migration decision.
+Constant whole-value masking is the requested extension implemented by
+`LogRedaction.fullMask()`. Existing IOC diagnostic fingerprinting and DEBUG/TRACE
+rendering remain a separate migration decision.
 
 ## Evidence and findings
 
@@ -349,7 +352,7 @@ confirmed consumer need. [SLF4J library guidance](https://www.slf4j.org/manual.h
 | L3-1: complete | Add fixed types/helpers; move normalization internally; fix key/type identity and resource acquisition; document the public API as it is implemented | Sole main dependency SLF4J API; no service imports; actual API boundary/helper regressions; English Javadoc/package docs, module README and executed plain Java examples |
 | L3-2: complete | Delegate existing conveniences or migrate atomically; retain IOC catalogs and pipeline observer locally; implement qualified OBS-9/10 corrections | Preserve unaffected wire fields/actions, logger categories and context reconstruction; explicitly qualify/document changed keys/shapes and complete error JSON output |
 | L3-3: complete locally | Consolidate generic tests; keep IOC catalog and Boot wire tests local; review L3-1 API docs and consumer guide; qualify Boot recipe; update architecture/module/analyzer maps; promote ADR | Focused suites then `make verify` and `make pmd-analysis` on final production/build tree; reviewed analyzer/coverage scope changes |
-| L3-4: implemented; local admission and release evidence below | Dependency-aware descriptors/POM, sources/Javadoc and independent consumers; protected publication only after admission | Cold target-repository consumption, negative dependency-resolution checks and immutable bundle identity; public Central/GitHub checks pending |
+| L3-4: complete; local and protected release evidence below | Dependency-aware descriptors/POM, sources/Javadoc and independent consumers; protected publication after reviewed integration | Negative dependency-resolution checks and immutable bundle identity; `0.3.0-rc.1` published and cold plain/Boot consumers passed separately from Central/GitHub |
 
 IOC compatibility wrappers must delegate mechanics, not keep independent copies
 of the implementation. They can remain internal while preserving current imports,
@@ -363,14 +366,15 @@ JAR does not depend on diagnostics.
 Keep library versions in product lockstep and use the public group override at
 the library module, following LIB-1. Manage reactor versions in the parent.
 
-The current publisher admits concurrency and diagnostics, both JDK-only, and
-rejects consumer POM dependencies. Plan the dependency-aware work described in the
+The publisher admits concurrency, diagnostics and logging through separate
+dependency descriptors. Concurrency and diagnostics retain zero-dependency
+guards; logging requires exactly `org.slf4j:slf4j-api:2.0.18` as a compile JAR,
+without a provider. L3-4 implements the dependency-aware publication work
+identified in the
 [configuration proposal](configuration-library-design.md#publication-tooling-work-required):
-per-library descriptors, explicit allowed dependencies, parent-independent
-resolved POM and target-repository isolation with third-party resolution allowed.
-For LIB-3 the expected runtime dependency is SLF4J API, not a provider. Preserve
-existing components' zero-dependency guards and immutable published versions/tags.
-Run local bundle/consumer and tooling regression fixtures before protected publication.
+parent-independent resolved POMs, explicit allowed dependencies and target-repository
+isolation with separate third-party resolution. Future components still require
+their own reviewed descriptor and qualification. Existing release identities stay immutable.
 
 Update architecture rules to cover the new package, not just the old
 `..observability..` pattern. Review coverage/analyzer group counts when adding a
@@ -736,3 +740,68 @@ consumers. The manual workflow's default-branch discovery copy must expose the
 new component choice. No push, PR, tag, signing with release keys or external
 publication is performed in this slice. A live collector, Elasticsearch, load
 qualification and a second production consumer remain outside this evidence.
+
+## Protected publication record — 2026-10-21
+
+The owner merged PR 17 and authorized protected publication. Annotated tag
+`ioc-platform-logging-slf4j-v0.3.0-rc.1` fixes source commit
+`5b9761b7ab0b3d6033e51a82fb735f1a3049ef08`, whose tree equals reviewed PR head
+`716049cf`. Merge CI [run 39432555971](https://github.com/xORex-LC/ioc-extractor/actions/runs/39432555971)
+passed all required gates. The existing concurrency/diagnostics release identities remain unchanged.
+
+Protected [validation run 39433697620](https://github.com/xORex-LC/ioc-extractor/actions/runs/39433697620)
+passed the clean RC reactor build, strict Javadoc, 83 publication contracts,
+plain/Boot isolated consumers, PMD and owner-key signing. Central validated
+deployment `c03543e6-6ce0-426a-905b-b9e18197f4e0`. The signer fingerprint is
+`F69BA7E0F7494982E6E1B483DF54073D8BBFA9F9`.
+
+The signed manifest has SHA256 `36d37dac0a91454c7e306003d433aa8da912040166ebd99b22780b2876020ca0` and covers 20 files.
+Its four primary artifacts match the unsigned build. Publication
+[run 39455105300](https://github.com/xORex-LC/ioc-extractor/actions/runs/39455105300)
+resumes the original validation run and deployment; its build is skipped.
+Both protected-environment reviews were performed by the owner.
+
+Publication and the GitHub Packages mirror passed. Both repository consumers
+passed in separate temporary projects with empty Maven caches/settings: each
+ran the three plain Java guide examples and the actual Boot Java/YAML/XML
+recipe, checking five JSON records, encoder status and no IOC classes.
+The plain consumer also rejected missing/unavailable SLF4J API for the expected
+reasons. Every consumer checked all four primary SHA256 values and Maven origin
+markers for the selected repository; resolving through the Central dependency
+fallback could not qualify a GitHub result. Repository comparison covered all
+20 signed/checksummed files. The publication run's retained manifest and all
+20 files are byte-identical to validation; no rebuild or signing was repeated.
+Four additional anonymous Central downloads matched the primary hashes.
+
+Published repositories:
+
+- [Central version directory](https://repo.maven.apache.org/maven2/io/github/xorex-lc/ioc-platform-logging-slf4j/0.3.0-rc.1/).
+- [GitHub Packages Maven repository](https://maven.pkg.github.com/xorex-lc/ioc-extractor)
+  (authenticated package reads).
+
+Primary artifact SHA256 values:
+
+| Artifact | SHA256 |
+|---|---|
+| POM | `8913a98ed2a639df62e62e152b5ae8d4c1d6bc2b04ed8cfd7e7698b5a8621d64` |
+| Main JAR | `e11f4b6e14018317f9ce5866c531042a6e7d0ab7fd9c2b1c600d9098536f8a53` |
+| Sources JAR | `89de9ff4ad6f525546a6813a765c5b6026bd5f76ce0e31d7382eded324213f6b` |
+| Javadoc JAR | `61a90ecb428c4ef1c42b12b91ced58a350d11bffe69283bde1c34cd7c1a9119b` |
+
+Local `make verify` and `make pmd-analysis` passed on the clean tagged source at
+`2026-10-20T13:49:05Z` and `2026-10-20T13:49:37Z`; both are fresh in the retained
+source context. Reviewed raw counts remain SpotBugs 137 / zero filtered, CPD 22,
+PMD 19, with no finding identity/membership/message drift. The resource watchlist
+was reviewed on the identical pre-merge source tree in L3-4. These release-record
+edits change documentation only; they do not claim new analyzer execution.
+
+Release bytes, manifest, workflow inputs/logs and source-check receipts are retained
+under `.dev/l3-5-publication/`, including `signed-release.tar.gz` plus checksum.
+Never rebuild/resign this version or move its tag for recovery. The two consumer
+fixtures qualify packaging/API and the documented synchronous Boot recipe;
+a deployed second service, live collector/Elasticsearch, load and another
+provider remain outside this evidence. Existing OBS-6/7/8 dispositions remain.
+
+Retained publication artifacts: `signed-library` `12281355410`, `central-deployment` `12280977687`, `repository-consumers` `12279819488`.
+Their Actions expiry is `2027-01-18T16:10:38Z`;
+local copies preserve signed bytes and both successful consumer logs beyond it.
