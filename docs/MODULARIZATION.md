@@ -117,6 +117,8 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ io
   только свою технологическую библиотеку/integration family.
 - `adapter-config-spring-boot` зависит только от Spring Boot/Core и JDK.
   Bootstrap передаёт схему и префикс, затем интерпретирует найденные проблемы.
+  Описания устаревших и удалённых ключей сопоставляются с тем же снимком
+  деклараций; миграция значений и проверка конфликтов остаются в сервисе.
   IOC-модель, semantic validators, CONFIG-коды и CLI остаются в сервисе;
   библиотека не запускает контекст автоматически и не входит в core/platform.
 - `ioc-application-tck` содержит test-scope contract tests; реализации портов

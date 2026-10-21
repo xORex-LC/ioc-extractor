@@ -14,10 +14,10 @@ import org.springframework.core.env.PropertySource;
 import org.springframework.core.env.SystemEnvironmentPropertySource;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Reports the first declared external occurrence of each {@code ioc.*} name.
@@ -47,28 +47,30 @@ final class IocConfigurationOverrideReporter {
     void reportOverrides() {
         for (Override override : effectiveOverrides(environment.getPropertySources())) {
             log.info("IOC configuration override: {} <- {}", override.key(), override.source());
-            IocConfigurationMigrationCatalog.find(override.key()).ifPresent(migration ->
+            override.migration().ifPresent(migration ->
                     log.warn("{}: {} is accepted temporarily for rollback compatibility; migrate to {}",
                             migration.diagnosticCode(), override.key(), migration.replacement()));
         }
     }
 
     List<Override> effectiveOverrides(Iterable<PropertySource<?>> sources) {
-        Map<String, String> winners = new LinkedHashMap<>();
+        Map<String, Override> winners = new LinkedHashMap<>();
         for (PropertySource<?> source : sources) {
             if (isBaseline(source) || IocConfigurationPropertyShape.skipInspection(source)) {
                 continue;
             }
             PropertyInspection inspection = PropertyInspector.inspect(SCHEMA, List.of(source));
+            Map<PropertyInspection.Declaration, IocConfigurationMigrationCatalog.Notice> notices =
+                    IocConfigurationMigrationCatalog.notices(inspection);
             for (PropertyInspection.Declaration declaration : inspection.declarations()) {
                 for (String key : canonicalNames(declaration.rawName(), source)) {
-                    winners.putIfAbsent(key, sourceLabel(source));
+                    Optional<IocConfigurationMigrationCatalog.Notice> notice = Optional.ofNullable(notices.get(declaration))
+                            .filter(candidate -> candidate.path().equals(key));
+                    winners.putIfAbsent(key, new Override(key, sourceLabel(source), notice));
                 }
             }
         }
-        List<Override> overrides = new ArrayList<>();
-        winners.forEach((key, source) -> overrides.add(new Override(key, source)));
-        return List.copyOf(overrides);
+        return List.copyOf(winners.values());
     }
 
     private List<String> canonicalNames(String rawName, PropertySource<?> source) {
@@ -103,6 +105,6 @@ final class IocConfigurationOverrideReporter {
         };
     }
 
-    record Override(String key, String source) {
+    record Override(String key, String source, Optional<IocConfigurationMigrationCatalog.Notice> migration) {
     }
 }

@@ -11,6 +11,7 @@ binding, conversion and precedence.
 prepared schema + stable ordered PropertySources
   -> schema coverage + name-only source traversal
   -> immutable declarations, candidate paths and source coverage
+  -> optional migration observations from explicit service descriptors
   -> service-selected strict check / source report
   -> ordinary Boot binding and semantic validation
 ```
@@ -31,6 +32,40 @@ not run two separate traversals or expose reflection/tokenizer helpers as public
 API. `KNOWN` means a supported path, not a valid value. `UNKNOWN`, `AMBIGUOUS`
 and `UNSUPPORTED` remain distinct; unsupported coverage cannot justify certainty
 that an operator supplied an unknown key.
+
+## Configuration evolution
+
+`MigrationInspector` consumes the immutable `PropertyInspection` plus explicit
+`PropertyMigration` descriptors. It reuses the internal name matcher with a tree
+for each old path and accepts only full template matches. Declaring a record or
+list container does not imply declarations of its children. This step performs
+no source enumeration, value reads or mutation.
+
+For example, a descriptor for `collector.connections[].legacy-timeout` produces
+`collector.connections[3].request-timeout` as its replacement hint when index `[3]`
+is declared. Removed paths can be recognized without restoring tombstone fields
+to the current record schema. The original unknown-name finding is preserved.
+Current schema candidates participate in ambiguity checks, including collisions
+between a removed flat field and a current nested environment path. Equivalent
+record spellings are compared without dashes, preserving dots and indexes.
+
+The [module reference](../../adapters/adapter-config-spring-boot/README.md#migration-observations)
+defines template grammar and catalog validation. The observer retains the original
+snapshot and safe source references. Compatibility deadlines, diagnostic codes,
+severity and value semantics belong to the service. Neither metadata kind nor a
+replacement hint changes Boot binding.
+
+`MigrationInspectionTest` uses an unrelated collector model and actual Boot
+4.0.8 Binder. A higher-priority new list field can remove a lower-priority old
+field from the bound list while both declarations remain observable. Conflict
+checks therefore belong after binding, in the service validator. See
+[Boot external configuration](https://docs.spring.io/spring-boot/4.0/reference/features/external-config.html)
+for framework source and aggregate binding rules.
+
+IOC uses the observer for its existing `smb.encrypt` notice, after applying its
+own spelling and source-selection policy. It reports concrete endpoint indexes
+and keeps earlier custom environment-source behavior. Boolean conversion, dual-key
+rejection, rollback compatibility and removed-key failure hints remain local.
 
 ## Invariants
 

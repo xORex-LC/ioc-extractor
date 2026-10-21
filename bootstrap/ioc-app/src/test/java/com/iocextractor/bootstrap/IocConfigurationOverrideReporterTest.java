@@ -13,6 +13,7 @@ import org.springframework.core.env.SystemEnvironmentPropertySource;
 import org.springframework.mock.env.MockEnvironment;
 
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -77,9 +78,55 @@ class IocConfigurationOverrideReporterTest {
         assertThat(appender.list).extracting(ILoggingEvent::getFormattedMessage).containsExactly(
                 "IOC configuration override: ioc.sync.endpoints[0].smb.encrypt <- command line",
                 "CONFIG.LEGACY_SMB_ENCRYPTION: ioc.sync.endpoints[0].smb.encrypt is accepted temporarily "
-                        + "for rollback compatibility; migrate to ioc.sync.endpoints[].smb.encryption");
+                        + "for rollback compatibility; migrate to ioc.sync.endpoints[0].smb.encryption");
         assertThat(appender.list).extracting(ILoggingEvent::getFormattedMessage)
                 .noneMatch(message -> message.contains("true"));
+    }
+
+    @Test
+    void derivesIndexedNoticesFromTheSameTraversalAndKeepsOnlyFirstDeclarations() {
+        AtomicInteger enumerations = new AtomicInteger();
+        MapPropertySource first = new MapPropertySource("commandLineArgs", Map.of(
+                "ioc.sync.endpoints[0].smb.encrypt", "private-first",
+                "ioc.sync.endpoints[2].smb.encrypt", "private-second")) {
+            @Override public String[] getPropertyNames() {
+                enumerations.incrementAndGet();
+                return super.getPropertyNames();
+            }
+            @Override public Object getProperty(String name) { throw new AssertionError("No value reads"); }
+        };
+        MockEnvironment environment = new MockEnvironment();
+        environment.getPropertySources().addFirst(first);
+        environment.getPropertySources().addLast(new MapPropertySource("lower", Map.of(
+                "ioc.sync.endpoints[0].smb.encrypt", "private-shadowed")));
+        ListAppender<ILoggingEvent> appender = appender();
+
+        new IocConfigurationOverrideReporter(environment).reportOverrides();
+
+        assertThat(enumerations.get()).isEqualTo(1);
+        assertThat(appender.list).filteredOn(event -> event.getLevel() == Level.WARN)
+                .extracting(ILoggingEvent::getFormattedMessage).containsExactly(
+                        "CONFIG.LEGACY_SMB_ENCRYPTION: ioc.sync.endpoints[0].smb.encrypt is accepted temporarily "
+                                + "for rollback compatibility; migrate to ioc.sync.endpoints[0].smb.encryption",
+                        "CONFIG.LEGACY_SMB_ENCRYPTION: ioc.sync.endpoints[2].smb.encrypt is accepted temporarily "
+                                + "for rollback compatibility; migrate to ioc.sync.endpoints[2].smb.encryption");
+        assertThat(appender.list).extracting(ILoggingEvent::getFormattedMessage)
+                .noneMatch(message -> message.contains("private-") || message.contains("lower"));
+    }
+
+    @Test
+    void preservesIocWarningsForCustomEnvironmentSourceConventions() {
+        MockEnvironment environment = new MockEnvironment();
+        environment.getPropertySources().addFirst(new SystemEnvironmentPropertySource("custom-env", Map.of(
+                "IOC_SYNC_ENDPOINTS_3_SMB_ENCRYPT", "private-value")));
+        ListAppender<ILoggingEvent> appender = appender();
+
+        new IocConfigurationOverrideReporter(environment).reportOverrides();
+
+        assertThat(appender.list).extracting(ILoggingEvent::getFormattedMessage).containsExactly(
+                "IOC configuration override: ioc.sync.endpoints[3].smb.encrypt <- environment",
+                "CONFIG.LEGACY_SMB_ENCRYPTION: ioc.sync.endpoints[3].smb.encrypt is accepted temporarily "
+                        + "for rollback compatibility; migrate to ioc.sync.endpoints[3].smb.encryption");
     }
 
     @Test

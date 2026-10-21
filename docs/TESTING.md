@@ -18,8 +18,8 @@ Every Failsafe suite must also carry integration semantics through
 discovery; tags describe test semantics. They are complementary and neither is
 a substitute for the complete release gate.
 
-The reviewed source universe is 233 fast classes and 80 integration classes,
-including five external shells (308 deterministic classes). Diagnostics extraction
+The reviewed source universe is 234 fast classes and 80 integration classes,
+including five external shells (309 deterministic classes). Diagnostics extraction
 moves eight existing suites to the JDK-only API module and adds one executable
 consumer-guide suite. Logging adds seven suites for the public API, scalar ECS
 profile, explicit masks,
@@ -32,10 +32,13 @@ plain/Boot guides and runs their YAML/XML in a bounded separate JVM with only th
 shared logging classes and third-party JARs. It checks JSON types, duplicate keys,
 metadata, disclosure and observable appender failures for unsupported inputs.
 This is backend integration evidence, not repository-consumption evidence.
-Configuration extraction adds three module-local suites: `PropertyInspectionTest`,
-`PropertySchemaTest` and `GenericConsumerTest`. They check the shared name and
+Configuration extraction adds four module-local suites: `PropertyInspectionTest`,
+`PropertySchemaTest`, `GenericConsumerTest` and `MigrationInspectionTest`. They check the shared name and
 source-coverage contract, unsupported schema boundaries and a consumer with an
-unrelated prefix and record model. These deterministic fixtures do not establish
+unrelated prefix and record model. Migration fixtures compare accepted and removed
+names, indexed replacements, ambiguity and shadowed declarations with real Binder
+results. The added migration suite accounts for the source-universe increase;
+the verifier and coverage/analyzer ratchets are unchanged. These fixtures do not establish
 a second deployed service or published-artifact consumption.
 The exact source inventory records these changes. Coverage floors, report integrity,
 architecture checks and analyzer rules remain enforced. The Native lifecycle and import TCK bindings

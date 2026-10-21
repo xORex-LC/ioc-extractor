@@ -18,6 +18,11 @@ IOC model, diagnostics, logging provider or application port is required.
   Nested records/enums describe `KNOWN`, `UNKNOWN`, `AMBIGUOUS` and `UNSUPPORTED`
   outcomes. A safe source identity contains only an encounter ordinal and fixed
   category, never a raw source name or source object.
+- `PropertyMigration` describes an accepted deprecated or removed name, with an
+  optional replacement. It does not register an alias or a value conversion.
+- `MigrationInspector.inspect(inspection, migrations)` matches those descriptors
+  against the existing snapshot. `MigrationInspection` retains original coverage
+  and reports resolved, ambiguous or unsupported observations.
 
 The library reads names, not values. Unknown and ambiguous names are data;
 services select severity, render messages and decide whether to start. Operational
@@ -47,6 +52,37 @@ names disclose incomplete coverage. Composite children are inspected separately;
 nonenumerable sources are incomplete. The attached `configurationProperties`
 aggregate is deliberately excluded to avoid duplicate observations.
 
+## Migration observations
+
+Descriptors use canonical lowercase record paths, for example
+`collector.connections[].legacy-timeout` with replacement
+`collector.connections[].request-timeout`. An observation for index `[3]` carries
+that index in both paths. Multiple list indexes are copied in order; the
+replacement must have the same number of `[]` placeholders. Fixed paths and
+removed names absent from the current record schema also work. A replacement is
+a name hint, with no promise that the old value is valid for the new setting.
+
+All descriptors belong to one namespace, matching the supplied inspection.
+Invalid templates, equivalent/overlapping old paths and migration chains are
+rejected before matching. Templates do not accept literal indexes, wildcards or
+regex callbacks. Services must describe record fields; a dynamic map entry is
+not a supported migration target. Descriptors do not validate a historical model
+or the replacement's bindability. Declarations from a different namespace are
+rejected; an empty snapshot cannot establish namespace identity, so the caller
+must select the matching catalog.
+
+Results retain shadowed and null-valued declarations. An old and new name in
+different sources do not prove a conflict between bound fields: Binder can
+replace an entire list. Migration observations never change the original name
+status: an unknown removed name stays unknown. Competing current
+schema paths make an observation ambiguous; unsupported schema/source conventions
+remain unsupported. A resolved observation in a partial inspection does not prove
+the absence of old names in opaque sources. No source is read again or modified.
+
+The service owns warning/error policy, migration windows, value conversion,
+bound-field conflict checks and recovery scope. The library performs no rewrite,
+startup check or metadata generation.
+
 ## IOC integration
 
 IOC delegates source/name inspection to this module, retaining its strict
@@ -56,6 +92,10 @@ report keeps its existing baseline selection, labels and first-external-declarat
 policy; generic recognition does not silently widen the service contract.
 IOC also retains its enumeration failure for a composite with opaque children;
 the shared inspector itself reports incomplete coverage for those children.
+IOC's accepted-alias notices now use the same inspection snapshot and carry
+concrete endpoint indexes. The local naming policy still controls whether to
+emit each hint, including older custom environment-source conventions that the
+generic inspector leaves unqualified. Removed-key failure hints remain IOC-owned.
 
 ## Verification and extension
 
@@ -66,3 +106,8 @@ collector schema and the real Boot Binder, including conversion failures and
 list replacement. These tests do not qualify a published consumer or another
 Boot version. See [configuration inspection](../../docs/dev/configuration-inspection.md)
 for the cross-module flow and extension rules.
+
+`MigrationInspectionTest` qualifies deprecated/removed names, indexed replacement
+hints, relaxed and environment spellings, source coverage and ambiguity. Its real
+Binder counterexample demonstrates why declarations cannot establish bound-value
+conflicts. Test dependencies and the runtime dependency graph are unchanged.

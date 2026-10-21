@@ -78,6 +78,9 @@ production-service integration remains future work.
   publication-tooling prerequisites.
 - [C0 qualification results](configuration-c0-analysis.md): 54 synthetic scenarios,
   actual Boot binding, extraction blockers and revised v1 support requirements.
+- [Configuration reuse after C1](configuration-extension-analysis.md): proposed
+  error/migration boundaries, reproduced output defects, command-source isolation,
+  test recipes and dependency/publication qualification.
 - [LIB-3 logging plan](lib-3-logging-design.md): SLF4J comparison, generic
   field/scope contracts, common ECS profile, masking, IOC migration and publication.
 - [LIB-3 ECS analysis](lib-3-logging-ecs-analysis.md): supported-field inventory,

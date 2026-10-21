@@ -10,6 +10,26 @@ current classes unchanged is not qualified. The C0 support matrix and required
 corrections refine the initial API sketch below; C1 implements the bounded
 inspection API and retains IOC compatibility policy locally.
 
+Post-C1 review, 2026-10-21: the
+[additional reuse analysis](configuration-extension-analysis.md) evaluates
+controlled error adaptation, migration observations and reusable command/test
+recipes. It reproduces input disclosure in two existing checker failure paths
+(CFG-5) and distinguishes restricted beans from restricted configuration sources.
+These are proposed extensions and qualification requirements, not changes to the
+implemented C1 API or automatic additions to C2–C4.
+
+The owner subsequently authorized the first step: CFG-5 correction and the
+[controlled failure-report contract](../../../dev/configuration-failure-reports.md).
+This is an IOC-local checkpoint; C1 public types and C2–C4 scope remain unchanged.
+
+Migration checkpoint, 2026-10-21: the owner authorized the next extension-analysis
+step. `PropertyMigration`, `MigrationInspector` and `MigrationInspection` now add
+name-only old-path observations to the same adapter. An unrelated schema and real
+Binder qualify the boundary; IOC reuses the observer for its existing accepted
+alias notice. Conversion, conflict rules and compatibility windows remain local.
+See the [inspection contract](../../../dev/configuration-inspection.md#configuration-evolution)
+and the extension checkpoint. C2–C4 remain pending; this does not admit publication.
+
 ## Recommendation and scope
 
 Extract a small Spring Boot integration library for **configuration property-name
