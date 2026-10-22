@@ -114,3 +114,15 @@ reused the original signed bundle, confirmed exact bytes at both repositories
 and passed two isolated cold consumers. This closes `R030-LIB` and the global
 `TEST-PUBLICATION-08` control; it does not close the separate module-hardening
 cells.
+
+### Configuration library implementation admission — 2026-10-22
+
+Configuration C1–C3 implements record-schema name/declaration inspection,
+explicit migration observations, IOC integration and the executable closed-input
+context recipe. [ADR 0046](../../ADR/0046-reusable-spring-boot-configuration-inspection.md)
+accepts the ownership boundary. Maven, analyzer and coverage registries include
+the adapter as a normal production module; their topology and fixed floors remain
+unchanged. The [C3 checkpoint](libs/configuration-library-design.md#c3-build-and-documentation-checkpoint--2026-10-22)
+records final local gates. C4 standalone POMs, dependency mediation, cold consumers
+and separately authorized publication remain open for this component; the earlier
+`R030-LIB` pilot closure does not qualify it automatically.

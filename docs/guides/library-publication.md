@@ -31,6 +31,48 @@ Its [consumer guide](logging-library.md) supplies the released dependency;
 the [module reference](../../platform/platform-logging-slf4j/README.md) describes
 the qualified API/backend boundary. This does not qualify a later version.
 
+## Configuration library admission
+
+`io.github.xorex-lc:ioc-config-spring-boot` is implemented in the reactor and its
+ownership is accepted in
+[ADR 0046](../ADR/0046-reusable-spring-boot-configuration-inspection.md).
+It is not yet an admitted component selector or a published artifact. The
+[consumer guide](configuration-library.md) and executable
+[restricted-context recipe](configuration-library-check.md) qualify application
+integration separately from repository resolution.
+
+Before adding this component to the publication commands or protected workflow:
+
+1. Review a parent-independent, resolved POM with exactly the required direct
+   compile JAR dependencies, `spring-boot` and `spring-core`, at the selected
+   versions. Preserve central version management in the reactor. Reject leaked
+   IOC dependencies, private parents, BOM imports, starters and executable Boot
+   packaging; retain exact main/sources/Javadoc/POM identity checks.
+2. Qualify the complete transitive graph and application mediation. The current
+   reactor resolves Boot 4.0.8 and Spring 7.0.9, including Spring Context,
+   AOP/Beans/Expression, Micrometer, Commons Logging and JSpecify. The two direct
+   dependencies do not imply a two-JAR runtime. Exercise a standalone application
+   with its own version management and fail incompatible mediation explicitly.
+3. Separate selected-library resolution from public third-party/plugin resolution
+   in empty-cache consumers. Own artifacts must resolve only from the selected
+   repository; approved public repositories may supply Spring and other external
+   dependencies. Qualify routing on the Maven wrapper's actual Resolver, including
+   missing-own-artifact negatives and successful third-party resolution. Repository
+   order alone does not prove isolation; include transitive own-artifact negatives
+   if that dependency family is later admitted.
+4. Run the actual inspection/migration and closed-input guide behavior from the
+   packaged dependency outside the checkout, without reactor class directories.
+   Retain manifests, origin checks and negative-case evidence. Re-run the older
+   components' publication contracts and the concurrency bundle/consumer regression
+   without weakening their exact dependency contracts.
+5. Integrate reviewed changes into the release branch before the separately
+   authorized protected validation/publication sequence. Preserve existing
+   component versions, signed bundles and tags.
+
+Current reactor tests and analyzer/coverage gates establish local integration.
+They do not establish the POM, mediation or repository guarantees above. No
+configuration publication command is available at this checkpoint.
+
 ## Local packaging qualification
 
 Use a complete JDK 21 (including `javadoc`), Python 3, GnuPG 2, the Maven wrapper and

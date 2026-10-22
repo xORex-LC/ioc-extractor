@@ -14,7 +14,7 @@ names in dated assessments identify historical baselines.
 These are release worknotes. A recorded design admission is an implementation
 target; accepted published ADRs and release/publication evidence remain separate.
 
-## Current work order — 2026-10-21
+## Current work order — 2026-10-22
 
 Logging L3-0–L3-4 is complete. The
 [fixed contract](lib-3-logging-contract.md) defines eight public types, five ECS
@@ -32,7 +32,13 @@ The [release record](lib-3-logging-design.md#protected-publication-record--2026-
 retains source/tag, deployment, hashes and consumer evidence. A deployed second
 service, live collector/Elasticsearch, load and other providers remain outside
 this qualification. The owner selected Spring Boot configuration next: C1
-implements the bounded inspection contract with C0 corrections. Events E1–E5
+implements the bounded inspection contract with C0 corrections. C2 adds explicit
+source policies, restricted-context qualification and an executable closed-input
+consumer guide. C3 promotes
+[ADR 0046](../../../ADR/0046-reusable-spring-boot-configuration-inspection.md),
+the consumer/reference/maps and publication-admission documentation, with unchanged
+Maven/analyzer/coverage scope. C4 packaging, dependency mediation and repository
+qualification remain. Events E1–E5
 remain deferred and ETL waits for a second consumer.
 
 Diagnostics publication is recorded in the release branch's D5 documentation

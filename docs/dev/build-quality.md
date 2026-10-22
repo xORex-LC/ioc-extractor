@@ -637,13 +637,31 @@ individual accepted finding unless the mechanism itself changes.
 - [`build-support/pmd-report/README.md`](../../build-support/pmd-report/README.md)
   — adopted PMD source-policy and watchlist report-module reference.
 
-## Published library coordinates
+## Reusable library coordinates and publication admission
 
 Report membership admits `io.github.xorex-lc` only for
 `ioc-platform-concurrency`, `ioc-platform-diagnostics-api` and
-`ioc-platform-logging-slf4j`; other reactor
+`ioc-platform-logging-slf4j`, plus the reactor-only
+`ioc-config-spring-boot`; other reactor
 JARs must retain `com.iocextractor`. Verifier negative fixtures reject a foreign
 group for an ordinary module and the retired group for each admitted library.
+
+The configuration adapter is a production scope in all four report registries:
+JaCoCo, SpotBugs, CPD and PMD. It has a required local coverage report and an
+aggregate group; the report POM dependencies and CPD/PMD source roots include it.
+The existing topology remains 30 reactor projects, 24 production groups and
+23 local coverage reports. Its extraction has an explicit coverage ratchet;
+publication admission must not change that denominator or relax any floor.
+
+Its main POM declares Boot and Spring Core; the reactor manages their versions.
+Boot also brings Spring Context and other dependencies transitively. The
+`ConfigurationCheckRecipeIT` suite compiles the exact application-owned guide
+and runs with shared configuration classes plus third-party JARs, without IOC.
+It is ordinary Failsafe evidence and adds no report module or YAML dependency
+to the library. Architecture tests enforce its Spring adapter boundary.
+[ADR 0046](../ADR/0046-reusable-spring-boot-configuration-inspection.md) records
+that ownership; parent-independent POMs, mediation and cold repository consumers
+remain a separate [publication admission](../guides/library-publication.md#configuration-library-admission).
 
 The logging module joins the report manifests, regular reactor gates and the
 standalone library-consumer matrix. Its resolved POM must preserve exactly one

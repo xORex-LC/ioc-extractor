@@ -10,6 +10,9 @@ The configuration library is still a reactor dependency at `0.3.0-SNAPSHOT`;
 published-artifact consumption remains a separate release step. See the
 [API reference](../../adapters/adapter-config-spring-boot/README.md) for supported
 schemas and the [inspection flow](../dev/configuration-inspection.md) for ownership.
+The [consumer guide](configuration-library.md) covers name outcomes and migration
+observations; [ADR 0046](../ADR/0046-reusable-spring-boot-configuration-inspection.md)
+records the shared-library and application boundary.
 
 ## Choose a source policy
 

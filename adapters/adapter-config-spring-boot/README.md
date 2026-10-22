@@ -7,6 +7,9 @@ reactor; publication and repository-consumer qualification are separate work.
 **Layer rule:** a Spring integration adapter, consumed explicitly by bootstrap.
 Main dependencies are Spring Boot and Spring Core; no starter, auto-configuration,
 IOC model, diagnostics, logging provider or application port is required.
+Boot transitively brings Spring Context and its dependencies. The parent manages
+versions; standalone POM/dependency mediation is a separate publication gate.
+The ownership decision is [ADR 0046](../../docs/ADR/0046-reusable-spring-boot-configuration-inspection.md).
 
 ## Public contract
 
@@ -99,6 +102,8 @@ generic inspector leaves unqualified. Removed-key failure hints remain IOC-owned
 
 ## Verification and extension
 
+Start with the [consumer guide](../../docs/guides/configuration-library.md) for
+source selection, coverage handling, migration observations and service policy.
 For application-owned binding and semantic validation, use the
 [restricted-context recipe](../../docs/guides/configuration-library-check.md).
 It defines explicit YAML/override inputs and import/profile rejection, while IOC

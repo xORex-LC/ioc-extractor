@@ -5,6 +5,11 @@ record schema and reports ordered source observations. The service owns settings
 semantic validation, diagnostic codes, output policy and enforcement. Boot owns
 binding, conversion and precedence.
 
+The ownership decision is
+[ADR 0046](../ADR/0046-reusable-spring-boot-configuration-inspection.md).
+The [consumer guide](../guides/configuration-library.md) describes integration;
+this document describes the implementation flow and its invariants.
+
 ## Runtime flow
 
 ```text

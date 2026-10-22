@@ -379,11 +379,23 @@ One new module test class changes the reviewed source universe from
 The test inventory and TESTING documentation change together. No coverage floor,
 ratchet, analyzer exclusion or verifier policy is weakened.
 
+### C2 follow-up — 2026-10-22
+
+The [C2 checkpoint](configuration-library-design.md#c2-restricted-context-checkpoint--2026-10-22)
+now implements two explicit policies: IOC retains effective Boot loading in its
+configuration-only context; the independent collector recipe takes one YAML
+document and explicit literal overrides, rejects imports/profiles/placeholders
+and never invokes ConfigData. Indexed extra bean sources exposed an actual
+checker defect and are now rejected across loaded channels before instantiation.
+Lifecycle flags belong to the checker. The guide is compiled and run without
+IOC classes; actual IOC binding qualifies whole-list replacement. Shared API
+and dependencies are unchanged. Final gates and scope limits are recorded in
+the checkpoint, not inferred from guide compilation alone.
+
 ### Remaining work
 
-C2's restricted-context recipe and its permitted import/profile/source policy
-remain next. Generic error-adapter admission and a second production-service
-consumer are unqualified. C3 owns the accepted ADR and consumer guide; C4 owns
+Generic error-adapter admission and a second production-service consumer remain
+unqualified. C3 owns the accepted ADR and remaining documentation promotion; C4 owns
 standalone dependency mediation, cold repository consumers and publication.
 This checkpoint does not claim publication, deployed behavior or compatibility
 outside the reactor's Java 21 / Boot 4.0.8 baseline.

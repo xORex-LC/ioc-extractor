@@ -63,6 +63,7 @@
 | [0043-configurable-csv-output-format.md](0043-configurable-csv-output-format.md) | Explicit LF/CRLF and independent header/data quoting, strict unquoted validation, unchanged v1 bytes and versioned layout manifests. |
 | [0044-reusable-diagnostics-contract.md](0044-reusable-diagnostics-contract.md) | Общий JDK-only контракт diagnostics: коды сервиса, чистые policy decisions, bounded samples и точные counts; локальные IOC-каталоги/исключения и отдельный допуск публикации. Принято 2026-10-18; удалённая публикация ожидает отдельного разрешения. |
 | [0045-reusable-slf4j-logging-contract.md](0045-reusable-slf4j-logging-contract.md) | Общий SLF4J API, восстановление MDC, скалярный профиль ECS и явное маскирование; IOC-каталоги и Boot backend остаются локальными. Синхронный рецепт и границы квалификации проверяются отдельно от публикации. Принято 2026-10-20. |
+| [0046-reusable-spring-boot-configuration-inspection.md](0046-reusable-spring-boot-configuration-inspection.md) | Общая проверка имён и наблюдение миграций по неизменяемому снимку; загрузка источников, binding, валидация значений и область отказа принадлежат сервису. Ограниченный контекст и закрытые входы проверяются раздельно; публикация требует отдельного допуска. Принято 2026-10-22. |
 
 ## Формат
 

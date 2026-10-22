@@ -48,6 +48,11 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 [ADR 0045](ADR/0045-reusable-slf4j-logging-contract.md). Подключение другого
 сервиса описано в [руководстве](guides/logging-library.md) и отдельном
 [рецепте Boot ECS](guides/logging-library-boot.md).
+Граница проверки имён конфигурации и наблюдения миграций принята в
+[ADR 0046](ADR/0046-reusable-spring-boot-configuration-inspection.md).
+Сервис выбирает источники и состав бинов независимо: IOC сохраняет импорты и
+профили Boot, а отдельный [рецепт](guides/configuration-library-check.md)
+проверяет один явный документ с закрытым набором входов.
 
 ## Слои и пакеты
 

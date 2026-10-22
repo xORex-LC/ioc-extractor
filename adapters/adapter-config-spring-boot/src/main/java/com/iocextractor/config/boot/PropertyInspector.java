@@ -17,7 +17,7 @@ import static com.iocextractor.config.boot.PropertyInspection.SourceReference;
 /**
  * Inspects declarations in a prepared Spring environment without reading property values.
  * Call this after source preparation and before service-selected enforcement. Binder still
- * owns loading, conversion and precedence; this class starts no context or background work.
+ * owns conversion and precedence; Boot prepares sources. This class starts no context or background work.
  */
 public final class PropertyInspector {
 
