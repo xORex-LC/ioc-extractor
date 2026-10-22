@@ -22,6 +22,13 @@ is no durable state, retry, reload, background work or automatic bean scanning.
 
 ## Boundaries
 
+The [restricted-context guide](../guides/configuration-library-check.md) separates
+bean selection from source loading. IOC retains effective Boot sources, imports
+and profiles; the application-owned collector example accepts one explicit YAML
+document plus literal overrides and never invokes ConfigData. Its exact Java
+example runs in a separate JVM without IOC classes. Neither policy is imposed
+by the shared inspector, which receives already-prepared sources.
+
 `adapters/adapter-config-spring-boot` depends on Spring Boot and Spring Core.
 Bootstrap is its current IOC consumer; core and platform modules cannot import
 it. The [module reference](../../adapters/adapter-config-spring-boot/README.md)

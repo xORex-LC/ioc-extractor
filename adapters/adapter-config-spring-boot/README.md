@@ -99,6 +99,13 @@ generic inspector leaves unqualified. Removed-key failure hints remain IOC-owned
 
 ## Verification and extension
 
+For application-owned binding and semantic validation, use the
+[restricted-context recipe](../../docs/guides/configuration-library-check.md).
+It defines explicit YAML/override inputs and import/profile rejection, while IOC
+keeps ordinary effective Boot loading. `ConfigurationCheckRecipeIT` compiles the
+exact guide without IOC classes; this adds no runner, YAML loader, starter or
+new public type to this JAR. Cold repository consumption remains unqualified.
+
 `PropertyInspectionTest` covers matching, ambiguity, source order, immutable
 results, coverage and the no-value-read boundary. `PropertySchemaTest` covers
 supported and unsupported record shapes. `GenericConsumerTest` uses an unrelated

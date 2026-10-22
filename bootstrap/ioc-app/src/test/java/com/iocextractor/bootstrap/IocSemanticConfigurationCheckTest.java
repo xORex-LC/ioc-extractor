@@ -5,6 +5,8 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
@@ -261,20 +263,83 @@ class IocSemanticConfigurationCheckTest {
         assertThat(IocConfigurationCheckFailure.from(failure).toString()).doesNotContain("secret");
     }
 
-    @Test
-    void rejectsCallerControlledConfigLocation() {
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "--spring.config.location=file:/tmp/other.yml", "--spring.config.location[0]=other.yml",
+            "--spring.config.additional-location=other.yml", "--spring.config.additionalLocation[0]=other.yml",
+            "--spring.config.additionallocation=other.yml", "--spring.config.import[0]=other.yml",
+            "--spring.config.import", "--spring.config.name[0]=other", "--spring.config.name=other"
+    })
+    void rejectsCallerControlledConfigLocation(String argument) {
         var errors = new StringWriter();
 
         var result = IocSemanticConfigurationCheck.executeIfRequested(
                 new String[] {
                         "--ioc.validate-config=candidate.yml",
-                        "--spring.config.location=file:/tmp/other.yml"
+                        argument
                 },
                 writer(new StringWriter()),
                 writer(errors));
 
         assertThat(result).hasValue(IocSemanticConfigurationCheck.CONFIGURATION_ERROR_EXIT_CODE);
         assertThat(errors.toString()).contains("CONFIG.SEMANTIC_USAGE");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "health", "--debug", "--ioc.pipeline.deduplicate=false",
+            "--spring.main.keep-alive=true", "--spring.config.on-not-found=ignore" })
+    void acceptsArgumentsThatDoNotChangeTheOwnedConfigLocations(String argument) throws Exception {
+        Path candidate = candidate("ioc.runtime.mode: oneshot\n");
+        var output = new StringWriter();
+        var errors = new StringWriter();
+
+        var result = IocSemanticConfigurationCheck.executeIfRequested(new String[] {
+                "--ioc.validate-config=" + candidate, argument
+        }, writer(output), writer(errors));
+
+        assertThat(result).withFailMessage(errors.toString()).hasValue(0);
+        assertThat(output.toString()).contains("CONFIG.SEMANTIC_VALID");
+        assertThat(errors.toString()).isEmpty();
+    }
+
+    @Test
+    void leavesOrdinaryApplicationArgumentsForTheCaller() {
+        var output = new StringWriter();
+        var errors = new StringWriter();
+
+        var result = IocSemanticConfigurationCheck.executeIfRequested(
+                new String[] { "health" }, writer(output), writer(errors));
+
+        assertThat(result).isEmpty();
+        assertThat(output.toString()).isEmpty();
+        assertThat(errors.toString()).isEmpty();
+    }
+
+    @Test
+    void rejectsMultipleOrEmptyCandidatesBeforeOpeningAFile() {
+        for (String[] arguments : List.of(
+                new String[] { "--ioc.validate-config=first.yml", "--ioc.validate-config=second.yml" },
+                new String[] { "--ioc.validate-config= " })) {
+            var errors = new StringWriter();
+
+            var result = IocSemanticConfigurationCheck.executeIfRequested(
+                    arguments, writer(new StringWriter()), writer(errors));
+
+            assertThat(result).hasValue(78);
+            assertThat(errors.toString()).contains("CONFIG.SEMANTIC_USAGE");
+        }
+    }
+
+    @Test
+    void classifiesInvalidPathsWithoutPrintingTheInput() {
+        var errors = new StringWriter();
+
+        var result = IocSemanticConfigurationCheck.executeIfRequested(
+                new String[] { "--ioc.validate-config=invalid\u0000path-secret" },
+                writer(new StringWriter()), writer(errors));
+
+        assertThat(result).hasValue(78);
+        assertThat(errors.toString()).contains("CONFIG.SEMANTIC_UNREADABLE").doesNotContain("path-secret");
     }
 
     @Test
@@ -310,6 +375,30 @@ class IocSemanticConfigurationCheckTest {
         Path candidate = tempDir.resolve("application.candidate.yml");
         Files.writeString(candidate, content);
         return candidate;
+    }
+
+    @Test
+    void rejectsIndexedApplicationSourcesBeforeTheyCanExtendTheContext() throws Exception {
+        Path candidate = candidate("spring.main.sources[0]: java.lang.String\n");
+        var errors = new StringWriter();
+
+        int result = IocSemanticConfigurationCheck.validate(
+                candidate, List.of(), writer(new StringWriter()), writer(errors));
+
+        assertThat(result).isEqualTo(IocSemanticConfigurationCheck.CONFIGURATION_ERROR_EXIT_CODE);
+        assertThat(errors.toString()).contains("CONFIG.SEMANTIC_SOURCE_OVERRIDE");
+    }
+
+    @Test
+    void cannotDisableSemanticValidationWithLazyInitialization() throws Exception {
+        Path candidate = candidate("ioc.ingestion.concurrency: 2\nspring.main.lazy-initialization: true\n");
+        var errors = new StringWriter();
+
+        int result = IocSemanticConfigurationCheck.validate(
+                candidate, List.of(), writer(new StringWriter()), writer(errors));
+
+        assertThat(result).isEqualTo(IocSemanticConfigurationCheck.CONFIGURATION_ERROR_EXIT_CODE);
+        assertThat(errors.toString()).contains("CONFIG.VALIDATION_FAILED", "ioc.ingestion.concurrency");
     }
 
     private PrintWriter writer(StringWriter target) {
