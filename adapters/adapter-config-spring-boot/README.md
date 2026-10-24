@@ -1,14 +1,16 @@
 # ioc-config-spring-boot
 
 Property-name inspection and ordered declaration observations for a service-owned
-Spring Boot record schema. Requires Java 21. The module is implemented in the
-reactor; publication and repository-consumer qualification are separate work.
+Spring Boot record schema. Requires Java 21. Standalone packaging and local cold-consumer checks use the `configuration`
+selector in the [publication guide](../../docs/guides/library-publication.md).
+Protected publication and consumers of the released version are separate gates.
 
 **Layer rule:** a Spring integration adapter, consumed explicitly by bootstrap.
 Main dependencies are Spring Boot and Spring Core; no starter, auto-configuration,
 IOC model, diagnostics, logging provider or application port is required.
 Boot transitively brings Spring Context and its dependencies. The parent manages
-versions; standalone POM/dependency mediation is a separate publication gate.
+versions. The standalone POM pins Boot 4.0.8 and Core 7.0.9 without the private
+parent. The consumer qualifies both default mediation and an application Boot BOM.
 The ownership decision is [ADR 0046](../../docs/ADR/0046-reusable-spring-boot-configuration-inspection.md).
 
 ## Public contract

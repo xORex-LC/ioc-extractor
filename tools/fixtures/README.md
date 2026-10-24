@@ -10,3 +10,6 @@ not reactor modules and must resolve packaged artifacts without reactor classes.
   transitive API dependency and deliberate missing/unavailable dependency failures.
 - [logging-boot-consumer](logging-boot-consumer/README.md): actual application-owned
   Boot Java/YAML/XML recipe and JSON/status checks from packaged JARs.
+- [configuration-consumer](configuration-consumer/README.md): packaged inspection
+  and migration, exact closed-input guide, application BOM mediation and
+  selected-repository failure/control probes.

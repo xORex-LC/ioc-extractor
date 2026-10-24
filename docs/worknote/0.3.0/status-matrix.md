@@ -126,3 +126,14 @@ unchanged. The [C3 checkpoint](libs/configuration-library-design.md#c3-build-and
 records final local gates. C4 standalone POMs, dependency mediation, cold consumers
 and separately authorized publication remain open for this component; the earlier
 `R030-LIB` pilot closure does not qualify it automatically.
+
+
+### Configuration C4 local publication qualification — 2026-10-24
+
+The [C4 checkpoint](libs/configuration-library-design.md#c4-standalone-packaging-and-consumer-checkpoint--2026-10-24)
+records the standalone POM, full default/application-BOM dependency graphs,
+packaged inspection/migration and exact restricted-context guide, empty-cache
+repository-routing negatives/control, and older component regressions. The CI
+matrix and protected workflow accept the explicit `configuration` selector.
+Existing signed releases and tags are unchanged. Protected validation/publication,
+release-repository consumers and a deployed second service remain separate gates.

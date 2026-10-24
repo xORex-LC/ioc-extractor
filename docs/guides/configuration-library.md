@@ -5,9 +5,9 @@ and returns immutable observations. Your service decides which inputs to load,
 how to bind and validate values, and what an error prevents from starting.
 
 The reactor coordinate is `io.github.xorex-lc:ioc-config-spring-boot:0.3.0-SNAPSHOT`.
-Java 21 is required. Repository publication and cold-consumer qualification are
-pending; the [publication guide](library-publication.md#configuration-library-admission)
-tracks their admission requirements. The current compatibility baseline is
+Java 21 is required. The [publication guide](library-publication.md#configuration-library-admission)
+provides local standalone bundle and cold-consumer commands. Protected repository
+publication remains a separate release step. The current compatibility baseline is
 Spring Boot 4.0.8. Choose dependency versions through your application's management;
 compatibility with another Boot baseline needs qualification.
 

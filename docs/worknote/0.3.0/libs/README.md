@@ -37,8 +37,10 @@ source policies, restricted-context qualification and an executable closed-input
 consumer guide. C3 promotes
 [ADR 0046](../../../ADR/0046-reusable-spring-boot-configuration-inspection.md),
 the consumer/reference/maps and publication-admission documentation, with unchanged
-Maven/analyzer/coverage scope. C4 packaging, dependency mediation and repository
-qualification remain. Events E1–E5
+Maven/analyzer/coverage scope. C4 adds the standalone POM, dependency mediation,
+packaged API/guide consumers and selected-repository routing; its checkpoint in
+the [configuration plan](configuration-library-design.md) records local evidence.
+Protected publication and repository release consumers remain separate. Events E1–E5
 remain deferred and ETL waits for a second consumer.
 
 Diagnostics publication is recorded in the release branch's D5 documentation

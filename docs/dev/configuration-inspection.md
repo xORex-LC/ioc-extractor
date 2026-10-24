@@ -118,3 +118,14 @@ requires compatibility requalification; no all-version promise is implied.
 
 Update this document when schema/source support, coverage meaning, result
 ownership or the service enforcement boundary changes.
+
+## Standalone qualification
+
+The `configuration` publication selector builds a resolved POM without the reactor
+parent. Its consumer runs inspection/migration and the exact closed-input guide
+outside the checkout, using packaged JARs. The application owns Spring Context,
+SnakeYAML and its BOM. Default mediation and Boot BOM mediation differ in Commons
+Logging (1.3.5/1.3.6) and JSpecify (1.0.0/1.0.1); both graphs are checked explicitly.
+Spring dependency downgrades and unavailable managed versions have negative checks.
+See the [publication guide](../guides/library-publication.md#configuration-library-admission)
+for cold-cache routing, artifact identity and release admission.

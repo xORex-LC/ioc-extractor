@@ -1,7 +1,7 @@
 # Spring Boot configuration library proposal
 
 Status: C1 implemented, 2026-10-21; C2–C3 implemented, 2026-10-22;
-C4 remains pending. The owner
+C4 implemented and locally qualified, 2026-10-24. The owner
 selected configuration after logging publication. This worknote is not an accepted
 ADR, publication admission or new numbered LIB commitment.
 
@@ -153,9 +153,9 @@ The following paths are relative to
    path; do not publish the existing class as an in-process utility.
 
 7. **Existing publication tooling admits a different dependency shape.** The
-   concurrency-only script rejects any consumer POM dependencies and mirrors
-   Central to the selected target repository. A Boot library needs third-party
-   dependencies. Its local/GitHub consumer cannot rely on that repository also
+   original concurrency-only script rejected consumer POM dependencies. Logging
+   added one exact SLF4J dependency, but a Boot library needs a wider third-party
+   closure and application mediation. Its local/GitHub consumer cannot rely on that repository also
    hosting Spring. Removing isolation would allow a different repository to hide
    an incomplete publication. Tooling qualification is a prerequisite, not a
    post-publication cleanup task.
@@ -330,7 +330,7 @@ enforce the required routing, resolve that limitation before publication admissi
 ## Implementation slices and acceptance criteria
 
 C1 is implemented with the C0 corrections below; C2–C3 have checkpoints below.
-C4 remains later work.
+C4 implementation and qualification are recorded in its checkpoint below.
 This document authorizes no publication action.
 
 | Slice | Work | Exit evidence |
@@ -633,3 +633,94 @@ defines those prerequisites without adding a component selector or authorizing
 publication. Existing concurrency, diagnostics and logging release identities
 remain immutable. No second deployed consumer or provisioned external check is
 claimed by C3.
+
+## C4 standalone packaging and consumer checkpoint — 2026-10-24
+
+Source: `r030-libraries`, HEAD `2f17923e31e06d1ccd961bee06af64d6b125657a`
+plus this C4 worktree. Local bundles use `0.3.0-SNAPSHOT`, are unsigned and record
+`dirty=true`. This is preparation for review, not a frozen release identity or
+permission to publish. No production Java API or reactor membership changes.
+
+The `configuration` descriptor and workflow selector now admit only the reviewed
+artifact. Flattening emits a concrete POM with Boot 4.0.8 and Core 7.0.9 as required
+compile JARs. Packaging checks all six public types in main/sources/Javadoc,
+Java 21 bytecode, the license and identical embedded/external POMs. Bundle reads
+retain exact dependency contracts and additionally reject duplicate POM fields,
+non-JAR packaging, unknown root fields and invalid model versions. Every element
+must use the Maven POM namespace: an unqualified dependency container or
+scope/optional element must not evade these guards. The older
+zero-dependency and exact-SLF4J contracts are preserved.
+
+The standalone application compiles outside the checkout, with no reactor class
+directories. It checks name-only inspection, unknown/shadowed declarations,
+removed-name observation and concrete list-index replacement. It compiles the
+exact closed-input guide plus its existing independent driver and runs a bounded
+child JVM. Explicit overrides/list replacement, safe failures, rejected imports,
+profiles/placeholders, ambient-input isolation and absence of component scanning
+are exercised both with default mediation and an application-owned Boot BOM.
+
+The complete library graph contains ten external JARs. The application adds
+SnakeYAML 2.6 explicitly. Both mediated graphs are asserted:
+
+| Dependency | Default mediation | Application Boot 4.0.8 BOM |
+|---|---|---|
+| Spring Boot | 4.0.8 | 4.0.8 |
+| Spring Core/Context/AOP/Beans/Expression | 7.0.9 | 7.0.9 |
+| Micrometer Observation/Commons | 1.16.7 | 1.16.7 |
+| Commons Logging | 1.3.5 | 1.3.6 |
+| JSpecify | 1.0.0 | 1.0.1 |
+
+The last two differences were hidden by reactor management. They are not silently
+promoted into extra library dependencies or an exported BOM. A deliberate Core
+5.3.39 downgrade must fail Enforcer's Spring upper-bound check; an unavailable
+managed Boot version must fail dependency resolution. Enforcer 3.6.2 qualification
+uses explicit `groupId:artifactId` includes: the earlier group-only setting failed
+to detect the downgrade and its evidence is retained. This supports the tested
+baselines, not arbitrary Spring substitutions or a new vulnerability-scan claim.
+
+Maven 3.9.9's actual Resolver 1.9.22 is qualified using explicit literal-group
+files for every original/mirrored repository ID. Public rules include the reviewed
+plugin and imported-BOM/parent model groups, and exclude own groups. Other IDs
+are mirrored to approved Central with its own filter. The selected target admits
+only own coordinates. Empty caches and empty user/global settings prevent local
+installation from masking missing artifacts. All four own files must match the
+manifest and have only `library-target` as recorded origin.
+
+Two additional cold probes place the exact four files in an alternate repository
+and leave the selected target empty. Filtering must reject fallback; disabling it
+must compile and record the alternate origin. This control also works when the
+version is already in Central because the alternate precedes the public route.
+No own transitive dependency is admitted; admitting one requires additional
+missing-transitive-artifact cases. GitHub credentials remain scoped to the selected
+target's server ID.
+
+Local evidence:
+
+- `make library-publication-test`: 119 offline contract cases, including all four
+  components, wrong-component/tag rejection, POM/dependency/archive guards,
+  immutable recovery, origins, signing with disposable keys and credential scope.
+- Configuration bundle and cold consumer: `.dev/config-c4-bundle.log`,
+  `.dev/config-c4-consumer.log`; the final six-type archive check in
+  `.dev/config-c4-final-bundle` retains exactly the same four hashes.
+- Concurrency/diagnostics/logging bundle and cold-consumer regressions:
+  `.dev/config-c4-<component>-bundle.log` and
+  `.dev/config-c4-<component>-consumer.log`; summary
+  `.dev/config-c4-qualification.log`. Five standalone fixtures plus two routing
+  probes start with separate empty caches. No published RC is overwritten.
+- Final release-gate commands: `make verify`, `make pmd-analysis`, `make docs` and
+  `git diff --check`; logs `.dev/config-c4-verify.log`, `.dev/config-c4-pmd.log`,
+  `.dev/config-c4-docs.log`. Current context and ignored handoff retain exact
+  outcomes/freshness. Analyzer identities are compared with retained C3 XML;
+  no floor, ratchet, exclusion or lifecycle registry is changed.
+
+Retain discovery/failure evidence: `.dev/config-c4-consumer-*-failed.log`,
+`.dev/config-c4-record-groups.log` (record mode, not filtering qualification),
+`.dev/config-c4-bom-models.json`, `.dev/config-c4-resolver.txt` and
+`.dev/config-c4-debug-mediation.log`. These explain dependency-model admission,
+actual mediation differences and the corrected downgrade check.
+
+Next admission is review/commits/PR into `release-0.3.0`, followed by separately
+authorized protected validation/publication and cold consumers from both release
+repositories. A second deployed service, live external checks and other Boot
+baselines remain unqualified. Existing signed bundles, published versions and
+component tags are untouched; events remain deferred.

@@ -6,8 +6,9 @@ both the beans and the configuration sources. Restricting beans alone does not
 restrict imports, profiles or environment overrides.
 
 This recipe is application code, qualified with Java 21 and Spring Boot 4.0.8.
-The configuration library is still a reactor dependency at `0.3.0-SNAPSHOT`;
-published-artifact consumption remains a separate release step. See the
+The configuration library can be packaged and consumed locally at `0.3.0-SNAPSHOT`
+through the [publication tooling](library-publication.md). Publishing a release and
+consuming that version from Central/GitHub remain separate release steps. See the
 [API reference](../../adapters/adapter-config-spring-boot/README.md) for supported
 schemas and the [inspection flow](../dev/configuration-inspection.md) for ownership.
 The [consumer guide](configuration-library.md) covers name outcomes and migration
