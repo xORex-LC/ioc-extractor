@@ -34,6 +34,21 @@ the qualified API/backend boundary. This does not qualify a later version.
 
 ## Configuration library admission
 
+Configuration `0.3.0-rc.1` passed protected publication and the GitHub Packages
+cold consumer in
+[run 40088095516](https://github.com/xORex-LC/ioc-extractor/actions/runs/40088095516).
+The original Central consumer failed because Resolver grouped identical Central
+URLs under a restrictive target filter. The shell also concealed the failure
+behind `tee`, so that workflow's green status is not Central qualification.
+A local recovery consumer passed on 2026-10-24 with corrected routing, the same
+signed bundle and empty caches. The workflow now propagates pipeline failures;
+these tooling corrections still need release-branch integration and a CI recovery
+run. The original failed log is retained. Its
+[consumer guide](configuration-library.md) supplies the released dependency
+and the [restricted-context recipe](configuration-library-check.md) qualifies
+service-owned binding and validation. This evidence covers that version and the
+documented Boot baseline; it does not qualify a deployed second service.
+
 `io.github.xorex-lc:ioc-config-spring-boot` is implemented in the reactor and its
 ownership is accepted in
 [ADR 0046](../ADR/0046-reusable-spring-boot-configuration-inspection.md).
@@ -296,7 +311,8 @@ After a version has passed publication qualification, add:
 ```
 
 The example uses the qualified concurrency pilot release. The
-[diagnostics guide](diagnostics-library.md) supplies its released dependency.
+[diagnostics guide](diagnostics-library.md) and
+[configuration guide](configuration-library.md) supply their released dependencies.
 Central needs no additional repository configuration. For GitHub Packages use
 `https://maven.pkg.github.com/xorex-lc/ioc-extractor` and matching Maven server
 credentials with package read access. Even public GitHub Maven packages require

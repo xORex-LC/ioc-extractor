@@ -14,7 +14,7 @@ names in dated assessments identify historical baselines.
 These are release worknotes. A recorded design admission is an implementation
 target; accepted published ADRs and release/publication evidence remain separate.
 
-## Current work order — 2026-10-22
+## Current work order — 2026-10-24
 
 Logging L3-0–L3-4 is complete. The
 [fixed contract](lib-3-logging-contract.md) defines eight public types, five ECS
@@ -40,8 +40,16 @@ the consumer/reference/maps and publication-admission documentation, with unchan
 Maven/analyzer/coverage scope. C4 adds the standalone POM, dependency mediation,
 packaged API/guide consumers and selected-repository routing; its checkpoint in
 the [configuration plan](configuration-library-design.md) records local evidence.
-Protected publication and repository release consumers remain separate. Events E1–E5
-remain deferred and ETL waits for a second consumer.
+PR 18 integrated configuration into `release-0.3.0`.
+`io.github.xorex-lc:ioc-config-spring-boot:0.3.0-rc.1` is published to Central and
+GitHub Packages from the immutable validated bundle. The GitHub cold consumer
+passed in run `40088095516`; Central passed locally after correcting a
+same-URL Resolver filter conflict. The original workflow concealed Central's
+failure behind `tee`. Routing and pipeline-failure fixes have regression coverage;
+review/integration and a protected CI recovery run remain next. The
+[configuration release record](configuration-library-design.md#protected-publication-record--2026-10-24)
+separates the original failure, local recovery and immutable release identity.
+Events E1–E5 remain deferred and ETL waits for a second consumer.
 
 Diagnostics publication is recorded in the release branch's D5 documentation
 (commit `ce5675e2a74243ede83211cca090570976c6bbce`). The older diagnostics checkpoint

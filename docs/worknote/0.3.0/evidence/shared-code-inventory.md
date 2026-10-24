@@ -2,7 +2,7 @@
 title: "0.3.0 shared-code inventory"
 version: "0.3.0"
 goal_id: "R030-LIB"
-status: "LIB-1 and LIB-2 published and qualified"
+status: "LIB-1 through LIB-3 qualified; configuration published, CI recovery pending"
 document_type: "Evidence ledger"
 source_of_truth: false
 language: "en"
@@ -22,7 +22,7 @@ not a current publication test.
 
 | Module/capability | Category | Responsibility | Current consumers | IOC-specific coupling | Publication disposition |
 |---|---|---|---|---|---|
-| `adapters/adapter-config-spring-boot` | Cross-service integration candidate | Record-schema name inspection and ordered source observations | IOC bootstrap, unrelated-schema Binder tests and executable restricted-context guide | Spring Boot/Core with transitive Spring Context closure; schemas, source loading and enforcement remain service-owned | C1–C4 implemented; [ADR 0046](../../../ADR/0046-reusable-spring-boot-configuration-inspection.md); standalone POM, local cold consumer, application mediation and fail-closed routing qualified; protected publication/release consumers pending |
+| `adapters/adapter-config-spring-boot` | Published cross-service integration | Record-schema name inspection and ordered source observations | IOC bootstrap, unrelated-schema Binder tests and executable restricted-context guide | Spring Boot/Core with transitive Spring Context closure; schemas, source loading and enforcement remain service-owned | `0.3.0-rc.1` published to Central/GitHub; GitHub CI consumer and local Central recovery passed; tooling integration/CI recovery pending; [release record](../libs/configuration-library-design.md#protected-publication-record--2026-10-24) |
 | `platform/platform-errors` | Service-shared | Root unchecked exception contract | diagnostics, ETL, application, four adapters, bootstrap | High: `IocExtractorException` and `com.iocextractor.common` express this product | Keep internal; not a first publication unit |
 | `platform/platform-diagnostics-api` | Cross-service platform | JDK-only values, results/policies, bounded samples/counts and sinks | Local diagnostics, ETL, application, adapters and bootstrap | JDK-only closure; isolated local and remote RC consumers qualified | `published-qualified`; `0.3.0-rc.1` from Central and GitHub Packages |
 | `platform/platform-diagnostics` | Service-shared product metadata | IOC catalogs, exception and rendering | ETL, application, diagnostics bridge, four adapters, bootstrap | IOC categories/messages and `platform-errors` closure | Retained locally after D1 split |

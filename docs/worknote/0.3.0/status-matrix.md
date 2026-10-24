@@ -137,3 +137,17 @@ repository-routing negatives/control, and older component regressions. The CI
 matrix and protected workflow accept the explicit `configuration` selector.
 Existing signed releases and tags are unchanged. Protected validation/publication,
 release-repository consumers and a deployed second service remain separate gates.
+
+### Configuration protected publication and local recovery — 2026-10-24
+
+PR 18 integrated configuration; protected validation `40087127800` and publication
+`40088095516` reused one signed bundle and Central deployment. Version
+`io.github.xorex-lc:ioc-config-spring-boot:0.3.0-rc.1` is published in both registries.
+GitHub's cold consumer passed. The original Central consumer failed because of
+same-URL repository filtering; `tee` concealed that failure from the job result.
+A local cold Central consumer passed after correcting routing, with unchanged
+release bytes. Two regressions cover routing and pipeline-failure propagation;
+121 publication tests pass. Tooling integration and a protected CI recovery run
+remain open, alongside the separate second-service deployment qualification.
+The [release record](libs/configuration-library-design.md#protected-publication-record--2026-10-24)
+retains identities and distinguishes the original failure from local recovery.

@@ -6,8 +6,8 @@ adapters и bootstrap собираются как отдельные Maven-мо�
 
 Пилотная библиотека `platform-concurrency` использует Maven groupId
 `io.github.xorex-lc`; выделенный `platform-diagnostics-api` использует ту же
-группу. Опубликованный `platform-logging-slf4j` и новый
-`adapter-config-spring-boot` (`ioc-config-spring-boot`, пока только reactor) также
+группу. Опубликованные `platform-logging-slf4j` и
+`adapter-config-spring-boot` (`ioc-config-spring-boot`) также
 используют `io.github.xorex-lc`. Остальные модули сохраняют `com.iocextractor`. Публикуемый
 POM библиотеки не зависит от parent реактора. Политика —
 [ADR 0028](ADR/0028-pilot-library-publication.md), контракт диагностики —
