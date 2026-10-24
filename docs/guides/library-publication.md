@@ -61,11 +61,18 @@ Every component's standalone consumer uses Maven 3.9.9's bundled Resolver 1.9.22
 The group filter needs an input file for each repository: without one it abstains,
 as described in the [Resolver documentation](https://maven.apache.org/resolver-1.x/remote-repository-filtering.html).
 The tool writes explicit rule files for `central`, `library-target`,
-`public-dependencies`, `public-plugins` and `public-fallback`. The selected target
-admits only `io.github.xorex-lc`; public routes admit only the reviewed literal
+`public-dependencies`, `public-plugins` and `public-fallback`. Local and GitHub
+targets admit only `io.github.xorex-lc`; public routes admit only the reviewed literal
 [external groups](../../tools/ci/library-publication-groups.txt). A wildcard mirror
 redirects other repository IDs to the approved Central route. There is no
 unfiltered repository route in the qualification settings.
+
+When Central itself is selected, the selected endpoint also admits those same
+reviewed public groups. Resolver 1.9.22
+[groups downloads by URL](https://github.com/apache/maven-resolver/blob/maven-resolver-1.9.22/maven-resolver-impl/src/main/java/org/eclipse/aether/internal/impl/DefaultArtifactResolver.java#L649-L653),
+so different repository IDs at the same Central URL cannot use conflicting
+filters. Public routes still exclude own groups, and own artifacts must retain
+only `library-target` as origin. No additional external group is admitted.
 
 This allows Spring dependencies and Maven plugins to come from Central while
 own artifacts resolve only from the selected local/Central/GitHub target.
@@ -270,6 +277,9 @@ downloads can redirect to external HTTPS blob storage; the client follows only
 read redirects, strips authorization on an origin change and verifies the
 downloaded bytes against the retained bundle manifest. Write redirects remain rejected.
 A successful upload without both consumers is still incomplete qualification.
+The qualification step uses `set -euo pipefail` so a failing consumer stops the
+job even when output is piped through `tee`. Review the retained logs as well as
+the job conclusion; preserve a failed log separately when running recovery.
 The first live run must establish registry behavior, signing acceptance and
 package visibility.
 

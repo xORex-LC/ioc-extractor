@@ -463,6 +463,50 @@ class ConfigurationPublicationTest(LoggingPublicationTest):
 
 
 class ConsumerGuardTest(unittest.TestCase):
+    def test_central_download_group_admits_only_own_and_reviewed_public_groups(self):
+        for repository, url in [('central', PUB.CENTRAL), ('github', PUB.GITHUB), ('local', 'file:///selected')]:
+            with self.subTest(repository=repository), tempfile.TemporaryDirectory() as folder:
+                work = Path(folder)
+                PUB.consumer_settings(work, repository, url)
+                for identifier in ('central', 'library-target'):
+                    groups = (work / 'repository-filters' / ('groupId-' + identifier + '.txt')).read_text().splitlines()
+                    self.assertIn(PUB.GROUP, groups)
+                    self.assertEqual('org.springframework.boot' in groups, repository == 'central')
+                    self.assertNotIn('com.iocextractor', groups)
+                    self.assertNotIn('unreviewed.group', groups)
+                for identifier in ('public-dependencies', 'public-plugins', 'public-fallback'):
+                    groups = (work / 'repository-filters' / ('groupId-' + identifier + '.txt')).read_text().splitlines()
+                    self.assertIn('org.springframework.boot', groups)
+                    self.assertNotIn(PUB.GROUP, groups)
+
+    def test_workflow_propagates_each_consumer_failure_through_tee(self):
+        workflow = (PUB.ROOT / '.github/workflows/library-publication.yml').read_text()
+        step = workflow.split('      - name: Qualify each repository with a separate cold consumer\n', 1)[1]
+        commands = step.split('        run: |\n', 1)[1].split('      - name:', 1)[0]
+        commands = '\n'.join(line[10:] for line in commands.splitlines())
+        for central, github in [(17, 0), (0, 23), (0, 0)]:
+            with self.subTest(central=central, github=github), tempfile.TemporaryDirectory() as folder:
+                work = Path(folder)
+                stub = work / 'bin/python3'
+                stub.parent.mkdir()
+                stub.write_text('#!/bin/sh\n'
+                                'printf "%s\\n" "$*" >> "$CONSUMER_CALLS"\n'
+                                'case "$*" in\n'
+                                '  *"--repository central"*) exit "$CENTRAL_EXIT" ;;\n'
+                                '  *"--repository github"*) exit "$GITHUB_EXIT" ;;\n'
+                                '  *) exit 99 ;;\n'
+                                'esac\n')
+                stub.chmod(0o755)
+                calls = work / 'calls.txt'
+                env = {**os.environ, 'PATH': str(stub.parent) + os.pathsep + os.environ['PATH'],
+                       'LIBRARY_COMPONENT': 'configuration', 'CONSUMER_CALLS': str(calls),
+                       'CENTRAL_EXIT': str(central), 'GITHUB_EXIT': str(github)}
+                result = subprocess.run(['bash', '-e', '-c', commands], cwd=work, env=env,
+                                        capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, central or github)
+                self.assertTrue((work / 'library-consumer-evidence/central.log').exists())
+                self.assertEqual('--repository github' in calls.read_text(), central == 0)
+
     def test_public_allowlist_rejects_own_groups_even_with_whitespace(self):
         for group in (PUB.GROUP, PUB.GROUP + '.future', 'com.iocextractor'):
             with self.subTest(group=group), tempfile.TemporaryDirectory() as folder:

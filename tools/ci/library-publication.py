@@ -499,14 +499,19 @@ def consumer_settings(work, repository, url, public_url=CENTRAL):
     require(not any(g == GROUP or g.startswith((GROUP + '.', 'com.iocextractor')) for g in allowed),
             'own groups cannot enter the public repository allowlist')
     groups = '\n'.join(sorted(allowed)) + '\n'
+    target_groups = GROUP + '\n'
+    if repository == 'central' and url == CENTRAL:
+        # Resolver 1.9.22 groups downloads by URL, even across repository IDs.
+        # The selected Central endpoint also serves the reviewed public groups.
+        target_groups += groups
     for identifier, match, target in routes:
         mirror = ET.SubElement(mirrors, 'mirror')
         for name, value in [('id', identifier), ('mirrorOf', match), ('url', target)]:
             ET.SubElement(mirror, name).text = value
         (rules / ('groupId-' + identifier + '.txt')).write_text(
-            GROUP + '\n' if identifier == 'library-target' else groups)
+            target_groups if identifier == 'library-target' else groups)
     # Also cover the pre-mirror IDs used in the standalone POMs.
-    (rules / 'groupId-central.txt').write_text(GROUP + '\n')
+    (rules / 'groupId-central.txt').write_text(target_groups)
     if repository == 'github':
         server = ET.SubElement(ET.SubElement(settings, 'servers'), 'server')
         for name, value in [('id', 'library-target'), ('username', '${env.GITHUB_ACTOR}'), ('password', '${env.GITHUB_TOKEN}')]:

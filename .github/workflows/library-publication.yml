@@ -221,6 +221,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           mkdir -p library-consumer-evidence
           python3 tools/ci/library-publication.py consume --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle --repository central 2>&1 | tee library-consumer-evidence/central.log
           python3 tools/ci/library-publication.py consume --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle --repository github 2>&1 | tee library-consumer-evidence/github.log
