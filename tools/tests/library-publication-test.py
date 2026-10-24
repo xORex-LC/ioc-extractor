@@ -26,6 +26,7 @@ def consumer_pom(component, version):
                            '<scope>compile</scope></dependency>'
                            for group, artifact, dependency_version in component['dependencies'])
     return ('<project xmlns="http://maven.apache.org/POM/4.0.0">'
+            '<modelVersion>4.0.0</modelVersion>'
             '<groupId>' + PUB.GROUP + '</groupId><artifactId>' + component['artifact'] + '</artifactId>'
             '<version>' + version + '</version><name>Fixture</name><description>Fixture</description>'
             '<url>https://example.invalid</url><licenses/><developers/><scm/>'
@@ -137,6 +138,15 @@ class PublicationTest(unittest.TestCase):
                     self.prepare_fixture(root, field)
                 self.assertFalse((Path(self.temp.name) / field).exists())
 
+    def test_pom_rejects_non_jar_packaging_and_duplicate_identity_fields(self):
+        original = consumer_pom(self.component, self.version).encode()
+        for extra in (b'<packaging>pom</packaging>', b'<groupId>other</groupId>',
+                      b'<version>0.0.0</version>', b'<artifactId>other</artifactId>',
+                      b'<properties><localSetting>private</localSetting></properties>', b'<modules/>',
+                      b'<packaging xmlns="">pom</packaging>', b'<dependencies xmlns=""/>'):
+            with self.subTest(extra=extra), self.assertRaises(ValueError):
+                PUB.validate_consumer_pom(original.replace(b'</project>', extra + b'</project>'), self.version, self.component)
+
     def test_manifest_hashes_cannot_admit_an_unreviewed_dependency(self):
         pom = self.folder / (self.artifact + '-' + self.version + '.pom')
         provider = ('<dependency><groupId>ch.qos.logback</groupId><artifactId>logback-classic</artifactId>'
@@ -172,6 +182,11 @@ class PublicationTest(unittest.TestCase):
                                              for item in originals))
                 with self.assertRaisesRegex(ValueError, 'selected repository'):
                     PUB.verify_resolved_artifacts(metadata, self.component, cache)
+        origins.write_text('\n'.join(name + '>library-target=' for name in originals))
+        with origins.open('a') as output:
+            output.write('\n' + originals[0] + '>public-dependencies=\n')
+        with self.assertRaisesRegex(ValueError, 'selected repository'):
+            PUB.verify_resolved_artifacts(metadata, self.component, cache)
         origins.write_text('\n'.join(name + '>library-target=' for name in originals))
         (resolved / originals[1]).write_bytes(b'rebuilt library')
         with self.assertRaisesRegex(ValueError, 'different artifact bytes'):
@@ -399,20 +414,23 @@ class LoggingPublicationTest(PublicationTest):
 
     def test_dependency_contract_rejects_missing_optional_wrong_scope_and_extra_fields(self):
         original = consumer_pom(self.component, self.version).encode()
+        group, artifact, version = (value.encode() for value in self.component['dependencies'][0])
         invalid = [
             original.replace(b'<scope>compile</scope>', b'<scope>provided</scope>'),
             original.replace(b'<scope>compile</scope>', b'<scope>runtime</scope>'),
             original.replace(b'<scope>compile</scope>', b'<scope>test</scope>'),
             original.replace(b'<scope>compile</scope>', b'<optional>true</optional>'),
+            original.replace(b'<scope>compile</scope>', b'<scope xmlns="">provided</scope>'),
+            original.replace(b'<scope>compile</scope>', b'<optional xmlns="">true</optional>'),
             original.replace(b'<scope>compile</scope>', b'<type>pom</type>'),
             original.replace(b'<scope>compile</scope>', b'<classifier>sources</classifier>'),
             original.replace(b'<scope>compile</scope>', b'<exclusions/>'),
-            original.replace(b'2.0.18', b'${slf4j.version}'),
-            original.replace(b'2.0.18', b'[2.0,3.0)'),
-            original.replace(b'2.0.18', b'2.0.17'),
+            original.replace(version, b'${slf4j.version}'),
+            original.replace(version, b'[2.0,3.0)'),
+            original.replace(version, b'2.0.17'),
             original.replace(b'<scope>compile</scope>', b'<scope>compile</scope><scope>test</scope>'),
-            original.replace(b'<artifactId>slf4j-api</artifactId>', b'<artifactId>slf4j-simple</artifactId>'),
-            original.replace(b'<groupId>org.slf4j</groupId>', b'<groupId>com.iocextractor</groupId>'),
+            original.replace(b'<artifactId>' + artifact + b'</artifactId>', b'<artifactId>slf4j-simple</artifactId>'),
+            original.replace(b'<groupId>' + group + b'</groupId>', b'<groupId>com.iocextractor</groupId>'),
             original.replace(b'<dependencies>', b'<ignored>').replace(b'</dependencies>', b'</ignored>'),
             original.replace(b'<dependency>', b'<ignored>').replace(b'</dependency>', b'</ignored>'),
         ]
@@ -431,7 +449,68 @@ class LoggingPublicationTest(PublicationTest):
             PUB.validate_consumer_pom(content, self.version, self.component)
 
 
+class ConfigurationPublicationTest(LoggingPublicationTest):
+    component_name = 'configuration'
+
+    def test_each_required_dependency_is_checked_independently(self):
+        original = consumer_pom(self.component, self.version).encode()
+        for group, artifact, version in self.component['dependencies']:
+            with self.subTest(artifact=artifact):
+                identity = ('<artifactId>' + artifact + '</artifactId><version>' + version + '</version>').encode()
+                with self.assertRaisesRegex(ValueError, 'dependencies'):
+                    PUB.validate_consumer_pom(original.replace(identity, identity.replace(version.encode(), b'0.0.0')),
+                                              self.version, self.component)
+
+
 class ConsumerGuardTest(unittest.TestCase):
+    def test_public_allowlist_rejects_own_groups_even_with_whitespace(self):
+        for group in (PUB.GROUP, PUB.GROUP + '.future', 'com.iocextractor'):
+            with self.subTest(group=group), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                source = root / 'tools/ci/library-publication-groups.txt'
+                source.parent.mkdir(parents=True)
+                source.write_text('org.springframework\n  ' + group + '  \n')
+                with patch.object(PUB, 'ROOT', root), self.assertRaisesRegex(ValueError, 'own groups'):
+                    PUB.consumer_settings(root, 'local', 'file:///selected')
+
+    def test_github_credentials_are_scoped_to_the_selected_target(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {}, clear=True):
+            work = Path(folder)
+            PUB.consumer_settings(work, 'github', PUB.GITHUB)
+            ns = {'m': 'http://maven.apache.org/SETTINGS/1.2.0'}
+            settings = PUB.ET.parse(work / 'settings.xml')
+            servers = settings.findall('m:servers/m:server', ns)
+            self.assertEqual(len(servers), 1)
+            self.assertEqual(servers[0].findtext('m:id', namespaces=ns), 'library-target')
+            self.assertEqual(servers[0].findtext('m:password', namespaces=ns), '${env.GITHUB_TOKEN}')
+
+    def test_routing_has_explicit_rules_for_mirrored_and_original_repository_ids(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {}, clear=True):
+            work = Path(folder)
+            command = PUB.consumer_settings(work, 'local', 'file:///selected')
+            self.assertIn('-Daether.remoteRepositoryFilter.groupId=true', command)
+            ns = {'m': 'http://maven.apache.org/SETTINGS/1.2.0'}
+            settings = PUB.ET.parse(work / 'settings.xml')
+            mirrors = {m.findtext('m:id', namespaces=ns): m.findtext('m:mirrorOf', namespaces=ns)
+                       for m in settings.findall('m:mirrors/m:mirror', ns)}
+            self.assertEqual(mirrors['library-target'], 'central')
+            self.assertEqual(mirrors['public-fallback'], '*,!central,!public-dependencies,!public-plugins')
+            for identifier in (*mirrors, 'central'):
+                groups = (work / 'repository-filters' / ('groupId-' + identifier + '.txt')).read_text().splitlines()
+                self.assertEqual(PUB.GROUP in groups, identifier in ('library-target', 'central'))
+                self.assertNotIn('com.iocextractor', groups)
+
+    def test_configuration_fixture_uses_the_exact_guide_and_driver(self):
+        with tempfile.TemporaryDirectory() as folder:
+            project = Path(folder)
+            PUB.populate_examples(PUB.COMPONENTS['configuration'], 'configuration-consumer', project)
+            source = project / 'src/main/java/examples/configuration'
+            self.assertEqual((source / 'ConfigurationRecipeMain.java').read_bytes(),
+                             (PUB.ROOT / 'bootstrap/ioc-app/src/test/resources/consumer/configuration/ConfigurationRecipeMain.java').read_bytes())
+            guide = (PUB.ROOT / 'docs/guides/configuration-library-check.md').read_text()
+            for language, path in [('java', source / 'CollectorConfigurationCheck.java'), ('yaml', project / 'collector.yml')]:
+                self.assertEqual(path.read_text(), PUB.re.findall(r'```' + language + r'\n(.*?)\n```', guide, PUB.re.DOTALL)[0])
+
     def test_negative_checks_reject_success_and_an_unrelated_failure(self):
         with tempfile.TemporaryDirectory() as folder:
             project = Path(folder)
