@@ -18,8 +18,8 @@ Every Failsafe suite must also carry integration semantics through
 discovery; tags describe test semantics. They are complementary and neither is
 a substitute for the complete release gate.
 
-The reviewed source universe is 234 fast classes and 82 integration classes,
-including five external shells (311 deterministic classes). Diagnostics extraction
+The reviewed source universe is 234 fast classes and 83 integration classes,
+including five external shells (312 deterministic classes). Diagnostics extraction
 moves eight existing suites to the JDK-only API module and adds one executable
 consumer-guide suite. Logging adds seven suites for the public API, scalar ECS
 profile, explicit masks,
@@ -47,7 +47,12 @@ command lifetime and actual IOC whole-list binding. Both own bounded child JVMs
 and assert cleanup. The two suites account for the integration/source-universe
 increase; no test is reclassified and no coverage or analyzer floor is lowered.
 The exact source inventory records these changes. Coverage floors, report integrity,
-architecture checks and analyzer rules remain enforced. The Native lifecycle and import TCK bindings
+architecture checks and analyzer rules remain enforced. Events extraction moves the publisher unit suite to `ioc-events-spring` and
+adds `SpringControlEventPublisherIT` for real ordered Spring dispatch, partial
+delivery, fatal propagation and service-owned multicaster configuration. Its
+integration-suite addition accounts for the current 83-class inventory. Packaging
+checks do not establish an independent events consumer.
+The Native lifecycle and import TCK bindings
 run against the retained backend.
 
 Logging test ownership is deliberate: the shared module owns generic mechanics

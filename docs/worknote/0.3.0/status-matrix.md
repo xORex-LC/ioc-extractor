@@ -163,3 +163,15 @@ in E1; E2 extracts the Spring bridge and qualifies the three known corrections.
 E3–E5, standalone repository consumers and publication admission remain pending.
 The configuration workflow-recovery changes are recorded separately and
 need reviewed integration before extending publication tooling. ETL stays deferred.
+
+
+### LIB-5 E2 explicit Spring adapter — 2026-10-24
+
+The [E2 checkpoint](libs/lib-5-events-design.md#e2-explicit-spring-adapter--2026-10-24)
+extracts reactor-local `ioc-events-spring`, migrates IOC composition and corrects
+ARCH-4/OBS-7/OBS-8. Tests cover partial synchronous dispatch, real annotated-listener
+Error propagation, observer/suppression boundaries and throwing fallback logging.
+Service multicaster/error-handler/executor ownership is preserved. All quality
+registries include the new JAR: 31 projects, 25 production groups, 24 local
+coverage reports; one integration suite is added, with existing floors intact.
+E3–E5 and any event registry publication remain pending.

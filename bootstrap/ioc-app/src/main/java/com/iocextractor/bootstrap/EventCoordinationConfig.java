@@ -1,5 +1,6 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.adapter.out.events.spring.SpringControlEventPublisher;
 import com.iocextractor.platform.events.ControlEventObserver;
 import com.iocextractor.platform.events.ControlEventPublisher;
 import org.springframework.context.ApplicationEventPublisher;

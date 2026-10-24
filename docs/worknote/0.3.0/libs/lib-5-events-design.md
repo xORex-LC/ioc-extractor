@@ -2,7 +2,7 @@
 
 Status: implementation resumed by the owner, 2026-10-24. E0 technical analysis
 is complete; E1 qualifies the existing JDK contracts. E2 bridge extraction and
-its three required corrections, E3–E5 and publication remain pending.
+its three corrections are implemented; E3–E5 and publication remain pending.
 Baseline: `r030-libraries`, `d98bf415377bbcd86e43f04dcbd21c5fefe96b34`.
 
 Workflow checkpoint, 2026-10-18: the owner closed the current design stage and
@@ -40,13 +40,14 @@ ledger, wire format, retries, automatic tracing or Spring starter is proposed.
 
 ## Refresh against the current project
 
-The production sources and POM in `platform/platform-events`, and
-`bootstrap/.../SpringControlEventPublisher.java`, have no changes relative to
+At the pre-extraction assessment, production sources and POM in
+`platform/platform-events`, and `bootstrap/.../SpringControlEventPublisher.java`,
+had no changes relative to
 the original assessment baseline `edca8d69`. Router and storage work therefore
 do not invalidate those particular implementation observations. This is not a
 claim that all callers, listeners or integration behavior stayed unchanged.
 
-Current composition remains explicit in `EventCoordinationConfig`: the service
+Composition remains explicit in `EventCoordinationConfig`: the service
 provides its logging observer and constructs the Spring adapter. A local helper,
 `ControlEventObservations`, also contains failure-observation protection for
 handlers. Its existence does not automatically admit another public library API.
@@ -161,7 +162,7 @@ Refresh dependency and integration evidence again for E2–E4.
 |---|---|
 | E0: finalize contracts | Analysis complete: dependency/caller inventory and 18 characterization observations; three bridge corrections required before E2 admission; see the E0 worknote |
 | E1: qualify JDK contracts | Implemented 2026-10-24: seven public types documented, 43 tests, strict Javadoc and exact local guide example; final gate evidence retained below |
-| E2: extract Spring bridge | Add the separate adapter and migrate composition; correct wrapped Error propagation, primary failure evidence and fallback logging containment; qualify real Spring context behavior and architecture boundaries |
+| E2: extract Spring bridge | Implemented 2026-10-24: reactor-local adapter and IOC composition migration, corrected Error/evidence/logging boundaries, unit and real-context contracts; qualification below |
 | E3: qualify publication tooling | Select components explicitly; publish a parent-independent POM with necessary dependencies, sources and Javadoc; retain the existing concurrency release path unchanged |
 | E4: independent consumers | Resolve both artifacts outside the reactor with an isolated Maven cache; use unrelated event payloads, a JDK-only consumer and a Spring consumer; verify intended dependency closure and exception boundaries |
 | E5: release admission | Record API/version/dependency ownership and supported baseline, final repository gates and documentation; qualify the release destination before any explicit publication action |
@@ -237,3 +238,94 @@ Next is E2: extract `ioc-events-spring`, migrate explicit IOC composition, and
 fix/qualify ARCH-4, OBS-7 and OBS-8 with real Spring context tests. None of these
 Spring fixes is claimed by E1. E3–E5 must still admit coordinates, dependency
 closure, standalone POMs and outside-reactor consumers before publication.
+
+
+## E2 explicit Spring adapter — 2026-10-24
+
+The owner authorized E2 at clean `6d00753e` on `r030-libraries`. The publisher
+moves from bootstrap to `adapters/adapter-events-spring`, package
+`com.iocextractor.adapter.out.events.spring`. It exposes one public class and
+one public two-argument constructor. The package-private logger constructor is
+only a deterministic test seam; it is not another public logging API.
+[ADR 0047](../../../ADR/0047-explicit-spring-control-event-adapter.md) records
+the accepted ownership and failure boundary without changing ADR 0013.
+
+The E2 coordinate remains `com.iocextractor:ioc-events-spring:${revision}`;
+contracts retain their existing reactor coordinate. E3 must qualify both
+`io.github.xorex-lc` coordinates, parent-independent POMs and publication
+selection together. No event publication selector is added in E2.
+
+The main dependency tree was refreshed: contracts, Spring Context 7.0.9 and
+SLF4J API 2.0.18 are required compile dependencies; Context brings AOP, Beans,
+Core and Expression 7.0.9, Micrometer Observation/Commons 1.16.7, Commons Logging
+1.3.6 and JSpecify 1.0.1. There is no Boot or logging provider in the main
+closure. The test-only TCK supplies the integration annotation. This is a
+closure audit of the existing baseline, not a new vulnerability or latest-version
+qualification.
+
+`EventCoordinationConfig` explicitly constructs the extracted adapter with the
+IOC observer. Listeners, `ControlEventObservations`, payloads, durable state,
+executors and recovery stay service-owned. No multicaster, bean registration,
+error handler, asynchronous dispatcher or lifecycle is added by the adapter.
+
+The corrections close ARCH-4, OBS-7 and OBS-8:
+
+- Direct Error and Error immediately wrapped in Spring's
+  `UndeclaredThrowableException` escape as the same Error. Other runtime wrappers
+  keep their identity; no arbitrary causal-chain traversal is performed.
+- Runtime failure observation retains the original publication failure as
+  primary WARN evidence. A distinct observer failure is suppressed when supported;
+  the same instance and suppression-disabled primary are handled safely.
+- Success observation follows the delivery try/catch. The last WARN contains
+  runtime logger failure without retries or recursive logging, so telemetry
+  failure cannot become publication failure. Direct Error remains visible.
+
+The new production JAR is included in all four report manifests, report ordering
+and CPD/PMD roots. Reactor topology is now 31 projects, 26 functional JARs,
+25 production coverage groups and 24 local reports. Moving the stub suite keeps
+234 fast suites; one new IT suite raises integration to 83 and the deterministic
+union to 312. Five property-gated external shells are counted in the integration
+inventory and excluded from that deterministic union. No existing
+ratchet or fixed floor is lowered. Local regression tests and code examples
+qualify the implementation; E4 still owns cold packaged consumers, and E5 owns
+release admission. A second deployed service remains unqualified.
+
+Evidence is retained in `.dev/lib5-e2-*.log`; the ignored handoff records final
+verification outcomes and exact freshness. Next is E3, then E4/E5. E2 changes
+are not automatically committed, pushed or published.
+
+
+E2 verification record:
+
+- Adapter tests: 16 Surefire cases and 4 Failsafe cases passed, with no skips.
+  Module coverage is 34/34 lines, 6/6 branches and zero missed instructions;
+  all existing module ratchets and release floors remain intact.
+- Strict public Javadoc and both exact guide examples passed. The Spring example
+  runs with only shared event/adapter classes and reviewed third-party JARs;
+  IOC application/bootstrap, Boot and a logging provider are absent.
+- Full reactor checks passed for 31 projects. The initial run's freshness was
+  invalidated by documentation edits during execution; its log is retained as
+  `.dev/lib5-e2-verify-initial.log`. The final stable-tree run and context are
+  recorded separately in `.dev/lib5-e2-verify.log` and the E2 evidence receipt.
+- Aggregate coverage: 25 groups and 24 local reports, 27145/29440 lines and
+  10301/12009 branches. Test-lifecycle reconciliation: 234 fast suites,
+  83 integration suites, five external shells, 312 deterministic-offline suites.
+  Skipped external shells are not live external evidence.
+- Raw SpotBugs: 137 accepted identities, zero visible findings, analyzer errors
+  or missing classes. CPD remains 22/22 groups. Adopted PMD has zero blocking
+  findings and 19 unchanged advisory findings (7 CognitiveComplexity,
+  3 NPathComplexity, 2 UnusedAssignment, 7 ExcessiveParameterList), no analyzer
+  errors and no changed-Java intersections. No finding/count baseline is edited.
+- The exception-ownership change triggers `make pmd-watchlist`: 63 CloseResource,
+  9 PreserveStackTrace and 2 NcssCount diagnostics, without analyzer errors.
+  Its one publisher intersection is PreserveStackTrace on `throw fatal`.
+  Disposition: intentional original-Error unwrapping, not a new exception losing
+  its origin. Both direct/wrapped identity assertions and the actual annotated
+  Spring listener regression require this behavior. Do not retain the reflection
+  wrapper instead or attach it back onto its own cause. No suppression or rule
+  change is introduced; the watchlist remains advisory.
+
+Final command outcomes, worktree hashes and freshness are retained in
+`.dev/lib5-e2-evidence/receipt.json` and its context, after all tracked edits.
+No public registry action, live deployed consumer or new vulnerability scan is
+claimed by these deterministic offline checks.

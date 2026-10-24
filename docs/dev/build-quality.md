@@ -103,7 +103,7 @@ runs only after the applicable modules.
 | Maven Enforcer | Toolchain and POM metadata | Violations block every ordinary build |
 | JUnit/Surefire/Failsafe contracts | Fast, integration, architecture, golden and documentation suites | Surefire owns `*Test`; Failsafe owns `*IT`; failures and lifecycle/report-union drift block `verify` |
 | ArchUnit | Compiled production classes | Dependency or package-boundary violation blocks `verify` |
-| JaCoCo | Test execution data and 24 production JARs | Exact universe/report integrity, aggregate/per-module no-regression ratchets and fixed aggregate/domain/application floors block `verify` |
+| JaCoCo | Test execution data and 25 production JARs | Exact universe/report integrity, aggregate/per-module no-regression ratchets and fixed aggregate/domain/application floors block `verify` |
 | Codecov | The verified reactor aggregate JaCoCo XML | Informational project/base-relative/patch reporting only; external upload failure never changes the local gate result |
 | SpotBugs | Applicable production bytecode | New, stale, moved or metadata-drifted findings block the exact ratchet; analyzer/report failures also block |
 | PMD CPD | Applicable checked-in production Java sources | Every duplicate stays visible; analyzer/scope/report failure or a change from the reviewed group-count snapshot blocks `verify` |
@@ -477,10 +477,10 @@ coverage module combines the applicable production universe under
 `build-support/coverage-report/target/site/jacoco-aggregate/`.
 
 The reusable TCK is not part of the production coverage denominator. The
-fail-closed `coverage-scope.tsv` registry gives all 30 reactor projects an
+fail-closed `coverage-scope.tsv` registry gives all 31 reactor projects an
 explicit disposition and must match both the root module list and the coverage
-report POM dependencies. Twenty-four production JARs are covered with no class or
-package exclusions. Twenty-three must produce non-empty module XML/HTML plus
+report POM dependencies. Twenty-five production JARs are covered with no class or
+package exclusions. Twenty-four must produce non-empty module XML/HTML plus
 execution data. `ioc-platform-errors` is explicitly aggregate-only because it
 has no local test JVM; it must still be present in the aggregate through
 downstream execution. Root, TCK and build-only outputs are rejected if they
@@ -489,7 +489,7 @@ unexpectedly appear as coverage evidence.
 Root `validate` compiles the JDK-only `CoverageVerifier`, runs its synthetic
 reactor matrix and checks the scope, snapshot and Maven wiring. The final
 coverage-report execution requires current aggregate XML/HTML, checks the exact
-24-group union and counter sums, validates expected local reports and applies
+25-group union and counter sums, validates expected local reports and applies
 `coverage-ratchets.tsv`. Line and branch ratios use exact cross-multiplied
 integer fractions, so decimal rounding cannot hide a drop. An increased absolute
 missed-branch count also fails; small modules additionally reject increased
@@ -649,8 +649,9 @@ group for an ordinary module and the retired group for each admitted library.
 The configuration adapter is a production scope in all four report registries:
 JaCoCo, SpotBugs, CPD and PMD. It has a required local coverage report and an
 aggregate group; the report POM dependencies and CPD/PMD source roots include it.
-The existing topology remains 30 reactor projects, 24 production groups and
-23 local coverage reports. Its extraction has an explicit coverage ratchet;
+At configuration extraction the topology was 30 reactor projects, 24 production
+groups and 23 local coverage reports (E2 extends it below). The configuration
+module has an explicit coverage ratchet;
 publication admission must not change that denominator or relax any floor.
 
 Its main POM declares Boot and Spring Core; the reactor manages their versions.
@@ -693,3 +694,16 @@ membership. Network-dependent
 plugin resolution and local file-repository qualification do not substitute for
 the deterministic reactor gate or prove public publication. See the
 [publication guide](../guides/library-publication.md).
+
+
+### Explicit Spring event adapter
+
+E2 adds `adapters/adapter-events-spring` as an ordinary production JAR to all
+four report manifests, aggregate ordering dependencies and CPD/PMD source roots.
+Current topology is 31 Maven projects, 25 production coverage groups and 24 local
+coverage reports; the TCK remains excluded and errors remains downstream-only.
+The stub publisher suite moves from bootstrap to the adapter (fast suite count
+unchanged); one real Spring-context IT suite increases the integration inventory
+from 82 to 83 and deterministic-offline union from 311 to 312. The module has
+an explicit measured coverage ratchet. Existing ratchets, fixed floors and
+analyzer finding/count policies remain unchanged.

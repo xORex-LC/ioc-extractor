@@ -68,6 +68,7 @@
         <module>core/ioc-application</module>
         <module>core/ioc-application-tck</module>
         <module>adapters/adapter-config-spring-boot</module>
+        <module>adapters/adapter-events-spring</module>
         <module>adapters/adapter-regex-re2j</module>
         <module>adapters/adapter-psl</module>
         <module>adapters/adapter-source-tika</module>
@@ -499,6 +500,11 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-events-spring</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <!-- Internal modules: version aligned with the reactor. -->
             <dependency>
                 <groupId>com.iocextractor</groupId>

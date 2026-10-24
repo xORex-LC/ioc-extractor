@@ -36,7 +36,15 @@ publish-only `ControlEventPublisher` и observer доставки. В нём н�
 `published` описывает нормальный возврат вызова публикации, `publishFailed` — его
 ошибку, а не отсутствие уже выполненных обработчиков.
 
-Текущий bootstrap adapter мостит publisher в Spring application events.
+[Spring-адаптер](../../adapters/adapter-events-spring/README.md) мостит publisher
+в Spring application events. `EventCoordinationConfig` явно создаёт его в
+bootstrap и передаёт IOC-наблюдатель. Адаптер не меняет multicaster/error handler
+или executor. Он пропускает исходный `Error`, в том числе непосредственно
+обёрнутый Spring в `UndeclaredThrowableException`. При сбое observer первичной
+остаётся ошибка публикации, отдельная ошибка observer добавляется как suppressed,
+если это разрешено самим исключением. Runtime-сбой последнего WARN не выходит в
+producer и не меняет результат доставки; Error из observation/logging выходит.
+См. [ADR 0047](../ADR/0047-explicit-spring-control-event-adapter.md).
 Listener должен лишь валидировать/наблюдать hint и передать работу в
 consumer-owned executor или scheduler. Тяжёлый use case не выполняется в потоке
 publisher-а.
@@ -158,7 +166,7 @@ broker, redelivery и DLQ реализуются внешним adapter за с�
 - Admission primitives: `platform/platform-concurrency/`.
 - Application events: packages `application.sync`, `application.export`,
   `application.ingest` и `application.artifact.lifecycle`.
-- Spring bridge/listeners/schedulers: `bootstrap/ioc-app`.
+- Spring bridge: `adapters/adapter-events-spring`; composition/listeners/schedulers: `bootstrap/ioc-app`.
 - Boundary tests: `ArchitectureTest` и [BOUNDARIES.md](../BOUNDARIES.md).
 
 ## Когда обновлять документ

@@ -16,6 +16,11 @@ Workflow update, 2026-10-24: the owner resumed the existing extraction plan.
 E1 qualifies the JDK contracts; E2–E5 and publication admission remain pending.
 This draft is still unnumbered; implementation selection does not promote it.
 
+Workflow update, E2 on 2026-10-24: the owner authorized the separate Spring
+adapter and the three corrections. The implemented ownership and failure
+boundary is recorded in accepted [ADR 0047](../../../ADR/0047-explicit-spring-control-event-adapter.md).
+This draft remains historical design context; publication admission is pending.
+
 ## Context
 
 IOC Extractor already separates local event contracts from Spring delivery.

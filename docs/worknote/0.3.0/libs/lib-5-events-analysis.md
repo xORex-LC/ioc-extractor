@@ -60,7 +60,7 @@ neither catches publication failures nor runs a recovery loop.
 must not reverse a completed producer operation. Periodic reconciliation reads
 authoritative state and recovers work when hints are lost or duplicated.
 
-[SpringControlEventPublisher](../../../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/SpringControlEventPublisher.java)
+[SpringControlEventPublisher](../../../../adapters/adapter-events-spring/src/main/java/com/iocextractor/adapter/out/events/spring/SpringControlEventPublisher.java)
 validates a non-null event, calls Spring, observes publication and catches runtime
 delivery failures. Observation failures are also guarded. Successful return says
 nothing about whether the downstream work has completed. Spring listeners such

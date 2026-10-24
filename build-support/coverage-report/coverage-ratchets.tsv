@@ -24,3 +24,4 @@ ioc-adapter-transport-smb	813	283	334	201	1282	observed	Deterministic offline pa
 ioc-adapter-ingest	929	260	328	135	1080	observed	Real local WatchService hint lifecycle contracts over the conservative line minimum.
 ioc-adapter-cli-picocli	415	149	140	113	979	observed	Health endpoint selection, failure classification and structured-detail rendering over the conservative line minimum.
 ioc-app	4443	624	1372	496	2734	observed	JDK regex engine selection over the conservative bootstrap line and branch minima.
+ioc-events-spring	34	0	6	0	0	enforced	E2 measured publisher baseline: null/reference contracts, partial dispatch, direct/wrapped Error, primary/suppressed observer evidence and throwing fallback logging; all existing floors and ratchets preserved.
