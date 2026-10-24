@@ -12,6 +12,10 @@ Workflow checkpoint, 2026-10-18: events design is closed for the current
 exploration stage; implementation is deferred while diagnostics is extracted.
 This draft remains proposed and unnumbered.
 
+Workflow update, 2026-10-24: the owner resumed the existing extraction plan.
+E1 qualifies the JDK contracts; E2–E5 and publication admission remain pending.
+This draft is still unnumbered; implementation selection does not promote it.
+
 ## Context
 
 IOC Extractor already separates local event contracts from Spring delivery.

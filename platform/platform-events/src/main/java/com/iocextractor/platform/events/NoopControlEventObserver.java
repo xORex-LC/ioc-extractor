@@ -2,8 +2,15 @@ package com.iocextractor.platform.events;
 
 import java.util.Objects;
 
-/** Observer implementation that validates inputs and performs no side effects. */
+/**
+ * Validates callback arguments and discards the observation without inspecting event metadata.
+ *
+ * <p>Null events and failures cause {@link NullPointerException}. A null or blank handler
+ * name causes {@link IllegalArgumentException}; names are not trimmed. The singleton has no
+ * mutable state and can be shared between threads.</p>
+ */
 public enum NoopControlEventObserver implements ControlEventObserver {
+    /** Shared stateless observer. */
     INSTANCE;
 
     @Override

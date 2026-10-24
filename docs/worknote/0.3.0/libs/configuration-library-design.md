@@ -817,4 +817,5 @@ Integrate the corrections into `release-0.3.0`, then
 dispatch protected recovery using validation run `40087127800`, the original
 deployment ID and unchanged component tag. Skip rebuilding and signing; matching
 published bytes must be reused. A second deployed service, live external checks
-and other Boot baselines remain unqualified. Events remain deferred.
+and other Boot baselines remain unqualified. The owner subsequently resumed
+events extraction in its separate plan on 2026-10-24.

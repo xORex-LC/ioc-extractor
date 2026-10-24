@@ -28,6 +28,14 @@ publish-only `ControlEventPublisher` и observer доставки. В нём н�
 - retries, ordering, durable delivery, outbox или DLQ;
 - keyed execution.
 
+Контракт JDK-модуля и ограничения recording publisher описаны в
+[справочнике модуля](../../platform/platform-events/README.md), пример отдельного
+события — в [руководстве](../guides/events-library.md). Метаданные сохраняют
+переданные значения без нормализации. Успешный возврат publisher не подтверждает
+доставку всем обработчикам; ошибка может возникнуть после частичной доставки.
+`published` описывает нормальный возврат вызова публикации, `publishFailed` — его
+ошибку, а не отсутствие уже выполненных обработчиков.
+
 Текущий bootstrap adapter мостит publisher в Spring application events.
 Listener должен лишь валидировать/наблюдать hint и передать работу в
 consumer-owned executor или scheduler. Тяжёлый use case не выполняется в потоке

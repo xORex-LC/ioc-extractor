@@ -49,7 +49,11 @@ failure behind `tee`. Routing and pipeline-failure fixes have regression coverag
 review/integration and a protected CI recovery run remain next. The
 [configuration release record](configuration-library-design.md#protected-publication-record--2026-10-24)
 separates the original failure, local recovery and immutable release identity.
-Events E1–E5 remain deferred and ETL waits for a second consumer.
+The owner selected events next on 2026-10-24. Its existing E0/two-unit design is
+retained; E1 implements JDK-contract documentation and 43 focused tests, strict
+Javadoc and a compiled/executed consumer example. E2 extracts the Spring bridge.
+Publication still requires E3–E5 and a separate release action. ETL remains
+deferred pending a second consumer.
 
 Diagnostics publication is recorded in the release branch's D5 documentation
 (commit `ce5675e2a74243ede83211cca090570976c6bbce`). The older diagnostics checkpoint

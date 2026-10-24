@@ -151,3 +151,15 @@ release bytes. Two regressions cover routing and pipeline-failure propagation;
 remain open, alongside the separate second-service deployment qualification.
 The [release record](libs/configuration-library-design.md#protected-publication-record--2026-10-24)
 retains identities and distinguishes the original failure from local recovery.
+
+### LIB-5 implementation resumed and E1 qualification — 2026-10-24
+
+The owner selected events extraction for future services, superseding its earlier
+deferral. The [E1 checkpoint](libs/lib-5-events-design.md#e1-jdk-contract-qualification--2026-10-24)
+retains the existing seven-type JDK API, precise metadata/publication/observation
+contracts, recording limitations, 43 focused tests and strict Javadoc. The exact
+consumer-guide example compiles/runs locally. No coordinate or dependency changes
+in E1; E2 extracts the Spring bridge and qualifies the three known corrections.
+E3–E5, standalone repository consumers and publication admission remain pending.
+The configuration workflow-recovery changes are recorded separately and
+need reviewed integration before extending publication tooling. ETL stays deferred.

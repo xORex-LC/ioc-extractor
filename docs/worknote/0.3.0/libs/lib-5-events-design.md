@@ -1,8 +1,8 @@
 # LIB-5: local control-event library proposal
 
-Status: proposed, 2026-10-17. Owner confirmed the behavioral scope; E0 technical
-analysis is complete with required E2 corrections. Implementation and publication
-qualification remain pending. No production extraction or publication admission.
+Status: implementation resumed by the owner, 2026-10-24. E0 technical analysis
+is complete; E1 qualifies the existing JDK contracts. E2 bridge extraction and
+its three required corrections, E3–E5 and publication remain pending.
 Baseline: `r030-libraries`, `d98bf415377bbcd86e43f04dcbd21c5fefe96b34`.
 
 Workflow checkpoint, 2026-10-18: the owner closed the current design stage and
@@ -10,6 +10,13 @@ selected diagnostics (LIB-2) as the next implementation target. Events E1–E5
 are deferred until that work is complete; E1 is not the next active task.
 The boundary and E0 findings form the retained implementation plan. This is
 neither an accepted numbered ADR nor artifact/API or publication admission.
+
+Workflow update, 2026-10-24: after configuration publication, the owner selected
+events for reuse in future services and revoked the earlier deferral. Resume the
+existing two-unit plan with E1. ETL remains deferred. The pending configuration
+publication-tool corrections stay separate; integrate them before extending
+publication tooling for events. This selection authorizes implementation, not an
+immediate registry publication or a claim of a second deployed consumer.
 
 ## Purpose and confirmed requirements
 
@@ -44,9 +51,11 @@ provides its logging observer and constructs the Spring adapter. A local helper,
 `ControlEventObservations`, also contains failure-observation protection for
 handlers. Its existence does not automatically admit another public library API.
 
-The publication script still selects concurrency explicitly and rejects
-dependencies in the consumer POM. A Spring artifact requires dependency-aware
-qualification; simply changing the artifact name is insufficient.
+As of 2026-10-24 the publication script supports concurrency, diagnostics,
+logging and configuration with exact component-specific dependency contracts.
+Events still needs explicit admission for both units. The Spring artifact adds
+a required project-owned events dependency: E3/E4 must qualify the two-artifact
+closure and missing-own-dependency routing, not just change the artifact name.
 
 [E0 qualification](lib-5-events-e0-analysis.md) records the refreshed caller and
 dependency inventory, 18 characterization observations and three required bridge
@@ -143,14 +152,15 @@ alone does not establish that behavior or replace service-owned recovery.
 
 ## Execution and qualification outline
 
-The following is the future events implementation sequence, not the current
-cross-library work queue. Resume it only when events becomes the active task;
-refresh source and dependency evidence first.
+The owner resumed this sequence on 2026-10-24. E1 source refresh found no changes
+to the event module or Spring publisher between E0's `d98bf415` baseline and
+current HEAD `0764e711`; existing caller/integration evidence remains dated E0.
+Refresh dependency and integration evidence again for E2–E4.
 
 | Slice | Result and acceptance evidence |
 |---|---|
 | E0: finalize contracts | Analysis complete: dependency/caller inventory and 18 characterization observations; three bridge corrections required before E2 admission; see the E0 worknote |
-| E1: qualify JDK contracts | Retain public types with precise Javadoc; cover metadata boundaries, no-op input handling, recording snapshots and documented concurrent limitations |
+| E1: qualify JDK contracts | Implemented 2026-10-24: seven public types documented, 43 tests, strict Javadoc and exact local guide example; final gate evidence retained below |
 | E2: extract Spring bridge | Add the separate adapter and migrate composition; correct wrapped Error propagation, primary failure evidence and fallback logging containment; qualify real Spring context behavior and architecture boundaries |
 | E3: qualify publication tooling | Select components explicitly; publish a parent-independent POM with necessary dependencies, sources and Javadoc; retain the existing concurrency release path unchanged |
 | E4: independent consumers | Resolve both artifacts outside the reactor with an isolated Maven cache; use unrelated event payloads, a JDK-only consumer and a Spring consumer; verify intended dependency closure and exception boundaries |
@@ -185,3 +195,45 @@ scenarios, including four gap observations across three required corrections.
 Those observations are not passing API admission. `make docs` and
 `git diff --check` passed after the E0 update. No production Java or build
 configuration was changed; full verify/PMD evidence remains stale.
+
+## E1 JDK contract qualification — 2026-10-24
+
+The owner resumed extraction on `r030-libraries` at HEAD `0764e711`. The existing
+seven public types, method signatures and validation behavior remain intact.
+The recorder's existing public no-argument constructor is now explicit so its
+documentation is included. No Maven coordinate, dependency, publication selector,
+analyzer membership or coverage floor changes in E1.
+
+Javadoc now states the concrete metadata rules: non-blank required text, nullable
+causation, unchanged surrounding whitespace, positive service-chosen version and
+non-null timestamp without clock validation. IDs and correlation remain supplied
+by the producer. Publication outcomes do not imply all-handler delivery;
+`publishFailed` may follow handlers that already acted. Observer interfaces do
+not promise callback containment or listener isolation.
+
+The no-op contracts specify argument validation and no metadata reads. The
+recording fixture explicitly retains duplicates and original event references,
+returns immutable shallow snapshots, has no capacity bound and promises no
+invocation-time order for overlapping calls. The concurrent test uses a timed
+barrier, bounded future waits, a containing timeout and asserted worker shutdown.
+
+Verification:
+
+- `make test-module MODULE=platform/platform-events`: 43 tests passed, no skips;
+  `.dev/lib5-e1-tests.log` retains the focused result.
+- JDK 21 `javadoc -Werror -Xdoclint:all`: passed for all seven public types and
+  package documentation. `.dev/lib5-e1-javadoc/` contains the generated result.
+- The exact Java block from the new
+  [consumer guide](../../../guides/events-library.md) compiled with
+  `--release 21 -Xlint:all -Werror` and ran against the locally compiled module,
+  printing `collector.refresh-requested`. Log: `.dev/lib5-e1-documentation.log`.
+  This is local example evidence, not a packaged/cold repository consumer.
+- Final worktree commands are `make verify`, `make pmd-analysis`, `make docs`
+  and `git diff --check`; retain their outcomes in `.dev/lib5-e1-verify.log`,
+  `.dev/lib5-e1-pmd.log` and `.dev/lib5-e1-docs.log`. The ignored handoff records
+  results and freshness separately from historical E0/RC evidence.
+
+Next is E2: extract `ioc-events-spring`, migrate explicit IOC composition, and
+fix/qualify ARCH-4, OBS-7 and OBS-8 with real Spring context tests. None of these
+Spring fixes is claimed by E1. E3–E5 must still admit coordinates, dependency
+closure, standalone POMs and outside-reactor consumers before publication.
