@@ -17,6 +17,31 @@ adapters.
 | `src/main/resources/` | Runtime `application.yml`, Logback config and Spring configuration metadata/hints |
 | `src/test/java/com/iocextractor/` | Context, architecture, configuration/documentation contracts and golden e2e tests |
 
+## Configuration inspection
+
+Source traversal and shared name observations come from
+[`adapter-config-spring-boot`](../../adapters/adapter-config-spring-boot/README.md).
+Bootstrap owns `IocProperties`, strict IOC spelling rules, compatibility checks
+for unsupported shared shapes, semantic validation, startup failures and source
+display selection. Shared observations do not establish Binder provenance;
+the local report retains the first external declaration.
+
+YAML and semantic-check failures use
+[controlled failure reports](../../docs/dev/configuration-failure-reports.md).
+Bootstrap retains IOC codes and migration guidance. The report omits parser and
+exception messages, validation values/arguments and dynamic map keys; owned Boot
+analyses omit the original cause so their DEBUG reporter cannot print it.
+
+The semantic command keeps effective Boot sources, imports and profiles while
+registering only configuration/preflight beans. It blocks scalar/indexed extra
+bean sources and caller-owned CLI loading routes, pins its short-lived lifecycle
+and closes the context. Imports remain trusted deployment inputs. The
+[closed-input consumer recipe](../../docs/guides/configuration-library-check.md)
+uses a different explicit policy: one document plus literal overrides, with no
+ConfigData or ambient sources. `IocConfigurationContextIT` qualifies IOC loading
+and whole-list replacement; `ConfigurationCheckRecipeIT` runs the guide without
+IOC classes. Neither fixture establishes cold repository consumption.
+
 ## Artifact export graph
 
 `ExportPlanCatalog` eagerly и без IO преобразует `ioc.export.profiles` в

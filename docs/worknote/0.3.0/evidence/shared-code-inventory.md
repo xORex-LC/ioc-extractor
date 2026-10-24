@@ -2,7 +2,7 @@
 title: "0.3.0 shared-code inventory"
 version: "0.3.0"
 goal_id: "R030-LIB"
-status: "LIB-1 published and qualified"
+status: "LIB-1 and LIB-2 published and qualified"
 document_type: "Evidence ledger"
 source_of_truth: false
 language: "en"
@@ -22,13 +22,15 @@ not a current publication test.
 
 | Module/capability | Category | Responsibility | Current consumers | IOC-specific coupling | Publication disposition |
 |---|---|---|---|---|---|
+| `adapters/adapter-config-spring-boot` | Cross-service integration candidate | Record-schema name inspection and ordered source observations | IOC bootstrap, unrelated-schema Binder tests and executable restricted-context guide | Spring Boot/Core with transitive Spring Context closure; schemas, source loading and enforcement remain service-owned | C1–C4 implemented; [ADR 0046](../../../ADR/0046-reusable-spring-boot-configuration-inspection.md); standalone POM, local cold consumer, application mediation and fail-closed routing qualified; protected publication/release consumers pending |
 | `platform/platform-errors` | Service-shared | Root unchecked exception contract | diagnostics, ETL, application, four adapters, bootstrap | High: `IocExtractorException` and `com.iocextractor.common` express this product | Keep internal; not a first publication unit |
-| `platform/platform-diagnostics-api` | Admitted cross-service platform | JDK-only values, results/policies, bounded samples/counts and sinks | Local diagnostics, ETL, application, adapters and bootstrap | JDK-only closure and isolated snapshot/RC consumer qualified | D1–D4 locally qualified; ADR 0044 accepted; D5 pending |
+| `platform/platform-diagnostics-api` | Cross-service platform | JDK-only values, results/policies, bounded samples/counts and sinks | Local diagnostics, ETL, application, adapters and bootstrap | JDK-only closure; isolated local and remote RC consumers qualified | `published-qualified`; `0.3.0-rc.1` from Central and GitHub Packages |
 | `platform/platform-diagnostics` | Service-shared product metadata | IOC catalogs, exception and rendering | ETL, application, diagnostics bridge, four adapters, bootstrap | IOC categories/messages and `platform-errors` closure | Retained locally after D1 split |
 | `platform/platform-etl` | Candidate cross-service platform | Framework-free Pipes-and-Filters execution model | application, observability | Medium: diagnostics/error result semantics and only one business consumer | Defer until second consumer and closure review |
 | `platform/platform-events` | Candidate cross-service platform, local only | In-process publish-only control-event mechanics | application, bootstrap | Low in API shape; current use remains service-local and explicitly non-wire | Defer publication; preserve anti-broker boundary |
 | `platform/platform-concurrency` | Cross-service platform candidate | Keyed asynchronous serialization and synchronous exclusion | application, adapter-ingest, bootstrap | Low: no project-owned dependency closure and no IOC types | Priority admission candidate `LIB-1` |
-| `platform/platform-observability` | Mixed service-shared / candidate platform | Structured logging, MDC, value typing, sanitization, pipeline observer | diagnostics bridge, five adapters, bootstrap | Medium/high: IOC actions/fields and ETL observer dependency | Genericity split/admission required |
+| `platform/platform-logging-slf4j` | Published cross-service platform | Typed SLF4J records, restoring MDC, scalar ECS profile and explicit masks | IOC observability plus isolated plain/Boot consumers; planned collectors | Required SLF4J API 2.0.18 only; providers/IOC/ETL remain outside | `0.3.0-rc.1` published and cold-consumed from Central and GitHub Packages |
+| `platform/platform-observability` | Service-shared product integration | IOC field/action catalogs, shared logging facades and pipeline observer | diagnostics bridge, five adapters, bootstrap | IOC vocabulary and ETL observer remain service-owned | Retained locally after LIB-3 extraction |
 | `platform/platform-diagnostics-logging` | Service-shared bridge | Diagnostics-to-observability rendering/redaction/resilience | bootstrap | Inherits both diagnostics catalogs and observability vocabulary | Publish only after both API contracts are admitted |
 
 ## Publication candidates
@@ -37,7 +39,7 @@ not a current publication test.
 |---|---|---|---|---|---|---|
 | `LIB-1` | `platform-concurrency` | Cross-service platform | Platform coordination | Current application/adapter-ingest/bootstrap; planned Java + Spring Boot `feeds-collector`, execution policy undecided | No runtime dependencies beyond JDK | `published-qualified`; Central and GitHub Packages cold consumers passed |
 | `LIB-2` | Generic diagnostics model/result/sink subset | Cross-service platform | Misyurkeev Denis (`xORex-LC`) / Diagnostics | Current reactor consumers + planned `feeds-collector` | JDK-only shared module; IOC catalogs, exceptions and logging remain local | `design-admitted`; D0–D4 locally qualified with ADR 0044; D5 remote publication/consumers pending |
-| `LIB-3` | Generic observability/MDC/value typing subset | Cross-service platform | Observability | Current adapters/bootstrap + planned service | ETL observer and IOC action/field vocabulary must be excluded or separated | `genericity-review` |
+| `LIB-3` | `platform-logging-slf4j` | Cross-service platform | Misyurkeev Denis (`xORex-LC`) / Observability | IOC facades, independent plain/Boot consumers; planned collectors | Required SLF4J API only; no provider/IOC/ETL dependency | `published-qualified`; `0.3.0-rc.1`, both repositories and negative dependency checks passed |
 | `LIB-4` | `platform-etl` | Cross-service platform | ETL | Current `ioc-application`; nearest consumer planned only | diagnostics + errors + their accepted publication closure | `deferred-second-consumer` |
 | `LIB-5` | `platform-events` local control API | Cross-service platform, non-wire | Event coordination | Current application/bootstrap; nearest consumer planned only | None | `deferred-second-consumer` |
 
@@ -131,6 +133,7 @@ and publication evidence remain pending; this does not promote LIB-2 to
 | Artifact/version | Protected workflow | POM | Sources | Javadoc | Checksum | Standalone consumer |
 |---|---|---|---|---|---|---|
 | `io.github.xorex-lc:ioc-platform-concurrency:0.3.0-rc.1` | Validation run `34222437897`; recovery publication and qualification run [`34233605995`](https://github.com/xORex-LC/ioc-extractor/actions/runs/34233605995) passed against the same signed bundle and Central deployment `84d86a68-9402-4181-a587-772d004ad8c6` | Published and resolved from Central and GitHub Packages | Published and resolved from Central and GitHub Packages | Published and resolved from Central and GitHub Packages | All 20 signed/checksummed repository files matched the retained manifest; Central comparison reported 20/20 | Separate empty-cache Central and GitHub Packages consumers compiled and executed successfully; logs retained as artifact `10058905999` |
+| `io.github.xorex-lc:ioc-platform-diagnostics-api:0.3.0-rc.1` | Validation run `39133285503`; publication and qualification run [`39137777538`](https://github.com/xORex-LC/ioc-extractor/actions/runs/39137777538) reused the original signed bundle and deployment `a48b06c1-c6e4-4a7b-b9b3-f9d1806be842` | Published and resolved from both repositories | Published and resolved from both repositories | Published and resolved from both repositories | All 20 repository files checked; four primary artifacts matched exactly in each consumer | Separate empty-cache consumers compiled and executed all three guide examples; logs retained as artifact `12140822161` |
 
 ## Rejected/deferred candidates
 
@@ -210,3 +213,21 @@ remain unchanged. Final offline gates and raw-report dispositions are owned by
 the [D4 record](../libs/lib-2-diagnostics-design.md#d4-final-admission-record--2026-10-18)
 and exact-worktree tool evidence. D5 publication and separate remote consumers
 remain pending; LIB-2 is not `published-qualified`.
+
+## LIB-3 protected publication — 2026-10-21
+
+The eight-type logging API is accepted in
+[ADR 0045](../../../ADR/0045-reusable-slf4j-logging-contract.md). L3-0–L3-4 is
+complete; the generic mechanisms live in `platform-logging-slf4j`, while IOC
+catalogs, ETL integration, diagnostics disclosure and backend configuration
+stay local. Tag `ioc-platform-logging-slf4j-v0.3.0-rc.1` fixes reviewed source
+`5b9761b7ab0b3d6033e51a82fb735f1a3049ef08` after PR 17.
+
+Protected validation run `39433697620` and publication run `39455105300`
+used the same signed 20-file bundle and Central deployment. Separate cold plain
+and Boot consumers passed against Central and GitHub Packages, including primary
+hashes, selected-repository origin and negative SLF4J dependency checks. The
+[release record](../libs/lib-3-logging-design.md#protected-publication-record--2026-10-21)
+retains immutable identity, artifacts and limits. A second production service
+and live collector/backend/load qualification are outside these fixture results.
+Existing concurrency/diagnostics release identities remain unchanged.

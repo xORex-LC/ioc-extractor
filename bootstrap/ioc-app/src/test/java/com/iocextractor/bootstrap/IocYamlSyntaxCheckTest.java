@@ -1,6 +1,7 @@
 package com.iocextractor.bootstrap;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.PrintWriter;
@@ -11,6 +12,7 @@ import java.util.OptionalInt;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Timeout(30)
 class IocYamlSyntaxCheckTest {
 
     @TempDir
@@ -59,6 +61,21 @@ class IocYamlSyntaxCheckTest {
                 .contains(candidate.toString() + ":2:7")
                 .contains("ioc-config apply")
                 .doesNotContain(sensitiveLine, "\tat ");
+    }
+
+    @Test
+    void omitsUndefinedAliasFromParserDiagnostic() throws Exception {
+        Path candidate = tempDir.resolve("alias.yml");
+        Files.writeString(candidate, "password: *synthetic_secret_7d96\n");
+        var error = new StringWriter();
+
+        int result = IocYamlSyntaxCheck.validate(candidate,
+                new PrintWriter(new StringWriter()), new PrintWriter(error, true));
+
+        assertThat(result).isEqualTo(IocYamlSyntaxCheck.CONFIGURATION_ERROR_EXIT_CODE);
+        assertThat(error.toString())
+                .contains("CONFIG.YAML_INVALID", candidate + ":1:11", "ioc-config apply")
+                .doesNotContain("synthetic_secret_7d96", "undefined alias", "Parser:");
     }
 
     @Test

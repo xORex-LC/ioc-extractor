@@ -7,6 +7,7 @@ The reviewed components use Java 21 and have exact dependency contracts:
 | `concurrency` (default) | `ioc-platform-concurrency` | `platform/platform-concurrency` | None |
 | `diagnostics` | `ioc-platform-diagnostics-api` | `platform/platform-diagnostics-api` | None |
 | `logging` | `ioc-platform-logging-slf4j` | `platform/platform-logging-slf4j` | `org.slf4j:slf4j-api:2.0.18`, compile JAR |
+| `configuration` | `ioc-config-spring-boot` | `adapters/adapter-config-spring-boot` | `org.springframework.boot:spring-boot:4.0.8` and `org.springframework:spring-core:7.0.9`, compile JARs |
 
 Maven Central is primary; GitHub Packages receives the identical release bytes.
 The concurrency pilot established the publication model in
@@ -24,6 +25,62 @@ New dependencies or versions require explicit contract review, not a broader
 allowlist. The older zero-dependency contracts remain enforced.
 No version is claimed published until the repository checks below pass.
 
+Logging `0.3.0-rc.1` passed protected publication and separate Central/GitHub
+Packages cold plain Java and Boot consumers in
+[run 39455105300](https://github.com/xORex-LC/ioc-extractor/actions/runs/39455105300).
+Its [consumer guide](logging-library.md) supplies the released dependency;
+the [module reference](../../platform/platform-logging-slf4j/README.md) describes
+the qualified API/backend boundary. This does not qualify a later version.
+
+## Configuration library admission
+
+`io.github.xorex-lc:ioc-config-spring-boot` is implemented in the reactor and its
+ownership is accepted in
+[ADR 0046](../ADR/0046-reusable-spring-boot-configuration-inspection.md).
+The `configuration` selector prepares a parent-independent POM with exactly two
+required compile JAR dependencies: Boot 4.0.8 and Spring Core 7.0.9. The JAR's
+embedded POM must match it. Private parents, BOM imports, build/profiles/repository
+leaks, starters, extra dependencies and executable Boot packaging are rejected.
+Versions remain centrally managed in the reactor and lockstep with the product.
+
+The [standalone consumer](../../tools/fixtures/configuration-consumer/README.md)
+checks inspection/migration and the exact
+[closed-input guide](configuration-library-check.md) from packaged artifacts.
+It qualifies the ten-JAR library closure plus application-owned SnakeYAML 2.6,
+then repeats the guide with the application's Boot 4.0.8 BOM. Default mediation
+selects Commons Logging 1.3.5 and JSpecify 1.0.0; the application BOM selects
+1.3.6 and 1.0.1 respectively. Both complete graphs are asserted. A deliberately
+incompatible Core 5.3.39 selection must fail Enforcer's upper-bound rule; an
+unavailable managed Boot version must fail resolution. Only the documented
+baseline is qualified; other version choices need their own compatibility checks.
+The library does not install an application BOM or enforce versions at runtime.
+
+### Selected repository routing
+
+Every component's standalone consumer uses Maven 3.9.9's bundled Resolver 1.9.22.
+The group filter needs an input file for each repository: without one it abstains,
+as described in the [Resolver documentation](https://maven.apache.org/resolver-1.x/remote-repository-filtering.html).
+The tool writes explicit rule files for `central`, `library-target`,
+`public-dependencies`, `public-plugins` and `public-fallback`. The selected target
+admits only `io.github.xorex-lc`; public routes admit only the reviewed literal
+[external groups](../../tools/ci/library-publication-groups.txt). A wildcard mirror
+redirects other repository IDs to the approved Central route. There is no
+unfiltered repository route in the qualification settings.
+
+This allows Spring dependencies and Maven plugins to come from Central while
+own artifacts resolve only from the selected local/Central/GitHub target.
+All four own artifacts must also match the manifest and record `library-target`
+as their origin. Configuration adds two empty-cache routing probes: an empty
+selected repository must fail even when an alternate contains the same library;
+an unfiltered control must compile and record that alternate origin. New public
+groups or own transitive dependencies require extending and reviewing these
+checks. Repository order is not the isolation mechanism.
+
+Local packaging qualification does not publish a version or establish a second
+deployed service. Integrate the reviewed changes into the release branch before
+the separately authorized protected validation/publication sequence. Preserve
+existing component versions, signed bundles and tags.
+
 ## Local packaging qualification
 
 Use a complete JDK 21 (including `javadoc`), Python 3, GnuPG 2, the Maven wrapper and
@@ -39,6 +96,9 @@ make library-consumer LIBRARY_COMPONENT=diagnostics LIBRARY_BUNDLE=.dev/diagnost
 
 make library-bundle LIBRARY_COMPONENT=logging LIBRARY_BUNDLE=.dev/logging-bundle
 make library-consumer LIBRARY_COMPONENT=logging LIBRARY_BUNDLE=.dev/logging-bundle
+
+make library-bundle LIBRARY_COMPONENT=configuration LIBRARY_BUNDLE=.dev/configuration-bundle
+make library-consumer LIBRARY_COMPONENT=configuration LIBRARY_BUNDLE=.dev/configuration-bundle
 ```
 
 `LIBRARY_VERSION` defaults to `0.3.0-SNAPSHOT`; `LIBRARY_BUNDLE` defaults to
@@ -69,8 +129,8 @@ repository. These checks need network access and do not replace `make verify`
 or `make pmd-analysis`. CI runs one unprivileged matrix job per component.
 The selector is allowlisted; the CLI's `--component` defaults to `concurrency`
 for compatibility. Pass `--component diagnostics` on every diagnostics operation,
-including `check`, signing and recovery. Use `--component logging` for the new
-component in the same way. A bundle from another component is
+including `check`, signing and recovery. Use `--component logging` or `--component configuration` for those
+components in the same way. A bundle from another component is
 rejected before signing or repository access. The manifest retains the exact
 artifact, version, source commit and file hashes; existing concurrency manifests
 remain valid without rewriting them.
@@ -221,11 +281,12 @@ After a version has passed publication qualification, add:
 <dependency>
   <groupId>io.github.xorex-lc</groupId>
   <artifactId>ioc-platform-concurrency</artifactId>
-  <version>0.3.0</version>
+  <version>0.3.0-rc.1</version>
 </dependency>
 ```
 
-This is an example coordinate, not a claim that `0.3.0` is already available.
+The example uses the qualified concurrency pilot release. The
+[diagnostics guide](diagnostics-library.md) supplies its released dependency.
 Central needs no additional repository configuration. For GitHub Packages use
 `https://maven.pkg.github.com/xorex-lc/ioc-extractor` and matching Maven server
 credentials with package read access. Even public GitHub Maven packages require

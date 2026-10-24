@@ -39,12 +39,15 @@ step (`make bootstrap` локально, `tools/dev/bootstrap.sh lychee` в CI).
 | `make mutation-pilot` | Полный PIT diagnostic только для `core/ioc-domain` |
 | `make stability-pilot` | Seeded random-order прогоны без retry (`SEED`/`REPEAT` настраиваются) |
 
-`library-publication.py` допускает concurrency, diagnostics и logging через
+`library-publication.py` допускает concurrency, diagnostics, logging и configuration через
 отдельные точные контракты зависимостей. Logging требует compile JAR
-`slf4j-api:2.0.18`; первые два компонента остаются без зависимостей. Consumers
+`slf4j-api:2.0.18`, configuration — compile JAR `spring-boot:4.0.8` и
+`spring-core:7.0.9`; первые два компонента остаются без зависимостей. Consumers
 сверяют хеши и выбранный репозиторий для всех четырёх файлов библиотеки;
-сторонние зависимости logging берутся отдельно из Central. Смена формата
-provenance в Maven wrapper требует пересмотра этой проверки, а не её обхода.
+сторонние зависимости берутся отдельно из Central. Явные фильтры групп Resolver
+ограничивают маршруты репозиториев; configuration дополнительно проверяет отказы
+при несовместимом выборе зависимостей и fallback при пустом выбранном репозитории.
+Смена формата provenance в Maven wrapper требует пересмотра этой проверки, а не её обхода.
 
 `build.sh` сохраняет `last-verify.env` после завершения Maven с commit,
 fingerprint рабочего дерева, временем и результатом. Если дерево изменилось во

@@ -16,9 +16,10 @@ logging configuration before deployment.
 
 Use the service's Spring Boot dependency management and `spring-boot-starter`
 for its selected provider. Add the logging library at the same product/library
-version as the other platform libraries. At this checkpoint the new artifact is
-implemented in the reactor; publication and repository consumption are separate
-release steps. Do not treat an unpublished snapshot as available in Central.
+version as the other platform libraries. The published `0.3.0-rc.1` dependency
+is shown in the [plain Java guide](logging-library.md#dependency-and-status).
+This recipe passed separate cold consumers from Central and GitHub Packages;
+a consuming service still qualifies its own complete backend configuration.
 
 ## Configure one file destination
 
@@ -186,4 +187,5 @@ It compiles against the packaged library, resolves the backend independently
 with its own empty cache, and checks the five supported records. The six
 unsupported-input scenarios remain owned by the bootstrap integration suite.
 File-repository success is independent packaging evidence; live Central/GitHub
-downloads remain a separate protected release qualification.
+downloads passed separate protected qualification for `0.3.0-rc.1` in
+[run 39455105300](https://github.com/xORex-LC/ioc-extractor/actions/runs/39455105300).

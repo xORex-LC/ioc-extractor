@@ -511,16 +511,19 @@ their lifecycle cost.
 
 Reusable library publication uses a separate protected manual workflow and an
 immutable artifact bundle. Its explicit `component` selector admits concurrency
-and diagnostics with no dependencies, and logging with exactly the required
-SLF4J API compile JAR; each component still needs its own reviewed release
+and diagnostics with no dependencies, logging with exactly the required SLF4J
+API compile JAR, and configuration with exactly the required Spring Boot and
+Spring Core compile JARs. Each component still needs its own reviewed release
 admission. See the [publication guide](guides/library-publication.md) and
 [ADR 0028](ADR/0028-pilot-library-publication.md), refined by
 [ADR 0029](ADR/0029-release-branch-library-publication.md). Logging's dependency
-and backend boundary is recorded in [ADR 0045](ADR/0045-reusable-slf4j-logging-contract.md).
-It retains the
-product version but uses a component tag and matching release branch.
+and backend boundary is recorded in [ADR 0045](ADR/0045-reusable-slf4j-logging-contract.md);
+configuration inspection and service-owned source/enforcement policy are recorded
+in [ADR 0046](ADR/0046-reusable-spring-boot-configuration-inspection.md).
+Each library retains the product version but uses a component tag and matching
+release branch.
 Application release automation does not publish Maven packages. Local packaging
 does not close live repository qualification. Existing concurrency releases and
 their component tags remain immutable when another library is added. Consumers
-must verify selected-repository origin as well as the four artifact hashes;
-logging's external dependencies and consumer-selected backend resolve separately.
+must verify selected-repository origin as well as the four artifact hashes.
+Third-party dependencies and application-owned logging backends resolve separately.

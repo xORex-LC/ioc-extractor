@@ -78,6 +78,10 @@
 
         <!-- Adapter production universe. -->
         <dependency>
+            <groupId>io.github.xorex-lc</groupId>
+            <artifactId>ioc-config-spring-boot</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.iocextractor</groupId>
             <artifactId>ioc-adapter-regex-re2j</artifactId>
         </dependency>
@@ -173,6 +177,7 @@
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/core/ioc-domain/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/core/ioc-processing/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/core/ioc-application/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-config-spring-boot/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-regex-re2j/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-psl/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-source-tika/src/main/java</compileSourceRoot>

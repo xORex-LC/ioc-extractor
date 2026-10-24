@@ -7,7 +7,7 @@ on:
         description: 'Reviewed library with an exact dependency contract'
         required: true
         type: choice
-        options: [concurrency, diagnostics, logging]
+        options: [concurrency, diagnostics, logging, configuration]
         default: concurrency
       release_tag:
         description: 'Annotated tag: <selected artifactId>-vX.Y.Z[-rc.N]'

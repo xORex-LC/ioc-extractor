@@ -77,6 +77,10 @@
 
         <!-- Adapter production universe. -->
         <dependency>
+            <groupId>io.github.xorex-lc</groupId>
+            <artifactId>ioc-config-spring-boot</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.iocextractor</groupId>
             <artifactId>ioc-adapter-regex-re2j</artifactId>
         </dependency>

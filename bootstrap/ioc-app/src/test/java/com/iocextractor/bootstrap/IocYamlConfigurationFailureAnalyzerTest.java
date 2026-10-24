@@ -1,7 +1,13 @@
 package com.iocextractor.bootstrap;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.diagnostics.FailureAnalysis;
+import org.springframework.boot.diagnostics.LoggingFailureAnalysisReporter;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.core.io.ByteArrayResource;
 import org.yaml.snakeyaml.error.MarkedYAMLException;
@@ -12,6 +18,35 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 class IocYamlConfigurationFailureAnalyzerTest {
+
+    @Test
+    void debugFailureReporterCannotRecoverTheOriginalParserProblem() {
+        Throwable failure = catchThrowable(() -> new YamlPropertySourceLoader().load(
+                "broken", new ByteArrayResource("password: *synthetic_secret_7d96\n"
+                        .getBytes(StandardCharsets.UTF_8))));
+        FailureAnalysis analysis = new IocYamlConfigurationFailureAnalyzer().analyze(findYamlFailure(failure));
+        Logger logger = (Logger) LoggerFactory.getLogger(LoggingFailureAnalysisReporter.class);
+        Level previous = logger.getLevel();
+        var appender = new ListAppender<ILoggingEvent>();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setLevel(Level.DEBUG);
+        try {
+            new LoggingFailureAnalysisReporter().report(analysis);
+
+            assertThat(appender.list).isNotEmpty().allSatisfy(event -> {
+                assertThat(event.getFormattedMessage()).doesNotContain("synthetic_secret_7d96");
+                assertThat(event.getThrowableProxy()).isNull();
+            });
+            assertThat(analysis.getDescription()).contains("CONFIG.YAML_INVALID", "application YAML:1:11")
+                    .doesNotContain("synthetic_secret_7d96");
+            assertThat(analysis.getCause()).isNull();
+        } finally {
+            logger.setLevel(previous);
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
 
     @Test
     void convertsConfigDataYamlFailureIntoValueFreeOperatorDiagnostic() {

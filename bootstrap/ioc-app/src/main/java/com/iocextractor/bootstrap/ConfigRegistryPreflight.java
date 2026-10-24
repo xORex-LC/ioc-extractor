@@ -35,8 +35,17 @@ final class ConfigRegistryPreflight implements InitializingBean {
         }
         validateImportProcessingPlans(errors);
         if (!errors.isEmpty()) {
-            throw new IllegalStateException("CONFIG.REGISTRY invalid IOC configuration:\n- "
-                    + String.join("\n- ", errors));
+            throw new RegistryConfigurationException(errors);
+        }
+    }
+
+    /** Lets the command recognize registry rejection without parsing its detailed message. */
+    static final class RegistryConfigurationException extends IllegalStateException {
+
+        private static final long serialVersionUID = 1L;
+
+        private RegistryConfigurationException(List<String> errors) {
+            super("CONFIG.REGISTRY invalid IOC configuration:\n- " + String.join("\n- ", errors));
         }
     }
 

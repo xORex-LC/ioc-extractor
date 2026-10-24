@@ -7,16 +7,18 @@ The service owns its codes, messages, logging, exceptions and transactions.
 
 ## Dependency and status
 
-The component is implemented in this repository at the shared reactor version,
-currently `0.3.0-SNAPSHOT`. It is not independently published yet. The following
-coordinates identify the planned consumer dependency; resolving it from a public
-repository requires a subsequent component release:
+Release `0.3.0-rc.1` is published to Maven Central and mirrored to GitHub Packages.
+Separate consumers resolved the POM, main JAR, sources and Javadoc from each
+repository and executed all three examples below in
+[publication run 39137777538](https://github.com/xORex-LC/ioc-extractor/actions/runs/39137777538).
+For ordinary public consumption, add this dependency; no repository or credentials
+are needed beyond Maven's default Central configuration:
 
 ```xml
 <dependency>
   <groupId>io.github.xorex-lc</groupId>
   <artifactId>ioc-platform-diagnostics-api</artifactId>
-  <version>0.3.0-SNAPSHOT</version>
+  <version>0.3.0-rc.1</version>
 </dependency>
 ```
 
@@ -34,7 +36,7 @@ make library-consumer LIBRARY_COMPONENT=diagnostics LIBRARY_BUNDLE=.dev/diagnost
 The [standalone consumer](../../tools/fixtures/diagnostics-consumer/README.md)
 executes all three examples below outside the checkout with an empty Maven
 cache. The [publication guide](library-publication.md) describes artifact and
-repository checks. Local qualification does not make the coordinate public.
+repository checks and authenticated GitHub Packages configuration.
 The [module reference](../../platform/platform-diagnostics-api/README.md) lists
 package responsibilities; public Javadoc supplies member-level contracts.
 

@@ -69,7 +69,7 @@ Findings остаются advisory: обычный `make verify` и CI не вк
 отключает компиляцию test bytecode и обедняет анализ scope.
 
 `make pmd-analysis` запускает принятую blocking/advisory PMD source policy по
-22 точным rules и 23 production `src/main/java` roots. Команда выбирает
+22 точным rules и 24 production `src/main/java` roots. Команда выбирает
 `build-support/pmd-report` и его upstream reactor через `-pl ... -am`, чтобы
 PMD aggregate mojo не конкурировал в parallel build с независимыми JaCoCo,
 SpotBugs и CPD aggregators. XML/HTML появляются в
@@ -118,7 +118,7 @@ Native macOS и Windows не являются поддерживаемыми с�
 
 `make library-bundle`, `make library-consumer` и `make library-publication-test`
 проверяют независимую упаковку и публичные контракты. Параметр
-`LIBRARY_COMPONENT` выбирает `concurrency` (по умолчанию), `diagnostics` или `logging`;
+`LIBRARY_COMPONENT` выбирает `concurrency` (по умолчанию), `diagnostics`, `logging` или `configuration`;
 для каждого bundle задавайте отдельный `LIBRARY_BUNDLE`. Изолированные проекты
 расположены в [fixtures](fixtures/README.md), процедура публикации — в
 [руководстве](../docs/guides/library-publication.md). Требуются полный JDK 21
@@ -126,3 +126,9 @@ Native macOS и Windows не являются поддерживаемыми с�
 Для logging запускаются отдельные SLF4J- и Boot-потребители с примерами из
 руководств. Разрешена только зависимость `slf4j-api:2.0.18`; провайдер выбирает
 потребитель. Первые две библиотеки по-прежнему не допускают зависимостей.
+
+Для configuration проверяются инспекция/миграции, точный пример ограниченного
+контекста, BOM приложения и отказы при несовместимом выборе зависимостей.
+Resolver 1.9.22 использует явные списки групп для всех маршрутов репозиториев;
+отдельные проверки доказывают запрет fallback нашей библиотеки при пустом
+выбранном репозитории. Внешние зависимости и плагины доступны из Central.

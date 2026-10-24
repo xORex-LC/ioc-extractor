@@ -20,7 +20,7 @@ language: "ru"
 | `R030-BUILD` | `verified` | [build-quality ledger](evidence/build-quality-ledger.md), [closure PR #10](https://github.com/xORex-LC/ioc-extractor/pull/10) | Required project-owned statuses are active on `main` and `release-0.3.0`; all five release-branch checks passed under the active policy in run `34679847573` |
 | `R030-TEST` global controls | `verified` | [test-quality ledger](evidence/test-quality-ledger.md) | All global work items, including separate out-of-reactor Central and GitHub Packages consumers in run `34233605995`, are verified. Applicable per-module hardening cells remain independently tracked below |
 | `R030-SEC` | `in-progress` | Dependency remediation is qualified on exact commit `3307d1e2`: CI and Dependency Security runs passed with 0 unsuppressed findings | [Dependency security evidence](evidence/dependency-security.md); remaining repository, workflow and publication-security gap analysis |
-| `R030-LIB` | `verified` | [shared-code inventory](evidence/shared-code-inventory.md), [LIB-1 hardening](lib-1-concurrency-worknote.md) | `ioc-platform-concurrency:0.3.0-rc.1` was published from the immutable validated bundle and separately consumed from Central and GitHub Packages in protected run `34233605995` |
+| `R030-LIB` | `verified` | [shared-code inventory](evidence/shared-code-inventory.md), [LIB-1 hardening](lib-1-concurrency-worknote.md) | `ioc-platform-concurrency:0.3.0-rc.1` was published from the immutable validated bundle and separately consumed from Central and GitHub Packages in protected run `34233605995`; logging `0.3.0-rc.1` is separately published/qualified in run `39455105300` ([release record](libs/lib-3-logging-design.md#protected-publication-record--2026-10-21)) |
 | `R030-DOC` | `planned` | — | Translation inventory |
 | `R030-REL` | `planned` | — | All prerequisite goals |
 
@@ -114,3 +114,26 @@ reused the original signed bundle, confirmed exact bytes at both repositories
 and passed two isolated cold consumers. This closes `R030-LIB` and the global
 `TEST-PUBLICATION-08` control; it does not close the separate module-hardening
 cells.
+
+### Configuration library implementation admission — 2026-10-22
+
+Configuration C1–C3 implements record-schema name/declaration inspection,
+explicit migration observations, IOC integration and the executable closed-input
+context recipe. [ADR 0046](../../ADR/0046-reusable-spring-boot-configuration-inspection.md)
+accepts the ownership boundary. Maven, analyzer and coverage registries include
+the adapter as a normal production module; their topology and fixed floors remain
+unchanged. The [C3 checkpoint](libs/configuration-library-design.md#c3-build-and-documentation-checkpoint--2026-10-22)
+records final local gates. C4 standalone POMs, dependency mediation, cold consumers
+and separately authorized publication remain open for this component; the earlier
+`R030-LIB` pilot closure does not qualify it automatically.
+
+
+### Configuration C4 local publication qualification — 2026-10-24
+
+The [C4 checkpoint](libs/configuration-library-design.md#c4-standalone-packaging-and-consumer-checkpoint--2026-10-24)
+records the standalone POM, full default/application-BOM dependency graphs,
+packaged inspection/migration and exact restricted-context guide, empty-cache
+repository-routing negatives/control, and older component regressions. The CI
+matrix and protected workflow accept the explicit `configuration` selector.
+Existing signed releases and tags are unchanged. Protected validation/publication,
+release-repository consumers and a deployed second service remain separate gates.

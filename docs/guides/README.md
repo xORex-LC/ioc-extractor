@@ -26,3 +26,5 @@
 | [diagnostics-library.md](diagnostics-library.md) | — | Подключение общей diagnostics-библиотеки: коды сервиса, результаты, policy, bounded counts и обработка delivery failures |
 | [logging-library.md](logging-library.md) | — | Общий SLF4J API: каталог сервиса, typed fields, MDC, ECS helpers и явное маскирование |
 | [logging-library-boot.md](logging-library-boot.md) | — | Проверенный синхронный Boot ECS recipe: Java/YAML/XML, dataset/error ownership и ограничения backend |
+| [configuration-library.md](configuration-library.md) | — | Подключение проверки имён конфигурации: выбор источников, покрытие, наблюдение старых имён и решения сервиса |
+| [configuration-library-check.md](configuration-library-check.md) | — | Исполняемый пример ограниченного Spring-контекста с явными YAML/override-входами и запретом импортов |

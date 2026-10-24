@@ -54,6 +54,16 @@ COMPONENTS = {
         'fixtures': ('logging-consumer', 'logging-boot-consumer'),
         'dependencies': (('org.slf4j', 'slf4j-api', '2.0.18'),),
     },
+    'configuration': {
+        'artifact': 'ioc-config-spring-boot',
+        'module': 'adapters/adapter-config-spring-boot',
+        'package': 'com/iocextractor/config/boot/',
+        'markers': ('PropertySchema', 'PropertyInspector', 'PropertyInspection',
+                    'PropertyMigration', 'MigrationInspector', 'MigrationInspection'),
+        'fixtures': ('configuration-consumer',),
+        'dependencies': (('org.springframework.boot', 'spring-boot', '4.0.8'),
+                         ('org.springframework', 'spring-core', '7.0.9')),
+    },
 }
 
 
@@ -154,12 +164,22 @@ def validate_consumer_pom(content, version, component):
     """Check the same dependency contract before packaging and during recovery."""
     xml = ET.fromstring(content)
     ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
+    require(xml.tag == '{' + ns['m'] + '}project', 'invalid consumer POM root')
+    require(all(element.tag.startswith('{' + ns['m'] + '}') for element in xml.iter()),
+            'invalid consumer POM namespace')
+    fields = [child.tag.removeprefix('{' + ns['m'] + '}') for child in xml]
+    require(len(fields) == len(set(fields)), 'duplicate consumer POM fields')
     require(b'${' not in content, 'unresolved consumer POM property')
+    require(xml.findtext('m:modelVersion', namespaces=ns) == '4.0.0', 'invalid consumer POM model version')
     for field, value in [('groupId', GROUP), ('artifactId', component['artifact']), ('version', version)]:
         require(xml.findtext('m:' + field, namespaces=ns) == value, 'consumer POM identity mismatch')
+    require(xml.findtext('m:packaging', 'jar', ns) == 'jar', 'consumer POM must package a JAR')
     for field in ('parent', 'dependencyManagement', 'repositories', 'pluginRepositories',
                   'distributionManagement', 'build', 'profiles'):
         require(xml.find('m:' + field, ns) is None, 'unexpected consumer POM coupling: ' + field)
+    require(set(fields) <= {'modelVersion', 'groupId', 'artifactId', 'version', 'packaging',
+                            'name', 'description', 'url', 'licenses', 'developers', 'scm', 'dependencies'},
+            'unexpected consumer POM fields')
     for field in ('name', 'description', 'url', 'licenses', 'developers', 'scm'):
         require(xml.find('m:' + field, ns) is not None, 'missing POM metadata: ' + field)
     dependencies = xml.findall('m:dependencies', ns)
@@ -406,6 +426,21 @@ def consume(bundle, repository):
 
 def populate_examples(component, fixture, project):
     """Compile the actual guide sources rather than a second copy of the examples."""
+    if component == COMPONENTS['configuration']:
+        guide = (ROOT / 'docs/guides/configuration-library-check.md').read_text()
+        destination = project / 'src/main/java/examples/configuration'
+        destination.mkdir(parents=True, exist_ok=True)
+        for language, path in [('java', destination / 'CollectorConfigurationCheck.java'),
+                               ('yaml', project / 'collector.yml')]:
+            blocks = re.findall(r'```' + language + r'\n(.*?)\n```', guide, re.DOTALL)
+            require(len(blocks) == 1, 'guide example count changed')
+            path.write_text(blocks[0])
+        shutil.copyfile(ROOT / 'bootstrap/ioc-app/src/test/resources/consumer/configuration/ConfigurationRecipeMain.java',
+                        destination / 'ConfigurationRecipeMain.java')
+        resources = project / 'src/main/resources'
+        resources.mkdir(parents=True, exist_ok=True)
+        (resources / 'application.yml').write_text('spring.config.import: missing:ambient-secret\n')
+        return
     if component != COMPONENTS['logging']:
         return
     guides = ['logging-library.md']
@@ -444,7 +479,52 @@ def verify_resolved_artifacts(metadata, component, cache):
                 'consumer resolved different artifact bytes')
         # Maven 3.9.9 Resolver records the repository ID per downloaded file.
         # A Central fallback must not masquerade as a successful GitHub consumer.
-        require(name + '>library-target=' in origins, 'consumer artifact did not resolve from selected repository')
+        sources = {line.split('>', 1)[1].split('=', 1)[0] for line in origins if line.startswith(name + '>')}
+        require(sources == {'library-target'}, 'consumer artifact did not resolve from selected repository')
+
+
+def consumer_settings(work, repository, url, public_url=CENTRAL):
+    """Pin every repository route; Resolver 1.9.22 abstains without a rule file."""
+    settings = ET.Element('settings', xmlns='http://maven.apache.org/SETTINGS/1.2.0')
+    configure_proxy(settings)
+    mirrors = ET.SubElement(settings, 'mirrors')
+    routes = [('library-target', 'central', url),
+              ('public-dependencies', 'public-dependencies', public_url),
+              ('public-plugins', 'public-plugins', CENTRAL),
+              ('public-fallback', '*,!central,!public-dependencies,!public-plugins', CENTRAL)]
+    rules = work / 'repository-filters'
+    rules.mkdir()
+    lines = (ROOT / 'tools/ci/library-publication-groups.txt').read_text().splitlines()
+    allowed = {line.strip() for line in lines if line.strip() and not line.lstrip().startswith('#')}
+    require(not any(g == GROUP or g.startswith((GROUP + '.', 'com.iocextractor')) for g in allowed),
+            'own groups cannot enter the public repository allowlist')
+    groups = '\n'.join(sorted(allowed)) + '\n'
+    for identifier, match, target in routes:
+        mirror = ET.SubElement(mirrors, 'mirror')
+        for name, value in [('id', identifier), ('mirrorOf', match), ('url', target)]:
+            ET.SubElement(mirror, name).text = value
+        (rules / ('groupId-' + identifier + '.txt')).write_text(
+            GROUP + '\n' if identifier == 'library-target' else groups)
+    # Also cover the pre-mirror IDs used in the standalone POMs.
+    (rules / 'groupId-central.txt').write_text(GROUP + '\n')
+    if repository == 'github':
+        server = ET.SubElement(ET.SubElement(settings, 'servers'), 'server')
+        for name, value in [('id', 'library-target'), ('username', '${env.GITHUB_ACTOR}'), ('password', '${env.GITHUB_TOKEN}')]:
+            ET.SubElement(server, name).text = value
+    path = work / 'settings.xml'
+    ET.ElementTree(settings).write(path, encoding='UTF-8', xml_declaration=True)
+    (work / 'global-settings.xml').write_text('<settings/>')
+    return [str(ROOT / 'mvnw'), '-B', '-ntp', '-s', str(path), '-gs', str(work / 'global-settings.xml'),
+            '-Dmaven.repo.local=' + str(work / 'cache'),
+            '-Daether.remoteRepositoryFilter.groupId=true',
+            '-Daether.remoteRepositoryFilter.groupId.basedir=' + str(rules)]
+
+
+def consumer_environment():
+    env = {k: v for k, v in os.environ.items() if not k.startswith(('GPG_', 'MAVEN_CENTRAL_'))}
+    for name in ('MAVEN_ARGS', 'MAVEN_OPTS', 'JAVA_TOOL_OPTIONS', 'JDK_JAVA_OPTIONS'):
+        env.pop(name, None)
+    return env
 
 
 def consume_fixture(metadata, component, fixture, repository, url):
@@ -452,31 +532,25 @@ def consume_fixture(metadata, component, fixture, repository, url):
         work = Path(folder)
         shutil.copytree(ROOT / 'tools/fixtures' / fixture, work / 'consumer')
         populate_examples(component, fixture, work / 'consumer')
-        settings = ET.Element('settings', xmlns='http://maven.apache.org/SETTINGS/1.2.0')
-        configure_proxy(settings)
-        mirror = ET.SubElement(ET.SubElement(settings, 'mirrors'), 'mirror')
-        for name, value in [('id', 'library-target'), ('mirrorOf', 'central'), ('url', url)]:
-            ET.SubElement(mirror, name).text = value
-        if repository == 'github':
-            server = ET.SubElement(ET.SubElement(settings, 'servers'), 'server')
-            for name, value in [('id', 'library-target'), ('username', '${env.GITHUB_ACTOR}'), ('password', '${env.GITHUB_TOKEN}')]:
-                ET.SubElement(server, name).text = value
-        settings_path = work / 'settings.xml'
-        ET.ElementTree(settings).write(settings_path, encoding='UTF-8', xml_declaration=True)
         # Fresh caches and empty user/global settings prevent reactor-local or
         # developer configuration from masking a missing published dependency.
-        empty = work / 'global-settings.xml'
-        empty.write_text('<settings/>')
-        env = {k: v for k, v in os.environ.items() if not k.startswith(('GPG_', 'MAVEN_CENTRAL_'))}
-        for name in ('MAVEN_ARGS', 'MAVEN_OPTS', 'JAVA_TOOL_OPTIONS', 'JDK_JAVA_OPTIONS'):
-            env.pop(name, None)
+        command = consumer_settings(work, repository, url) + ['-Dlibrary.version=' + metadata['version']]
+        env = consumer_environment()
         env['COLLECTOR_LOG_FILE'] = str(work / 'collector.ecs.json')
-        command = [str(ROOT / 'mvnw'), '-B', '-ntp', '-s', str(settings_path), '-gs', str(empty),
-                   '-Dmaven.repo.local=' + str(work / 'cache'), '-Dlibrary.version=' + metadata['version']]
         run(command + ['compile', 'org.codehaus.mojo:exec-maven-plugin:3.5.0:java'], cwd=work / 'consumer', env=env)
         verify_resolved_artifacts(metadata, component, work / 'cache')
         if fixture == 'logging-consumer':
             negative_dependency_checks(command, work / 'consumer', env)
+        if fixture == 'configuration-consumer':
+            qualify_configuration(command, work / 'consumer', env)
+            verify_resolved_artifacts(metadata, component, work / 'cache')
+            fallback = work / 'alternate-repository'
+            target = fallback / relative_path(metadata['version'], component)
+            target.mkdir(parents=True)
+            for suffix in SUFFIXES:
+                name = metadata['artifact'] + '-' + metadata['version'] + suffix
+                shutil.copyfile(work / 'cache' / relative_path(metadata['version'], component) / name, target / name)
+            qualify_repository_routing(metadata, component, work / 'consumer', fallback.as_uri())
         print('Qualified ' + metadata['artifact'] + ':' + metadata['version'] + ' from ' + repository +
               ' (' + fixture + '); four resolved artifacts match the bundle and selected repository')
 
@@ -492,6 +566,100 @@ def negative_dependency_checks(command, project, env):
         require(result.returncode != 0 and diagnostic in output and 'org.slf4j' in output,
                 'negative SLF4J dependency check did not fail for the expected reason: ' + profile)
         print('Rejected missing/unavailable SLF4J API: ' + profile)
+
+
+def configuration_graph(project, managed=False):
+    """Review the whole resolved application graph, including the YAML recipe."""
+    expected = {
+        ('org.springframework.boot', 'spring-boot'): '4.0.8',
+        **{('org.springframework', 'spring-' + name): '7.0.9'
+           for name in ('core', 'context', 'aop', 'beans', 'expression')},
+        **{('io.micrometer', 'micrometer-' + name): '1.16.7' for name in ('observation', 'commons')},
+        ('commons-logging', 'commons-logging'): '1.3.6' if managed else '1.3.5',
+        ('org.jspecify', 'jspecify'): '1.0.1' if managed else '1.0.0',
+        ('org.yaml', 'snakeyaml'): '2.6',
+    }
+    actual = {}
+    def visit(node):
+        if node['groupId'] not in (GROUP, 'example.consumer'):
+            key = node['groupId'], node['artifactId']
+            require(key not in actual or actual[key] == node['version'], 'conflicting configuration dependency versions')
+            actual[key] = node['version']
+        for child in node.get('children', []):
+            visit(child)
+    visit(json.loads((project / 'target/dependencies.json').read_text()))
+    require(actual == expected, 'configuration dependency closure changed; review before qualification')
+    print('Reviewed configuration closure: ' + json.dumps({':'.join(k): v for k, v in sorted(actual.items())}))
+
+
+def qualify_configuration(command, project, env):
+    dependency = 'org.apache.maven.plugins:maven-dependency-plugin:3.11.0:'
+    for profile in ([], ['-Papplication-bom']):
+        run(command + profile + [dependency + 'tree', '-DoutputType=json', '-DoutputFile=target/dependencies.json',
+                                 dependency + 'build-classpath', '-Dmdep.outputFile=target/classpath.txt'], cwd=project, env=env)
+        configuration_graph(project, managed=bool(profile))
+        if profile:
+            run(command + profile + ['compile', 'org.codehaus.mojo:exec-maven-plugin:3.5.0:java'], cwd=project, env=env)
+        classpath = str(project / 'target/classes') + os.pathsep + (project / 'target/classpath.txt').read_text().strip()
+        require(str(ROOT) + '/' not in classpath, 'reactor path entered the standalone consumer classpath')
+        recipe_env = {**env, 'COLLECTOR_REQUESTTIMEOUT': 'invalid-ambient-secret',
+                      'SPRING_APPLICATION_JSON': '{"collector":{"request-timeout":"ambient-secret"}}'}
+        java = str(Path(env['JAVA_HOME']) / 'bin/java') if env.get('JAVA_HOME') else 'java'
+        result = subprocess.run([java,
+                                 '-Dcollector.request-timeout=invalid-ambient-secret',
+                                 '-Dspring.main.sources=ambient-secret', '-cp', classpath,
+                                 'examples.configuration.ConfigurationRecipeMain', str(project)],
+                                cwd=project, env=recipe_env, capture_output=True, text=True, timeout=25)
+        require(result.returncode == 0 and 'RECIPE_VALIDATED' in result.stdout
+                and not (project / 'runtime-marker').exists(), 'packaged closed-input guide failed')
+        print('Closed-input guide passed from packaged JARs' + (' with application BOM' if profile else ''))
+    # These failures must identify mediation, rather than an unrelated tool or network error.
+    for profile, offline, diagnostic in [('incompatible-spring', [], 'Require upper bound dependencies error for org.springframework:spring-core:5.3.39'),
+                                         ('unavailable-boot', ['-o'], '0.0.0-c4-unavailable')]:
+        result = subprocess.run(command + offline + ['-P' + profile, 'validate'], cwd=project, env=env,
+                                capture_output=True, text=True, timeout=180)
+        output = result.stdout + result.stderr
+        require(result.returncode != 0 and diagnostic in output and 'org.springframework' in output,
+                'configuration mediation check did not fail for the expected reason: ' + profile)
+        print('Rejected configuration dependency mediation: ' + profile)
+
+
+def qualify_repository_routing(metadata, component, project, fallback_url):
+    """A real alternate repository can supply the JAR only with filtering disabled."""
+    for filtering in (True, False):
+        with tempfile.TemporaryDirectory(prefix='ioc-library-routing-') as folder:
+            work = Path(folder)
+            empty = work / 'empty-target'
+            empty.mkdir()
+            shutil.copytree(project, work / 'consumer', ignore=shutil.ignore_patterns('target'))
+            pom = work / 'consumer/pom.xml'
+            pom.write_text(pom.read_text().replace('</repositories>', '<repository>'
+                           '<id>public-thirdparty</id><url>' + CENTRAL + '</url></repository></repositories>', 1)
+                           .replace('<snapshots><enabled>false</enabled></snapshots>',
+                                    '<snapshots><enabled>true</enabled></snapshots>'))
+            command = consumer_settings(work, 'local', empty.as_uri(), fallback_url)
+            if not filtering:
+                command.append('-Daether.remoteRepositoryFilter.groupId=false')
+            require(not (work / 'cache').exists(), 'routing probe cache must start empty')
+            result = subprocess.run(command + ['-Dlibrary.version=' + metadata['version'], 'compile'],
+                                    cwd=work / 'consumer', env=consumer_environment(),
+                                    capture_output=True, text=True, timeout=300)
+            output = result.stdout + result.stderr
+            resolved = work / 'cache' / relative_path(metadata['version'], component)
+            if filtering:
+                require(result.returncode != 0 and 'Could not resolve dependencies' in output
+                        and metadata['artifact'] in output and not list(resolved.glob('*.jar')),
+                        'missing selected artifact did not fail closed')
+                print('Rejected missing selected artifact with a populated alternate repository and empty cache')
+            else:
+                require(result.returncode == 0, 'unfiltered alternate-repository control failed')
+                origins = (resolved / '_remote.repositories').read_text()
+                for suffix in SUFFIXES:
+                    name = metadata['artifact'] + '-' + metadata['version'] + suffix
+                    require(name + '>public-dependencies=' in origins, 'alternate-repository control used another origin')
+                    require(digest((resolved / name).read_bytes()) == metadata['files'][str(
+                        relative_path(metadata['version'], component) / name)], 'alternate control bytes differ')
+                print('Unfiltered control resolved the same four artifacts from the alternate repository')
 
 
 def main():

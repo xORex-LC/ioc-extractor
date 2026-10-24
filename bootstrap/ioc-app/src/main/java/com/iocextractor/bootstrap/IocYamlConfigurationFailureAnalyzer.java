@@ -14,6 +14,7 @@ public final class IocYamlConfigurationFailureAnalyzer
         return new FailureAnalysis(
                 details.description("application YAML"),
                 IocYamlFailureDetails.action(),
-                cause);
+                // Boot's reporter logs this throwable at DEBUG, including parser text.
+                null);
     }
 }

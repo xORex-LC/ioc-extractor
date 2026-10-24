@@ -6,15 +6,18 @@ custom field catalog, actions, disclosure policy and logging provider.
 
 ## Dependency and status
 
-The module is implemented at the reactor version, currently `0.3.0-SNAPSHOT`.
-It has not been independently published. These coordinates identify the local
-implementation; public repository resolution requires a later component release:
+Release `0.3.0-rc.1` is available from
+[Maven Central](https://repo.maven.apache.org/maven2/io/github/xorex-lc/ioc-platform-logging-slf4j/0.3.0-rc.1/)
+and GitHub Packages. Separate cold plain Java and Boot consumers passed against
+each repository in
+[publication run 39455105300](https://github.com/xORex-LC/ioc-extractor/actions/runs/39455105300).
+Central requires no additional repository configuration:
 
 ```xml
 <dependency>
   <groupId>io.github.xorex-lc</groupId>
   <artifactId>ioc-platform-logging-slf4j</artifactId>
-  <version>0.3.0-SNAPSHOT</version>
+  <version>0.3.0-rc.1</version>
 </dependency>
 ```
 
@@ -34,8 +37,9 @@ separate from these in-checkout consumer examples.
 The [publication tooling](library-publication.md) also compiles these exact
 classes against a packaged JAR outside the checkout, using an empty Maven cache.
 The application-selected provider cannot supply a missing SLF4J API dependency
-on the library's behalf. Local file-repository qualification remains separate
-from release downloads from Central and GitHub Packages.
+on the library's behalf. Released artifacts passed these checks independently
+from Central and GitHub Packages, including hashes and repository origin.
+A deployed second service remains outside this packaging/API qualification.
 
 ## Declare fields and emit an operation record
 

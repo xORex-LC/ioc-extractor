@@ -1,12 +1,45 @@
 # Spring Boot configuration library proposal
 
-Status: proposed, 2026-09-13. Analysis and extraction plan; not an accepted ADR,
-implementation, publication admission or new numbered LIB commitment.
+Status: C1 implemented, 2026-10-21; C2–C3 implemented, 2026-10-22;
+C4 implemented and locally qualified, 2026-10-24. The owner
+selected configuration after logging publication. This worknote is not an accepted
+ADR, publication admission or new numbered LIB commitment.
 
 C0 update, 2026-09-13: [independent qualification](configuration-c0-analysis.md)
 reproduced 54 scenarios. The proposed boundary remains useful, but copying the
 current classes unchanged is not qualified. The C0 support matrix and required
-corrections refine the initial API sketch below; C1 has not started.
+corrections refine the initial API sketch below; C1 implements the bounded
+inspection API and retains IOC compatibility policy locally.
+
+Post-C1 review, 2026-10-21: the
+[additional reuse analysis](configuration-extension-analysis.md) evaluates
+controlled error adaptation, migration observations and reusable command/test
+recipes. It reproduces input disclosure in two existing checker failure paths
+(CFG-5) and distinguishes restricted beans from restricted configuration sources.
+These are proposed extensions and qualification requirements, not changes to the
+implemented C1 API or automatic additions to C2–C4.
+
+The owner subsequently authorized the first step: CFG-5 correction and the
+[controlled failure-report contract](../../../dev/configuration-failure-reports.md).
+This is an IOC-local checkpoint; C1 public types and C2–C4 scope remain unchanged.
+
+Migration checkpoint, 2026-10-21: the owner authorized the next extension-analysis
+step. `PropertyMigration`, `MigrationInspector` and `MigrationInspection` now add
+name-only old-path observations to the same adapter. An unrelated schema and real
+Binder qualify the boundary; IOC reuses the observer for its existing accepted
+alias notice. Conversion, conflict rules and compatibility windows remain local.
+See the [inspection contract](../../../dev/configuration-inspection.md#configuration-evolution)
+and the extension checkpoint. This does not admit publication.
+
+C2 now qualifies restricted contexts and explicit source policies as recorded
+[below](#c2-restricted-context-checkpoint--2026-10-22). Shared public types and
+runtime dependencies are unchanged; no generic runner is exported.
+
+C3 promotes the accepted ownership and source-policy boundary to
+[ADR 0046](../../../ADR/0046-reusable-spring-boot-configuration-inspection.md),
+completes the consumer/reference/map links and records publication prerequisites.
+The [checkpoint](#c3-build-and-documentation-checkpoint--2026-10-22) separates
+reactor quality evidence from C4 packaging and repository qualification.
 
 ## Recommendation and scope
 
@@ -15,9 +48,9 @@ inspection and ordered source observations**. Keep schema, validation of values,
 severity, startup refusal, operator messages and command composition in each
 service. This is a narrower boundary than moving the existing bootstrap classes.
 
-Suggested module: `adapters/adapter-config-spring-boot`; publication coordinates:
+C1 module: `adapters/adapter-config-spring-boot`; publication coordinates:
 `io.github.xorex-lc:ioc-config-spring-boot`; package:
-`com.iocextractor.config.boot`. These names are proposals. Keep product/library
+`com.iocextractor.config.boot`. These names identify the local implementation. Keep product/library
 lockstep versions. Do not create a generic configuration engine, API/implementation
 module pair, starter, reload subsystem or mandatory diagnostics dependency.
 
@@ -32,11 +65,13 @@ Disposition: **genericity-review**, with a concrete extraction sequence below.
 The existing library goal is already satisfied by LIB-1. This proposal does not
 reopen that goal or change the published concurrency artifact.
 
-## Evidence and current behavior
+## C0 evidence and pre-extraction behavior
 
 Baseline: `release-0.3.0`, commit
 `0df7183fcc02cfd010104733c3608e710b059be9`; Java 21, Boot parent 4.0.8.
-Production code and build files are unchanged. Existing untracked discussion
+This section characterizes the C0 baseline before extraction; the C1 checkpoint
+below describes the implementation. C0 did not change production code or build
+files. Existing untracked discussion
 notes were preserved. An independent read-only boundary review corroborated
 the source traversal, schema and reporting limitations.
 
@@ -118,9 +153,9 @@ The following paths are relative to
    path; do not publish the existing class as an in-process utility.
 
 7. **Existing publication tooling admits a different dependency shape.** The
-   concurrency-only script rejects any consumer POM dependencies and mirrors
-   Central to the selected target repository. A Boot library needs third-party
-   dependencies. Its local/GitHub consumer cannot rely on that repository also
+   original concurrency-only script rejected consumer POM dependencies. Logging
+   added one exact SLF4J dependency, but a Boot library needs a wider third-party
+   closure and application mediation. Its local/GitHub consumer cannot rely on that repository also
    hosting Spring. Removing isolation would allow a different repository to hide
    an incomplete publication. Tooling qualification is a prerequisite, not a
    post-publication cleanup task.
@@ -294,13 +329,15 @@ enforce the required routing, resolve that limitation before publication admissi
 
 ## Implementation slices and acceptance criteria
 
-Each slice below is future work; this document authorizes no publication action.
+C1 is implemented with the C0 corrections below; C2–C3 have checkpoints below.
+C4 implementation and qualification are recorded in its checkpoint below.
+This document authorizes no publication action.
 
 | Slice | Work | Exit evidence |
 |---|---|---|
 | C0: contract qualification | Independent schema fixtures; map documented names to actual Boot Binder behavior; choose the supported subset and truthful source-report wording | Compatibility/unsupported-case matrix; no unreviewed IOC behavior changes; named capability/release owner recorded |
 | C1: module extraction | Add one adapter JAR, internal matcher/traversal and immutable results; parameterize prefix/schema; IOC delegates to inspectors | Non-IOC consumer compiles; unknown/ambiguity/coverage contracts pass; no product imports or core-to-Spring dependency |
-| C2: preserve integration | Adapt IOC strict preflight and reporter, retain local validators/analyzers/commands; add restricted-context consumer example | Current startup codes, legacy hints, binding failures, output and command isolation retain their contracts |
+| C2: preserve integration | Retain IOC strict preflight/reporters and local validators/analyzers/commands; qualify explicit source policies and a restricted-context consumer example | Existing codes/output plus imports, profiles, scalar/indexed source rejection, actual IOC list binding, closed-input guide compilation and bounded command cleanup |
 | C3: build and documentation | Update module/root maps, capability doc, module README and publication guide; review an ADR for the accepted extraction boundary | Maven/analyzer/coverage scope reviewed together; focused tests, `make verify` and `make pmd-analysis` on final code/build tree |
 | C4: publication qualification | Descriptor/POM changes, repository routing, independent consumer and LIB-1 regression evidence | Local bundle and cold-consumer positives/negatives; dependency closure, protected trigger and immutable artifact identity reviewed before publication |
 
@@ -345,7 +382,345 @@ support. No new production implementation or test was added. Full verify/PMD
 were not rerun for this documentation-only proposal; local freshness still points
 to an older commit and is not represented as current release evidence.
 
-The C0 analysis is now recorded in the linked qualification worknote. The next
-proposed step is C1 with its explicit correction requirements; generic admission
-is conditional on those fixes and actual API tests. No additional future-service
-feature interview is needed to define that bounded work.
+The C0 analysis records the correction requirements used by C1 below. Generic
+admission depends on those corrections and actual API tests. No additional
+future-service feature interview is needed to define that bounded work.
+
+## C1 implementation checkpoint — 2026-10-21
+
+The owner selected configuration after completing logging publication and merging
+its release records. Source baseline is `f693b1cd` on `r030-libraries`.
+
+The implementation uses three public top-level types in
+`com.iocextractor.config.boot`: `PropertySchema`, `PropertyInspector` and
+`PropertyInspection` with nested immutable result records/enums. The two proposed
+inspection entry points are consolidated into one traversal/result: names and
+ordered declarations share source coverage and schema gaps. Reflection and name
+matching remain package-private. There is no severity, enforcement, Binder value
+provenance, global registry, starter or mandatory diagnostics dependency.
+
+C0 corrections are implemented as explicit outcomes. Canonical/camel/dashless
+names and compact/split qualified environment words map to record paths;
+ambiguity retains all candidates and does not discard other unknowns. Dynamic
+map keys retain their original qualified identity. Unsupported schema shapes,
+record-as-scalar declarations, whole scalar record-list declarations, broader
+map grammar and source conventions disclose incomplete coverage. Source
+references contain only fixed categories and encounter ordinals. Collections
+are copied; a value-read trap and an enumeration-failure identity test protect
+the boundary. Boot remains responsible for conversions and list semantics.
+
+IOC preflight and the override reporter delegate source inspection. The IOC
+spelling/environment matcher remains a service policy; unsupported generic shapes,
+including `IdStart`, retain the existing local compatibility check. This is an
+intentional migration seam for C2, not a second generic-library implementation.
+IOC also retains its enumeration failure for an opaque composite; shared
+inspection reports the child's incomplete coverage instead.
+The reporter still selects first external declarations and retains local labels;
+its name does not promise final aggregate provenance. Public capability/module
+documentation describes these limits.
+
+Three normal module suites cover an unrelated collector schema and real Binder
+behavior, including lower list fields that remain observable but do not survive
+binding. The shared API accepts relaxed names that IOC still rejects; bootstrap
+regressions explicitly preserve that delta. These are reactor/module consumers,
+not cold Maven consumers or another production service. C4 owns independent
+packaging and repository qualification.
+
+Build/coverage/analyzer manifests admit 30 Maven projects, 25 functional JARs,
+24 production aggregate groups and 23 local reports. Three added suites change
+the source universe to 233 fast / 80 integration / five external shells /
+308 deterministic classes. The new per-module ratchet is measured from C1's
+focused tests (220/225 lines, 193/204 branches, 20 missed instructions); existing
+ratchets and fixed floors are unchanged. Verifier synthetic tests cover the new
+public coordinate and reject the old product coordinate.
+
+### C1 verification and limits
+
+The three module suites pass 23 tests. The IOC regression suite checks strict
+spellings, split environment names, converted leaves, enum-map keys and both
+enumerable/opaque composites. A separate differential characterization compares
+85 inputs with the pre-extraction IOC implementation; all outcomes agree. Its
+local source and results are retained under `.dev/config-c1-differential/`.
+
+The full deterministic reactor gate passes with 308 classes, 24 production
+aggregate groups and 23 local coverage reports. Raw SpotBugs retains its 137
+accepted findings with zero visible findings; the new module has no raw findings.
+CPD retains the same 22 groups, membership and fragments. PMD's 19 finding
+identities also match the published logging baseline. These comparisons do not
+broaden the accepted analyzer scope or hide findings behind new suppressions.
+
+A standalone Java consumer outside the checkout compiles and runs using the
+packaged library JAR and resolved third-party JARs, without IOC artifacts.
+Strict Javadoc uses `-Werror -Xdoclint:all`. This is local classpath/package
+evidence, not cold Maven resolution, publication or a second production service.
+
+PMD policy retains 19 existing findings; its separate ownership/size watchlist
+has 73 findings. Neither reports findings in the new module or changed IOC
+inspection classes. No analyzer count, accepted finding, exclusion or existing
+coverage floor/ratchet is relaxed. An initial complexity finding was fixed by
+separating source traversal from name enumeration.
+
+Full `make verify` and `make pmd-analysis` are mandatory on the final unchanged
+worktree before C1 is accepted. Retained local commands/results are
+`.dev/config-c1-verify-complete.log`, `.dev/config-c1-pmd-final.log`,
+`.dev/config-c1-watchlist.log`, `.dev/config-c1-docs-final.log`,
+`.dev/config-c1-packaged-consumer.log` and `.dev/config-c1-javadoc.log`;
+`make context` owns their current freshness. Earlier failing checks remain
+separate logs, not successful qualification. The C2 checkpoint below records
+restricted-context and real IOC aggregate-binding qualification; C3 owns ADR/publication-guide
+promotion; C4 owns independent POM/dependency/repository qualification.
+
+## C2 restricted-context checkpoint — 2026-10-22
+
+### Proposed decision and alternatives
+
+Context: the existing check restricts beans but deliberately loads effective
+Boot configuration. Conflating that with checking one isolated file would hide
+imports, profiles and host overrides. Future services also need a concrete
+example without importing IOC bootstrap or changing process-wide streams.
+
+Decision for review: retain `SpringApplication.run` for IOC, with the explicit
+configuration/preflight source only. Preserve Boot's source preparation and
+reject extra `spring.main.sources` declarations before bean loading. Publish an
+application-owned closed-input recipe separately; it prepares one YAML source
+and explicit overrides, then creates an explicit `AnnotationConfigApplicationContext`.
+It never invokes ConfigData and rejects imports, profiles, placeholders and
+non-collector namespaces before refresh. This is an execution checkpoint, not
+an accepted ADR; C3 owns the accepted extraction decision.
+
+Alternatives considered:
+
+- Exporting IOC's command as a library runner would retain IOC codes/model,
+  validators and global console suppression. That is not a reusable boundary.
+- Replacing IOC startup with manual ConfigData application would require parity
+  code for Boot's profile environment, JSON/random sources, post-processors and
+  lifecycle cleanup. It brings no needed C2 behavior and is deferred.
+- Restricting IOC imports to one file would break deployment checks that rely
+  on defaults, profiles or imports. A closed-input policy is opt-in application
+  code instead of a silent change to IOC's command.
+
+Consequences: source policy belongs to the consuming service. The library still
+only inspects prepared names. There is no new JAR, public API, runtime dependency,
+starter, auto-configuration or generic exception adapter. SnakeYAML and Spring
+Context are direct dependencies of the example application, not additions to
+the library POM. Imports in IOC remain trusted deployment inputs, without path
+or network allowlisting. Third-party logging remains outside owned-report secrecy.
+
+### Implementation and qualification
+
+A regression first reproduced a real source-expansion defect: an indexed
+`spring.main.sources[0]` candidate returned success instead of `78`. The retained
+red run is `.dev/config-c2-before.log`. The fix detects scalar/indexed names
+through prepared configuration sources and uses name-only Binder fallback for
+opaque sources. The guard runs after source preparation and before Boot binds
+its source set. Exact Boot 4.0.8 binds `sources` through its application-properties
+object; initializers, listeners and context factories are not environment-bound
+execution controls in that baseline.
+
+IOC also rejects relaxed/indexed CLI config loading controls and pins eager
+initialization, no keep-alive, no shutdown hook and no startup-info. The explicit
+context still closes after checking. Existing syntax, strict IOC spelling,
+conversion, migration, semantic collect-all and registry failure ownership stay
+local. No existing accepted converter or failure code is intentionally changed.
+
+`IocConfigurationContextIT` runs separate JVMs and checks required/optional
+imports, the optional deployment overlay, active profile documents/files, CLI
+precedence and indexed bean-source rejection from candidate, import, CLI,
+environment, system and JSON channels. A trap bean proves rejection precedes
+instantiation. Both valid and invalid commands return normally from the child
+harness so a leaked non-daemon worker cannot be hidden by `System.exit`.
+Temporary runtime DB/projection paths remain absent; the model context has no
+DataSource or application composition root and is explicitly closed.
+
+The actual `IocProperties` context replaces a six-rule default refang list with
+one complete overlay rule. A partial indexed element loses the lower `to` value
+and is rejected. Published configuration guidance is corrected to whole-list
+replacement, rather than the older claim that indexes merge across sources.
+The existing test-runner helper's comment now distinguishes its source adapter
+from ordinary ConfigData behavior; test fixtures are not framework authority.
+
+`ConfigurationCheckRecipeIT` compiles the exact
+[consumer guide](../../../guides/configuration-library-check.md) and runs it with
+only shared configuration classes and third-party JARs. It checks the unrelated
+collector schema, scalar/list overrides, semantic/conversion/name failures,
+malformed/missing YAML, multi-document/profile/import/placeholder rejection,
+ambient environment/system/JSON/classpath isolation, immutable results and no
+runtime component scan. Imports are rejected before malformed target data can
+be read. Failed checks do not contaminate a later successful check.
+
+The source universe deliberately adds two Failsafe suites:
+234 fast / 82 integration / 5 external / 311 deterministic classes.
+The inventory and TESTING explanation change together. No verifier, report group,
+coverage floor, baseline, exclusion or analyzer policy is relaxed.
+
+### Evidence and limits
+
+Focused logs: `.dev/config-c2-checker-final.log`,
+`.dev/config-c2-context.log` and `.dev/config-c2-recipe-final.log`.
+The first full run passed its tests and analyzer integrity but failed the
+bootstrap branch-missed ratchet (503 versus 496). Its evidence remains in
+`.dev/config-c2-verify-coverage-failed.log`. Command-boundary regressions now
+cover allowed pass-through arguments, missing/repeated/empty requests and an
+invalid path with safe output; no baseline is changed.
+Final acceptance requires full `make verify`, separate `make pmd-analysis`, the
+resource/exception watchlist and changed-finding review on the completed tree.
+Their retained logs are `.dev/config-c2-verify.log`, `.dev/config-c2-pmd.log`
+and `.dev/config-c2-watchlist.log`; `make context` reports freshness.
+
+These are deterministic reactor checks on Java 21 / Boot 4.0.8. They do not
+establish a second deployed service, cold repository resolution, filesystem or
+network sandboxing, a reusable embedded runner, or publication admission.
+C3 owns the accepted ADR and remaining build/documentation promotion; C4 owns
+dependency mediation, packaged/cold consumers and protected publication.
+
+## C3 build and documentation checkpoint — 2026-10-22
+
+The owner authorized C3 after C2. Source identity remains
+`ea640f2b49f1b445595920850d339a961339fb1a` on `r030-libraries`, with the C2 and
+C3 worktree changes. No commit, push, PR or publication is part of this slice.
+Historical checkpoint hashes above remain historical evidence.
+
+[ADR 0046](../../../ADR/0046-reusable-spring-boot-configuration-inspection.md)
+accepts the six-type inspection/migration surface, service ownership and both
+source policies without rewriting earlier accepted decisions. The new
+[consumer guide](../../../guides/configuration-library.md) connects source
+selection, result/coverage interpretation, migration hints and bound-model
+validation. The executable C2 recipe remains the complete context example.
+Module reference, capability docs, root maps, guide/ADR indexes, release notes
+and the publication guide link the durable outcomes. Published documentation
+does not depend on this worknote.
+
+### Dependency and scope review
+
+The module retains two required direct compile dependencies: Boot and Spring
+Core. The offline Maven compile tree resolves Boot 4.0.8 and Spring 7.0.9, with
+Spring Context/AOP/Beans/Expression, Micrometer Observation/Commons 1.16.7,
+Commons Logging 1.3.6 and JSpecify 1.0.1. There are ten external compile JARs in
+that mediated graph. No IOC, starter, SnakeYAML or logging provider is introduced
+by this library's main POM. Retained tree:
+`.dev/config-c3-dependencies.log`. This is a local dependency-closure review,
+not a new vulnerability scan or an independently resolved publication POM.
+
+The root reactor, parent dependency management, bootstrap dependency and report
+POMs agree on the adapter coordinates and lockstep version. JaCoCo, SpotBugs,
+CPD and PMD registries include it; CPD/PMD source roots include its production
+Java. It has a local coverage report and aggregate group. The topology stays
+30 Maven projects, 24 production groups and 23 local coverage reports, with the
+TCK excluded from production. Architecture rules keep shared code limited to
+JDK/Spring and prevent framework-free layers from importing it.
+
+No POM, verifier, registry, dependency contract, coverage floor, ratchet, exclusion
+or test-universe change is needed in C3. The stale build-quality paragraph that
+omitted this reactor-only coordinate is corrected. Public Javadoc receives only
+wording corrections; no signature or production behavior changes.
+
+### Verification and next gate
+
+Run the module's focused tests, the executable context recipe and strict Javadoc
+(`-Xdoclint:all -Werror`), then final `make verify`, `make pmd-analysis`, the
+resource-ownership watchlist, documentation links and diff hygiene. Evidence
+paths are `.dev/config-c3-focused.log`, `.dev/config-c3-recipe.log`,
+`.dev/config-c3-javadoc.log`, `.dev/config-c3-verify.log`, `.dev/config-c3-pmd.log`,
+`.dev/config-c3-watchlist.log` and `.dev/config-c3-docs.log`; final freshness comes
+from `make context`. Review analyzer identities against the retained C2 baseline,
+including findings intersecting the checker and recipe ownership paths.
+
+C4 remains the next slice: descriptor/parent-free POM qualification, full
+dependency mediation, selected-repository routing with positive/negative cold
+consumers, the LIB-1 regression and protected release admission. The
+[publication guide](../../../guides/library-publication.md#configuration-library-admission)
+defines those prerequisites without adding a component selector or authorizing
+publication. Existing concurrency, diagnostics and logging release identities
+remain immutable. No second deployed consumer or provisioned external check is
+claimed by C3.
+
+## C4 standalone packaging and consumer checkpoint — 2026-10-24
+
+Source: `r030-libraries`, HEAD `2f17923e31e06d1ccd961bee06af64d6b125657a`
+plus this C4 worktree. Local bundles use `0.3.0-SNAPSHOT`, are unsigned and record
+`dirty=true`. This is preparation for review, not a frozen release identity or
+permission to publish. No production Java API or reactor membership changes.
+
+The `configuration` descriptor and workflow selector now admit only the reviewed
+artifact. Flattening emits a concrete POM with Boot 4.0.8 and Core 7.0.9 as required
+compile JARs. Packaging checks all six public types in main/sources/Javadoc,
+Java 21 bytecode, the license and identical embedded/external POMs. Bundle reads
+retain exact dependency contracts and additionally reject duplicate POM fields,
+non-JAR packaging, unknown root fields and invalid model versions. Every element
+must use the Maven POM namespace: an unqualified dependency container or
+scope/optional element must not evade these guards. The older
+zero-dependency and exact-SLF4J contracts are preserved.
+
+The standalone application compiles outside the checkout, with no reactor class
+directories. It checks name-only inspection, unknown/shadowed declarations,
+removed-name observation and concrete list-index replacement. It compiles the
+exact closed-input guide plus its existing independent driver and runs a bounded
+child JVM. Explicit overrides/list replacement, safe failures, rejected imports,
+profiles/placeholders, ambient-input isolation and absence of component scanning
+are exercised both with default mediation and an application-owned Boot BOM.
+
+The complete library graph contains ten external JARs. The application adds
+SnakeYAML 2.6 explicitly. Both mediated graphs are asserted:
+
+| Dependency | Default mediation | Application Boot 4.0.8 BOM |
+|---|---|---|
+| Spring Boot | 4.0.8 | 4.0.8 |
+| Spring Core/Context/AOP/Beans/Expression | 7.0.9 | 7.0.9 |
+| Micrometer Observation/Commons | 1.16.7 | 1.16.7 |
+| Commons Logging | 1.3.5 | 1.3.6 |
+| JSpecify | 1.0.0 | 1.0.1 |
+
+The last two differences were hidden by reactor management. They are not silently
+promoted into extra library dependencies or an exported BOM. A deliberate Core
+5.3.39 downgrade must fail Enforcer's Spring upper-bound check; an unavailable
+managed Boot version must fail dependency resolution. Enforcer 3.6.2 qualification
+uses explicit `groupId:artifactId` includes: the earlier group-only setting failed
+to detect the downgrade and its evidence is retained. This supports the tested
+baselines, not arbitrary Spring substitutions or a new vulnerability-scan claim.
+
+Maven 3.9.9's actual Resolver 1.9.22 is qualified using explicit literal-group
+files for every original/mirrored repository ID. Public rules include the reviewed
+plugin and imported-BOM/parent model groups, and exclude own groups. Other IDs
+are mirrored to approved Central with its own filter. The selected target admits
+only own coordinates. Empty caches and empty user/global settings prevent local
+installation from masking missing artifacts. All four own files must match the
+manifest and have only `library-target` as recorded origin.
+
+Two additional cold probes place the exact four files in an alternate repository
+and leave the selected target empty. Filtering must reject fallback; disabling it
+must compile and record the alternate origin. This control also works when the
+version is already in Central because the alternate precedes the public route.
+No own transitive dependency is admitted; admitting one requires additional
+missing-transitive-artifact cases. GitHub credentials remain scoped to the selected
+target's server ID.
+
+Local evidence:
+
+- `make library-publication-test`: 119 offline contract cases, including all four
+  components, wrong-component/tag rejection, POM/dependency/archive guards,
+  immutable recovery, origins, signing with disposable keys and credential scope.
+- Configuration bundle and cold consumer: `.dev/config-c4-bundle.log`,
+  `.dev/config-c4-consumer.log`; the final six-type archive check in
+  `.dev/config-c4-final-bundle` retains exactly the same four hashes.
+- Concurrency/diagnostics/logging bundle and cold-consumer regressions:
+  `.dev/config-c4-<component>-bundle.log` and
+  `.dev/config-c4-<component>-consumer.log`; summary
+  `.dev/config-c4-qualification.log`. Five standalone fixtures plus two routing
+  probes start with separate empty caches. No published RC is overwritten.
+- Final release-gate commands: `make verify`, `make pmd-analysis`, `make docs` and
+  `git diff --check`; logs `.dev/config-c4-verify.log`, `.dev/config-c4-pmd.log`,
+  `.dev/config-c4-docs.log`. Current context and ignored handoff retain exact
+  outcomes/freshness. Analyzer identities are compared with retained C3 XML;
+  no floor, ratchet, exclusion or lifecycle registry is changed.
+
+Retain discovery/failure evidence: `.dev/config-c4-consumer-*-failed.log`,
+`.dev/config-c4-record-groups.log` (record mode, not filtering qualification),
+`.dev/config-c4-bom-models.json`, `.dev/config-c4-resolver.txt` and
+`.dev/config-c4-debug-mediation.log`. These explain dependency-model admission,
+actual mediation differences and the corrected downgrade check.
+
+Next admission is review/commits/PR into `release-0.3.0`, followed by separately
+authorized protected validation/publication and cold consumers from both release
+repositories. A second deployed service, live external checks and other Boot
+baselines remain unqualified. Existing signed bundles, published versions and
+component tags are untouched; events remain deferred.

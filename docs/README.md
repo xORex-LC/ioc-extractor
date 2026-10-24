@@ -48,6 +48,8 @@ failure/recovery semantics и точки расширения, но не пер�
 | [dev/event-coordination.md](dev/event-coordination.md) | Event hints, consumer-owned admission и correctness-via-reconcile |
 | [dev/dataframe-import.md](dev/dataframe-import.md) | Managed local/SMB CSV intake, recognition, staging, promotion и recovery |
 | [dev/configuration.md](dev/configuration.md) | Strict `ioc.*` boundary, precedence, validation и registry preflight |
+| [dev/configuration-inspection.md](dev/configuration-inspection.md) | Shared Spring Boot name inspection, source coverage and service enforcement boundary |
+| [dev/configuration-failure-reports.md](dev/configuration-failure-reports.md) | Controlled failure categories, schema paths, phase limits and operator rendering |
 | [dev/observability.md](dev/observability.md) | Diagnostics, failure policy, typed ECS logging, MDC и redaction |
 | [dev/build-quality.md](dev/build-quality.md) | Maven quality lifecycle, SpotBugs exact ratchet, CPD, coverage and dependency-analysis controls |
 | [dev/canonical-record-lifecycle.md](dev/canonical-record-lifecycle.md) | Fixed canonical validity, expiry/history reconciliation, active reads and recovery |
@@ -69,6 +71,13 @@ failure/recovery semantics и точки расширения, но не пер�
   API и scalar ECS profile; [руководство](guides/logging-library.md) и
   [рецепт Boot ECS](guides/logging-library-boot.md) содержат проверяемые примеры
   для другого сервиса.
+- [Проверка конфигурации в ограниченном контексте](guides/configuration-library-check.md)
+  разделяет правила загрузки источников и состав бинов; пример для другого
+  сервиса компилируется и проверяется без классов IOC.
+- [ADR 0046](ADR/0046-reusable-spring-boot-configuration-inspection.md) фиксирует
+  общий контракт проверки имён и наблюдения миграций;
+  [руководство](guides/configuration-library.md) описывает подключение и обработку
+  неполного покрытия без переноса IOC-политики в библиотеку.
 
 Локальные рабочие заметки и временные issue-списки не входят в авторитетный
 комплект документации, по умолчанию игнорируются Git и не используются

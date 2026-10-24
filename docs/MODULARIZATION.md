@@ -6,12 +6,14 @@ adapters и bootstrap собираются как отдельные Maven-мо�
 
 Пилотная библиотека `platform-concurrency` использует Maven groupId
 `io.github.xorex-lc`; выделенный `platform-diagnostics-api` использует ту же
-группу. Новый `platform-logging-slf4j` также использует `io.github.xorex-lc`,
-но пока реализован только в reactor. Остальные модули сохраняют `com.iocextractor`. Публикуемый
+группу. Опубликованный `platform-logging-slf4j` и новый
+`adapter-config-spring-boot` (`ioc-config-spring-boot`, пока только reactor) также
+используют `io.github.xorex-lc`. Остальные модули сохраняют `com.iocextractor`. Публикуемый
 POM библиотеки не зависит от parent реактора. Политика —
 [ADR 0028](ADR/0028-pilot-library-publication.md), контракт диагностики —
 [ADR 0044](ADR/0044-reusable-diagnostics-contract.md), контракт логирования —
-[ADR 0045](ADR/0045-reusable-slf4j-logging-contract.md), процедура —
+[ADR 0045](ADR/0045-reusable-slf4j-logging-contract.md), граница конфигурации —
+[ADR 0046](ADR/0046-reusable-spring-boot-configuration-inspection.md), процедура —
 [руководство по публикации](guides/library-publication.md).
 
 > Статус: **реализовано на этапе 9**. Фактическая структура ниже. Границы
@@ -32,6 +34,9 @@ POM библиотеки не зависит от parent реактора. По�
 
 ## Фактическая структура реактора
 
+Реактор содержит 30 Maven-проектов: parent, 25 функциональных JAR и четыре
+отчётных POM. Из JAR 24 относятся к production, один — тестовый TCK.
+
 ```
 ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <modules>)
 ├── platform/                      ← агностичные, переиспользуемые подсистемы
@@ -50,6 +55,7 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 │   ├── ioc-application            (порты in/out + use cases + IOC ETL stages)
 │   └── ioc-application-tck        (переиспользуемые contract tests driven-портов)
 ├── adapters/
+│   ├── adapter-config-spring-boot (общая проверка имён настроек и отчёт о декларациях → Spring Boot/Core)
 │   ├── adapter-regex-re2j         (PatternEngine → RE2J/JDK fallback)
 │   ├── adapter-source-tika        (SourceReader → Tika)
 │   ├── adapter-csv                (strict CSV parsing + ArtifactPreparer/projection/export → commons-csv)
@@ -110,6 +116,12 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ io
   большинство — на `ioc-application`, а domain SPI adapters (`adapter-regex-re2j`,
   `adapter-psl`) — непосредственно на `ioc-domain`. Каждый адаптер подключает
   только свою технологическую библиотеку/integration family.
+- `adapter-config-spring-boot` зависит только от Spring Boot/Core и JDK.
+  Bootstrap передаёт схему и префикс, затем интерпретирует найденные проблемы.
+  Описания устаревших и удалённых ключей сопоставляются с тем же снимком
+  деклараций; миграция значений и проверка конфликтов остаются в сервисе.
+  IOC-модель, semantic validators, CONFIG-коды и CLI остаются в сервисе;
+  библиотека не запускает контекст автоматически и не входит в core/platform.
 - `ioc-application-tck` содержит test-scope contract tests; реализации портов
   подключают его только в тестовом scope.
 - `ioc-app` (bootstrap) собирает исполняемый артефакт и зависит от подключённых
@@ -120,14 +132,14 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ io
   JDK-only verifier и synthetic-reactor contract harness напрямую.
 - `coverage-report` зависит на все production-модули только для формирования
   полного JaCoCo aggregate.
-- `spotbugs-report` зависит на те же 23 production-модуля для reactor ordering,
+- `spotbugs-report` зависит на те же 24 production-модуля для reactor ordering,
   формирует общий SpotBugs XML/HTML и проверяет наличие всех module/aggregate
   reports.
-- `cpd-report` зависит на 23 production-модуля только для reactor ordering и
+- `cpd-report` зависит на 24 production-модуля только для reactor ordering и
   анализирует единым PMD CPD execution явный allowlist их `src/main/java`;
   fail-closed registry сверяет reactor, ordering dependencies, source roots и
   итоговый XML source universe.
-- `pmd-report` зависит на те же 23 production-модуля только для reactor
+- `pmd-report` зависит на те же 24 production-модуля только для reactor
   ordering и type resolution. Поимённая 22-rule policy выполняется
   отдельным regular CI job, а 3-rule ownership/size watchlist остаётся
   локально opt-in. Оба профиля анализируют явный allowlist
@@ -166,6 +178,7 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ io
 | `ioc-domain` | Refanger, IndicatorExtractor, SourceAttributor, MatchPolicy, модели, feature extraction |
 | `ioc-application` | Pipeline/ingest use cases; framework-free Artifact Emission, Remote Sync, canonical lifecycle и managed dataframe-import contracts/models/ports, exact recognition, tri-state mapping, staging orchestration, retry/cadence, sagas и policies |
 | `ioc-application-tck` | Переиспользуемые JUnit contract tests application ports, включая import delivery ledger и canonical promotion, исполняемые каждой реализацией |
+| `adapter-config-spring-boot` | Общая проверка имён настроек по схеме, обнаружение неоднозначностей и value-free отчёт о декларациях; Spring Boot/Core; политика запуска и IOC-семантика остаются в bootstrap |
 | `adapter-regex-re2j` | PatternEngine implementation (RE2J + JDK fallback) |
 | `adapter-source-tika` | SourceReader (Tika; progressive HTML and SAX DOCX) |
 | `adapter-csv` | Strict delimited-row parsing, import transforms/processed-row preparation, artifact mapping, cursor-streamed canonical CSV projection, callback-streaming immutable slices, integrity verification, atomic local publish и directory-level slice retention |

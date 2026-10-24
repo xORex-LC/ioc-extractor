@@ -42,7 +42,8 @@ public final class CoverageVerifierTest {
             happyPaths += 2;
         }
 
-        for (String library : List.of("ioc-platform-diagnostics-api", "ioc-platform-logging-slf4j")) {
+        for (String library : List.of("ioc-platform-diagnostics-api",
+                "ioc-platform-logging-slf4j", "ioc-config-spring-boot")) {
             try (Fixture fixture = Fixture.create()) {
                 admitLibrary(fixture.root(), library);
                 assertSuccess(fixture, "validate");

@@ -13,6 +13,7 @@ core/ioc-domain	ioc-domain	analyzed	Production runtime Java sources
 core/ioc-processing	ioc-processing	analyzed	Production runtime Java sources
 core/ioc-application	ioc-application	analyzed	Production runtime Java sources
 core/ioc-application-tck	ioc-application-tck	excluded	Reusable test-contract Java sources, not runtime production code
+adapters/adapter-config-spring-boot	ioc-config-spring-boot	analyzed	Production reusable Spring Boot configuration adapter
 adapters/adapter-regex-re2j	ioc-adapter-regex-re2j	analyzed	Production runtime Java sources
 adapters/adapter-psl	ioc-adapter-psl	analyzed	Production runtime Java sources
 adapters/adapter-source-tika	ioc-adapter-source-tika	analyzed	Production runtime Java sources

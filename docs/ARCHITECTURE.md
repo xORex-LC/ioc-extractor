@@ -31,6 +31,13 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
   observability использует SLF4J API. Отдельный `platform-logging-slf4j` реализует
   общий API typed events, MDC и scalar ECS profile; IOC-обёртки в observability
   делегируют ему механику, сохраняя локальные каталоги и ETL observer. Ни один из этих модулей не входит в domain/application.
+- `adapter-config-spring-boot` (`com.iocextractor.config.boot`) проверяет
+  имена настроек по переданной схеме и описывает видимые декларации без чтения
+  значений. По явным описаниям старых имён он также возвращает наблюдения для
+  миграции, сохраняя индексы, неоднозначность и неполное покрытие источников.
+  Его зависимости — Spring Boot/Core; IOC-схема, семантические
+  validators, CONFIG-коды и решение об отказе запуска остаются в bootstrap.
+  Регистрация явная; core/platform не зависят от этой библиотеки.
 - Внутренние слои **никогда** не импортируют из внешних.
 
 Граница общей модели diagnostics и локальных IOC-каталогов, исключений и
@@ -41,6 +48,11 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 [ADR 0045](ADR/0045-reusable-slf4j-logging-contract.md). Подключение другого
 сервиса описано в [руководстве](guides/logging-library.md) и отдельном
 [рецепте Boot ECS](guides/logging-library-boot.md).
+Граница проверки имён конфигурации и наблюдения миграций принята в
+[ADR 0046](ADR/0046-reusable-spring-boot-configuration-inspection.md).
+Сервис выбирает источники и состав бинов независимо: IOC сохраняет импорты и
+профили Boot, а отдельный [рецепт](guides/configuration-library-check.md)
+проверяет один явный документ с закрытым набором входов.
 
 ## Слои и пакеты
 
@@ -68,6 +80,7 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Application | `application/artifact` | storage-neutral artifact row identity, canonical artifact snapshots and ingest run recovery model |
 | Application | `application/maintenance` | retention reaper: `RetentionPolicy` (pure) + `RetentionService` |
 | Application | `application/sync`, `application/port/*/sync` | Transport-neutral fetch/publish use cases, remote source monitor, control events, retry/error policy и delivery ledgers/catalog ports |
+| Adapter | `config/boot` | Общая проверка имён настроек, неоднозначностей и покрытия источников; отчёт о декларациях без значений; библиотека Spring Boot/Core |
 | Adapter (in) | `adapter/in/cli` | `IocRootCommand`, `ExtractCommand`, `CliRunner` (picocli) |
 | Adapter (out) | `adapter/out/regex` | `Re2jPatternEngine` (default), `JdkRegexPatternEngine` |
 | Adapter (out) | `adapter/out/source` | `TikaSourceReader` |
