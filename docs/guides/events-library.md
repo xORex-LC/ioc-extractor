@@ -5,11 +5,14 @@ from its own durable state. A service defines the event payload and chooses the
 publisher. The shared contracts require Java 21 and have no runtime dependency
 beyond the JDK.
 
-The module is currently reactor-local:
-`com.iocextractor:ioc-platform-events:0.3.0-SNAPSHOT`. Publication under
-`io.github.xorex-lc:ioc-platform-events` is planned. The separate reactor-local
-`ioc-events-spring` adapter is implemented;
-neither artifact is claimed published or independently consumed.
+The coordinates are `io.github.xorex-lc:ioc-platform-events` and
+`io.github.xorex-lc:ioc-events-spring`, currently `0.3.0-SNAPSHOT` in the reactor.
+Both produce standalone consumer POMs and publication archives. The Spring POM
+requires the contracts at exactly the same version, Spring Context 7.0.9 and
+SLF4J API 2.0.18; it supplies no Boot dependency or logging provider.
+Neither artifact is claimed published or independently consumed. The
+[publication guide](library-publication.md#events-packaging-preparation) records
+the local packaging commands and remaining consumer gate.
 The [module reference](../../platform/platform-events/README.md) describes all
 seven public types and their validation rules.
 
@@ -80,15 +83,15 @@ promised invocation-time order. The list is unbounded and copied on each write.
 Use a fresh recorder for each test rather than retaining a production history.
 
 The example is locally compiled and executed against the current module.
-Standalone POMs and cold repository consumers still need qualification. IOC's actual wiring and recovery are described in
+Standalone POMs are prepared; cold repository consumers still need qualification. IOC's actual wiring and recovery are described in
 [event coordination](../dev/event-coordination.md).
 
 ## Use the explicit Spring adapter
 
-Add the reactor-local `com.iocextractor:ioc-events-spring:0.3.0-SNAPSHOT` module
+Use `io.github.xorex-lc:ioc-events-spring` at the same version as the contracts
 when using Spring; it requires the event-contracts module, Spring Context and
 SLF4J API. The qualified baseline is Java 21, Spring Context 7.0.9 and SLF4J
-2.0.18. No Boot starter or logging provider is supplied. Independent coordinates
+2.0.18. No Boot starter or logging provider is supplied. Cold repository consumption
 and dependency mediation remain a later qualification step.
 
 This complete example constructs the adapter and an unrelated service listener.

@@ -24,7 +24,7 @@ def consumer_pom(component, version):
     dependencies = ''.join('<dependency><groupId>' + group + '</groupId><artifactId>' + artifact
                            + '</artifactId><version>' + dependency_version + '</version>'
                            '<scope>compile</scope></dependency>'
-                           for group, artifact, dependency_version in component['dependencies'])
+                           for group, artifact, dependency_version in PUB.dependencies_for(component, version))
     return ('<project xmlns="http://maven.apache.org/POM/4.0.0">'
             '<modelVersion>4.0.0</modelVersion>'
             '<groupId>' + PUB.GROUP + '</groupId><artifactId>' + component['artifact'] + '</artifactId>'
@@ -33,7 +33,7 @@ def consumer_pom(component, version):
             + ('<dependencies>' + dependencies + '</dependencies>' if dependencies else '') + '</project>')
 
 
-class PublicationTest(unittest.TestCase):
+class BundleContract:
     component_name = 'concurrency'
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -215,30 +215,6 @@ class PublicationTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'foreign library classes'):
             self.prepare_fixture(root, 'foreign-class')
 
-    def test_real_gpg_signing_with_disposable_test_key(self):
-        with tempfile.TemporaryDirectory(prefix='ioc-test-key-') as home:
-            env = {**os.environ, 'GNUPGHOME': home}
-            def gpg(*args, data=None):
-                return subprocess.run(['gpg', '--batch', '--pinentry-mode', 'loopback',
-                                       '--passphrase-fd', '0', *args], input=data or b'test-passphrase',
-                                      capture_output=True, check=True, timeout=30, env=env).stdout
-            try:
-                gpg('--quick-generate-key', 'Publication contract test', 'ed25519', 'sign', '1d')
-                listing = gpg('--with-colons', '--list-secret-keys', '--fingerprint').decode()
-                fingerprint = next(line.split(':')[9] for line in listing.splitlines() if line.startswith('fpr:'))
-                private_key = gpg('--armor', '--export-secret-keys', fingerprint).decode()
-                with patch.object(PUB, 'FINGERPRINT', fingerprint), patch.dict(os.environ, {
-                        'GPG_PRIVATE_KEY': private_key, 'GPG_PASSPHRASE': 'test-passphrase'}):
-                    PUB.sign(self.bundle)
-                    metadata = PUB.read_bundle(self.bundle, signed=True)
-                    self.assertEqual(len(metadata['files']), 20)
-                    for name in metadata['files']:
-                        if name.endswith('.asc'):
-                            gpg('--verify', str(self.bundle / 'repository' / name),
-                                str(self.bundle / 'repository' / name.removesuffix('.asc')))
-            finally:
-                subprocess.run(['gpgconf', '--kill', 'gpg-agent'], capture_output=True, env=env, timeout=10)
-
     def test_bundle_detects_changed_bytes(self):
         next(self.folder.glob('*.jar')).write_bytes(b'changed')
         with self.assertRaisesRegex(ValueError, 'checksum mismatch'):
@@ -316,16 +292,62 @@ class PublicationTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'signed bundle'):
             PUB.read_bundle(self.bundle, signed=True)
 
+    def test_snapshot_is_not_release(self):
+        with self.assertRaisesRegex(ValueError, 'snapshot'):
+            PUB.version_check('0.3.0-SNAPSHOT', release=True)
+
+    def test_repository_read_redirect_drops_cross_origin_authorization(self):
+        original = urllib.request.Request(
+            PUB.GITHUB + '/artifact.pom', headers={'Authorization': 'Basic secret'})
+        redirected = PUB.SafeReadRedirect().redirect_request(
+            original, None, 302, 'Found', {},
+            'https://mavenregistryv2prod.blob.core.windows.net/container/artifact.pom?signature=value')
+        self.assertEqual(redirected.get_method(), 'GET')
+        self.assertNotIn('Authorization', dict(redirected.header_items()))
+
+    def test_repository_redirect_rejects_write_and_https_downgrade(self):
+        write = urllib.request.Request(
+            PUB.GITHUB + '/artifact.pom', data=b'artifact', method='PUT')
+        with self.assertRaises(urllib.error.HTTPError):
+            PUB.SafeReadRedirect().redirect_request(
+                write, None, 302, 'Found', {}, 'https://uploads.github.com/artifact.pom')
+        read = urllib.request.Request(PUB.GITHUB + '/artifact.pom')
+        with self.assertRaises(urllib.error.HTTPError):
+            PUB.SafeReadRedirect().redirect_request(
+                read, None, 302, 'Found', {}, 'http://maven.pkg.github.com/artifact.pom')
+
+
+class PublicationTest(BundleContract, unittest.TestCase):
+    def test_real_gpg_signing_with_disposable_test_key(self):
+        with tempfile.TemporaryDirectory(prefix='ioc-test-key-') as home:
+            env = {**os.environ, 'GNUPGHOME': home}
+            def gpg(*args, data=None):
+                return subprocess.run(['gpg', '--batch', '--pinentry-mode', 'loopback',
+                                       '--passphrase-fd', '0', *args], input=data or b'test-passphrase',
+                                      capture_output=True, check=True, timeout=30, env=env).stdout
+            try:
+                gpg('--quick-generate-key', 'Publication contract test', 'ed25519', 'sign', '1d')
+                listing = gpg('--with-colons', '--list-secret-keys', '--fingerprint').decode()
+                fingerprint = next(line.split(':')[9] for line in listing.splitlines() if line.startswith('fpr:'))
+                private_key = gpg('--armor', '--export-secret-keys', fingerprint).decode()
+                with patch.object(PUB, 'FINGERPRINT', fingerprint), patch.dict(os.environ, {
+                        'GPG_PRIVATE_KEY': private_key, 'GPG_PASSPHRASE': 'test-passphrase'}):
+                    PUB.sign(self.bundle)
+                    metadata = PUB.read_bundle(self.bundle, signed=True)
+                    self.assertEqual(len(metadata['files']), 20)
+                    for name in metadata['files']:
+                        if name.endswith('.asc'):
+                            gpg('--verify', str(self.bundle / 'repository' / name),
+                                str(self.bundle / 'repository' / name.removesuffix('.asc')))
+            finally:
+                subprocess.run(['gpgconf', '--kill', 'gpg-agent'], capture_output=True, env=env, timeout=10)
+
     def test_dirty_checkout_cannot_be_signed(self):
         metadata = PUB.read_bundle(self.bundle)
         metadata['dirty'] = True
         PUB.write_identity(self.bundle, metadata)
         with self.assertRaisesRegex(ValueError, 'clean source'):
             PUB.sign(self.bundle)
-
-    def test_snapshot_is_not_release(self):
-        with self.assertRaisesRegex(ValueError, 'snapshot'):
-            PUB.version_check('0.3.0-SNAPSHOT', release=True)
 
     def test_remote_conflict_aborts_before_any_upload(self):
         self.signed()
@@ -351,26 +373,6 @@ class PublicationTest(unittest.TestCase):
         with patch.object(PUB, 'authorization', return_value={}), patch.object(PUB, 'request', side_effect=remote):
             PUB.publish_github(self.bundle)
         self.assertEqual(writes, [(missing, (self.bundle / 'repository' / missing).read_bytes())])
-
-    def test_repository_read_redirect_drops_cross_origin_authorization(self):
-        original = urllib.request.Request(
-            PUB.GITHUB + '/artifact.pom', headers={'Authorization': 'Basic secret'})
-        redirected = PUB.SafeReadRedirect().redirect_request(
-            original, None, 302, 'Found', {},
-            'https://mavenregistryv2prod.blob.core.windows.net/container/artifact.pom?signature=value')
-        self.assertEqual(redirected.get_method(), 'GET')
-        self.assertNotIn('Authorization', dict(redirected.header_items()))
-
-    def test_repository_redirect_rejects_write_and_https_downgrade(self):
-        write = urllib.request.Request(
-            PUB.GITHUB + '/artifact.pom', data=b'artifact', method='PUT')
-        with self.assertRaises(urllib.error.HTTPError):
-            PUB.SafeReadRedirect().redirect_request(
-                write, None, 302, 'Found', {}, 'https://uploads.github.com/artifact.pom')
-        read = urllib.request.Request(PUB.GITHUB + '/artifact.pom')
-        with self.assertRaises(urllib.error.HTTPError):
-            PUB.SafeReadRedirect().redirect_request(
-                read, None, 302, 'Found', {}, 'http://maven.pkg.github.com/artifact.pom')
 
     def test_partial_central_visibility_does_not_create_deployment(self):
         self.signed()
@@ -414,7 +416,7 @@ class LoggingPublicationTest(PublicationTest):
 
     def test_dependency_contract_rejects_missing_optional_wrong_scope_and_extra_fields(self):
         original = consumer_pom(self.component, self.version).encode()
-        group, artifact, version = (value.encode() for value in self.component['dependencies'][0])
+        group, artifact, version = (value.encode() for value in PUB.dependencies_for(self.component, self.version)[0])
         invalid = [
             original.replace(b'<scope>compile</scope>', b'<scope>provided</scope>'),
             original.replace(b'<scope>compile</scope>', b'<scope>runtime</scope>'),
@@ -454,7 +456,7 @@ class ConfigurationPublicationTest(LoggingPublicationTest):
 
     def test_each_required_dependency_is_checked_independently(self):
         original = consumer_pom(self.component, self.version).encode()
-        for group, artifact, version in self.component['dependencies']:
+        for group, artifact, version in PUB.dependencies_for(self.component, self.version):
             with self.subTest(artifact=artifact):
                 identity = ('<artifactId>' + artifact + '</artifactId><version>' + version + '</version>').encode()
                 with self.assertRaisesRegex(ValueError, 'dependencies'):
@@ -462,7 +464,55 @@ class ConfigurationPublicationTest(LoggingPublicationTest):
                                               self.version, self.component)
 
 
+class EventsPackagingTest(BundleContract, unittest.TestCase):
+    component_name = 'events'
+
+    def test_pending_consumer_prevents_signing_remote_writes_and_empty_consumer_success(self):
+        for signed in (False, True):
+            if signed:
+                self.signed()
+            for command in ('sign', 'central', 'github', 'consume'):
+                with self.subTest(signed=signed, command=command), patch.object(sys, 'argv', [
+                        'library-publication.py', command, '--bundle', str(self.bundle),
+                        '--component', self.component_name]), patch.object(PUB, 'request') as request, \
+                        patch.object(PUB, 'run') as run, patch.object(PUB, 'authorization') as authorization:
+                    with self.assertRaisesRegex(ValueError, 'E4 independent consumer|signed bundle'):
+                        PUB.main()
+                    request.assert_not_called()
+                    run.assert_not_called()
+                    authorization.assert_not_called()
+
+    def test_packaging_and_recovery_accept_another_lockstep_version(self):
+        self.version = '0.4.0-rc.2'
+        root, _ = self.build_outputs()
+        bundle = self.prepare_fixture(root, 'another-version')
+        metadata = PUB.read_bundle(bundle, expected_component=self.component)
+        self.assertEqual(metadata['version'], self.version)
+        self.assertEqual(len(metadata['files']), 4)
+
+
+class EventsSpringPackagingTest(EventsPackagingTest):
+    component_name = 'events-spring'
+    test_dependency_contract_rejects_missing_optional_wrong_scope_and_extra_fields = (
+        LoggingPublicationTest.test_dependency_contract_rejects_missing_optional_wrong_scope_and_extra_fields)
+    test_each_required_dependency_is_checked_independently = (
+        ConfigurationPublicationTest.test_each_required_dependency_is_checked_independently)
+
+    def test_contract_dependency_must_match_the_bundle_version(self):
+        original = consumer_pom(self.component, self.version).encode()
+        dependency = b'<artifactId>ioc-platform-events</artifactId><version>' + self.version.encode() + b'</version>'
+        for version in (b'0.3.0-SNAPSHOT', b'0.3.0-rc.2', b'[0.3,0.4)', b'${revision}'):
+            with self.subTest(version=version), self.assertRaises(ValueError):
+                PUB.validate_consumer_pom(original.replace(dependency, dependency.replace(self.version.encode(), version)),
+                                          self.version, self.component)
+
+
 class ConsumerGuardTest(unittest.TestCase):
+    def test_workflow_exposes_only_components_with_consumer_fixtures(self):
+        workflow = (PUB.ROOT / '.github/workflows/library-publication.yml').read_text()
+        choices = PUB.re.search(r'options: \[([^\]]+)\]', workflow).group(1).split(', ')
+        self.assertEqual(choices, [name for name, component in PUB.COMPONENTS.items() if component['fixtures']])
+
     def test_central_download_group_admits_only_own_and_reviewed_public_groups(self):
         for repository, url in [('central', PUB.CENTRAL), ('github', PUB.GITHUB), ('local', 'file:///selected')]:
             with self.subTest(repository=repository), tempfile.TemporaryDirectory() as folder:

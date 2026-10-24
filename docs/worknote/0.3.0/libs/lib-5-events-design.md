@@ -2,7 +2,8 @@
 
 Status: implementation resumed by the owner, 2026-10-24. E0 technical analysis
 is complete; E1 qualifies the existing JDK contracts. E2 bridge extraction and
-its three corrections are implemented; E3–E5 and publication remain pending.
+its three corrections are implemented; E3 packaging is prepared below.
+E4/E5 and publication remain pending.
 Baseline: `r030-libraries`, `d98bf415377bbcd86e43f04dcbd21c5fefe96b34`.
 
 Workflow checkpoint, 2026-10-18: the owner closed the current design stage and
@@ -163,7 +164,7 @@ Refresh dependency and integration evidence again for E2–E4.
 | E0: finalize contracts | Analysis complete: dependency/caller inventory and 18 characterization observations; three bridge corrections required before E2 admission; see the E0 worknote |
 | E1: qualify JDK contracts | Implemented 2026-10-24: seven public types documented, 43 tests, strict Javadoc and exact local guide example; final gate evidence retained below |
 | E2: extract Spring bridge | Implemented 2026-10-24: reactor-local adapter and IOC composition migration, corrected Error/evidence/logging boundaries, unit and real-context contracts; qualification below |
-| E3: qualify publication tooling | Select components explicitly; publish a parent-independent POM with necessary dependencies, sources and Javadoc; retain the existing concurrency release path unchanged |
+| E3: qualify publication tooling | Implemented locally 2026-10-24: two standalone POMs, explicit packaging selectors, exact dependency contracts, real archives and manifest/recovery checks; consumer/signing/publication admission remains blocked until E4 |
 | E4: independent consumers | Resolve both artifacts outside the reactor with an isolated Maven cache; use unrelated event payloads, a JDK-only consumer and a Spring consumer; verify intended dependency closure and exception boundaries |
 | E5: release admission | Record API/version/dependency ownership and supported baseline, final repository gates and documentation; qualify the release destination before any explicit publication action |
 
@@ -329,3 +330,59 @@ Final command outcomes, worktree hashes and freshness are retained in
 `.dev/lib5-e2-evidence/receipt.json` and its context, after all tracked edits.
 No public registry action, live deployed consumer or new vulnerability scan is
 claimed by these deterministic offline checks.
+
+
+## E3 standalone publication packaging — 2026-10-24
+
+Both artifacts now use `io.github.xorex-lc` throughout the reactor. Their source
+POMs keep the private parent for development; flattened consumer POMs remove it
+and resolve all versions. Existing Java packages and public contracts are
+unchanged. The four report POMs, application/bootstrap consumers and both build
+verifiers use the new coordinates. Synthetic verifier fixtures admit each new
+coordinate and reject its old `com.iocextractor` ordering dependency. No report
+scope, floor, ratchet or suite inventory is weakened. The testing map now also
+records E2's 83 integration suites (234 fast, five external shells, 312 offline).
+
+Explicit `events` and `events-spring` descriptors prepare separate bundles, each
+with its own component identity and four primary hashes. Core remains JDK-only
+with no consumer dependencies. The adapter requires exactly the same-version core,
+Spring Context 7.0.9 and SLF4J API 2.0.18 as non-optional compile JARs. The same
+checks run at preparation and recovery, including embedded-POM identity, MIT
+license, Java 21 bytecode and public class/source/Javadoc markers. Extra/private
+parents, BOMs, repositories, build configuration, unresolved versions, optional
+APIs, a different core version and foreign classes are rejected. Existing four
+components retain their exact dependency and immutable-bundle contracts.
+
+There is no multi-artifact upload format change: contracts and adapter each keep
+an independent bundle and eventual component tag. Future release order is core
+first, adapter second at the same version, qualified separately in each selected
+repository. E4 must explicitly assemble the local two-artifact repository and
+verify both own artifacts' bytes/origins; third-party APIs still use the reviewed
+public routes. No fallback to another own-artifact repository is admitted here.
+
+Until E4 supplies the cold consumers, signing, remote writes and consume calls
+for either new selector fail before credential access or network side effects.
+An empty fixture list cannot become a successful consumer result. The protected
+workflow exposes only the four previously consumer-qualified selectors; its
+option list is regression-tested against the admitted descriptors. Regular CI
+adds one credentials-free job that builds both modules together and prepares
+the two bundles; the existing library gate requires it alongside the four
+consumer jobs. This job does not claim cold events consumption. E4 must extend
+this admission together with dependency/routing qualification. E5 and actual
+registry publication remain separate. No tag, signature, deployment or remote
+write was created by E3.
+
+Local checks built both real four-file bundles at `0.3.0-SNAPSHOT` and a
+`0.3.0-rc.1` packaging preview. Strict Javadoc passed for both modules; the preview
+is not a release candidate publication or a cold consumer result. Main dependency
+inspection confirms that core has none and the adapter's only project dependency
+is core, plus the documented Context/SLF4J family. There is no Boot, provider,
+IOC application/TCK or private parent in either distribution POM. Dependency
+versions are unchanged; this is a closure audit, not a refreshed CVE/update scan.
+
+The offline publication/recovery suite has 167 passing tests, including the
+existing signing/recovery cases, new packaging boundaries, version matching,
+wrong-coordinate recovery, pending-consumer rejection and workflow admission.
+Logs and unsigned bundles are retained under `.dev/lib5-e3-*`. Final full-reactor
+verify/PMD identities, report disposition and freshness are recorded in the local
+handoff and receipt after all source/document edits are complete. E4 is next.

@@ -8,7 +8,9 @@ adapters и bootstrap собираются как отдельные Maven-мо�
 `io.github.xorex-lc`; выделенный `platform-diagnostics-api` использует ту же
 группу. Опубликованные `platform-logging-slf4j` и
 `adapter-config-spring-boot` (`ioc-config-spring-boot`) также
-используют `io.github.xorex-lc`. Остальные модули сохраняют `com.iocextractor`. Публикуемый
+используют `io.github.xorex-lc`. Подготовленные к публикации
+`platform-events` и `adapter-events-spring` (`ioc-events-spring`) используют ту же
+группу; их независимые consumer-проверки и выпуск ещё не выполнены. Остальные модули сохраняют `com.iocextractor`. Публикуемый
 POM библиотеки не зависит от parent реактора. Политика —
 [ADR 0028](ADR/0028-pilot-library-publication.md), контракт диагностики —
 [ADR 0044](ADR/0044-reusable-diagnostics-contract.md), контракт логирования —
@@ -126,8 +128,10 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ io
 - `adapter-events-spring` зависит от JDK-контрактов events, Spring Context и
   SLF4J API. Bootstrap явно создаёт publisher; observer, multicaster, обработчики,
   executor и recovery принадлежат сервису. Контракт и исправления ошибок —
-  [ADR 0047](ADR/0047-explicit-spring-control-event-adapter.md). Модуль пока
-  reactor-local; самостоятельный POM и публикация квалифицируются отдельно.
+  [ADR 0047](ADR/0047-explicit-spring-control-event-adapter.md). Оба events-модуля
+  имеют самостоятельные POM и селекторы локальной упаковки; у Spring-модуля
+  обязательная зависимость от events-контрактов той же версии. Независимые
+  consumer-проверки и публикация квалифицируются отдельно.
 - `ioc-application-tck` содержит test-scope contract tests; реализации портов
   подключают его только в тестовом scope.
 - `ioc-app` (bootstrap) собирает исполняемый артефакт и зависит от подключённых

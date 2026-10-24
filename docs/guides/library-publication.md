@@ -32,6 +32,50 @@ Its [consumer guide](logging-library.md) supplies the released dependency;
 the [module reference](../../platform/platform-logging-slf4j/README.md) describes
 the qualified API/backend boundary. This does not qualify a later version.
 
+## Events packaging preparation
+
+Two additional local selectors prepare separate bundles:
+
+| Selector | Coordinate in `io.github.xorex-lc` | Required compile JARs in its consumer POM |
+|---|---|---|
+| `events` | `ioc-platform-events` | None; JDK 21 only |
+| `events-spring` | `ioc-events-spring` | `ioc-platform-events` at the bundle's exact version, Spring Context 7.0.9, SLF4J API 2.0.18 |
+
+Both inherit the reactor's lockstep version and build settings during development.
+The flattened distribution POM resolves those settings and removes the parent,
+test dependencies and build configuration. This uses the existing
+[Flatten plugin behavior](https://www.mojohaus.org/flatten-maven-plugin/flatten-mojo.html).
+The packaging checker requires exact dependency identities and required compile
+scope; it rejects optional/provided APIs, ranges, unresolved properties, extra
+dependencies, repositories, BOMs and private parents. Main JARs must contain the
+same POM, MIT license and Java 21 classes from only their own public package.
+Sources and strict Javadoc are checked for the real public types.
+
+```sh
+make library-bundle LIBRARY_COMPONENT=events LIBRARY_BUNDLE=.dev/events-bundle
+make library-bundle LIBRARY_COMPONENT=events-spring LIBRARY_BUNDLE=.dev/events-spring-bundle
+python3 tools/ci/library-publication.py check --component events --bundle .dev/events-bundle --version 0.3.0-SNAPSHOT
+python3 tools/ci/library-publication.py check --component events-spring --bundle .dev/events-spring-bundle --version 0.3.0-SNAPSHOT
+```
+
+Each bundle has four primary files and its own identity/hashes. The Spring bundle
+contains only the adapter; contracts are a normal dependency, never shaded or
+silently copied into it. A future release must publish and qualify the contracts
+first in **each selected repository**, then release the adapter at the same
+version. Their component tags will be `ioc-platform-events-v<version>` and
+`ioc-events-spring-v<version>`; existing component tags and bundles are unchanged.
+
+E3 qualifies packaging only. E4 must add cold JDK/Spring consumers, assemble the
+explicit local two-artifact repository, verify hashes and selected origins for
+both own artifacts, and prove dependency mediation and missing-dependency failure.
+Until then, these selectors reject `consume`, signing and remote publication
+before credential access or network writes. They are deliberately absent from
+the protected workflow choices. Regular CI separately builds both artifacts and
+checks their bundles without credentials; the library gate requires that job
+as well as the existing four components' consumer jobs. This prevents an empty fixture list from yielding
+a false consumer pass. E4 will extend that admission after its checks exist; E5
+still owns release admission and any separately authorized registry action.
+
 ## Configuration library admission
 
 Configuration `0.3.0-rc.1` passed protected publication and the GitHub Packages

@@ -52,8 +52,10 @@ separates the original failure, local recovery and immutable release identity.
 The owner selected events next on 2026-10-24. Its existing E0/two-unit design is
 retained; E1 implements JDK-contract documentation and 43 focused tests, strict
 Javadoc and a compiled/executed consumer example. E2 implements the explicit Spring bridge, IOC migration and the three corrected
-failure boundaries with real-context regressions. E3 prepares both publication POMs.
-Publication still requires E3–E5 and a separate release action. ETL remains
+failure boundaries with real-context regressions. E3 adds both standalone POMs
+and explicit packaging selectors with exact dependency checks and a pending-consumer
+publication gate. Both modules now use `io.github.xorex-lc`.
+Publication still requires E4/E5 and a separate release action. ETL remains
 deferred pending a second consumer.
 
 Diagnostics publication is recorded in the release branch's D5 documentation

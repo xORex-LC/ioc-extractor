@@ -118,14 +118,20 @@ Native macOS и Windows не являются поддерживаемыми с�
 
 `make library-bundle`, `make library-consumer` и `make library-publication-test`
 проверяют независимую упаковку и публичные контракты. Параметр
-`LIBRARY_COMPONENT` выбирает `concurrency` (по умолчанию), `diagnostics`, `logging` или `configuration`;
+`LIBRARY_COMPONENT` выбирает `concurrency` (по умолчанию), `diagnostics`, `logging`,
+`configuration`, `events` или `events-spring`;
 для каждого bundle задавайте отдельный `LIBRARY_BUNDLE`. Изолированные проекты
 расположены в [fixtures](fixtures/README.md), процедура публикации — в
 [руководстве](../docs/guides/library-publication.md). Требуются полный JDK 21
 с `javadoc`, Python 3, GnuPG 2 и сеть для зависимостей пустого Maven-кэша.
 Для logging запускаются отдельные SLF4J- и Boot-потребители с примерами из
 руководств. Разрешена только зависимость `slf4j-api:2.0.18`; провайдер выбирает
-потребитель. Первые две библиотеки по-прежнему не допускают зависимостей.
+потребитель. JDK-библиотеки concurrency, diagnostics и events не допускают зависимостей.
+Селекторы events/events-spring пока квалифицируют только упаковку и проверку
+manifest: подпись, публикация и consumer явно отклоняются до E4. Spring-адаптер
+требует events-контракты той же версии, Spring Context 7.0.9 и SLF4J API 2.0.18;
+каждый артефакт имеет отдельный bundle. В будущем сначала выпускаются контракты,
+затем адаптер; отдельный выпуск в этом этапе не выполняется.
 
 Для configuration проверяются инспекция/миграции, точный пример ограниченного
 контекста, BOM приложения и отказы при несовместимом выборе зависимостей.

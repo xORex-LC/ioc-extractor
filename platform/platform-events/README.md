@@ -1,9 +1,11 @@
 # platform-events
 
 JDK-only metadata and publication contracts for service-owned local control
-events. Requires Java 21. The module is reactor-local at
-`com.iocextractor:ioc-platform-events:0.3.0-SNAPSHOT`; independent publication
-under `io.github.xorex-lc` is planned and not yet qualified.
+events. Requires Java 21. The coordinate is
+`io.github.xorex-lc:ioc-platform-events:0.3.0-SNAPSHOT`. Packaging produces a
+parent-independent POM, plain JAR, sources and strict Javadoc. Independent
+packaged consumers and registry publication remain pending; the `events`
+selector currently supports local packaging and manifest checks.
 
 **Layer rule:** no Spring, IOC domain/application types, transport libraries,
 serialization, keyed execution or delivery infrastructure. Services define the
@@ -61,7 +63,11 @@ long-running production event history.
 text, version boundaries and value preservation. Publisher/observer tests cover
 input validation, shallow immutable snapshots, duplicates and concurrent recording
 with bounded worker cleanup. These tests qualify the JDK contract, not a Spring
-adapter or independently published artifact.
+adapter or independently published artifact. Publication packaging rejects any
+dependency, private parent, unresolved property, foreign class or executable
+Boot layout; the embedded POM must match the standalone POM. See the
+[publication guide](../../docs/guides/library-publication.md#events-packaging-preparation)
+for the two-artifact release order and remaining consumer gate.
 
 - [Consumer guide](../../docs/guides/events-library.md): a service-defined event and local recording example.
 - [Event coordination](../../docs/dev/event-coordination.md): IOC producers, durable backstops and Spring composition.

@@ -232,3 +232,8 @@ hashes, selected-repository origin and negative SLF4J dependency checks. The
 retains immutable identity, artifacts and limits. A second production service
 and live collector/backend/load qualification are outside these fixture results.
 Existing concurrency/diagnostics release identities remain unchanged.
+
+E3 prepares `io.github.xorex-lc:ioc-platform-events` and `ioc-events-spring`
+with separate parent-free POMs, real publication archives and exact dependency
+checks. The adapter requires contracts at the same lockstep version; neither
+artifact is claimed independently consumed or published.

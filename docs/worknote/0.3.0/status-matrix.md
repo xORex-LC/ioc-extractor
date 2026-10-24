@@ -175,3 +175,16 @@ Service multicaster/error-handler/executor ownership is preserved. All quality
 registries include the new JAR: 31 projects, 25 production groups, 24 local
 coverage reports; one integration suite is added, with existing floors intact.
 E3–E5 and any event registry publication remain pending.
+
+
+### LIB-5 E3 standalone publication packaging — 2026-10-24
+
+Both events modules now use `io.github.xorex-lc` in the reactor and distribution
+POMs. Explicit `events`/`events-spring` selectors validate separate immutable
+bundles; core remains dependency-free, and the adapter requires core at exactly
+the same version plus Context 7.0.9 and SLF4J API 2.0.18. The report verifiers
+admit both new groups and reject the old coordinates. Consumer-less components
+cannot sign, publish or pass an empty consumer run; protected workflow choices
+remain limited to the four previously qualified components. E4 owns cold
+two-artifact consumers and repository routing; E5 and publication remain pending.
+See the [E3 checkpoint](libs/lib-5-events-design.md#e3-standalone-publication-packaging--2026-10-24).

@@ -501,7 +501,7 @@
     <dependencyManagement>
         <dependencies>
             <dependency>
-                <groupId>com.iocextractor</groupId>
+                <groupId>io.github.xorex-lc</groupId>
                 <artifactId>ioc-events-spring</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -527,7 +527,7 @@
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.iocextractor</groupId>
+                <groupId>io.github.xorex-lc</groupId>
                 <artifactId>ioc-platform-events</artifactId>
                 <version>${project.version}</version>
             </dependency>

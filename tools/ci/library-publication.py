@@ -64,6 +64,26 @@ COMPONENTS = {
         'dependencies': (('org.springframework.boot', 'spring-boot', '4.0.8'),
                          ('org.springframework', 'spring-core', '7.0.9')),
     },
+    'events': {
+        'artifact': 'ioc-platform-events',
+        'module': 'platform/platform-events',
+        'package': 'com/iocextractor/platform/events/',
+        'markers': ('ControlEvent', 'ControlEventMetadata', 'ControlEventPublisher',
+                    'ControlEventObserver', 'NoopControlEventPublisher',
+                    'NoopControlEventObserver', 'RecordingControlEventPublisher'),
+        'fixtures': (),  # E4 supplies the independent packaged consumer.
+        'dependencies': (),
+    },
+    'events-spring': {
+        'artifact': 'ioc-events-spring',
+        'module': 'adapters/adapter-events-spring',
+        'package': 'com/iocextractor/adapter/out/events/spring/',
+        'markers': ('SpringControlEventPublisher',),
+        'fixtures': (),  # No remote operation until the two-artifact consumer qualifies.
+        'dependencies': ((GROUP, 'ioc-platform-events', None),
+                         ('org.springframework', 'spring-context', '7.0.9'),
+                         ('org.slf4j', 'slf4j-api', '2.0.18')),
+    },
 }
 
 
@@ -78,6 +98,18 @@ def run(args, **kwargs):
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def dependencies_for(component, version):
+    """Resolve a same-release dependency without admitting a version range or reactor parent."""
+    return tuple((group, artifact, version if required is None else required)
+                 for group, artifact, required in component['dependencies'])
+
+
+def require_consumer_fixtures(component):
+    """Keep packaging-only components out of signing, remote writes and vacuous consumer passes."""
+    require(bool(component['fixtures']),
+            component['artifact'] + ': E4 independent consumer qualification is pending')
 
 
 def version_check(version, release=False):
@@ -200,7 +232,7 @@ def validate_consumer_pom(content, version, component):
                 'dependency must be a required compile JAR')
         actual.append(tuple(dependency.findtext('m:' + field, namespaces=ns)
                             for field in ('groupId', 'artifactId', 'version')))
-    require(tuple(actual) == component['dependencies'], 'unexpected consumer POM dependencies')
+    require(tuple(actual) == dependencies_for(component, version), 'unexpected consumer POM dependencies')
 
 
 def prepare(bundle, version, component=None):
@@ -245,6 +277,7 @@ def prepare(bundle, version, component=None):
 
 def sign(bundle):
     metadata = read_bundle(bundle)
+    require_consumer_fixtures(component_for(metadata))
     require(not metadata.get('signed'), 'bundle is already signed; reuse it unchanged')
     require(metadata.get('dirty') is False, 'release signing requires a clean source checkout')
     version_check(metadata['version'], release=True)
@@ -334,6 +367,7 @@ def compare_remote(bundle, base, headers=None):
 
 
 def publish_github(bundle):
+    require_consumer_fixtures(component_for(read_bundle(bundle, signed=True)))
     headers = authorization('github')
     missing = compare_remote(bundle, GITHUB, headers)
     # Maven repositories use HTTP PUT for exact artifact paths. Existing bytes
@@ -346,6 +380,7 @@ def publish_github(bundle):
 
 def publish_central(bundle, publish, deployment_id):
     metadata = read_bundle(bundle, signed=True)
+    require_consumer_fixtures(component_for(metadata))
     version_check(metadata['version'], release=True)
     if deployment_id:
         require(re.fullmatch('[a-fA-F0-9-]{36}', deployment_id), 'invalid deployment identifier')
@@ -416,6 +451,7 @@ def configure_proxy(settings):
 def consume(bundle, repository):
     metadata = read_bundle(bundle)
     component = component_for(metadata)
+    require_consumer_fixtures(component)
     require(repository in ('local', 'central', 'github'), 'unknown consumer repository')
     url = {'local': (bundle / 'repository').resolve().as_uri(), 'central': CENTRAL, 'github': GITHUB}[repository]
     if repository != 'local':

@@ -188,14 +188,32 @@ jobs:
           python3 tools/ci/library-publication.py prepare --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle --version "$version"
           python3 tools/ci/library-publication.py consume --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle
 
+  library-events-packaging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Prepare both events artifacts without publication credentials
+        run: |
+          ./mvnw -B -ntp -pl adapters/adapter-events-spring -am -Plibrary-publication package
+          version=$(./mvnw -q -pl platform/platform-events help:evaluate -Dexpression=project.version -DforceStdout)
+          python3 tools/ci/library-publication.py prepare --component events --bundle .dev/events-bundle --version "$version"
+          python3 tools/ci/library-publication.py prepare --component events-spring --bundle .dev/events-spring-bundle --version "$version"
+      # E4 adds cold consumers and verifies both own artifacts' repository origins.
+
   library-consumer-gate:
     name: library-consumer
-    needs: library-consumer
+    needs: [library-consumer, library-events-packaging]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Require every component consumer to pass
+      - name: Require component consumers and events packaging to pass
         env:
           CONSUMERS_RESULT: ${{ needs.library-consumer.result }}
-        run: test "$CONSUMERS_RESULT" = success
+          EVENTS_PACKAGING_RESULT: ${{ needs.library-events-packaging.result }}
+        run: test "$CONSUMERS_RESULT" = success && test "$EVENTS_PACKAGING_RESULT" = success

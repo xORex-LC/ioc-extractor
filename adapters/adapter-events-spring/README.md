@@ -4,8 +4,10 @@ Explicit Spring delivery adapter for the JDK-only
 [control-event contracts](../../platform/platform-events/README.md). Requires
 Java 21; the qualified reactor baseline is Spring Context 7.0.9 and SLF4J API
 2.0.18. The current coordinate is
-`com.iocextractor:ioc-events-spring:0.3.0-SNAPSHOT`; independent publication and
-its parent-free POM remain a separate qualification step.
+`io.github.xorex-lc:ioc-events-spring:0.3.0-SNAPSHOT`. Packaging produces a
+parent-free POM with required compile dependencies on `ioc-platform-events`
+at exactly the same version, Spring Context 7.0.9 and SLF4J API 2.0.18.
+Independent packaged consumers and registry publication remain pending.
 
 ## Layer and dependencies
 
@@ -51,7 +53,7 @@ and observer implementations; the adapter has no mutable per-call state.
 |---|---|
 | `src/main/java/com/iocextractor/adapter/out/events/spring/` | Publisher and package Javadoc |
 | `src/test/java/com/iocextractor/adapter/out/events/spring/` | Stub-based failure contracts and real Spring-context integration |
-| `pom.xml` | Reactor dependencies; publication preparation remains pending |
+| `pom.xml` | Managed reactor dependencies, parent-free consumer POM and publication archives |
 
 `SpringControlEventPublisherTest` checks input rejection, reference ownership,
 publication/observation failures, suppression boundaries, direct/wrapped Errors
@@ -62,3 +64,10 @@ service-owned dispatch configuration in a real Spring context.
 See the [integration guide](../../docs/guides/events-library.md),
 [IOC coordination flow](../../docs/dev/event-coordination.md) and
 [architecture decision](../../docs/ADR/0047-explicit-spring-control-event-adapter.md).
+
+The `events-spring` packaging selector validates all four primary files and their
+manifest hashes. It rejects a different events-contract version, optional/provided
+APIs, extra dependencies, reactor test support and foreign classes. Each artifact
+has its own immutable bundle and eventual component tag. See the
+[publication guide](../../docs/guides/library-publication.md#events-packaging-preparation);
+E4 must qualify the complete dependency closure before signing or remote writes.

@@ -45,7 +45,8 @@ public final class BuildQualityVerifierTest {
 
     public static void main(String[] args) throws Exception {
         for (String library : List.of("ioc-platform-diagnostics-api",
-                "ioc-platform-logging-slf4j", "ioc-config-spring-boot")) {
+                "ioc-platform-logging-slf4j", "ioc-config-spring-boot",
+                "ioc-platform-events", "ioc-events-spring")) {
             try (Fixture fixture = Fixture.create(Control.SPOTBUGS)) {
                 admitLibrary(fixture.root(), library);
                 Result admitted = fixture.execute(Mode.VALIDATE);
