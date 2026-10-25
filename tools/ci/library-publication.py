@@ -36,6 +36,7 @@ COMPONENTS = {
         'package': 'com/iocextractor/platform/concurrent/',
         'markers': ('BoundedKeyedSerialExecutor',),
         'fixtures': ('library-consumer',),
+        'release_admitted': True,
         'dependencies': (),
     },
     'diagnostics': {
@@ -44,6 +45,7 @@ COMPONENTS = {
         'package': 'com/iocextractor/platform/diagnostics/',
         'markers': ('Diagnostic', 'result/DiagnosticBatch', 'sink/ResilientDiagnosticSink'),
         'fixtures': ('diagnostics-consumer',),
+        'release_admitted': True,
         'dependencies': (),
     },
     'logging': {
@@ -52,6 +54,7 @@ COMPONENTS = {
         'package': 'com/iocextractor/platform/logging/',
         'markers': ('LogEvents', 'MdcScope', 'ecs/EcsFields', 'redaction/LogRedaction'),
         'fixtures': ('logging-consumer', 'logging-boot-consumer'),
+        'release_admitted': True,
         'dependencies': (('org.slf4j', 'slf4j-api', '2.0.18'),),
     },
     'configuration': {
@@ -61,6 +64,7 @@ COMPONENTS = {
         'markers': ('PropertySchema', 'PropertyInspector', 'PropertyInspection',
                     'PropertyMigration', 'MigrationInspector', 'MigrationInspection'),
         'fixtures': ('configuration-consumer',),
+        'release_admitted': True,
         'dependencies': (('org.springframework.boot', 'spring-boot', '4.0.8'),
                          ('org.springframework', 'spring-core', '7.0.9')),
     },
@@ -71,7 +75,8 @@ COMPONENTS = {
         'markers': ('ControlEvent', 'ControlEventMetadata', 'ControlEventPublisher',
                     'ControlEventObserver', 'NoopControlEventPublisher',
                     'NoopControlEventObserver', 'RecordingControlEventPublisher'),
-        'fixtures': (),  # E4 supplies the independent packaged consumer.
+        'fixtures': ('events-consumer',),
+        'release_admitted': False,  # E5 reviews release admission separately.
         'dependencies': (),
     },
     'events-spring': {
@@ -79,7 +84,8 @@ COMPONENTS = {
         'module': 'adapters/adapter-events-spring',
         'package': 'com/iocextractor/adapter/out/events/spring/',
         'markers': ('SpringControlEventPublisher',),
-        'fixtures': (),  # No remote operation until the two-artifact consumer qualifies.
+        'fixtures': ('events-spring-consumer',),
+        'release_admitted': False,
         'dependencies': ((GROUP, 'ioc-platform-events', None),
                          ('org.springframework', 'spring-context', '7.0.9'),
                          ('org.slf4j', 'slf4j-api', '2.0.18')),
@@ -110,6 +116,12 @@ def require_consumer_fixtures(component):
     """Keep packaging-only components out of signing, remote writes and vacuous consumer passes."""
     require(bool(component['fixtures']),
             component['artifact'] + ': E4 independent consumer qualification is pending')
+
+
+def require_release_admission(component):
+    require_consumer_fixtures(component)
+    require(component.get('release_admitted', False),
+            component['artifact'] + ': E5 release admission is pending')
 
 
 def version_check(version, release=False):
@@ -277,7 +289,7 @@ def prepare(bundle, version, component=None):
 
 def sign(bundle):
     metadata = read_bundle(bundle)
-    require_consumer_fixtures(component_for(metadata))
+    require_release_admission(component_for(metadata))
     require(not metadata.get('signed'), 'bundle is already signed; reuse it unchanged')
     require(metadata.get('dirty') is False, 'release signing requires a clean source checkout')
     version_check(metadata['version'], release=True)
@@ -367,7 +379,7 @@ def compare_remote(bundle, base, headers=None):
 
 
 def publish_github(bundle):
-    require_consumer_fixtures(component_for(read_bundle(bundle, signed=True)))
+    require_release_admission(component_for(read_bundle(bundle, signed=True)))
     headers = authorization('github')
     missing = compare_remote(bundle, GITHUB, headers)
     # Maven repositories use HTTP PUT for exact artifact paths. Existing bytes
@@ -380,7 +392,7 @@ def publish_github(bundle):
 
 def publish_central(bundle, publish, deployment_id):
     metadata = read_bundle(bundle, signed=True)
-    require_consumer_fixtures(component_for(metadata))
+    require_release_admission(component_for(metadata))
     version_check(metadata['version'], release=True)
     if deployment_id:
         require(re.fullmatch('[a-fA-F0-9-]{36}', deployment_id), 'invalid deployment identifier')
@@ -448,20 +460,66 @@ def configure_proxy(settings):
         ET.SubElement(element, name).text = text
 
 
-def consume(bundle, repository):
+def consumption_dependencies(metadata, component, dependency_bundle):
+    """Only the Spring events adapter admits a project-owned dependency bundle."""
+    if component != COMPONENTS['events-spring']:
+        require(dependency_bundle is None, 'unexpected dependency bundle')
+        return []
+    require(dependency_bundle is not None, 'events-spring requires --dependency-bundle for events')
+    dependency = COMPONENTS['events']
+    own = read_bundle(dependency_bundle, expected_component=dependency)
+    require(own['version'] == metadata['version'], 'events dependency bundle version differs')
+    return [(own, dependency, dependency_bundle)]
+
+
+def copy_primary_artifacts(metadata, component, source, destination):
+    """Copy only the four manifest-checked Maven inputs, without mutating either bundle."""
+    relative = relative_path(metadata['version'], component)
+    target = destination / relative
+    target.mkdir(parents=True)
+    for suffix in SUFFIXES:
+        name = metadata['artifact'] + '-' + metadata['version'] + suffix
+        shutil.copyfile(source / relative / name, target / name)
+
+
+def consume(bundle, repository, dependency_bundle=None):
     metadata = read_bundle(bundle)
     component = component_for(metadata)
     require_consumer_fixtures(component)
     require(repository in ('local', 'central', 'github'), 'unknown consumer repository')
-    url = {'local': (bundle / 'repository').resolve().as_uri(), 'central': CENTRAL, 'github': GITHUB}[repository]
-    if repository != 'local':
-        require(not compare_remote(bundle, url, authorization('github') if repository == 'github' else None), 'remote bundle incomplete')
-    for fixture in component['fixtures']:
-        consume_fixture(metadata, component, fixture, repository, url)
+    dependencies = consumption_dependencies(metadata, component, dependency_bundle)
+    artifacts = [(metadata, component), *((own, descriptor) for own, descriptor, _ in dependencies)]
+    # Assemble the local two-artifact closure explicitly; never install it into
+    # the developer cache or add a second own-artifact fallback repository.
+    with tempfile.TemporaryDirectory(prefix='ioc-library-target-') as folder:
+        target = Path(folder) / 'repository'
+        if repository == 'local':
+            for own, descriptor, source in [(metadata, component, bundle), *dependencies]:
+                copy_primary_artifacts(own, descriptor, source / 'repository', target)
+            url = target.as_uri()
+        else:
+            url = CENTRAL if repository == 'central' else GITHUB
+            headers = authorization('github') if repository == 'github' else None
+            for _, _, source in [(metadata, component, bundle), *dependencies]:
+                require(not compare_remote(source, url, headers), 'remote bundle incomplete')
+        for fixture in component['fixtures']:
+            consume_fixture(metadata, component, fixture, repository, url, artifacts)
 
 
 def populate_examples(component, fixture, project):
     """Compile the actual guide sources rather than a second copy of the examples."""
+    if component in (COMPONENTS['events'], COMPONENTS['events-spring']):
+        guide = (ROOT / 'docs/guides/events-library.md').read_text()
+        blocks = re.findall(r'```java\n(.*?)\n```', guide, re.DOTALL)
+        names = ['LocalEventsExample', 'SpringEventsExample']
+        require(len(blocks) == len(names), 'events guide Java example count changed')
+        for name, source in zip(names, blocks):
+            require('public final class ' + name + ' {' in source, 'events guide example changed')
+            if name == 'LocalEventsExample' or component == COMPONENTS['events-spring']:
+                path = project / 'src/main/java' / (name + '.java')
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(source)
+        return
     if component == COMPONENTS['configuration']:
         guide = (ROOT / 'docs/guides/configuration-library-check.md').read_text()
         destination = project / 'src/main/java/examples/configuration'
@@ -506,7 +564,7 @@ def populate_examples(component, fixture, project):
                 (resources / filename).write_text(blocks[0])
 
 
-def verify_resolved_artifacts(metadata, component, cache):
+def verify_resolved_artifacts(metadata, component, cache, origin='library-target'):
     resolved = cache / relative_path(metadata['version'], component)
     origins = (resolved / '_remote.repositories').read_text().splitlines()
     for suffix in SUFFIXES:
@@ -516,7 +574,7 @@ def verify_resolved_artifacts(metadata, component, cache):
         # Maven 3.9.9 Resolver records the repository ID per downloaded file.
         # A Central fallback must not masquerade as a successful GitHub consumer.
         sources = {line.split('>', 1)[1].split('=', 1)[0] for line in origins if line.startswith(name + '>')}
-        require(sources == {'library-target'}, 'consumer artifact did not resolve from selected repository')
+        require(sources == {origin}, 'consumer artifact did not resolve from selected repository')
 
 
 def consumer_settings(work, repository, url, public_url=CENTRAL):
@@ -568,7 +626,8 @@ def consumer_environment():
     return env
 
 
-def consume_fixture(metadata, component, fixture, repository, url):
+def consume_fixture(metadata, component, fixture, repository, url, artifacts=None):
+    artifacts = artifacts or [(metadata, component)]
     with tempfile.TemporaryDirectory(prefix='ioc-library-consumer-') as folder:
         work = Path(folder)
         shutil.copytree(ROOT / 'tools/fixtures' / fixture, work / 'consumer')
@@ -579,7 +638,18 @@ def consume_fixture(metadata, component, fixture, repository, url):
         env = consumer_environment()
         env['COLLECTOR_LOG_FILE'] = str(work / 'collector.ecs.json')
         run(command + ['compile', 'org.codehaus.mojo:exec-maven-plugin:3.5.0:java'], cwd=work / 'consumer', env=env)
-        verify_resolved_artifacts(metadata, component, work / 'cache')
+        for own, descriptor in artifacts:
+            verify_resolved_artifacts(own, descriptor, work / 'cache')
+        if fixture in ('events-consumer', 'events-spring-consumer'):
+            qualify_events(command, work / 'consumer', env, metadata, component)
+            fallback = work / 'alternate-repository'
+            for own, descriptor in artifacts:
+                verify_resolved_artifacts(own, descriptor, work / 'cache')
+                copy_primary_artifacts(own, descriptor, work / 'cache', fallback)
+            qualify_repository_routing(metadata, component, work / 'consumer', fallback.as_uri(), artifacts[1:])
+            if component == COMPONENTS['events-spring']:
+                qualify_repository_routing(metadata, component, work / 'consumer', fallback.as_uri(), artifacts[1:],
+                                           selected_artifact=True)
         if fixture == 'logging-consumer':
             negative_dependency_checks(command, work / 'consumer', env)
         if fixture == 'configuration-consumer':
@@ -593,7 +663,8 @@ def consume_fixture(metadata, component, fixture, repository, url):
                 shutil.copyfile(work / 'cache' / relative_path(metadata['version'], component) / name, target / name)
             qualify_repository_routing(metadata, component, work / 'consumer', fallback.as_uri())
         print('Qualified ' + metadata['artifact'] + ':' + metadata['version'] + ' from ' + repository +
-              ' (' + fixture + '); four resolved artifacts match the bundle and selected repository')
+              ' (' + fixture + '); ' + str(4 * len(artifacts)) +
+              ' resolved artifacts match their bundles and selected repository')
 
 
 def negative_dependency_checks(command, project, env):
@@ -607,6 +678,81 @@ def negative_dependency_checks(command, project, env):
         require(result.returncode != 0 and diagnostic in output and 'org.slf4j' in output,
                 'negative SLF4J dependency check did not fail for the expected reason: ' + profile)
         print('Rejected missing/unavailable SLF4J API: ' + profile)
+
+
+def events_graph(metadata, component, project, managed=False):
+    """Check own versions and the complete public closure, without a Boot runtime or provider."""
+    expected_own = {component['artifact']: metadata['version']}
+    expected_public = {}
+    if component == COMPONENTS['events-spring']:
+        expected_own['ioc-platform-events'] = metadata['version']
+        expected_public = {
+            **{('org.springframework', 'spring-' + name): '7.0.9'
+               for name in ('core', 'context', 'aop', 'beans', 'expression')},
+            **{('io.micrometer', 'micrometer-' + name): '1.16.7' for name in ('observation', 'commons')},
+            ('commons-logging', 'commons-logging'): '1.3.6' if managed else '1.3.5',
+            ('org.jspecify', 'jspecify'): '1.0.1' if managed else '1.0.0',
+            ('org.slf4j', 'slf4j-api'): '2.0.18',
+        }
+    own, public = {}, {}
+    def visit(node, root=False):
+        if not root:
+            require(node['type'] == 'jar', 'non-JAR dependency in events consumer')
+            key = node['artifactId'] if node['groupId'] == GROUP else (node['groupId'], node['artifactId'])
+            graph = own if node['groupId'] == GROUP else public
+            require(key not in graph or graph[key] == node['version'], 'conflicting events dependency versions')
+            graph[key] = node['version']
+        for child in node.get('children', []):
+            visit(child)
+    visit(json.loads((project / 'target/dependencies.json').read_text()), root=True)
+    require(own == expected_own, 'events own dependency closure/version changed')
+    require(public == expected_public, 'events public dependency closure changed; review before qualification')
+    print('Reviewed events closure: ' + json.dumps({**own, **{':'.join(k): v for k, v in sorted(public.items())}}))
+
+
+def qualify_events(command, project, env, metadata, component):
+    dependency = 'org.apache.maven.plugins:maven-dependency-plugin:3.11.0:'
+    profiles = ([], ['-Papplication-bom']) if component == COMPONENTS['events-spring'] else ([],)
+    for profile in profiles:
+        if profile:
+            shutil.rmtree(project / 'target')
+            run(command + profile + ['compile', 'org.codehaus.mojo:exec-maven-plugin:3.5.0:java'], cwd=project, env=env)
+        run(command + profile + [dependency + 'tree', '-DoutputType=json', '-DoutputFile=target/dependencies.json',
+                                 dependency + 'build-classpath', '-Dmdep.outputFile=target/classpath.txt'], cwd=project, env=env)
+        events_graph(metadata, component, project, managed=bool(profile))
+        classpath = str(project / 'target/classes') + os.pathsep + (project / 'target/classpath.txt').read_text().strip()
+        require(str(ROOT) + '/' not in classpath, 'reactor path entered the standalone consumer classpath')
+        java = str(Path(env['JAVA_HOME']) / 'bin/java') if env.get('JAVA_HOME') else 'java'
+        # Run outside the Maven plugin classloader too. No assertions flag is
+        # needed: the fixture throws AssertionError explicitly on a failed check.
+        result = subprocess.run([java, '-cp', classpath, 'LibraryConsumer'], cwd=project, env=env,
+                                capture_output=True, text=True, timeout=30)
+        require(result.returncode == 0 and 'EVENTS_CONSUMER_OK' in result.stdout,
+                'packaged events consumer failed: ' + result.stdout + result.stderr)
+        print(result.stdout.strip() + (' with application BOM' if profile else ''))
+    if component != COMPONENTS['events-spring']:
+        return
+    for name, artifact, package in [('core', 'ioc-platform-events', 'com.iocextractor.platform.events'),
+                                     ('context', 'spring-context', 'org.springframework.context'),
+                                     ('slf4j', 'slf4j-api', 'org.slf4j')]:
+        for mode in ('exclude', 'unavailable'):
+            profile = mode + '-' + name
+            shutil.rmtree(project / 'target', ignore_errors=True)
+            result = subprocess.run(command + ['-o', '-P' + profile, 'compile'], cwd=project, env=env,
+                                    capture_output=True, text=True, timeout=120)
+            output = result.stdout + result.stderr
+            expected = ('COMPILATION ERROR' in output and package in output) if mode == 'exclude' else (
+                'Could not resolve dependencies' in output and artifact in output and '0.0.0-e4-unavailable' in output)
+            require(result.returncode != 0 and expected,
+                    'events dependency check did not fail for the expected reason: ' + profile + '\n' + output)
+            print('Rejected events dependency: ' + profile)
+    result = subprocess.run(command + ['-Pincompatible-spring', 'validate'], cwd=project, env=env,
+                            capture_output=True, text=True, timeout=180)
+    output = result.stdout + result.stderr
+    require(result.returncode != 0 and
+            'Require upper bound dependencies error for org.springframework:spring-core:5.3.39' in output,
+            'events mediation check did not fail for the expected reason\n' + output)
+    print('Rejected incompatible events Spring mediation')
 
 
 def configuration_graph(project, managed=False):
@@ -665,13 +811,19 @@ def qualify_configuration(command, project, env):
         print('Rejected configuration dependency mediation: ' + profile)
 
 
-def qualify_repository_routing(metadata, component, project, fallback_url):
+def qualify_repository_routing(metadata, component, project, fallback_url, dependencies=(), selected_artifact=False):
     """A real alternate repository can supply the JAR only with filtering disabled."""
+    artifacts = [(metadata, component), *dependencies]
+    require(not selected_artifact or dependencies, 'partial target probe requires an own dependency')
+    missing, missing_component = dependencies[0] if selected_artifact else (metadata, component)
     for filtering in (True, False):
         with tempfile.TemporaryDirectory(prefix='ioc-library-routing-') as folder:
             work = Path(folder)
             empty = work / 'empty-target'
             empty.mkdir()
+            if selected_artifact:
+                source = Path(urllib.parse.unquote(urllib.parse.urlparse(fallback_url).path))
+                copy_primary_artifacts(metadata, component, source, empty)
             shutil.copytree(project, work / 'consumer', ignore=shutil.ignore_patterns('target'))
             pom = work / 'consumer/pom.xml'
             pom.write_text(pom.read_text().replace('</repositories>', '<repository>'
@@ -686,21 +838,21 @@ def qualify_repository_routing(metadata, component, project, fallback_url):
                                     cwd=work / 'consumer', env=consumer_environment(),
                                     capture_output=True, text=True, timeout=300)
             output = result.stdout + result.stderr
-            resolved = work / 'cache' / relative_path(metadata['version'], component)
+            resolved = work / 'cache' / relative_path(missing['version'], missing_component)
             if filtering:
                 require(result.returncode != 0 and 'Could not resolve dependencies' in output
-                        and metadata['artifact'] in output and not list(resolved.glob('*.jar')),
-                        'missing selected artifact did not fail closed')
-                print('Rejected missing selected artifact with a populated alternate repository and empty cache')
+                        and 'Could not find artifact ' + GROUP + ':' + missing['artifact'] + ':' in output
+                        and not list(resolved.glob('*.jar')),
+                        'missing selected artifact did not fail closed\n' + output)
+                print('Rejected missing selected ' + missing['artifact'] +
+                      ' with a populated alternate repository and empty cache')
             else:
-                require(result.returncode == 0, 'unfiltered alternate-repository control failed')
-                origins = (resolved / '_remote.repositories').read_text()
-                for suffix in SUFFIXES:
-                    name = metadata['artifact'] + '-' + metadata['version'] + suffix
-                    require(name + '>public-dependencies=' in origins, 'alternate-repository control used another origin')
-                    require(digest((resolved / name).read_bytes()) == metadata['files'][str(
-                        relative_path(metadata['version'], component) / name)], 'alternate control bytes differ')
-                print('Unfiltered control resolved the same four artifacts from the alternate repository')
+                require(result.returncode == 0, 'unfiltered alternate-repository control failed\n' + output)
+                for own, descriptor in artifacts:
+                    origin = 'library-target' if selected_artifact and descriptor == component else 'public-dependencies'
+                    verify_resolved_artifacts(own, descriptor, work / 'cache', origin=origin)
+                print('Unfiltered control resolved ' + str(4 * len(artifacts)) +
+                      ' matching artifacts with the expected alternate origins')
 
 
 def main():
@@ -711,6 +863,7 @@ def main():
     parser.add_argument('--version')
     parser.add_argument('--commit')
     parser.add_argument('--repository', default='local')
+    parser.add_argument('--dependency-bundle', type=Path)
     parser.add_argument('--publish', action='store_true')
     parser.add_argument('--deployment-id', default='')
     args = parser.parse_args()
@@ -720,6 +873,7 @@ def main():
         return
     require(args.bundle is not None, '--bundle is required')
     bundle = args.bundle.resolve()
+    require(args.command == 'consume' or args.dependency_bundle is None, '--dependency-bundle is only for consume')
     if args.command == 'prepare':
         prepare(bundle, args.version or '', component)
         return
@@ -735,7 +889,7 @@ def main():
         version_check(read_bundle(bundle, signed=True)['version'], release=True)
         publish_github(bundle)
     else:
-        consume(bundle, args.repository)
+        consume(bundle, args.repository, args.dependency_bundle)
 
 
 if __name__ == '__main__':

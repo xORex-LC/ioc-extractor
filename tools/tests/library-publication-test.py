@@ -33,6 +33,26 @@ def consumer_pom(component, version):
             + ('<dependencies>' + dependencies + '</dependencies>' if dependencies else '') + '</project>')
 
 
+def fixture_gpg(env, *args, data=None):
+    """Retain a disposable-key failure's stderr without exposing stdin or exported key bytes."""
+    result = subprocess.run(['gpg', '--batch', '--pinentry-mode', 'loopback', '--passphrase-fd', '0', *args],
+                            input=data or b'test-passphrase', capture_output=True, timeout=30, env=env)
+    if result.returncode:
+        raise AssertionError('temporary GPG fixture failed (' + str(result.returncode) + ') during '
+                             + args[0] + ': ' + result.stderr.decode(errors='replace'))
+    return result.stdout
+
+
+class GpgFixtureTest(unittest.TestCase):
+    def test_failure_retains_stderr_but_never_input_or_exported_private_key(self):
+        failure = subprocess.CompletedProcess([], 2, stdout=b'private-key-material', stderr=b'agent unavailable')
+        with patch.object(subprocess, 'run', return_value=failure):
+            with self.assertRaisesRegex(AssertionError, 'agent unavailable') as raised:
+                fixture_gpg({}, '--export-secret-keys', data=b'private-passphrase')
+        self.assertNotIn('private-key-material', str(raised.exception))
+        self.assertNotIn('private-passphrase', str(raised.exception))
+
+
 class BundleContract:
     component_name = 'concurrency'
     def setUp(self):
@@ -322,9 +342,7 @@ class PublicationTest(BundleContract, unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='ioc-test-key-') as home:
             env = {**os.environ, 'GNUPGHOME': home}
             def gpg(*args, data=None):
-                return subprocess.run(['gpg', '--batch', '--pinentry-mode', 'loopback',
-                                       '--passphrase-fd', '0', *args], input=data or b'test-passphrase',
-                                      capture_output=True, check=True, timeout=30, env=env).stdout
+                return fixture_gpg(env, *args, data=data)
             try:
                 gpg('--quick-generate-key', 'Publication contract test', 'ed25519', 'sign', '1d')
                 listing = gpg('--with-colons', '--list-secret-keys', '--fingerprint').decode()
@@ -467,16 +485,16 @@ class ConfigurationPublicationTest(LoggingPublicationTest):
 class EventsPackagingTest(BundleContract, unittest.TestCase):
     component_name = 'events'
 
-    def test_pending_consumer_prevents_signing_remote_writes_and_empty_consumer_success(self):
+    def test_pending_release_admission_prevents_signing_and_remote_writes(self):
         for signed in (False, True):
             if signed:
                 self.signed()
-            for command in ('sign', 'central', 'github', 'consume'):
+            for command in ('sign', 'central', 'github'):
                 with self.subTest(signed=signed, command=command), patch.object(sys, 'argv', [
                         'library-publication.py', command, '--bundle', str(self.bundle),
                         '--component', self.component_name]), patch.object(PUB, 'request') as request, \
                         patch.object(PUB, 'run') as run, patch.object(PUB, 'authorization') as authorization:
-                    with self.assertRaisesRegex(ValueError, 'E4 independent consumer|signed bundle'):
+                    with self.assertRaisesRegex(ValueError, 'E5 release admission|signed bundle'):
                         PUB.main()
                     request.assert_not_called()
                     run.assert_not_called()
@@ -506,12 +524,157 @@ class EventsSpringPackagingTest(EventsPackagingTest):
                 PUB.validate_consumer_pom(original.replace(dependency, dependency.replace(self.version.encode(), version)),
                                           self.version, self.component)
 
+    def core_bundle(self, version=None):
+        core = PUB.COMPONENTS['events']
+        version = version or self.version
+        bundle = Path(self.temp.name) / ('core-' + version)
+        path = bundle / 'repository' / PUB.relative_path(version, core)
+        path.mkdir(parents=True)
+        for suffix in PUB.SUFFIXES:
+            (path / (core['artifact'] + '-' + version + suffix)).write_bytes(b'core fixture ' + suffix.encode())
+        (path / (core['artifact'] + '-' + version + '.pom')).write_text(consumer_pom(core, version))
+        PUB.write_identity(bundle, dict(group=PUB.GROUP, artifact=core['artifact'],
+                                       version=version, commit='b' * 40, dirty=False, signed=False))
+        return bundle
+
+    def test_adapter_requires_a_valid_same_version_core_bundle_before_remote_access(self):
+        wrong_version = self.core_bundle('0.4.0-rc.1')
+        for dependency, message in [(None, 'requires --dependency-bundle'),
+                                     (self.bundle, 'component'), (wrong_version, 'version differs')]:
+            for repository in ('local', 'central', 'github'):
+                with self.subTest(dependency=dependency, repository=repository), \
+                        patch.object(PUB, 'request') as request, patch.object(PUB, 'run') as run, \
+                        patch.object(PUB, 'authorization') as authorization:
+                    with self.assertRaisesRegex(ValueError, message):
+                        PUB.consume(self.bundle, repository, dependency)
+                    request.assert_not_called()
+                    run.assert_not_called()
+                    authorization.assert_not_called()
+
+    def test_local_adapter_consumer_sees_both_exact_bundles_in_one_selected_repository(self):
+        core = self.core_bundle()
+        before = {str(p): p.read_bytes() for bundle in (self.bundle, core)
+                  for p in (bundle / 'repository').rglob('*') if p.is_file()}
+        def inspect(metadata, component, fixture, repository, url, artifacts):
+            self.assertEqual(repository, 'local')
+            self.assertEqual(len(artifacts), 2)
+            target = Path(PUB.urllib.parse.unquote(PUB.urllib.parse.urlparse(url).path))
+            files = [p for p in target.rglob('*') if p.is_file()]
+            self.assertEqual(len(files), 8)
+            for own, descriptor in artifacts:
+                for path, expected in own['files'].items():
+                    self.assertEqual(PUB.digest((target / path).read_bytes()), expected)
+            self.assertNotEqual(target, core / 'repository')
+            self.assertNotEqual(target, self.bundle / 'repository')
+        with patch.object(PUB, 'consume_fixture', side_effect=inspect) as consume:
+            PUB.consume(self.bundle, 'local', core)
+            consume.assert_called_once()
+        self.assertEqual(before, {str(p): p.read_bytes() for bundle in (self.bundle, core)
+                                  for p in (bundle / 'repository').rglob('*') if p.is_file()})
+
+    def test_remote_adapter_checks_core_bytes_at_the_same_selected_endpoint(self):
+        core = self.core_bundle()
+        with patch.object(PUB, 'compare_remote', side_effect=[[], ['missing-core.jar']]) as compare, \
+                patch.object(PUB, 'consume_fixture') as consume:
+            with self.assertRaisesRegex(ValueError, 'remote bundle incomplete'):
+                PUB.consume(self.bundle, 'central', core)
+            self.assertEqual([call.args[:2] for call in compare.call_args_list],
+                             [(self.bundle, PUB.CENTRAL), (core, PUB.CENTRAL)])
+            consume.assert_not_called()
+
+
+class EventsGraphTest(unittest.TestCase):
+    def graph(self, project, own, public):
+        nodes = [dict(groupId=PUB.GROUP, artifactId=a, version=v, type='jar') for a, v in own.items()]
+        nodes += [dict(groupId=g, artifactId=a, version=v, type='jar') for (g, a), v in public.items()]
+        path = project / 'target/dependencies.json'
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(json.dumps(dict(groupId='example.consumer', children=nodes)))
+
+    def test_jdk_graph_rejects_any_extra_dependency_or_wrong_own_version(self):
+        with tempfile.TemporaryDirectory() as folder:
+            project = Path(folder)
+            metadata = {'version': '0.3.0-rc.1'}
+            own = {'ioc-platform-events': metadata['version']}
+            self.graph(project, own, {})
+            PUB.events_graph(metadata, PUB.COMPONENTS['events'], project)
+            for public in [{('org.slf4j', 'slf4j-api'): '2.0.18'},
+                           {('com.iocextractor', 'ioc-application'): metadata['version']}]:
+                self.graph(project, own, public)
+                with self.assertRaisesRegex(ValueError, 'public dependency closure'):
+                    PUB.events_graph(metadata, PUB.COMPONENTS['events'], project)
+            self.graph(project, {'ioc-platform-events': '0.3.0-rc.2'}, {})
+            with self.assertRaisesRegex(ValueError, 'own dependency closure/version'):
+                PUB.events_graph(metadata, PUB.COMPONENTS['events'], project)
+
+    def test_spring_graph_checks_all_public_versions_and_own_core(self):
+        with tempfile.TemporaryDirectory() as folder:
+            project = Path(folder)
+            metadata = {'version': '0.3.0-rc.1'}
+            own = {'ioc-events-spring': metadata['version'], 'ioc-platform-events': metadata['version']}
+            public = {**{('org.springframework', 'spring-' + n): '7.0.9'
+                         for n in ('core', 'context', 'aop', 'beans', 'expression')},
+                      **{('io.micrometer', 'micrometer-' + n): '1.16.7' for n in ('observation', 'commons')},
+                      ('commons-logging', 'commons-logging'): '1.3.5',
+                      ('org.jspecify', 'jspecify'): '1.0.0', ('org.slf4j', 'slf4j-api'): '2.0.18'}
+            self.graph(project, own, public)
+            PUB.events_graph(metadata, PUB.COMPONENTS['events-spring'], project)
+            for key in public:
+                with self.subTest(dependency=key):
+                    self.graph(project, own, {**public, key: '0.0.0'})
+                    with self.assertRaisesRegex(ValueError, 'public dependency closure'):
+                        PUB.events_graph(metadata, PUB.COMPONENTS['events-spring'], project)
+            for additional in [('org.springframework.boot', 'spring-boot'), ('ch.qos.logback', 'logback-classic')]:
+                self.graph(project, own, {**public, additional: '1'})
+                with self.assertRaisesRegex(ValueError, 'public dependency closure'):
+                    PUB.events_graph(metadata, PUB.COMPONENTS['events-spring'], project)
+            self.graph(project, {'ioc-events-spring': metadata['version']}, public)
+            with self.assertRaisesRegex(ValueError, 'own dependency closure/version'):
+                PUB.events_graph(metadata, PUB.COMPONENTS['events-spring'], project)
+
 
 class ConsumerGuardTest(unittest.TestCase):
-    def test_workflow_exposes_only_components_with_consumer_fixtures(self):
+    def test_workflow_exposes_only_release_admitted_components(self):
         workflow = (PUB.ROOT / '.github/workflows/library-publication.yml').read_text()
         choices = PUB.re.search(r'options: \[([^\]]+)\]', workflow).group(1).split(', ')
-        self.assertEqual(choices, [name for name, component in PUB.COMPONENTS.items() if component['fixtures']])
+        self.assertEqual(choices, [name for name, component in PUB.COMPONENTS.items()
+                                  if component['fixtures'] and component.get('release_admitted', False)])
+
+    def test_empty_fixture_list_still_cannot_pass_consumer_admission(self):
+        with self.assertRaisesRegex(ValueError, 'E4 independent consumer'):
+            PUB.require_consumer_fixtures({'artifact': 'unqualified', 'fixtures': ()})
+
+    def test_unrelated_component_cannot_accept_an_own_dependency_bundle(self):
+        with self.assertRaisesRegex(ValueError, 'unexpected dependency bundle'):
+            PUB.consumption_dependencies({}, PUB.COMPONENTS['configuration'], Path('/unused'))
+
+    def test_routing_negative_rejects_unrelated_resolution_failure_and_success(self):
+        for code, output in [(0, 'Could not resolve dependencies: Could not find artifact '
+                             + PUB.GROUP + ':ioc-platform-events:jar:0.3.0-SNAPSHOT'),
+                             (1, 'ioc-platform-events: Could not resolve dependencies: '
+                              'Could not find artifact org.springframework:spring-core:jar:7.0.9')]:
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as folder:
+                project = Path(folder) / 'consumer'
+                project.mkdir()
+                (project / 'pom.xml').write_text('<project><repositories></repositories></project>')
+                with patch.object(PUB.subprocess, 'run', return_value=
+                        subprocess.CompletedProcess([], code, stdout=output, stderr='')):
+                    with self.assertRaisesRegex(ValueError, 'did not fail closed'):
+                        PUB.qualify_repository_routing({'version': '0.3.0-SNAPSHOT', 'artifact': 'ioc-platform-events'},
+                                                       PUB.COMPONENTS['events'], project, 'file:///alternate')
+
+    def test_events_examples_are_extracted_exactly_for_their_supported_classpath(self):
+        blocks = PUB.re.findall(r'```java\n(.*?)\n```',
+                               (PUB.ROOT / 'docs/guides/events-library.md').read_text(), PUB.re.DOTALL)
+        for component, spring in [('events', False), ('events-spring', True)]:
+            with self.subTest(component=component), tempfile.TemporaryDirectory() as folder:
+                project = Path(folder)
+                PUB.populate_examples(PUB.COMPONENTS[component], component + '-consumer', project)
+                source = project / 'src/main/java'
+                self.assertEqual((source / 'LocalEventsExample.java').read_text(), blocks[0])
+                self.assertEqual((source / 'SpringEventsExample.java').exists(), spring)
+                if spring:
+                    self.assertEqual((source / 'SpringEventsExample.java').read_text(), blocks[1])
 
     def test_central_download_group_admits_only_own_and_reviewed_public_groups(self):
         for repository, url in [('central', PUB.CENTRAL), ('github', PUB.GITHUB), ('local', 'file:///selected')]:

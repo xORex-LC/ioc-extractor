@@ -334,6 +334,20 @@ the plain fixture also checks excluded/unavailable API failures. These are
 network-dependent tool checks, outside the reactor suite inventory, and local
 file-repository success does not prove public publication.
 
+Events adds a JDK-only project and a plain Spring project using unrelated
+collector payloads. Both compile exact guide examples. The Spring project must
+receive its core/Context/SLF4J classes through the adapter's main POM, checks real
+ordered listeners and exception/observation boundaries, and runs with/without
+the application's BOM. Excluded/unavailable APIs and incompatible mediation must
+fail for their expected reasons. Separate empty-cache routing probes qualify a
+missing selected artifact and a missing transitive core even with a populated
+alternate; unfiltered controls verify the alternate can supply the exact bytes.
+Every core/adapter POM, main JAR, sources and Javadoc is checked against its own
+manifest and selected origin. These tool fixtures add no reactor suite or
+production coverage scope; their processes have bounded timeouts and close all
+Spring contexts without starting workers. CI's existing library gate requires
+both events consumers alongside the four previously admitted components.
+
 ## Test design and failure policy
 
 Tests own their fixtures and outputs. Prefer synthetic data, `@TempDir`, bounded

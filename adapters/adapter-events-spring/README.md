@@ -7,7 +7,8 @@ Java 21; the qualified reactor baseline is Spring Context 7.0.9 and SLF4J API
 `io.github.xorex-lc:ioc-events-spring:0.3.0-SNAPSHOT`. Packaging produces a
 parent-free POM with required compile dependencies on `ioc-platform-events`
 at exactly the same version, Spring Context 7.0.9 and SLF4J API 2.0.18.
-Independent packaged consumers and registry publication remain pending.
+An isolated packaged Spring consumer checks the two-artifact closure; release
+admission and registry publication remain pending.
 
 ## Layer and dependencies
 
@@ -70,4 +71,6 @@ manifest hashes. It rejects a different events-contract version, optional/provid
 APIs, extra dependencies, reactor test support and foreign classes. Each artifact
 has its own immutable bundle and eventual component tag. See the
 [publication guide](../../docs/guides/library-publication.md#events-packaging-preparation);
-E4 must qualify the complete dependency closure before signing or remote writes.
+the cold consumer checks all eight core/adapter files, ordinary and BOM-managed
+dependency graphs, missing APIs and missing-core routing. E5 must admit the
+release sequence before signing or remote writes.

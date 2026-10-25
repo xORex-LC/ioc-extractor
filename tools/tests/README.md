@@ -16,9 +16,13 @@ conflicts, partial publication and Central-deployment reuse. It uses a temporary
 GnuPG key; network access and working secrets are not used. The publication
 fixture remains independent of IOC storage experiments.
 
-All three admitted components exercise the same signing/recovery protections.
-POM checks preserve the existing zero-dependency contracts and admit only the
-logging component's exact required SLF4J compile JAR. Bundle reads repeat those
-checks before side effects, even when changed bytes have matching manifest
-hashes. Consumer tests reject wrong repository provenance and unrelated failures
-that could otherwise masquerade as successful negative dependency checks.
+The four release-admitted components exercise the same signing/recovery
+protections. Events also qualifies both exact POM contracts, local two-bundle
+assembly, whole dependency graphs and per-file provenance; its signing/remote
+writes remain explicitly blocked until E5. POM checks preserve JDK-only contracts
+and admit only the exact required APIs for each descriptor. Bundle reads repeat
+those checks before side effects, even when changed bytes have matching manifest
+hashes. Consumer tests reject wrong repository provenance, wrong core identity/
+version, empty fixture admission and unrelated failures that could masquerade as
+successful negative dependency checks. Real cold consumers run separately via
+the [publication guide](../../docs/guides/library-publication.md).

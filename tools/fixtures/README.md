@@ -13,3 +13,8 @@ not reactor modules and must resolve packaged artifacts without reactor classes.
 - [configuration-consumer](configuration-consumer/README.md): packaged inspection
   and migration, exact closed-input guide, application BOM mediation and
   selected-repository failure/control probes.
+- [events-consumer](events-consumer/README.md): JDK-only metadata, recording and
+  no-op contracts, exact guide and selected-repository failure/control probes.
+- [events-spring-consumer](events-spring-consumer/README.md): two-artifact closure,
+  real Spring listeners, exception/observation boundaries, API exclusions,
+  mediation and missing-core routing failures/controls.

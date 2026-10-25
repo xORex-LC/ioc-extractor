@@ -188,3 +188,15 @@ cannot sign, publish or pass an empty consumer run; protected workflow choices
 remain limited to the four previously qualified components. E4 owns cold
 two-artifact consumers and repository routing; E5 and publication remain pending.
 See the [E3 checkpoint](libs/lib-5-events-design.md#e3-standalone-publication-packaging--2026-10-24).
+
+### LIB-5 E4 isolated consumers — 2026-10-25
+
+Independent JDK/Spring projects now consume packaged artifacts from one selected
+local repository with empty caches, exact guide sources and four/eight-file
+hash/origin checks. The Spring fixture covers partial real listener delivery,
+Error/observer boundaries and service-owned dispatch. Whole-graph checks,
+application-BOM mediation, excluded/unavailable APIs, incompatible Spring and
+missing-target/missing-core routing have explicit positive and negative oracles.
+Regular CI requires both consumers; E5 still blocks signing/remote writes and
+protected-workflow admission. No scope/floor or production-code change is made.
+See the [E4 checkpoint](libs/lib-5-events-design.md#e4-isolated-packaged-consumers--2026-10-25).

@@ -40,12 +40,17 @@ step (`make bootstrap` локально, `tools/dev/bootstrap.sh lychee` в CI).
 | `make stability-pilot` | Seeded random-order прогоны без retry (`SEED`/`REPEAT` настраиваются) |
 
 `library-publication.py` допускает concurrency, diagnostics, logging и configuration через
-отдельные точные контракты зависимостей. Селекторы events/events-spring пока
-поддерживают только локальную упаковку и проверку manifest; подпись, consumer
-и удалённая публикация отклоняются до квалификации E4. Регулярный CI отдельно
-собирает оба events-артефакта одним reactor build и проверяет каждый bundle;
-общий library gate требует успешной упаковки вместе с четырьмя существующими
-consumer-проверками. Это не является consumer-квалификацией events. Logging требует compile JAR
+отдельные точные контракты зависимостей. Селекторы events/events-spring
+поддерживают упаковку и изолированные consumers; подпись и удалённая публикация
+отклоняются до admission E5. Для Spring consumer требуется `--dependency-bundle`
+того же релиза core: локально собирается один временный репозиторий из двух
+bundle, затем проверяются все восемь хешей и источников. Core остаётся JDK-only;
+Spring проверяется отдельно и с BOM приложения, с отказами при исключённых/
+недоступных API, несовместимом Spring и отсутствии core в выбранном репозитории.
+Для routing есть controls без фильтров и с теми же байтами в alternate.
+Регулярный CI собирает оба events-артефакта одним reactor build и выполняет оба
+consumer; общий library gate требует их вместе с четырьмя существующими
+consumer-проверками. Локальный результат не доказывает публикацию. Logging требует compile JAR
 `slf4j-api:2.0.18`, configuration — compile JAR `spring-boot:4.0.8` и
 `spring-core:7.0.9`; первые два компонента остаются без зависимостей. Consumers
 сверяют хеши и выбранный репозиторий для всех четырёх файлов библиотеки;

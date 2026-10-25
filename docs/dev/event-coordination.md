@@ -45,6 +45,10 @@ bootstrap и передаёт IOC-наблюдатель. Адаптер не м
 если это разрешено самим исключением. Runtime-сбой последнего WARN не выходит в
 producer и не меняет результат доставки; Error из observation/logging выходит.
 См. [ADR 0047](../ADR/0047-explicit-spring-control-event-adapter.md).
+Изолированные JDK/Spring consumers проверяют эти границы на упакованных JAR,
+без IOC bootstrap, с отдельным Maven cache и проверкой обоих собственных
+артефактов. Сценарии зависимостей и маршрутизации описаны в
+[руководстве публикации](../guides/library-publication.md#events-packaging-preparation).
 Listener должен лишь валидировать/наблюдать hint и передать работу в
 consumer-owned executor или scheduler. Тяжёлый use case не выполняется в потоке
 publisher-а.

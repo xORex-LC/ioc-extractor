@@ -34,7 +34,7 @@ the qualified API/backend boundary. This does not qualify a later version.
 
 ## Events packaging preparation
 
-Two additional local selectors prepare separate bundles:
+Two additional selectors prepare separate bundles and run isolated consumers:
 
 | Selector | Coordinate in `io.github.xorex-lc` | Required compile JARs in its consumer POM |
 |---|---|---|
@@ -56,6 +56,8 @@ make library-bundle LIBRARY_COMPONENT=events LIBRARY_BUNDLE=.dev/events-bundle
 make library-bundle LIBRARY_COMPONENT=events-spring LIBRARY_BUNDLE=.dev/events-spring-bundle
 python3 tools/ci/library-publication.py check --component events --bundle .dev/events-bundle --version 0.3.0-SNAPSHOT
 python3 tools/ci/library-publication.py check --component events-spring --bundle .dev/events-spring-bundle --version 0.3.0-SNAPSHOT
+make library-consumer LIBRARY_COMPONENT=events LIBRARY_BUNDLE=.dev/events-bundle
+make library-consumer LIBRARY_COMPONENT=events-spring LIBRARY_BUNDLE=.dev/events-spring-bundle LIBRARY_DEPENDENCY_BUNDLE=.dev/events-bundle
 ```
 
 Each bundle has four primary files and its own identity/hashes. The Spring bundle
@@ -65,16 +67,53 @@ first in **each selected repository**, then release the adapter at the same
 version. Their component tags will be `ioc-platform-events-v<version>` and
 `ioc-events-spring-v<version>`; existing component tags and bundles are unchanged.
 
-E3 qualifies packaging only. E4 must add cold JDK/Spring consumers, assemble the
-explicit local two-artifact repository, verify hashes and selected origins for
-both own artifacts, and prove dependency mediation and missing-dependency failure.
-Until then, these selectors reject `consume`, signing and remote publication
-before credential access or network writes. They are deliberately absent from
-the protected workflow choices. Regular CI separately builds both artifacts and
-checks their bundles without credentials; the library gate requires that job
-as well as the existing four components' consumer jobs. This prevents an empty fixture list from yielding
-a false consumer pass. E4 will extend that admission after its checks exist; E5
-still owns release admission and any separately authorized registry action.
+The JDK fixture has no framework dependencies. The Spring fixture's **main**
+adapter POM alone must supply core, Context and SLF4J; classifier dependencies
+exclude these APIs. Both compile and run the exact Java guide blocks, including
+an unrelated service event. The Spring checks exercise real synchronous ordered
+listeners, partial delivery, direct/Spring-wrapped Error identity, publication
+and observer failure boundaries, and service ownership of dispatch configuration.
+All contexts close; its inline service executor creates no worker.
+
+Every run starts outside the checkout with an empty cache and empty user/global
+settings. Local consumption assembles a temporary selected repository from the
+two explicitly supplied bundles, without changing either bundle or using
+`mvn install`. `--dependency-bundle` is required for `events-spring` consumption
+and must be the same-version `events` bundle. Other components reject that flag.
+All four files of **each** own artifact must match their individual manifests and
+record only `library-target` as origin. Remote consumers, when authorized later,
+compare both bundles against the same selected endpoint before running Maven.
+
+The tool reviews the whole graph: core has no third-party JARs; the adapter has
+the same-version core and ten public JARs in the Context/SLF4J closure. Default
+resolution and application-owned Boot 4.0.8 BOM mediation retain Context 7.0.9
+and SLF4J 2.0.18; the BOM selects Commons Logging 1.3.6 and JSpecify 1.0.1 instead
+of their plain 1.3.5/1.0.0 versions. The BOM adds no Boot runtime. The tool also
+runs plain Java with the resolved classpath, excluding Maven's plugin classloader
+and any checkout path. This qualifies these exact baselines, not arbitrary
+dependency upgrades or a refreshed vulnerability scan.
+
+Negative profiles independently exclude core, Context and SLF4J, then select
+unavailable versions offline. Compilation/resolution must fail for the specific
+missing API; an unrelated network/tool error is not a pass. An incompatible
+Spring Core selection must fail the consumer's upper-bound rule. The library
+does not install an application BOM or enforce dependency versions at runtime.
+
+Cold routing probes first remove the selected component entirely, then leave the
+adapter present while removing core. The populated alternate holds exact copies
+of both bundles. Group filters must reject fallback in both probes; separate
+unfiltered controls must resolve the same four/eight bytes with the expected
+origins, including core from the alternate when only core is missing. This
+prevents a warm cache or another repository from hiding an unpublished core.
+Projects, repositories and caches are temporary and removed on exit. A failed
+scenario fails the command, with no automatic retry.
+
+Regular CI builds both artifacts once and runs both consumers without publication
+credentials; the existing library gate requires this job and the four existing
+components' consumer jobs. An empty fixture list still cannot pass. E5 owns
+release admission: both selectors continue to reject signing and remote writes
+before credential access, and remain absent from protected workflow choices.
+No E4 local result is public-repository or deployed-service evidence.
 
 ## Configuration library admission
 

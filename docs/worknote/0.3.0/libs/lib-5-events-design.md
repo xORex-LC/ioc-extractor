@@ -2,8 +2,8 @@
 
 Status: implementation resumed by the owner, 2026-10-24. E0 technical analysis
 is complete; E1 qualifies the existing JDK contracts. E2 bridge extraction and
-its three corrections are implemented; E3 packaging is prepared below.
-E4/E5 and publication remain pending.
+its three corrections are implemented; E3 packaging and E4 isolated consumers
+are described below. E5 and publication remain pending.
 Baseline: `r030-libraries`, `d98bf415377bbcd86e43f04dcbd21c5fefe96b34`.
 
 Workflow checkpoint, 2026-10-18: the owner closed the current design stage and
@@ -165,7 +165,7 @@ Refresh dependency and integration evidence again for E2–E4.
 | E1: qualify JDK contracts | Implemented 2026-10-24: seven public types documented, 43 tests, strict Javadoc and exact local guide example; final gate evidence retained below |
 | E2: extract Spring bridge | Implemented 2026-10-24: reactor-local adapter and IOC composition migration, corrected Error/evidence/logging boundaries, unit and real-context contracts; qualification below |
 | E3: qualify publication tooling | Implemented locally 2026-10-24: two standalone POMs, explicit packaging selectors, exact dependency contracts, real archives and manifest/recovery checks; consumer/signing/publication admission remains blocked until E4 |
-| E4: independent consumers | Resolve both artifacts outside the reactor with an isolated Maven cache; use unrelated event payloads, a JDK-only consumer and a Spring consumer; verify intended dependency closure and exception boundaries |
+| E4: independent consumers | Implemented 2026-10-25: isolated JDK/Spring fixtures, exact guide sources, both own manifests/origins, complete graphs, dependency negatives/mediation, missing-target and missing-core routing probes/controls; qualification below |
 | E5: release admission | Record API/version/dependency ownership and supported baseline, final repository gates and documentation; qualify the release destination before any explicit publication action |
 
 E2 must test a listener that acts before another throws, an unreached later
@@ -386,3 +386,74 @@ wrong-coordinate recovery, pending-consumer rejection and workflow admission.
 Logs and unsigned bundles are retained under `.dev/lib5-e3-*`. Final full-reactor
 verify/PMD identities, report disposition and freshness are recorded in the local
 handoff and receipt after all source/document edits are complete. E4 is next.
+
+## E4 isolated packaged consumers — 2026-10-25
+
+Two standalone projects under `tools/fixtures` now consume the ordinary JARs
+outside the checkout, with empty Maven caches and user/global settings. The JDK
+fixture exercises service-defined collector metadata, recorder snapshots and
+no-ops, with no third-party runtime graph. The Spring fixture's only main library
+dependency is the adapter: its POM must supply core, Context and SLF4J. Provided
+sources/Javadoc dependencies exclude those APIs and cannot repair missing classes.
+Both execute the exact Java blocks extracted from the consumer guide. Explicit
+checks throw without requiring `-ea`; the tool also invokes plain Java outside
+Maven's plugin classloader and rejects checkout paths in the resolved classpath.
+
+The Spring fixture uses unrelated payloads and real ordered annotated listeners.
+It qualifies partial delivery without retry, original direct/Spring-wrapped Error
+identity, null rejection before publication, runtime observation containment and
+primary/suppressed failure evidence. The service's multicaster/error handler and
+inline executor retain ownership; the adapter registers no beans. Contexts close
+on every path; no worker or asynchronous guarantee is introduced. Boot runtime,
+logging providers, IOC bootstrap and TCK classes are absent. E2 retains the
+throwing-fallback-logger seam test; E4 uses only the public constructor and does
+not publish or reflect into that test seam.
+
+`consume --component events-spring` requires an explicit `--dependency-bundle`
+for core. Before credential access or Maven execution it validates the bundle's
+component, exact version and hashes. Local consumption assembles a temporary
+selected repository from both immutable bundles; it never installs into the
+usual cache. All four files for each own artifact must match its manifest and
+record only `library-target` as origin. The remote read path compares both
+bundles at the same selected endpoint, without claiming a live registry result.
+
+Whole-graph checks admit only core for the JDK fixture, and same-version core
+plus ten public JARs for the adapter. Default and application-owned Boot 4.0.8 BOM
+runs compile and execute the fixtures and guides with Context 7.0.9/SLF4J 2.0.18.
+Only Commons Logging/JSpecify change from 1.3.5/1.0.0 to 1.3.6/1.0.1. Six independent
+offline negatives exclude or make unavailable core, Context and SLF4J; a separate
+upper-bound negative selects incompatible Spring Core 5.3.39. Failures must name
+the expected API/coordinate, not an unrelated network or tooling error.
+
+Routing probes use distinct cold caches and an alternate containing exact own
+bytes. First the selected component is missing; for the adapter a second probe
+keeps the adapter available but removes core. Filtered resolution must fail for
+the missing own coordinate. Unfiltered controls must compile and match all four/
+eight hashes and their expected origins, including the selected adapter plus
+alternate core. Existing own-group restrictions and the public allowlist remain
+unchanged. An initial development run correctly failed qualification because an
+unsupported wildcard in the new fixture's Enforcer include skipped the negative;
+exact Spring coordinates replaced it. The failed log is retained separately;
+no retry, suppression or acceptance-baseline change conceals that defect.
+
+A later offline publication-test run hit one existing temporary GPG key-generation
+failure (exit2 in the logging fixture); its original stderr was not surfaced.
+A separate diagnostic generation passed. The fixture now retains safe stderr
+context, with a regression ensuring input/exported key bytes stay hidden. The
+original failed log remains evidence and the unexplained instability remains
+open as [TOOL-7](../../../KNOWN-ISSUES.md); a later green run does not close it.
+No retry mechanism or test exclusion was added.
+
+Regular CI replaces the packaging-only events job with both consumers in one
+credentials-free job; the existing named library gate requires it together with
+the four older component jobs. Consumer availability and release admission now
+have separate explicit checks: events may be consumed locally, while signing and
+remote writes remain blocked for E5 before secrets or network writes. Protected
+workflow choices remain unchanged. No production Java, API, dependency version,
+reactor/analyzer scope, suite inventory or coverage threshold changes in E4.
+
+Final command outcomes, bundle/tooling/fixture hashes and verification identities
+are retained in `.dev/lib5-e4-evidence/receipt.json` after all tracked edits. Local
+file-repository success qualifies packaging independence, not a second deployed
+service or public publication. Other Spring/Boot baselines, a refreshed CVE scan,
+E5 release admission and registry publication remain outside this checkpoint.

@@ -7,7 +7,7 @@ on:
         description: 'Reviewed library with an exact dependency contract'
         required: true
         type: choice
-        # Events packaging selectors exist locally; E4 must qualify their consumers
+        # Events have local cold consumers; E5 must admit their release sequence
         # before they enter this credential-bearing workflow.
         options: [concurrency, diagnostics, logging, configuration]
         default: concurrency
