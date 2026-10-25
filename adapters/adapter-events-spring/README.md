@@ -3,13 +3,16 @@
 Explicit Spring delivery adapter for the JDK-only
 [control-event contracts](../../platform/platform-events/README.md). Requires
 Java 21; the qualified reactor baseline is Spring Context 7.0.9 and SLF4J API
-2.0.18. The current coordinate is
-`io.github.xorex-lc:ioc-events-spring:0.3.0-SNAPSHOT`. Packaging produces a
-parent-free POM with required compile dependencies on `ioc-platform-events`
+2.0.18. The published coordinate is
+`io.github.xorex-lc:ioc-events-spring:0.3.0-rc.1`, available from Maven Central
+and GitHub Packages; the reactor continues at `0.3.0-SNAPSHOT`. Packaging produces
+a parent-free POM with required compile dependencies on `ioc-platform-events`
 at exactly the same version, Spring Context 7.0.9 and SLF4J API 2.0.18.
 An isolated packaged Spring consumer checks the two-artifact closure. Protected
-release admission requires the already published and qualified same-version core;
-registry publication remains a separate action.
+release admission requires the already published and qualified same-version core.
+Separate cold consumers passed against both repositories in
+[publication run 40162675262](https://github.com/xORex-LC/ioc-extractor/actions/runs/40162675262),
+including plain and Boot BOM-managed graphs and both artifacts' bytes/origins.
 
 ## Layer and dependencies
 

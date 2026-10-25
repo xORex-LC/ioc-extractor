@@ -177,8 +177,12 @@ manifest; they do not independently authenticate arbitrary local JSON.
 No events version is published by release admission. Merge the reviewed changes,
 pass release-branch CI and create clean immutable release inputs before explicitly
 authorizing validation/signing and publication. Dirty SNAPSHOT bundles remain
-local test inputs. The first live runs still establish registry/signature
-acceptance and repository qualification for the selected version.
+local test inputs. Version `0.3.0-rc.1` is published and qualified in both
+repositories: [core run 40160627532](https://github.com/xORex-LC/ioc-extractor/actions/runs/40160627532)
+and [adapter run 40162675262](https://github.com/xORex-LC/ioc-extractor/actions/runs/40162675262)
+reused the original signed bundles after protected validation. Both actual
+consumer logs and qualification receipts were reviewed. This qualifies the
+documented Java/Spring baseline, not a second deployed service.
 
 ## Configuration library admission
 

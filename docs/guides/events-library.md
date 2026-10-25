@@ -5,16 +5,20 @@ from its own durable state. A service defines the event payload and chooses the
 publisher. The shared contracts require Java 21 and have no runtime dependency
 beyond the JDK.
 
-The coordinates are `io.github.xorex-lc:ioc-platform-events` and
-`io.github.xorex-lc:ioc-events-spring`, currently `0.3.0-SNAPSHOT` in the reactor.
+The published coordinates are
+`io.github.xorex-lc:ioc-platform-events:0.3.0-rc.1` and
+`io.github.xorex-lc:ioc-events-spring:0.3.0-rc.1`, available from Maven Central
+and GitHub Packages. The reactor continues at `0.3.0-SNAPSHOT`.
 Both produce standalone consumer POMs and publication archives. The Spring POM
 requires the contracts at exactly the same version, Spring Context 7.0.9 and
 SLF4J API 2.0.18; it supplies no Boot dependency or logging provider.
-Both have isolated local-repository consumers; neither artifact is published. The
+Separate cold consumers passed against both repositories for
+[core](https://github.com/xORex-LC/ioc-extractor/actions/runs/40160627532) and
+[adapter](https://github.com/xORex-LC/ioc-extractor/actions/runs/40162675262). The
 [publication guide](library-publication.md#events-packaging-preparation) records
 packaging and consumer commands, API/version ownership and the protected
-core-first release procedure. Admission is implemented; publication requires
-a separate release action with clean immutable inputs.
+core-first release procedure. Each new version requires a separate release
+action with clean immutable inputs.
 The [module reference](../../platform/platform-events/README.md) describes all
 seven public types and their validation rules.
 
@@ -85,8 +89,8 @@ promised invocation-time order. The list is unbounded and copied on each write.
 Use a fresh recorder for each test rather than retaining a production history.
 
 The exact example is compiled and executed from the packaged JAR by the isolated
-JDK consumer. Local file-repository qualification does not establish public
-publication or a second deployed service. IOC's wiring and recovery are described in
+JDK consumer, including the separate Central and GitHub Packages checks above.
+A second deployed service remains unqualified. IOC's wiring and recovery are described in
 [event coordination](../dev/event-coordination.md).
 
 ## Use the explicit Spring adapter

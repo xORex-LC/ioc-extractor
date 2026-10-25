@@ -14,7 +14,7 @@ names in dated assessments identify historical baselines.
 These are release worknotes. A recorded design admission is an implementation
 target; accepted published ADRs and release/publication evidence remain separate.
 
-## Current work order — 2026-10-24
+## Current work order — 2026-10-25
 
 Logging L3-0–L3-4 is complete. The
 [fixed contract](lib-3-logging-contract.md) defines eight public types, five ECS
@@ -45,8 +45,8 @@ PR 18 integrated configuration into `release-0.3.0`.
 GitHub Packages from the immutable validated bundle. The GitHub cold consumer
 passed in run `40088095516`; Central passed locally after correcting a
 same-URL Resolver filter conflict. The original workflow concealed Central's
-failure behind `tee`. Routing and pipeline-failure fixes have regression coverage;
-review/integration and a protected CI recovery run remain next. The
+failure behind `tee`. Routing and pipeline-failure fixes have regression coverage
+and were integrated through PR 19. A protected CI recovery run remains next. The
 [configuration release record](configuration-library-design.md#protected-publication-record--2026-10-24)
 separates the original failure, local recovery and immutable release identity.
 The owner selected events next on 2026-10-24. Its existing E0/two-unit design is
@@ -58,8 +58,13 @@ JDK/Spring consumers, eight-file provenance, dependency mediation/negatives and
 missing-core routing probes with positive controls. The regular CI library gate
 requires them. E5 adds protected release admission with successful core-first
 qualification, exact dependency handoff and immutable adapter recovery. Both
-modules use `io.github.xorex-lc`. Publication requires a separate release action. ETL remains
-deferred pending a second consumer.
+modules use `io.github.xorex-lc`. PR 19 integrated E1–E5. Both events artifacts
+are published at `0.3.0-rc.1` to Central and GitHub Packages: separate cold
+consumers passed in core run `40160627532` and adapter run `40162675262`.
+The [publication record](lib-5-events-design.md#protected-publication-record--2026-10-25)
+retains both immutable identities, original signed bundles and qualification.
+Events extraction/publication is complete; ETL remains deferred pending a second
+consumer. Configuration's protected CI recovery remains a separate follow-up.
 
 Diagnostics publication is recorded in the release branch's D5 documentation
 (commit `ce5675e2a74243ede83211cca090570976c6bbce`). The older diagnostics checkpoint

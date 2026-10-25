@@ -1,10 +1,11 @@
 # LIB-5: local control-event library proposal
 
-Status: implementation resumed by the owner, 2026-10-24. E0 technical analysis
-is complete; E1 qualifies the existing JDK contracts. E2 bridge extraction and
-its three corrections are implemented; E3 packaging and E4 isolated consumers
-are described below. E5 implements protected release admission and recovery;
-actual registry publication remains a separate action.
+Status: published-qualified, 2026-10-25. E0–E5 are complete. Both
+`ioc-platform-events:0.3.0-rc.1` and `ioc-events-spring:0.3.0-rc.1` are published
+to Central and GitHub Packages and passed separate cold repository consumers.
+The [publication record](#protected-publication-record--2026-10-25) retains their
+immutable source/tags, signed hashes, deployment IDs and qualification evidence.
+A second deployed service remains future qualification.
 Baseline: `r030-libraries`, `d98bf415377bbcd86e43f04dcbd21c5fefe96b34`.
 
 Workflow checkpoint, 2026-10-18: the owner closed the current design stage and
@@ -524,3 +525,91 @@ tag, the exact committed candidate still needs normal release-branch CI and the
 current security gate required by SECURITY-ENGINEERING. Actual protected signing,
 Central validation/publication, GitHub execution and both live events consumers
 remain separate release actions with clean immutable inputs.
+
+## Protected publication record — 2026-10-25
+
+PR [19](https://github.com/xORex-LC/ioc-extractor/pull/19) integrated E1–E5 into
+`release-0.3.0`. Both component tags identify source
+`46c914418e721322903a127584fd5d99dff9f52b`, tree
+`0cd880399fd5dce1db6bdc92f40ebc5762c300c9`. This operation covers the two
+Maven libraries; the IOC service release and deployment remain separate.
+
+| Identity | JDK core | Spring adapter |
+|---|---|---|
+| Coordinate | `io.github.xorex-lc:ioc-platform-events:0.3.0-rc.1` | `io.github.xorex-lc:ioc-events-spring:0.3.0-rc.1` |
+| Annotated tag | `ioc-platform-events-v0.3.0-rc.1` | `ioc-events-spring-v0.3.0-rc.1` |
+| Tag object | `2e5e604a261bf41bd4d574b595c94d10647d05f3` | `554343b6b72602c742c407e2e09fa7a47c72073c` |
+| Validation run | [40159541648](https://github.com/xORex-LC/ioc-extractor/actions/runs/40159541648) | [40161887317](https://github.com/xORex-LC/ioc-extractor/actions/runs/40161887317) |
+| Publication run | [40160627532](https://github.com/xORex-LC/ioc-extractor/actions/runs/40160627532) | [40162675262](https://github.com/xORex-LC/ioc-extractor/actions/runs/40162675262) |
+| Central deployment | `61ceaa74-dc39-451e-a989-21c8c2181f99` | `aceef9e3-888d-44aa-9bc6-45a1f57130ad` |
+| Signed manifest SHA256 | `1445412b74d2d02533ce679970b977e16a64393f8ae64169adcf228a5b5ff575` | `e358c7006a87ac98bcbd81b3bde1334c45a61e6bb75bc1969efe5dcf96caa800` |
+
+Both validations signed once with
+`F69BA7E0F7494982E6E1B483DF54073D8BBFA9F9`. Publication reused the original
+signed bundles and deployment IDs, with build and signing skipped. The adapter
+validation admitted core publication `40160627532`; its publication recovered
+that same retained `events-core` without a replacement core-run input.
+
+Primary artifact SHA256 values:
+
+| File suffix | JDK core | Spring adapter |
+|---|---|---|
+| `.jar` | `4ee663ce8773ac90f195ab863ac4e5675f2349f57f6bc8f02fdda78d12db7d4e` | `2ba1695c8ea007ef793339ca30fbba1b0781192ceff7f2f962f5fd0ac3177bbd` |
+| `.pom` | `08df0b9ba848f7e7b92383f3492e17ad70c25dd1791423f5c4eaf150c1ede578` | `183eb1c85bb20c8858665357e05e72664e65af7bb2820a36b9193252dea1776a` |
+| `-sources.jar` | `68c89bbff8533200387629bce120b67d548ccbd95f8b6ee54248f03a028d8360` | `58ff3ca379b6969e8c7ea6cdee7e797b0e72e1650741d62ce3c54d7809d69c50` |
+| `-javadoc.jar` | `b2824ffc918992e3c70a1a72636fb2acc1fca9ff584670336cf438119fd3e374` | `cc01ecaf05db5545d8bb618eb251ac173ed4b4de6b40a0439b5b9410f320ded9` |
+
+Separate empty-cache Central and GitHub Packages consumers passed for each
+component. The core consumer compiled and executed the exact guide and checked
+four primary files and their selected origins. The adapter consumers checked
+all eight primary files against both manifests, executed both guide examples
+and the real-context behavior fixture under plain and Boot 4.0.8 BOM-managed
+graphs. They rejected excluded/unavailable core, Context and SLF4J dependencies,
+incompatible Spring mediation, missing adapter and missing core with populated
+alternate repositories; both unfiltered eight-file controls passed.
+
+The actual logs were inspected as well as the Actions conclusions. Both
+`qualification.json` receipts bind source/version, signed manifest and log hashes;
+the adapter additionally binds the original core manifest. Neither publication
+rebuilt, resigned or replaced an artifact. Core publication preceded adapter
+validation and publication.
+
+Consumer evidence retained by Actions:
+
+| Component | Signed bundle | Consumer logs and qualification | Original dependency |
+|---|---|---|---|
+| Core | `12585888534` | `12585979568` | JDK only |
+| Adapter | `12587501291` | `12587448006` | `events-core` artifact `12587405813` |
+
+Signed bundles, original core, deployment IDs, manifests, complete logs and
+review receipts are also preserved locally under
+`.dev/events-release-0.3.0-rc.1/`. Actions retention expires on 2027-01-23.
+The local recovery archives have these SHA256 values:
+
+- `core-release.tar.gz`: `f8cc5924affb8f64cf74afaffd38b7dbfaa78c7eb79675ed96f06e91517d9bd2`.
+- `spring-release.tar.gz`: `eb7d65a7ec4cf94f4e21bf8ea00ff92f9194e9d6cfce66603e6cfa382139276c`.
+
+Release-branch CI `40157656528` passed on exact source `46c91441`, including the
+five required gates and both packaged consumers. Both protected RC validations
+also passed full `verify`, 215 publication-tool contracts, the selected cold
+consumer and PMD before signing. Retained source reports contain SpotBugs
+137 accepted raw / 0 visible / 0 errors or missing classes, CPD 22 groups and
+PMD 19 existing advisory / 0 blocking / 0 errors. The release CI coverage is
+27133/29440 lines and 10296/12009 branches across 25 production groups. No
+floor, suppression, dependency or analyzer scope was changed for publication.
+
+Security review was scoped to these library runtime closures: core has no
+third-party runtime dependencies; live version-filtered GitHub Advisory
+Database queries returned no matches for all 12 package/version pairs across
+the plain and Boot-managed adapter graphs. The original responses, reviewed
+graph identities and vulnerable/fixed control queries are retained in
+`library-runtime-advisories.json`. This is not a fresh whole-service NVD scan.
+The separate service run `40157773054` was cancelled during its NVD update;
+the scan did not execute. Service jsoup/Jackson findings remain separate work.
+
+The qualified baseline is Java 21, Context 7.0.9 and SLF4J API 2.0.18, with
+plain and Boot 4.0.8 BOM-managed graphs. A second deployed service, other
+framework baselines and asynchronous all-handler completion remain unqualified.
+ETL extraction stays deferred. Configuration's original failed Central CI
+consumer and its pending protected recovery retain their separate evidence;
+PR 19 integrated the routing/pipefail corrections without changing that release.

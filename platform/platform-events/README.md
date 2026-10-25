@@ -1,12 +1,14 @@
 # platform-events
 
 JDK-only metadata and publication contracts for service-owned local control
-events. Requires Java 21. The coordinate is
-`io.github.xorex-lc:ioc-platform-events:0.3.0-SNAPSHOT`. Packaging produces a
-parent-independent POM, plain JAR, sources and strict Javadoc. The `events`
+events. Requires Java 21.
+`io.github.xorex-lc:ioc-platform-events:0.3.0-rc.1` is published to Maven Central
+and GitHub Packages; the reactor continues at `0.3.0-SNAPSHOT`. Packaging produces
+a parent-independent POM, plain JAR, sources and strict Javadoc. The `events`
 selector supports packaging and a cold JDK consumer outside the reactor,
 including the exact guide example and four-file hash/origin checks.
-Release admission is implemented; registry publication remains a separate action.
+Separate cold consumers passed against both repositories in
+[publication run 40160627532](https://github.com/xORex-LC/ioc-extractor/actions/runs/40160627532).
 
 **Layer rule:** no Spring, IOC domain/application types, transport libraries,
 serialization, keyed execution or delivery infrastructure. Services define the
