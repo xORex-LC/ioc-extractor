@@ -6,7 +6,7 @@ events. Requires Java 21. The coordinate is
 parent-independent POM, plain JAR, sources and strict Javadoc. The `events`
 selector supports packaging and a cold JDK consumer outside the reactor,
 including the exact guide example and four-file hash/origin checks.
-Release admission and registry publication remain pending.
+Release admission is implemented; registry publication remains a separate action.
 
 **Layer rule:** no Spring, IOC domain/application types, transport libraries,
 serialization, keyed execution or delivery infrastructure. Services define the
@@ -68,7 +68,9 @@ adapter or independently published artifact. Publication packaging rejects any
 dependency, private parent, unresolved property, foreign class or executable
 Boot layout; the embedded POM must match the standalone POM. See the
 [publication guide](../../docs/guides/library-publication.md#events-packaging-preparation)
-for the two-artifact release order and remaining consumer gate.
+for the supported baseline, API/version ownership, core-first release order and
+retained qualification required by the Spring adapter. No events release is
+claimed published by local checks.
 
 - [Consumer guide](../../docs/guides/events-library.md): a service-defined event and local recording example.
 - [Event coordination](../../docs/dev/event-coordination.md): IOC producers, durable backstops and Spring composition.

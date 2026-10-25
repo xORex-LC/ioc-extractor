@@ -294,9 +294,9 @@ grep -Fq "always() && inputs.operation == 'publish' &&" "${LIBRARY_WORKFLOW}" \
 grep -Fq "needs.admission.result == 'success' && needs.publish.result == 'success'" \
   "${LIBRARY_WORKFLOW}" \
   || fail "library qualification does not require successful admission and publication"
-grep -Fq 'path: library-consumer-evidence/*.log' "${LIBRARY_WORKFLOW}" \
+grep -Fq 'path: library-consumer-evidence/' "${LIBRARY_WORKFLOW}" \
   || fail "library consumer logs are not retained from an upload-visible path"
-[[ "$(grep -Fc 'if-no-files-found: error' "${LIBRARY_WORKFLOW}")" -eq 3 ]] \
+[[ "$(grep -Fc 'if-no-files-found: error' "${LIBRARY_WORKFLOW}")" -eq 4 ]] \
   || fail "library publication evidence can silently omit an expected artifact"
 
 RELEASE_WORKFLOW="${REPO_ROOT}/.github/workflows/release.yml"

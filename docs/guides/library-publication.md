@@ -8,6 +8,8 @@ The reviewed components use Java 21 and have exact dependency contracts:
 | `diagnostics` | `ioc-platform-diagnostics-api` | `platform/platform-diagnostics-api` | None |
 | `logging` | `ioc-platform-logging-slf4j` | `platform/platform-logging-slf4j` | `org.slf4j:slf4j-api:2.0.18`, compile JAR |
 | `configuration` | `ioc-config-spring-boot` | `adapters/adapter-config-spring-boot` | `org.springframework.boot:spring-boot:4.0.8` and `org.springframework:spring-core:7.0.9`, compile JARs |
+| `events` | `ioc-platform-events` | `platform/platform-events` | None |
+| `events-spring` | `ioc-events-spring` | `adapters/adapter-events-spring` | Same-version `ioc-platform-events`, Spring Context 7.0.9 and SLF4J API 2.0.18, compile JARs |
 
 Maven Central is primary; GitHub Packages receives the identical release bytes.
 The concurrency pilot established the publication model in
@@ -62,7 +64,7 @@ make library-consumer LIBRARY_COMPONENT=events-spring LIBRARY_BUNDLE=.dev/events
 
 Each bundle has four primary files and its own identity/hashes. The Spring bundle
 contains only the adapter; contracts are a normal dependency, never shaded or
-silently copied into it. A future release must publish and qualify the contracts
+silently copied into it. A release must publish and qualify the contracts
 first in **each selected repository**, then release the adapter at the same
 version. Their component tags will be `ioc-platform-events-v<version>` and
 `ioc-events-spring-v<version>`; existing component tags and bundles are unchanged.
@@ -110,10 +112,73 @@ scenario fails the command, with no automatic retry.
 
 Regular CI builds both artifacts once and runs both consumers without publication
 credentials; the existing library gate requires this job and the four existing
-components' consumer jobs. An empty fixture list still cannot pass. E5 owns
-release admission: both selectors continue to reject signing and remote writes
-before credential access, and remain absent from protected workflow choices.
-No E4 local result is public-repository or deployed-service evidence.
+components' consumer jobs. All six selectors are admitted to the protected
+workflow. An empty fixture list or an unreviewed descriptor still fails admission.
+Local results are not public-repository or deployed-service evidence.
+
+### Events API and version ownership
+
+The library maintains seven JDK public types and one explicit Spring publisher,
+including their documented validation, observation, failure and concurrency
+behavior. Services own event payloads, event type/version catalogs, timestamps,
+IDs, listeners, safe exception text and durable recovery. The metadata's event
+`version` describes a service-owned payload; it is unrelated to the Maven version.
+
+Product and library versions remain lockstep, including release candidates.
+The adapter requires the exact same core version. A change to public signatures,
+validation or failure behavior needs contract review, regression/consumer checks
+and release notes. An already released coordinate is immutable: a correction uses
+a new version and new component tags. Follow the project's
+[versioning policy](../RELEASE-PROCESS.md): compatible fixes use PATCH;
+incompatible supported-contract changes during 0.x normally increment MINOR.
+Release candidates keep their own immutable coordinates and tags.
+
+The supported baseline is Java 21, Context 7.0.9 and SLF4J API 2.0.18, with the
+plain and Boot 4.0.8 BOM-managed graphs qualified above. Services choose their
+Boot integration, logging provider, multicaster and executor. Other Spring/Boot
+baselines, asynchronous handler completion and a deployed second service have
+not been qualified by these consumers.
+
+### Events release order and retained dependency
+
+1. Release `events` with its own annotated tag using the first-release procedure
+   below. Wait for a successful **publish** run, including both cold repository
+   consumers. A successful validate-only run is insufficient.
+2. Start `events-spring` at the same version with its own annotated tag and
+   `events_core_run_id` set to that successful core publication run. Keep
+   `resume_run_id` and `central_deployment_id` empty on this first attempt.
+   Admission downloads the core run's `signed-library` and `repository-consumers`
+   artifacts. Its `qualification.json` binds the run, release branch, coordinates,
+   source commit, signed manifest hash, two destination URLs and both log hashes.
+   Admission checks the annotated core tag/ancestry, successful workflow provenance
+   and all twenty signed core files at **both** repositories before privileged
+   review. Missing/changed bytes or missing qualification stop admission.
+3. Admission retains this original signed core plus qualification as `events-core`
+   for all adapter jobs. The build uses it for the cold local consumer. Signing
+   requires the qualified core; each repository write rechecks core at that
+   destination. Each remote adapter consumer checks all eight primary artifacts
+   against the separate manifests and selected-repository origins.
+4. To publish a staged adapter or recover a partial adapter release, supply its
+   original `resume_run_id` and Central deployment ID, and leave
+   `events_core_run_id` **empty**. Recovery retrieves `signed-library` and
+   `events-core` from that adapter run, revalidates both source identities and
+   the original core's qualification, and skips build/signing. It cannot replace
+   the retained dependency with a new core run. Preserve both artifacts and the
+   core's qualification externally before their 90-day Actions retention expires.
+
+Other selectors reject `events_core_run_id`. CLI signing/repository commands for
+`events-spring` also require `--dependency-bundle` with that retained qualified
+core; the consumer command alone permits unsigned local development bundles.
+`record-qualification` runs after both successful consumers under `pipefail`;
+failed consumers retain logs without a success receipt. These receipts rely on
+trusted Actions artifact provenance and protected review, just like the bundle
+manifest; they do not independently authenticate arbitrary local JSON.
+
+No events version is published by release admission. Merge the reviewed changes,
+pass release-branch CI and create clean immutable release inputs before explicitly
+authorizing validation/signing and publication. Dirty SNAPSHOT bundles remain
+local test inputs. The first live runs still establish registry/signature
+acceptance and repository qualification for the selected version.
 
 ## Configuration library admission
 
@@ -328,7 +393,9 @@ publishing PAT is unnecessary. Existing `SECURITY CHECKS` remains independent.
    are separate.
 3. Dispatch **Library publication**, select the corresponding
    `release-X.Y.Z` branch, choose `component`, enter its matching tag, and keep
-   `operation=validate`. Leave recovery inputs empty. The job builds
+   `operation=validate`. Leave recovery inputs empty. For `events-spring`, supply
+   the successful core run as described in the events release order above.
+   The job builds
    and verifies without publishing credentials, runs the independent consumer,
    signs once, and retains `signed-library` before contacting either repository.
 4. Download and preserve `signed-library` and `central-deployment` artifacts.
@@ -340,12 +407,15 @@ publishing PAT is unnecessary. Existing `SECURITY CHECKS` remains independent.
    component/source/version identity, reuses the signed bundle, publishes Central,
    mirrors missing files to GitHub Packages, then resolves each repository
    separately using fresh consumer caches.
-6. Retain both repository URLs, the successful consumer logs and artifact hashes
+6. Retain both repository URLs, the successful consumer logs, `qualification.json` and artifact hashes
    in release evidence. Only these live downloads close publication qualification.
 
 A direct `operation=publish` without recovery inputs is supported for an
 explicitly approved new release; it performs the same build and retention steps
 before publication. Default validation is preferable for the first release.
+The exact committed release candidate must also pass the current security gate
+from [SECURITY-ENGINEERING](../SECURITY-ENGINEERING.md); an old local NVD cache
+does not satisfy that release requirement.
 
 ## Partial failure and recovery
 

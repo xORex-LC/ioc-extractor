@@ -7,9 +7,7 @@ on:
         description: 'Reviewed library with an exact dependency contract'
         required: true
         type: choice
-        # Events have local cold consumers; E5 must admit their release sequence
-        # before they enter this credential-bearing workflow.
-        options: [concurrency, diagnostics, logging, configuration]
+        options: [concurrency, diagnostics, logging, configuration, events, events-spring]
         default: concurrency
       release_tag:
         description: 'Annotated tag: <selected artifactId>-vX.Y.Z[-rc.N]'
@@ -26,6 +24,9 @@ on:
       central_deployment_id:
         description: 'Existing Central deployment ID (required for resume; recover from evidence or Portal)'
         type: string
+      events_core_run_id:
+        description: 'events-spring first attempt only: successful core publication run with both consumers'
+        type: string
 
 env:
   LIBRARY_COMPONENT: ${{ inputs.component || 'concurrency' }}
@@ -41,10 +42,15 @@ concurrency:
 jobs:
   admission:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      packages: read
     outputs:
       commit: ${{ steps.identity.outputs.commit }}
       version: ${{ steps.identity.outputs.version }}
       release_branch: ${{ steps.identity.outputs.release_branch }}
+      core_commit: ${{ steps.identity.outputs.core_commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -57,10 +63,11 @@ jobs:
           RELEASE_BRANCH: ${{ github.ref_name }}
           RESUME_RUN_ID: ${{ inputs.resume_run_id }}
           DEPLOYMENT_ID: ${{ inputs.central_deployment_id }}
+          CORE_RUN_ID: ${{ inputs.events_core_run_id }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PY'
-          import json, os, re, runpy, subprocess, urllib.request
+          import os, re, runpy, subprocess
           def git(*args):
               return subprocess.check_output(['git', *args], text=True).strip()
           tag = os.environ['RELEASE_TAG']
@@ -74,22 +81,86 @@ jobs:
               check=True)
           resume = os.environ['RESUME_RUN_ID']
           if resume:
-              assert re.fullmatch(r'\d+', resume), 'Invalid recovery run'
               assert re.fullmatch(r'[a-fA-F0-9-]{36}', os.environ['DEPLOYMENT_ID']), 'Recovery needs Central deployment ID'
-              url = 'https://api.github.com/repos/' + os.environ['GITHUB_REPOSITORY'] + '/actions/runs/' + resume
-              request = urllib.request.Request(url, headers={'Authorization': 'Bearer ' + os.environ['GITHUB_TOKEN']})
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  run = json.load(response)
-              assert run['path'] == '.github/workflows/library-publication.yml', 'Wrong workflow'
-              assert run['event'] == 'workflow_dispatch' and run['status'] == 'completed', 'Wrong run state'
-              assert run['head_branch'] == branch, 'Recovery run used another release branch'
+              publication['completed_publication_run'](resume, branch)
           else:
               assert not os.environ['DEPLOYMENT_ID'], 'Deployment recovery requires original signed bundle'
+          core_run = os.environ['CORE_RUN_ID']
+          core_commit = ''
+          if os.environ['LIBRARY_COMPONENT'] == 'events-spring':
+              if resume:
+                  assert not core_run, 'Recovery uses its retained core; leave events_core_run_id empty'
+              else:
+                  publication['completed_publication_run'](core_run, branch, successful=True)
+              core_tag = 'refs/tags/ioc-platform-events-v' + version
+              assert git('cat-file', '-t', core_tag) == 'tag', 'Annotated core tag required'
+              core_commit = git('rev-parse', core_tag + '^{commit}')
+              subprocess.run(['git', 'merge-base', '--is-ancestor', core_commit, 'origin/' + branch], check=True)
+          else:
+              assert not core_run, 'Only events-spring accepts events_core_run_id'
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write(
                   'commit=' + commit + '\nversion=' + version
-                  + '\nrelease_branch=' + branch + '\n')
+                  + '\nrelease_branch=' + branch + '\ncore_commit=' + core_commit + '\n')
           PY
+      - name: Download original recovery bundle before privileged review
+        if: inputs.resume_run_id != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: signed-library
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ github.token }}
+          path: .dev/recovery-bundle
+      - name: Check recovery component, version and source
+        if: inputs.resume_run_id != ''
+        env:
+          LIBRARY_VERSION: ${{ steps.identity.outputs.version }}
+          LIBRARY_COMMIT: ${{ steps.identity.outputs.commit }}
+        run: python3 tools/ci/library-publication.py check --component "$LIBRARY_COMPONENT" --bundle .dev/recovery-bundle --version "$LIBRARY_VERSION" --commit "$LIBRARY_COMMIT" --signed
+      - name: Download released core on first adapter attempt
+        if: inputs.component == 'events-spring' && inputs.resume_run_id == ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: signed-library
+          run-id: ${{ inputs.events_core_run_id }}
+          github-token: ${{ github.token }}
+          path: .dev/events-core
+      - name: Download core qualification on first adapter attempt
+        if: inputs.component == 'events-spring' && inputs.resume_run_id == ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: repository-consumers
+          run-id: ${{ inputs.events_core_run_id }}
+          github-token: ${{ github.token }}
+          path: .dev/events-core/qualification
+      - name: Recover the adapter's original core and qualification
+        if: inputs.component == 'events-spring' && inputs.resume_run_id != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: events-core
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ github.token }}
+          path: .dev/events-core
+      - name: Admit exact core identity and both release destinations without publishing keys
+        if: inputs.component == 'events-spring'
+        env:
+          LIBRARY_VERSION: ${{ steps.identity.outputs.version }}
+          CORE_COMMIT: ${{ steps.identity.outputs.core_commit }}
+          CORE_RUN_ID: ${{ inputs.events_core_run_id }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          args=()
+          if [[ -n "$CORE_RUN_ID" ]]; then args+=(--run-id "$CORE_RUN_ID"); fi
+          python3 tools/ci/library-publication.py check-core-release --component events --bundle .dev/events-core \
+            --version "$LIBRARY_VERSION" --commit "$CORE_COMMIT" "${args[@]}"
+      - name: Retain original core for build, signing, consumers and recovery
+        if: inputs.component == 'events-spring'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: events-core
+          path: .dev/events-core/
+          if-no-files-found: error
+          retention-days: 90
 
   build:
     needs: admission
@@ -105,15 +176,24 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Download admitted core
+        if: inputs.component == 'events-spring'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: events-core
+          path: .dev/events-core
       - name: Build and qualify once without publishing credentials
         env:
           LIBRARY_VERSION: ${{ needs.admission.outputs.version }}
         run: |
+          set -euo pipefail
           ./mvnw -B -ntp -Plibrary-publication -Drevision="$LIBRARY_VERSION" \
             -Dproject.build.outputTimestamp="$(git show -s --format=%cI HEAD)" clean verify
           python3 tools/ci/library-publication.py prepare --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle --version "$LIBRARY_VERSION"
           python3 tools/tests/library-publication-test.py
-          python3 tools/ci/library-publication.py consume --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle
+          args=()
+          if [[ "$LIBRARY_COMPONENT" == events-spring ]]; then args+=(--dependency-bundle .dev/events-core); fi
+          python3 tools/ci/library-publication.py consume --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle "${args[@]}"
           ./mvnw -B -ntp -Drevision="$LIBRARY_VERSION" -DskipTests -Djacoco.skip=true -Dspotbugs.skip=true -Ppmd-analysis -pl build-support/pmd-report -am verify
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -146,6 +226,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Download admitted core
+        if: inputs.component == 'events-spring'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: events-core
+          path: .dev/events-core
       - name: Download original bundle
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -163,7 +249,10 @@ jobs:
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: python3 tools/ci/library-publication.py sign --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle
+        run: |
+          args=()
+          if [[ "$LIBRARY_COMPONENT" == events-spring ]]; then args+=(--dependency-bundle .dev/events-core); fi
+          python3 tools/ci/library-publication.py sign --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle "${args[@]}"
       - name: Retain immutable signed bundle before any repository write
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -179,6 +268,7 @@ jobs:
           DEPLOYMENT_ID: ${{ inputs.central_deployment_id }}
         run: |
           args=()
+          if [[ "$LIBRARY_COMPONENT" == events-spring ]]; then args+=(--dependency-bundle .dev/events-core); fi
           if [[ "$OPERATION" == publish ]]; then args+=(--publish); fi
           python3 tools/ci/library-publication.py central --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle \
             --deployment-id "$DEPLOYMENT_ID" "${args[@]}"
@@ -186,7 +276,10 @@ jobs:
         if: inputs.operation == 'publish'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 tools/ci/library-publication.py github --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle
+        run: |
+          args=()
+          if [[ "$LIBRARY_COMPONENT" == events-spring ]]; then args+=(--dependency-bundle .dev/events-core); fi
+          python3 tools/ci/library-publication.py github --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle "${args[@]}"
       - name: Retain deployment recovery evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -219,19 +312,28 @@ jobs:
         with:
           name: signed-library
           path: .dev/library-bundle
+      - name: Download admitted core
+        if: inputs.component == 'events-spring'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: events-core
+          path: .dev/events-core
       - name: Qualify each repository with a separate cold consumer
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p library-consumer-evidence
-          python3 tools/ci/library-publication.py consume --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle --repository central 2>&1 | tee library-consumer-evidence/central.log
-          python3 tools/ci/library-publication.py consume --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle --repository github 2>&1 | tee library-consumer-evidence/github.log
+          args=()
+          if [[ "$LIBRARY_COMPONENT" == events-spring ]]; then args+=(--dependency-bundle .dev/events-core); fi
+          python3 tools/ci/library-publication.py consume --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle --repository central "${args[@]}" 2>&1 | tee library-consumer-evidence/central.log
+          python3 tools/ci/library-publication.py consume --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle --repository github "${args[@]}" 2>&1 | tee library-consumer-evidence/github.log
+          python3 tools/ci/library-publication.py record-qualification --component "$LIBRARY_COMPONENT" --bundle .dev/library-bundle --evidence library-consumer-evidence "${args[@]}"
       - name: Retain consumer evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: repository-consumers
-          path: library-consumer-evidence/*.log
+          path: library-consumer-evidence/
           if-no-files-found: error
           retention-days: 90

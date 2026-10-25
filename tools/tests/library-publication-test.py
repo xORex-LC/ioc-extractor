@@ -3,10 +3,12 @@
 import importlib.util
 import json
 import os
+import runpy
 import subprocess
 from pathlib import Path
 import sys
 import tempfile
+import textwrap
 import unittest
 import zipfile
 from unittest.mock import patch
@@ -71,16 +73,17 @@ class BundleContract:
         PUB.write_identity(self.bundle, dict(group=PUB.GROUP, artifact=self.artifact,
                                            version=self.version, commit='a' * 40, dirty=False, signed=False))
 
-    def signed(self):
-        metadata = PUB.read_bundle(self.bundle)
+    def signed(self, bundle=None):
+        bundle = bundle or self.bundle
+        metadata = PUB.read_bundle(bundle)
         for name in list(metadata['files']):
-            path = self.bundle / 'repository' / name
+            path = bundle / 'repository' / name
             Path(str(path) + '.asc').write_bytes(b'fixture signature')
             for algorithm in ('md5', 'sha1', 'sha256'):
                 Path(str(path) + '.' + algorithm).write_text(PUB.hashlib.new(algorithm, path.read_bytes()).hexdigest())
         metadata.update(signed=True, fingerprint=PUB.FINGERPRINT)
-        PUB.write_identity(self.bundle, metadata)
-        return PUB.read_bundle(self.bundle, signed=True)
+        PUB.write_identity(bundle, metadata)
+        return PUB.read_bundle(bundle, signed=True)
 
     def test_component_selection_rejects_another_library_bundle(self):
         other = PUB.COMPONENTS['diagnostics' if self.component_name == 'concurrency' else 'concurrency']
@@ -482,6 +485,10 @@ class ConfigurationPublicationTest(LoggingPublicationTest):
                                               self.version, self.component)
 
 
+class EventsPublicationTest(PublicationTest):
+    component_name = 'events'
+
+
 class EventsPackagingTest(BundleContract, unittest.TestCase):
     component_name = 'events'
 
@@ -493,7 +500,8 @@ class EventsPackagingTest(BundleContract, unittest.TestCase):
                 with self.subTest(signed=signed, command=command), patch.object(sys, 'argv', [
                         'library-publication.py', command, '--bundle', str(self.bundle),
                         '--component', self.component_name]), patch.object(PUB, 'request') as request, \
-                        patch.object(PUB, 'run') as run, patch.object(PUB, 'authorization') as authorization:
+                        patch.object(PUB, 'run') as run, patch.object(PUB, 'authorization') as authorization, \
+                        patch.dict(self.component, release_admitted=False):
                     with self.assertRaisesRegex(ValueError, 'E5 release admission|signed bundle'):
                         PUB.main()
                     request.assert_not_called()
@@ -536,6 +544,139 @@ class EventsSpringPackagingTest(EventsPackagingTest):
         PUB.write_identity(bundle, dict(group=PUB.GROUP, artifact=core['artifact'],
                                        version=version, commit='b' * 40, dirty=False, signed=False))
         return bundle
+
+    def qualified_core(self):
+        core = self.core_bundle()
+        self.signed(core)
+        evidence = core / 'qualification'
+        evidence.mkdir()
+        for repository in ('central', 'github'):
+            (evidence / (repository + '.log')).write_text(repository + ': cold consumer passed\n')
+        with patch.dict(os.environ, GITHUB_RUN_ID='1234', GITHUB_REF_NAME='release-0.3.0'):
+            PUB.record_qualification(core, evidence)
+        return core
+
+    def test_real_adapter_signing_uses_an_already_qualified_core(self):
+        original = PUB.sign
+        def sign_with_core(bundle):
+            original(bundle, self.qualified_core())
+        with patch.object(PUB, 'sign', side_effect=sign_with_core):
+            PublicationTest.test_real_gpg_signing_with_disposable_test_key(self)
+
+    def test_adapter_release_requires_qualified_core_before_credentials(self):
+        unsigned = self.core_bundle()
+        for command in ('sign', 'central', 'github'):
+            if command == 'central':
+                self.signed()
+            for dependency in (None, unsigned):
+                with self.subTest(command=command, dependency=dependency), \
+                        patch.object(PUB, 'request') as request, patch.object(PUB, 'run') as run, \
+                        patch.object(PUB, 'authorization') as authorization:
+                    with self.assertRaisesRegex(ValueError, 'dependency-bundle|signed bundle'):
+                        if command == 'sign':
+                            PUB.sign(self.bundle, dependency)
+                        elif command == 'central':
+                            PUB.publish_central(self.bundle, True, '', dependency)
+                        else:
+                            PUB.publish_github(self.bundle, dependency)
+                    request.assert_not_called()
+                    run.assert_not_called()
+                    authorization.assert_not_called()
+        self.signed(unsigned)
+        with self.assertRaisesRegex(ValueError, 'qualification directory'):
+            PUB.release_dependencies(PUB.read_bundle(self.bundle), unsigned)
+
+    def test_core_receipt_rejects_other_bytes_destinations_identity_or_logs(self):
+        core = self.qualified_core()
+        path = core / 'qualification/qualification.json'
+        original = json.loads(path.read_text())
+        self.assertEqual(PUB.core_qualification(core, self.version, 'b' * 40, '1234'), original)
+        for field, wrong in [('schema', 2), ('identity_sha256', 'c' * 64), ('version', '0.4.0-rc.1'),
+                              ('commit', 'c' * 40), ('repositories', {'central': PUB.CENTRAL}),
+                              ('dependency_sha256', 'c' * 64), ('run_id', '../run'),
+                              ('logs', {'central': 'c' * 64, 'github': 'c' * 64}), ('branch', 'main')]:
+            with self.subTest(field=field):
+                path.write_text(json.dumps({**original, field: wrong}))
+                with self.assertRaises(ValueError):
+                    PUB.core_qualification(core, self.version)
+        path.write_text(json.dumps(original))
+        for version, commit, run in [('0.4.0-rc.1', 'b' * 40, '1234'),
+                                     (self.version, 'a' * 40, '1234'), (self.version, 'b' * 40, '4321')]:
+            with self.assertRaisesRegex(ValueError, 'differs'):
+                PUB.core_qualification(core, version, commit, run)
+        (core / 'qualification/central.log').write_text('different log')
+        with self.assertRaisesRegex(ValueError, 'log differs'):
+            PUB.core_qualification(core, self.version)
+
+    def test_admission_checks_successful_core_run_and_both_repositories(self):
+        core = self.qualified_core()
+        with patch.object(PUB, 'completed_publication_run') as run, \
+                patch.object(PUB, 'authorization', return_value={}), \
+                patch.object(PUB, 'compare_remote', return_value=[]) as compare:
+            PUB.check_core_release(core, self.version, 'b' * 40, '1234')
+        run.assert_called_once_with('1234', 'release-0.3.0', successful=True)
+        self.assertEqual([call.args[:2] for call in compare.call_args_list],
+                         [(core, PUB.CENTRAL), (core, PUB.GITHUB)])
+
+    def test_wrong_core_commit_stops_admission_before_network_or_credentials(self):
+        core = self.qualified_core()
+        with patch.object(PUB, 'request') as request, patch.object(PUB, 'authorization') as authorization:
+            with self.assertRaisesRegex(ValueError, 'commit differs'):
+                PUB.check_core_release(core, self.version, 'a' * 40, '1234')
+            request.assert_not_called()
+            authorization.assert_not_called()
+
+    def test_core_qualification_rejects_symbolic_evidence(self):
+        core = self.qualified_core()
+        evidence = core / 'qualification'
+        evidence.rename(core / 'linked-evidence')
+        evidence.symlink_to(core / 'linked-evidence', target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'qualification directory'):
+            PUB.core_qualification(core, self.version)
+
+    def test_incomplete_consumer_logs_cannot_emit_a_success_receipt(self):
+        core = self.core_bundle()
+        self.signed(core)
+        evidence = core / 'qualification'
+        evidence.mkdir()
+        (evidence / 'central.log').write_text('first consumer passed')
+        with patch.dict(os.environ, GITHUB_RUN_ID='1234', GITHUB_REF_NAME='release-0.3.0'):
+            with self.assertRaisesRegex(ValueError, 'missing consumer log'):
+                PUB.record_qualification(core, evidence)
+        self.assertFalse((evidence / 'qualification.json').exists())
+
+    def test_missing_published_core_aborts_adapter_writes(self):
+        core = self.qualified_core()
+        self.signed()
+        for repository in ('central', 'github'):
+            with self.subTest(repository=repository), patch.object(PUB, 'authorization', return_value={}), \
+                    patch.object(PUB, 'compare_remote', return_value=['missing-core.jar']) as compare, \
+                    patch.object(PUB, 'request') as request:
+                with self.assertRaisesRegex(ValueError, 'core release is incomplete in ' + repository):
+                    if repository == 'central':
+                        PUB.publish_central(self.bundle, True, '', core)
+                    else:
+                        PUB.publish_github(self.bundle, core)
+                self.assertEqual(compare.call_args.args[0], core)
+                request.assert_not_called()
+
+    def test_adapter_recovery_preserves_original_core_and_adapter_bundles(self):
+        core = self.qualified_core()
+        metadata = self.signed()
+        before = {str(path): path.read_bytes() for bundle in (self.bundle, core)
+                  for path in bundle.rglob('*') if path.is_file()}
+        missing = next(name for name in metadata['files'] if name.endswith('-sources.jar'))
+        with patch.object(PUB, 'authorization', return_value={}), patch.object(PUB, 'request') as request, \
+                patch.object(PUB, 'compare_remote', side_effect=[[], [missing], []]):
+            PUB.publish_github(self.bundle, core)
+        request.assert_called_once()
+        self.assertEqual(request.call_args.args[:3],
+                         (PUB.GITHUB + '/' + missing, 'PUT', (self.bundle / 'repository' / missing).read_bytes()))
+        with patch.object(PUB, 'compare_remote', side_effect=[[], []]), patch.object(PUB, 'request') as request:
+            PUB.publish_central(self.bundle, True, '', core)
+            request.assert_not_called()
+        self.assertEqual(before, {str(path): path.read_bytes() for bundle in (self.bundle, core)
+                                  for path in bundle.rglob('*') if path.is_file()})
 
     def test_adapter_requires_a_valid_same_version_core_bundle_before_remote_access(self):
         wrong_version = self.core_bundle('0.4.0-rc.1')
@@ -640,6 +781,56 @@ class ConsumerGuardTest(unittest.TestCase):
         self.assertEqual(choices, [name for name, component in PUB.COMPONENTS.items()
                                   if component['fixtures'] and component.get('release_admitted', False)])
 
+    def test_completed_run_provenance_allows_failed_recovery_but_not_failed_core(self):
+        record = dict(path='.github/workflows/library-publication.yml', event='workflow_dispatch',
+                      status='completed', head_branch='release-0.3.0', conclusion='success')
+        with patch.dict(os.environ, GITHUB_REPOSITORY='owner/repo', GITHUB_TOKEN='private-token'):
+            for field, value in [('path', 'other.yml'), ('event', 'push'), ('status', 'in_progress'),
+                                  ('head_branch', 'main'), ('conclusion', 'failure')]:
+                with self.subTest(field=field), patch.object(PUB, 'request', return_value=
+                        json.dumps({**record, field: value}).encode()):
+                    with self.assertRaises(ValueError):
+                        PUB.completed_publication_run('1234', 'release-0.3.0', successful=True)
+            with patch.object(PUB, 'request', return_value=json.dumps({**record, 'conclusion': 'failure'}).encode()):
+                PUB.completed_publication_run('1234', 'release-0.3.0')
+            with patch.object(PUB, 'request') as request:
+                with self.assertRaises(ValueError):
+                    PUB.completed_publication_run('../1234', 'release-0.3.0')
+                request.assert_not_called()
+
+    def test_workflow_admission_enforces_core_input_and_retained_recovery(self):
+        workflow = (PUB.ROOT / '.github/workflows/library-publication.yml').read_text()
+        code = textwrap.dedent(workflow.split("python3 - <<'PY'\n", 1)[1].split('\n          PY', 1)[0])
+        namespace = {'release_version': PUB.release_version, 'completed_publication_run': PUB.completed_publication_run}
+        with tempfile.TemporaryDirectory() as folder:
+            def git(command, **kwargs):
+                return 'tag' if command[1] == 'cat-file' else 'b' * 40
+            for component, resume, core, valid in [('events', '', '', True), ('events', '', '1234', False),
+                    ('events-spring', '', '', False), ('events-spring', '', '1234', True),
+                    ('events-spring', '5678', '', True), ('events-spring', '5678', '1234', False)]:
+                with self.subTest(component=component, resume=resume, core=core), \
+                        patch.dict(os.environ, RELEASE_TAG=PUB.COMPONENTS[component]['artifact'] + '-v0.3.0-rc.1',
+                                   RELEASE_BRANCH='release-0.3.0', RESUME_RUN_ID=resume, CORE_RUN_ID=core,
+                                   DEPLOYMENT_ID='12345678-1234-1234-1234-123456789abc' if resume else '',
+                                   LIBRARY_COMPONENT=component, GITHUB_OUTPUT=str(Path(folder) / 'outputs')), \
+                        patch.object(runpy, 'run_path', return_value=namespace), \
+                        patch.object(subprocess, 'check_output', side_effect=git), \
+                        patch.object(subprocess, 'run'), patch.object(PUB, 'completed_publication_run') as check:
+                    namespace['completed_publication_run'] = check
+                    if valid:
+                        exec(compile(code, 'workflow-admission', 'exec'), {})
+                        if resume:
+                            check.assert_called_once_with(resume, 'release-0.3.0')
+                        elif core:
+                            check.assert_called_once_with(core, 'release-0.3.0', successful=True)
+                        else:
+                            check.assert_not_called()
+                    else:
+                        if component == 'events-spring' and not resume and not core:
+                            check.side_effect = ValueError('invalid publication run ID')
+                        with self.assertRaises((ValueError, AssertionError)):
+                            exec(compile(code, 'workflow-admission', 'exec'), {})
+
     def test_empty_fixture_list_still_cannot_pass_consumer_admission(self):
         with self.assertRaisesRegex(ValueError, 'E4 independent consumer'):
             PUB.require_consumer_fixtures({'artifact': 'unqualified', 'fixtures': ()})
@@ -697,8 +888,8 @@ class ConsumerGuardTest(unittest.TestCase):
         step = workflow.split('      - name: Qualify each repository with a separate cold consumer\n', 1)[1]
         commands = step.split('        run: |\n', 1)[1].split('      - name:', 1)[0]
         commands = '\n'.join(line[10:] for line in commands.splitlines())
-        for central, github in [(17, 0), (0, 23), (0, 0)]:
-            with self.subTest(central=central, github=github), tempfile.TemporaryDirectory() as folder:
+        for central, github, receipt in [(17, 0, 0), (0, 23, 0), (0, 0, 39), (0, 0, 0)]:
+            with self.subTest(central=central, github=github, receipt=receipt), tempfile.TemporaryDirectory() as folder:
                 work = Path(folder)
                 stub = work / 'bin/python3'
                 stub.parent.mkdir()
@@ -707,18 +898,20 @@ class ConsumerGuardTest(unittest.TestCase):
                                 'case "$*" in\n'
                                 '  *"--repository central"*) exit "$CENTRAL_EXIT" ;;\n'
                                 '  *"--repository github"*) exit "$GITHUB_EXIT" ;;\n'
+                                '  *"record-qualification"*) exit "$RECEIPT_EXIT" ;;\n'
                                 '  *) exit 99 ;;\n'
                                 'esac\n')
                 stub.chmod(0o755)
                 calls = work / 'calls.txt'
                 env = {**os.environ, 'PATH': str(stub.parent) + os.pathsep + os.environ['PATH'],
                        'LIBRARY_COMPONENT': 'configuration', 'CONSUMER_CALLS': str(calls),
-                       'CENTRAL_EXIT': str(central), 'GITHUB_EXIT': str(github)}
+                       'CENTRAL_EXIT': str(central), 'GITHUB_EXIT': str(github), 'RECEIPT_EXIT': str(receipt)}
                 result = subprocess.run(['bash', '-e', '-c', commands], cwd=work, env=env,
                                         capture_output=True, text=True, timeout=10)
-                self.assertEqual(result.returncode, central or github)
+                self.assertEqual(result.returncode, central or github or receipt)
                 self.assertTrue((work / 'library-consumer-evidence/central.log').exists())
                 self.assertEqual('--repository github' in calls.read_text(), central == 0)
+                self.assertEqual('record-qualification' in calls.read_text(), central == github == 0)
 
     def test_public_allowlist_rejects_own_groups_even_with_whitespace(self):
         for group in (PUB.GROUP, PUB.GROUP + '.future', 'com.iocextractor'):

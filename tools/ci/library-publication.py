@@ -76,7 +76,7 @@ COMPONENTS = {
                     'ControlEventObserver', 'NoopControlEventPublisher',
                     'NoopControlEventObserver', 'RecordingControlEventPublisher'),
         'fixtures': ('events-consumer',),
-        'release_admitted': False,  # E5 reviews release admission separately.
+        'release_admitted': True,
         'dependencies': (),
     },
     'events-spring': {
@@ -85,7 +85,7 @@ COMPONENTS = {
         'package': 'com/iocextractor/adapter/out/events/spring/',
         'markers': ('SpringControlEventPublisher',),
         'fixtures': ('events-spring-consumer',),
-        'release_admitted': False,
+        'release_admitted': True,
         'dependencies': ((GROUP, 'ioc-platform-events', None),
                          ('org.springframework', 'spring-context', '7.0.9'),
                          ('org.slf4j', 'slf4j-api', '2.0.18')),
@@ -287,9 +287,10 @@ def prepare(bundle, version, component=None):
     read_bundle(bundle)
 
 
-def sign(bundle):
+def sign(bundle, dependency_bundle=None):
     metadata = read_bundle(bundle)
     require_release_admission(component_for(metadata))
+    release_dependencies(metadata, dependency_bundle)
     require(not metadata.get('signed'), 'bundle is already signed; reuse it unchanged')
     require(metadata.get('dirty') is False, 'release signing requires a clean source checkout')
     version_check(metadata['version'], release=True)
@@ -378,8 +379,10 @@ def compare_remote(bundle, base, headers=None):
     return missing
 
 
-def publish_github(bundle):
-    require_release_admission(component_for(read_bundle(bundle, signed=True)))
+def publish_github(bundle, dependency_bundle=None):
+    metadata = read_bundle(bundle, signed=True)
+    require_release_admission(component_for(metadata))
+    release_dependencies(metadata, dependency_bundle, 'github')
     headers = authorization('github')
     missing = compare_remote(bundle, GITHUB, headers)
     # Maven repositories use HTTP PUT for exact artifact paths. Existing bytes
@@ -390,9 +393,10 @@ def publish_github(bundle):
     require(not compare_remote(bundle, GITHUB, headers), 'GitHub publication is incomplete')
 
 
-def publish_central(bundle, publish, deployment_id):
+def publish_central(bundle, publish, deployment_id, dependency_bundle=None):
     metadata = read_bundle(bundle, signed=True)
     require_release_admission(component_for(metadata))
+    release_dependencies(metadata, dependency_bundle, 'central')
     version_check(metadata['version'], release=True)
     if deployment_id:
         require(re.fullmatch('[a-fA-F0-9-]{36}', deployment_id), 'invalid deployment identifier')
@@ -480,6 +484,92 @@ def copy_primary_artifacts(metadata, component, source, destination):
     for suffix in SUFFIXES:
         name = metadata['artifact'] + '-' + metadata['version'] + suffix
         shutil.copyfile(source / relative / name, target / name)
+
+
+def completed_publication_run(run_id, branch, successful=False):
+    """Reject another workflow/branch before trusting its retained artifacts."""
+    require(re.fullmatch(r'[1-9]\d*', run_id or ''), 'invalid publication run ID')
+    repository = os.environ['GITHUB_REPOSITORY']
+    headers = {'Authorization': 'Bearer ' + os.environ['GITHUB_TOKEN']}
+    record = json.loads(request('https://api.github.com/repos/' + repository + '/actions/runs/' + run_id,
+                                headers=headers))
+    require(record['path'] == '.github/workflows/library-publication.yml'
+            and record['event'] == 'workflow_dispatch', 'wrong publication workflow')
+    require(record['status'] == 'completed' and record['head_branch'] == branch,
+            'publication run is unfinished or used another release branch')
+    require(not successful or record['conclusion'] == 'success', 'core publication run did not succeed')
+
+
+def record_qualification(bundle, evidence, dependency_bundle=None):
+    """Call only after both cold consumers succeed; bind their logs to these bytes."""
+    metadata = read_bundle(bundle, signed=True)
+    require_release_admission(component_for(metadata))
+    require(metadata.get('dirty') is False, 'qualification requires a clean release identity')
+    release_dependencies(metadata, dependency_bundle)
+    run_id, branch = os.environ['GITHUB_RUN_ID'], os.environ['GITHUB_REF_NAME']
+    require(re.fullmatch(r'[1-9]\d*', run_id), 'invalid qualification run ID')
+    component_name = next(name for name, value in COMPONENTS.items() if value == component_for(metadata))
+    release_version(component_name, metadata['artifact'] + '-v' + metadata['version'], branch)
+    logs = {}
+    for repository in ('central', 'github'):
+        path = evidence / (repository + '.log')
+        require(path.is_file() and not path.is_symlink() and path.stat().st_size > 0, 'missing consumer log')
+        logs[repository] = digest(path.read_bytes())
+    receipt = dict(schema=1, run_id=run_id, branch=branch, group=metadata['group'], artifact=metadata['artifact'],
+                   version=metadata['version'], commit=metadata['commit'],
+                   identity_sha256=digest((bundle / 'identity.json').read_bytes()),
+                   repositories={'central': CENTRAL, 'github': GITHUB}, logs=logs,
+                   dependency_sha256=digest((dependency_bundle / 'identity.json').read_bytes())
+                   if dependency_bundle else None)
+    (evidence / 'qualification.json').write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
+
+
+def core_qualification(bundle, version, commit=None, run_id=None):
+    """A core bundle alone is insufficient: require the successful two-registry receipt."""
+    metadata = read_bundle(bundle, signed=True, expected_component=COMPONENTS['events'])
+    require(metadata.get('dirty') is False, 'core release requires a clean source identity')
+    version_check(metadata['version'], release=True)
+    require(metadata['version'] == version, 'core qualification version differs')
+    require(commit is None or metadata['commit'] == commit, 'core qualification commit differs')
+    evidence = bundle / 'qualification'
+    require(evidence.is_dir() and not evidence.is_symlink(), 'missing core qualification directory')
+    path = evidence / 'qualification.json'
+    require(path.is_file() and not path.is_symlink(), 'missing core qualification receipt')
+    receipt = json.loads(path.read_text())
+    require(receipt['schema'] == 1 and receipt['identity_sha256'] == digest((bundle / 'identity.json').read_bytes()),
+            'core qualification identity differs')
+    require(all(receipt[key] == metadata[key] for key in ('group', 'artifact', 'version', 'commit')),
+            'core qualification coordinates differ')
+    require(receipt['repositories'] == {'central': CENTRAL, 'github': GITHUB}
+            and receipt['dependency_sha256'] is None, 'wrong core qualification destinations')
+    require(re.fullmatch(r'[1-9]\d*', receipt['run_id'] or '')
+            and (run_id is None or receipt['run_id'] == run_id), 'core qualification run differs')
+    release_version('events', metadata['artifact'] + '-v' + version, receipt['branch'])
+    require(set(receipt['logs']) == {'central', 'github'}, 'incomplete core qualification logs')
+    for repository, expected in receipt['logs'].items():
+        log = evidence / (repository + '.log')
+        require(log.is_file() and not log.is_symlink() and log.stat().st_size > 0
+                and digest(log.read_bytes()) == expected, 'core consumer log differs')
+    return receipt
+
+
+def release_dependencies(metadata, dependency_bundle, repository=None):
+    """Keep core-first admission in the leaf commands as well as in Actions."""
+    dependencies = consumption_dependencies(metadata, component_for(metadata), dependency_bundle)
+    for _, _, bundle in dependencies:
+        core_qualification(bundle, metadata['version'])
+        if repository:
+            base = CENTRAL if repository == 'central' else GITHUB
+            headers = authorization('github') if repository == 'github' else None
+            require(not compare_remote(bundle, base, headers), 'core release is incomplete in ' + repository)
+
+
+def check_core_release(bundle, version, commit, run_id=None):
+    receipt = core_qualification(bundle, version, commit, run_id)
+    completed_publication_run(receipt['run_id'], receipt['branch'], successful=True)
+    for repository, base in (('central', CENTRAL), ('github', GITHUB)):
+        headers = authorization('github') if repository == 'github' else None
+        require(not compare_remote(bundle, base, headers), 'core release is incomplete in ' + repository)
 
 
 def consume(bundle, repository, dependency_bundle=None):
@@ -857,13 +947,17 @@ def qualify_repository_routing(metadata, component, project, fallback_url, depen
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=('module', 'artifact', 'prepare', 'check', 'sign', 'central', 'github', 'consume'))
+    parser.add_argument('command', choices=('module', 'artifact', 'prepare', 'check', 'sign', 'central', 'github',
+                                           'consume', 'record-qualification', 'check-core-release'))
     parser.add_argument('--component', choices=tuple(COMPONENTS), default='concurrency')
     parser.add_argument('--bundle', type=Path)
     parser.add_argument('--version')
     parser.add_argument('--commit')
     parser.add_argument('--repository', default='local')
     parser.add_argument('--dependency-bundle', type=Path)
+    parser.add_argument('--evidence', type=Path)
+    parser.add_argument('--run-id')
+    parser.add_argument('--signed', action='store_true')
     parser.add_argument('--publish', action='store_true')
     parser.add_argument('--deployment-id', default='')
     args = parser.parse_args()
@@ -873,21 +967,32 @@ def main():
         return
     require(args.bundle is not None, '--bundle is required')
     bundle = args.bundle.resolve()
-    require(args.command == 'consume' or args.dependency_bundle is None, '--dependency-bundle is only for consume')
+    require(args.command in ('consume', 'sign', 'central', 'github', 'record-qualification')
+            or args.dependency_bundle is None, 'unexpected --dependency-bundle')
     if args.command == 'prepare':
         prepare(bundle, args.version or '', component)
         return
     metadata = read_bundle(bundle, expected_component=component)
     if args.command == 'check':
+        if args.signed:
+            read_bundle(bundle, signed=True)
+            require(metadata.get('dirty') is False, 'release requires a clean source identity')
         require(not args.version or metadata['version'] == args.version, 'unexpected bundle version')
         require(not args.commit or metadata['commit'] == args.commit, 'unexpected bundle commit')
+    elif args.command == 'check-core-release':
+        require(component == COMPONENTS['events'], 'core release check requires events')
+        require(args.version and args.commit, 'core release check requires version and commit')
+        check_core_release(bundle, args.version, args.commit, args.run_id)
+    elif args.command == 'record-qualification':
+        require(args.evidence is not None, '--evidence is required')
+        record_qualification(bundle, args.evidence, args.dependency_bundle)
     elif args.command == 'sign':
-        sign(bundle)
+        sign(bundle, args.dependency_bundle)
     elif args.command == 'central':
-        publish_central(bundle, args.publish, args.deployment_id)
+        publish_central(bundle, args.publish, args.deployment_id, args.dependency_bundle)
     elif args.command == 'github':
         version_check(read_bundle(bundle, signed=True)['version'], release=True)
-        publish_github(bundle)
+        publish_github(bundle, args.dependency_bundle)
     else:
         consume(bundle, args.repository, args.dependency_bundle)
 

@@ -3,7 +3,8 @@
 Status: implementation resumed by the owner, 2026-10-24. E0 technical analysis
 is complete; E1 qualifies the existing JDK contracts. E2 bridge extraction and
 its three corrections are implemented; E3 packaging and E4 isolated consumers
-are described below. E5 and publication remain pending.
+are described below. E5 implements protected release admission and recovery;
+actual registry publication remains a separate action.
 Baseline: `r030-libraries`, `d98bf415377bbcd86e43f04dcbd21c5fefe96b34`.
 
 Workflow checkpoint, 2026-10-18: the owner closed the current design stage and
@@ -457,3 +458,69 @@ are retained in `.dev/lib5-e4-evidence/receipt.json` after all tracked edits. Lo
 file-repository success qualifies packaging independence, not a second deployed
 service or public publication. Other Spring/Boot baselines, a refreshed CVE scan,
 E5 release admission and registry publication remain outside this checkpoint.
+
+## E5 protected release admission — 2026-10-25
+
+The owner authorized release-admission work on `r030-libraries`, HEAD `23e95d17`,
+with the E4 changes still uncommitted. All six reviewed component selectors are
+now admitted to the manual publication workflow. Existing component artifacts,
+tags and release identities are unchanged. No registry write is part of E5.
+
+The [publication guide](../../../guides/library-publication.md#events-api-and-version-ownership)
+records the seven JDK types, explicit Spring publisher and service ownership;
+payload schema version is distinct from the Maven version. Versions remain
+lockstep; adapter and core must match exactly. Contract changes require review,
+regressions/consumers and release notes; released bytes remain immutable.
+The qualified baseline is Java 21, Context 7.0.9 and SLF4J API 2.0.18 with the
+plain and application-owned Boot 4.0.8 BOM graphs from E4. No broader framework
+or second deployed-service claim is made.
+
+Release order is enforced in tooling as well as documented:
+
+- Core publishes first with its own tag and bundle. Only a successful publish
+  run with both repository consumers emits the retained qualification receipt.
+  It binds run/branch, coordinates/source commit, signed manifest, destinations
+  and consumer-log hashes. Validate-only, failed and unfinished runs cannot
+  supply adapter admission.
+- The first adapter attempt requires `events_core_run_id`. Unprivileged admission
+  downloads and validates the original signed core and receipt against the
+  annotated core tag/ancestry and checks all twenty files at both repositories.
+  It retains the original dependency as `events-core` for all downstream jobs.
+- Local build consumption uses that released core rather than a reconstructed
+  dependency. Signing requires its qualification; repository writes recheck core
+  at their own destination. Remote adapter consumers check both manifests and
+  all eight primary files/origins in the same selected repository.
+- Adapter recovery accepts only its original `resume_run_id` and deployment ID;
+  it rejects a replacement core-run input. Both signed adapter and retained core
+  are checked before privileged review. Build/signing stay skipped, and retries
+  preserve exact original bytes. Qualification uses `pipefail`, and a receipt is
+  generated only after both consumers pass. Existing components retain their
+  independent recovery behavior.
+
+Offline tests exercise real disposable-key signing for both events components,
+receipt/run/hash/destination rejection, missing-core write refusal, two-bundle
+recovery, the workflow's actual admission Python and failure propagation through
+its actual consumer shell. Two initial fixture failures were retained and fixed:
+the newly extended test double did not handle receipt generation, and another
+new fixture signed an already signed bundle twice. Neither was a production
+publication failure or an automatic retry. TOOL-7 remains open independently.
+
+Verification commands for this worktree are `make library-publication-test`,
+`make ci-packaging`, `make docs`, actionlint, both cold local events consumers,
+`make verify`, `make pmd-analysis` and `git diff --check`. The ignored E5 receipt
+and handoff retain their final outcomes and exact commit/worktree freshness.
+No production Java, dependency version, analyzer scope, suite inventory, coverage
+floor, suppression or count ratchet changes in E5. E4 SNAPSHOT bundles remain
+local consumer inputs, never release candidates.
+
+The existing-cache `make security-scan` completed at the CVSS-7 threshold, using
+NVD last checked on 2026-07-19. It reports CVE-2018-1000840 via a low-confidence
+Processing CPE on internal `ioc-processing`; the existing adapter-specific
+suppression was not widened. This is retained for security triage, not new
+events dependency exposure or an up-to-date vulnerability qualification.
+An initial Maven-offline invocation was rejected by the plugin; the supported
+scan leaves Maven online and disables only NVD updates. Before any real release
+tag, the exact committed candidate still needs normal release-branch CI and the
+current security gate required by SECURITY-ENGINEERING. Actual protected signing,
+Central validation/publication, GitHub execution and both live events consumers
+remain separate release actions with clean immutable inputs.

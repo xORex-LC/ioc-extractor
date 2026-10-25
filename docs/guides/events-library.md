@@ -12,7 +12,9 @@ requires the contracts at exactly the same version, Spring Context 7.0.9 and
 SLF4J API 2.0.18; it supplies no Boot dependency or logging provider.
 Both have isolated local-repository consumers; neither artifact is published. The
 [publication guide](library-publication.md#events-packaging-preparation) records
-packaging and consumer commands, dependency checks and pending release gate.
+packaging and consumer commands, API/version ownership and the protected
+core-first release procedure. Admission is implemented; publication requires
+a separate release action with clean immutable inputs.
 The [module reference](../../platform/platform-events/README.md) describes all
 seven public types and their validation rules.
 

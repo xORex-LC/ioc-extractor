@@ -200,3 +200,15 @@ missing-target/missing-core routing have explicit positive and negative oracles.
 Regular CI requires both consumers; E5 still blocks signing/remote writes and
 protected-workflow admission. No scope/floor or production-code change is made.
 See the [E4 checkpoint](libs/lib-5-events-design.md#e4-isolated-packaged-consumers--2026-10-25).
+
+### LIB-5 E5 release admission — 2026-10-25
+
+The protected workflow admits both events selectors with separate tags/bundles.
+Adapter admission requires a successful same-version core publication and both
+repository-consumer receipts; exact core bytes are checked before privileged
+review and retained for build, signing, remote consumption and partial recovery.
+Recovery reuses both original bundles and rejects a replacement core-run input.
+API/version ownership and Java 21 / Context 7.0.9 / SLF4J 2.0.18 support are
+documented. No registry release occurs in this checkpoint; committed-candidate
+CI and current security evidence precede a separately authorized publication.
+See the [E5 checkpoint](libs/lib-5-events-design.md#e5-protected-release-admission--2026-10-25).

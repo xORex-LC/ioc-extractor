@@ -56,8 +56,9 @@ failure boundaries with real-context regressions. E3 adds both standalone POMs
 and explicit packaging selectors with exact dependency checks. E4 adds isolated
 JDK/Spring consumers, eight-file provenance, dependency mediation/negatives and
 missing-core routing probes with positive controls. The regular CI library gate
-requires them; E5 still blocks signing and remote writes. Both modules use
-`io.github.xorex-lc`. Publication requires E5 and a separate release action. ETL remains
+requires them. E5 adds protected release admission with successful core-first
+qualification, exact dependency handoff and immutable adapter recovery. Both
+modules use `io.github.xorex-lc`. Publication requires a separate release action. ETL remains
 deferred pending a second consumer.
 
 Diagnostics publication is recorded in the release branch's D5 documentation
