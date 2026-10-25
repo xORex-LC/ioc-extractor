@@ -132,6 +132,13 @@ class ArchitectureTest {
             .allowEmptyShould(true);
 
     @ArchTest
+    static final ArchRule events_spring_depends_only_on_contracts_jdk_spring_and_slf4j = classes()
+            .that().resideInAPackage("com.iocextractor.adapter.out.events.spring..")
+            .should().onlyDependOnClassesThat().resideInAnyPackage(
+                    "java..", "com.iocextractor.adapter.out.events.spring..",
+                    "com.iocextractor.platform.events..", "org.springframework.context..", "org.slf4j..");
+
+    @ArchTest
     static final ArchRule control_events_are_not_serializable = noClasses()
             .that().implement(ControlEvent.class)
             .should().beAssignableTo(Serializable.class)

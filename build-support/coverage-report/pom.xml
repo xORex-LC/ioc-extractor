@@ -24,6 +24,10 @@
     <dependencies>
         <dependency>
             <groupId>io.github.xorex-lc</groupId>
+            <artifactId>ioc-events-spring</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.xorex-lc</groupId>
             <artifactId>ioc-platform-diagnostics-api</artifactId>
         </dependency>
 
@@ -41,7 +45,7 @@
             <artifactId>ioc-platform-etl</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.iocextractor</groupId>
+            <groupId>io.github.xorex-lc</groupId>
             <artifactId>ioc-platform-events</artifactId>
         </dependency>
         <dependency>

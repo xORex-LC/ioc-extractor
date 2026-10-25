@@ -137,3 +137,78 @@ repository-routing negatives/control, and older component regressions. The CI
 matrix and protected workflow accept the explicit `configuration` selector.
 Existing signed releases and tags are unchanged. Protected validation/publication,
 release-repository consumers and a deployed second service remain separate gates.
+
+### Configuration protected publication and local recovery — 2026-10-24
+
+PR 18 integrated configuration; protected validation `40087127800` and publication
+`40088095516` reused one signed bundle and Central deployment. Version
+`io.github.xorex-lc:ioc-config-spring-boot:0.3.0-rc.1` is published in both registries.
+GitHub's cold consumer passed. The original Central consumer failed because of
+same-URL repository filtering; `tee` concealed that failure from the job result.
+A local cold Central consumer passed after correcting routing, with unchanged
+release bytes. Two regressions cover routing and pipeline-failure propagation;
+121 publication tests pass. Tooling integration and a protected CI recovery run
+remain open, alongside the separate second-service deployment qualification.
+The [release record](libs/configuration-library-design.md#protected-publication-record--2026-10-24)
+retains identities and distinguishes the original failure from local recovery.
+
+### LIB-5 implementation resumed and E1 qualification — 2026-10-24
+
+The owner selected events extraction for future services, superseding its earlier
+deferral. The [E1 checkpoint](libs/lib-5-events-design.md#e1-jdk-contract-qualification--2026-10-24)
+retains the existing seven-type JDK API, precise metadata/publication/observation
+contracts, recording limitations, 43 focused tests and strict Javadoc. The exact
+consumer-guide example compiles/runs locally. No coordinate or dependency changes
+in E1; E2 extracts the Spring bridge and qualifies the three known corrections.
+E3–E5, standalone repository consumers and publication admission remain pending.
+The configuration workflow-recovery changes are recorded separately and
+need reviewed integration before extending publication tooling. ETL stays deferred.
+
+
+### LIB-5 E2 explicit Spring adapter — 2026-10-24
+
+The [E2 checkpoint](libs/lib-5-events-design.md#e2-explicit-spring-adapter--2026-10-24)
+extracts reactor-local `ioc-events-spring`, migrates IOC composition and corrects
+ARCH-4/OBS-7/OBS-8. Tests cover partial synchronous dispatch, real annotated-listener
+Error propagation, observer/suppression boundaries and throwing fallback logging.
+Service multicaster/error-handler/executor ownership is preserved. All quality
+registries include the new JAR: 31 projects, 25 production groups, 24 local
+coverage reports; one integration suite is added, with existing floors intact.
+E3–E5 and any event registry publication remain pending.
+
+
+### LIB-5 E3 standalone publication packaging — 2026-10-24
+
+Both events modules now use `io.github.xorex-lc` in the reactor and distribution
+POMs. Explicit `events`/`events-spring` selectors validate separate immutable
+bundles; core remains dependency-free, and the adapter requires core at exactly
+the same version plus Context 7.0.9 and SLF4J API 2.0.18. The report verifiers
+admit both new groups and reject the old coordinates. Consumer-less components
+cannot sign, publish or pass an empty consumer run; protected workflow choices
+remain limited to the four previously qualified components. E4 owns cold
+two-artifact consumers and repository routing; E5 and publication remain pending.
+See the [E3 checkpoint](libs/lib-5-events-design.md#e3-standalone-publication-packaging--2026-10-24).
+
+### LIB-5 E4 isolated consumers — 2026-10-25
+
+Independent JDK/Spring projects now consume packaged artifacts from one selected
+local repository with empty caches, exact guide sources and four/eight-file
+hash/origin checks. The Spring fixture covers partial real listener delivery,
+Error/observer boundaries and service-owned dispatch. Whole-graph checks,
+application-BOM mediation, excluded/unavailable APIs, incompatible Spring and
+missing-target/missing-core routing have explicit positive and negative oracles.
+Regular CI requires both consumers; E5 still blocks signing/remote writes and
+protected-workflow admission. No scope/floor or production-code change is made.
+See the [E4 checkpoint](libs/lib-5-events-design.md#e4-isolated-packaged-consumers--2026-10-25).
+
+### LIB-5 E5 release admission — 2026-10-25
+
+The protected workflow admits both events selectors with separate tags/bundles.
+Adapter admission requires a successful same-version core publication and both
+repository-consumer receipts; exact core bytes are checked before privileged
+review and retained for build, signing, remote consumption and partial recovery.
+Recovery reuses both original bundles and rejects a replacement core-run input.
+API/version ownership and Java 21 / Context 7.0.9 / SLF4J 2.0.18 support are
+documented. No registry release occurs in this checkpoint; committed-candidate
+CI and current security evidence precede a separately authorized publication.
+See the [E5 checkpoint](libs/lib-5-events-design.md#e5-protected-release-admission--2026-10-25).

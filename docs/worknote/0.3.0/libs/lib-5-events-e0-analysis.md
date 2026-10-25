@@ -8,6 +8,11 @@ Workflow update, 2026-10-18: the owner closed events design for the current
 planning stage and selected diagnostics as the next implementation target.
 The events slices below remain deferred; E1 is not the next active task.
 
+Workflow update, 2026-10-24: the owner resumed events extraction after
+configuration publication. The earlier deferral is superseded; E1 is active.
+This E0 report retains its original source/dependency identity and findings.
+Current implementation evidence belongs to the events plan's dated checkpoints.
+
 ## Disposition
 
 E0 analysis is complete. The two-unit boundary is technically viable; unchanged

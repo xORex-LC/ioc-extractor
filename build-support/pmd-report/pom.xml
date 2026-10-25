@@ -27,6 +27,10 @@
     <dependencies>
         <dependency>
             <groupId>io.github.xorex-lc</groupId>
+            <artifactId>ioc-events-spring</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.xorex-lc</groupId>
             <artifactId>ioc-platform-diagnostics-api</artifactId>
         </dependency>
 
@@ -44,7 +48,7 @@
             <artifactId>ioc-platform-etl</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.iocextractor</groupId>
+            <groupId>io.github.xorex-lc</groupId>
             <artifactId>ioc-platform-events</artifactId>
         </dependency>
         <dependency>
@@ -190,6 +194,7 @@
 
                                     <!-- Positive scope: checked-in production Java only. -->
                                     <compileSourceRoots>
+                                        <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-events-spring/src/main/java</compileSourceRoot>
                                         <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-errors/src/main/java</compileSourceRoot>
                                         <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-diagnostics-api/src/main/java</compileSourceRoot>
                                         <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-diagnostics/src/main/java</compileSourceRoot>

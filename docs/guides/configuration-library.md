@@ -4,11 +4,26 @@
 and returns immutable observations. Your service decides which inputs to load,
 how to bind and validate values, and what an error prevents from starting.
 
-The reactor coordinate is `io.github.xorex-lc:ioc-config-spring-boot:0.3.0-SNAPSHOT`.
-Java 21 is required. The [publication guide](library-publication.md#configuration-library-admission)
-provides local standalone bundle and cold-consumer commands. Protected repository
-publication remains a separate release step. The current compatibility baseline is
-Spring Boot 4.0.8. Choose dependency versions through your application's management;
+`io.github.xorex-lc:ioc-config-spring-boot:0.3.0-rc.1` is published to Maven Central
+and GitHub Packages. The GitHub consumer passed in
+[run 40088095516](https://github.com/xORex-LC/ioc-extractor/actions/runs/40088095516).
+The Central consumer passed locally after correcting repository routing in the
+qualification tool; its original CI failure remains recorded. See the
+[publication record](library-publication.md#configuration-library-admission).
+Java 21 is required. Central needs no additional repository configuration:
+
+```xml
+<dependency>
+  <groupId>io.github.xorex-lc</groupId>
+  <artifactId>ioc-config-spring-boot</artifactId>
+  <version>0.3.0-rc.1</version>
+</dependency>
+```
+
+The [publication guide](library-publication.md#configuration-library-admission)
+describes packaging, repository routing and GitHub authentication. The qualified
+compatibility baseline is Spring Boot 4.0.8. Choose dependency versions through
+your application's management;
 compatibility with another Boot baseline needs qualification.
 
 ## Prepare the model and inputs
@@ -87,7 +102,9 @@ migration deadlines and recovery remain application decisions. The
 example, including its safe failure codes and context cleanup.
 
 The module's independent collector tests use the real Binder for supported
-spellings, conversion failures and list replacement. The recipe runs without IOC
-classes, but neither is evidence of repository consumption or a second deployed
-service. The ownership decision is recorded in
+spellings, conversion failures and list replacement. The release consumers also
+compile and run the exact recipe without IOC classes, using separate empty Maven
+caches and checking all four artifact hashes and their selected-repository origin.
+These fixtures do not qualify a second deployed service. The ownership decision
+is recorded in
 [ADR 0046](../ADR/0046-reusable-spring-boot-configuration-inspection.md).

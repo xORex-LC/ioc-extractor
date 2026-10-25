@@ -19,6 +19,9 @@
   `org.apache.commons..`).
 - `platform-etl` не зависит на IOC domain/application/adapters/bootstrap и
   остаётся framework-free.
+- `platform-events` остаётся JDK-only. `adapter-events-spring` зависит только
+  от собственных типов, JDK, event contracts, Spring Context и SLF4J API;
+  не обращается к IOC-каталогам, application или bootstrap.
 - `application` зависит на `domain` и platform contracts, не на адаптеры/Spring.
 - JDBC/`java.sql`/Hikari разрешены только adapters/bootstrap; Jackson manifest
   mapping — только `adapter-manifest-json-jackson`/bootstrap. Streaming slice
@@ -94,7 +97,7 @@ root reactor. PMD source-policy/watchlist manifest и exact rulesets
 полного анализа. Финальный build-only модуль `build-support/spotbugs-report`
 формирует reactor-wide SpotBugs XML/HTML aggregate; поздний report-integrity
 режим выводит ожидаемые пути из того же registry, требует non-empty,
-структурно корректные XML/HTML всех 24 production-модулей и aggregate и
+структурно корректные XML/HTML всех 25 production-модулей и aggregate и
 запрещает reports у excluded scopes. Exact-baseline gate сравнивает unfiltered
 raw findings поэкземплярно: новый, stale, moved или metadata-drifted signal
 блокирует сборку вместе с analyzer error, пропущенным применимым модулем или

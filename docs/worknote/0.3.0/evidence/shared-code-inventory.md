@@ -2,7 +2,7 @@
 title: "0.3.0 shared-code inventory"
 version: "0.3.0"
 goal_id: "R030-LIB"
-status: "LIB-1 and LIB-2 published and qualified"
+status: "LIB-1 through LIB-3 qualified; configuration published, CI recovery pending"
 document_type: "Evidence ledger"
 source_of_truth: false
 language: "en"
@@ -22,12 +22,13 @@ not a current publication test.
 
 | Module/capability | Category | Responsibility | Current consumers | IOC-specific coupling | Publication disposition |
 |---|---|---|---|---|---|
-| `adapters/adapter-config-spring-boot` | Cross-service integration candidate | Record-schema name inspection and ordered source observations | IOC bootstrap, unrelated-schema Binder tests and executable restricted-context guide | Spring Boot/Core with transitive Spring Context closure; schemas, source loading and enforcement remain service-owned | C1–C4 implemented; [ADR 0046](../../../ADR/0046-reusable-spring-boot-configuration-inspection.md); standalone POM, local cold consumer, application mediation and fail-closed routing qualified; protected publication/release consumers pending |
+| `adapters/adapter-config-spring-boot` | Published cross-service integration | Record-schema name inspection and ordered source observations | IOC bootstrap, unrelated-schema Binder tests and executable restricted-context guide | Spring Boot/Core with transitive Spring Context closure; schemas, source loading and enforcement remain service-owned | `0.3.0-rc.1` published to Central/GitHub; GitHub CI consumer and local Central recovery passed; tooling integration/CI recovery pending; [release record](../libs/configuration-library-design.md#protected-publication-record--2026-10-24) |
+| `adapters/adapter-events-spring` | Cross-service adapter, reactor-local | Explicit Spring publication and runtime observation containment | IOC bootstrap | Contracts + Context 7.0.9 + SLF4J API 2.0.18; no provider or Boot | E2 implemented; E3–E5 standalone/publication qualification pending |
 | `platform/platform-errors` | Service-shared | Root unchecked exception contract | diagnostics, ETL, application, four adapters, bootstrap | High: `IocExtractorException` and `com.iocextractor.common` express this product | Keep internal; not a first publication unit |
 | `platform/platform-diagnostics-api` | Cross-service platform | JDK-only values, results/policies, bounded samples/counts and sinks | Local diagnostics, ETL, application, adapters and bootstrap | JDK-only closure; isolated local and remote RC consumers qualified | `published-qualified`; `0.3.0-rc.1` from Central and GitHub Packages |
 | `platform/platform-diagnostics` | Service-shared product metadata | IOC catalogs, exception and rendering | ETL, application, diagnostics bridge, four adapters, bootstrap | IOC categories/messages and `platform-errors` closure | Retained locally after D1 split |
 | `platform/platform-etl` | Candidate cross-service platform | Framework-free Pipes-and-Filters execution model | application, observability | Medium: diagnostics/error result semantics and only one business consumer | Defer until second consumer and closure review |
-| `platform/platform-events` | Candidate cross-service platform, local only | In-process publish-only control-event mechanics | application, bootstrap | Low in API shape; current use remains service-local and explicitly non-wire | Defer publication; preserve anti-broker boundary |
+| `platform/platform-events` | Cross-service platform extraction in progress | In-process publish-only control-event mechanics | application, bootstrap | Low in API shape; current use remains service-local and explicitly non-wire | Owner resumed implementation on 2026-10-24; E1 JDK qualification, then separate Spring adapter; publication admission pending |
 | `platform/platform-concurrency` | Cross-service platform candidate | Keyed asynchronous serialization and synchronous exclusion | application, adapter-ingest, bootstrap | Low: no project-owned dependency closure and no IOC types | Priority admission candidate `LIB-1` |
 | `platform/platform-logging-slf4j` | Published cross-service platform | Typed SLF4J records, restoring MDC, scalar ECS profile and explicit masks | IOC observability plus isolated plain/Boot consumers; planned collectors | Required SLF4J API 2.0.18 only; providers/IOC/ETL remain outside | `0.3.0-rc.1` published and cold-consumed from Central and GitHub Packages |
 | `platform/platform-observability` | Service-shared product integration | IOC field/action catalogs, shared logging facades and pipeline observer | diagnostics bridge, five adapters, bootstrap | IOC vocabulary and ETL observer remain service-owned | Retained locally after LIB-3 extraction |
@@ -41,7 +42,7 @@ not a current publication test.
 | `LIB-2` | Generic diagnostics model/result/sink subset | Cross-service platform | Misyurkeev Denis (`xORex-LC`) / Diagnostics | Current reactor consumers + planned `feeds-collector` | JDK-only shared module; IOC catalogs, exceptions and logging remain local | `design-admitted`; D0–D4 locally qualified with ADR 0044; D5 remote publication/consumers pending |
 | `LIB-3` | `platform-logging-slf4j` | Cross-service platform | Misyurkeev Denis (`xORex-LC`) / Observability | IOC facades, independent plain/Boot consumers; planned collectors | Required SLF4J API only; no provider/IOC/ETL dependency | `published-qualified`; `0.3.0-rc.1`, both repositories and negative dependency checks passed |
 | `LIB-4` | `platform-etl` | Cross-service platform | ETL | Current `ioc-application`; nearest consumer planned only | diagnostics + errors + their accepted publication closure | `deferred-second-consumer` |
-| `LIB-5` | `platform-events` local control API | Cross-service platform, non-wire | Event coordination | Current application/bootstrap; nearest consumer planned only | None | `deferred-second-consumer` |
+| `LIB-5` | `platform-events` local control API + separate Spring bridge | Cross-service platform, non-wire | Event coordination | Current application/bootstrap; future services selected by owner, not deployed evidence | JDK core; Spring bridge requires core + Spring Context + SLF4J API | `implementation-in-progress`; owner resumed on 2026-10-24; E1 JDK qualification and E2 explicit Spring adapter implemented; E3–E5 pending |
 
 `LIB-1-HARDEN-01` implements bounded hardening of the existing module. Its
 [execution record](../lib-1-concurrency-worknote.md) documents real consumers,
@@ -231,3 +232,8 @@ hashes, selected-repository origin and negative SLF4J dependency checks. The
 retains immutable identity, artifacts and limits. A second production service
 and live collector/backend/load qualification are outside these fixture results.
 Existing concurrency/diagnostics release identities remain unchanged.
+
+E3 prepares `io.github.xorex-lc:ioc-platform-events` and `ioc-events-spring`
+with separate parent-free POMs, real publication archives and exact dependency
+checks. The adapter requires contracts at the same lockstep version; neither
+artifact is claimed independently consumed or published.

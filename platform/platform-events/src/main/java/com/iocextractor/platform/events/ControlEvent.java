@@ -1,13 +1,18 @@
 package com.iocextractor.platform.events;
 
 /**
- * Framework-free application control event.
+ * A service-owned fact used to nudge local coordination work.
  *
- * <p>Control events are thin facts used for coordination. They carry metadata and bounded work
- * references, not business rows, file bytes or transport-specific messages.</p>
+ * <p>Concrete events define their own payload and validation. Prefer bounded work references,
+ * such as a completed slice ID, rather than business rows or file contents. This interface
+ * defines no serialization format, delivery guarantee or recovery mechanism.</p>
  */
 public interface ControlEvent {
 
-    /** Returns immutable event metadata used for tracing, versioning and future delivery headers. */
+    /**
+     * Returns the metadata supplied by the event's producer.
+     *
+     * @return non-null metadata; publishers need not inspect it or propagate its IDs
+     */
     ControlEventMetadata metadata();
 }

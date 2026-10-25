@@ -14,6 +14,7 @@ core/ioc-processing	ioc-processing	covered	required	Pure IOC preparation module 
 core/ioc-application	ioc-application	covered	required	Production core module with downstream execution retained by the aggregate.
 core/ioc-application-tck	ioc-application-tck	excluded	none	Reusable test support is evaluated through its consumer contract executions.
 adapters/adapter-config-spring-boot	ioc-config-spring-boot	covered	required	Reusable Spring Boot configuration adapter with local inspection contracts.
+adapters/adapter-events-spring	ioc-events-spring	covered	required	Explicit Spring event adapter with local runtime and real-context contracts.
 adapters/adapter-regex-re2j	ioc-adapter-regex-re2j	covered	required	Production regex adapter with its own shared engine contract execution data.
 adapters/adapter-psl	ioc-adapter-psl	covered	required	Production adapter with its own test execution data.
 adapters/adapter-source-tika	ioc-adapter-source-tika	covered	required	Production adapter with its own test execution data.

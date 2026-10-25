@@ -1,7 +1,9 @@
 # Spring Boot configuration library proposal
 
 Status: C1 implemented, 2026-10-21; C2–C3 implemented, 2026-10-22;
-C4 implemented and locally qualified, 2026-10-24. The owner
+C4 implemented and locally qualified, 2026-10-24. Version `0.3.0-rc.1` is published
+to Central and GitHub Packages; GitHub CI and local Central recovery consumers
+passed. Tooling integration and a protected CI recovery run remain pending. The owner
 selected configuration after logging publication. This worknote is not an accepted
 ADR, publication admission or new numbered LIB commitment.
 
@@ -719,8 +721,101 @@ Retain discovery/failure evidence: `.dev/config-c4-consumer-*-failed.log`,
 `.dev/config-c4-debug-mediation.log`. These explain dependency-model admission,
 actual mediation differences and the corrected downgrade check.
 
-Next admission is review/commits/PR into `release-0.3.0`, followed by separately
-authorized protected validation/publication and cold consumers from both release
-repositories. A second deployed service, live external checks and other Boot
-baselines remain unqualified. Existing signed bundles, published versions and
-component tags are untouched; events remain deferred.
+## Protected publication record — 2026-10-24
+
+The owner merged [PR 18](https://github.com/xORex-LC/ioc-extractor/pull/18) and
+authorized protected publication. Annotated tag
+`ioc-config-spring-boot-v0.3.0-rc.1` fixes source commit
+`68679dd18ed251b71c4c0f4480b440a270dc1e71`, whose tree equals reviewed PR head
+`0764e711`. Merge CI [run 40086508961](https://github.com/xORex-LC/ioc-extractor/actions/runs/40086508961)
+passed. Existing concurrency, diagnostics and logging release identities are unchanged.
+
+Protected [validation run 40087127800](https://github.com/xORex-LC/ioc-extractor/actions/runs/40087127800)
+passed the clean RC reactor build, strict Javadoc, 119 publication contracts,
+the standalone configuration consumer and separate PMD analysis. The consumer
+qualified the packaged API and exact closed-input guide with default dependency
+mediation and the application's Boot BOM, including incompatible/unavailable
+dependency negatives and selected-repository routing probes. Central validated
+deployment `90e22519-418d-4b74-ac5a-cadcc3d2c559`. The signer fingerprint is
+`F69BA7E0F7494982E6E1B483DF54073D8BBFA9F9`.
+
+The signed manifest SHA256 is
+`e57f1f52f53cc95ff5290943d9c5cd790928ea063fc726ca7388c7fe021f74f2` and covers
+20 files. Its four primary artifacts match the unsigned build. Publication
+[run 40088095516](https://github.com/xORex-LC/ioc-extractor/actions/runs/40088095516)
+resumes the original validation run and deployment; its build is skipped.
+The owner performed both protected-environment reviews. Publication succeeded in
+both registries. The GitHub consumer passed, but the Central consumer failed:
+Resolver treated identical selected/public Central URLs as one route and applied
+the own-group filter to third-party dependencies. The workflow's default shell
+also concealed the first pipeline failure behind `tee` and the later successful
+GitHub command. Its green status does not qualify Central. Retain the original
+failed log; fix qualification tooling without changing signed release bytes.
+
+Primary artifact SHA256 values:
+
+| Artifact | SHA256 |
+|---|---|
+| POM | `26a24702b248c75559ddafb843e7335a026d9b843e36718846c549e808e6dfa8` |
+| Main JAR | `07bf49086f3d551ed5b4f66c0a95d1ed9edf791550327cddf4230e3344dd673c` |
+| Sources JAR | `42a5d492056dad80d58aaf09794315e9cf914053fcc9a8742f98037f501803d4` |
+| Javadoc JAR | `f9177c01f661c73be7424c6139e4f7f082e70c3fb431f2c594074dfa04263f03` |
+
+The tagged RC CI retained 137 accepted SpotBugs findings with zero visible,
+CPD 22/22 and PMD blocking 0, advisory 19/19. Coverage integrity passed for
+24 production aggregate groups and 23 local reports: 27121/29427 lines and
+10289/12003 branches. These are remote RC counters, distinct from the earlier
+local snapshot runs. The recovery changes below affect publication tooling and
+documentation; the published library and its dependency contract are unchanged.
+
+Signed bytes, manifest, workflow provenance and Central deployment evidence are
+retained under `.dev/configuration-release-0.3.0-rc.1/`. Its `signed-release.tar.gz`
+has SHA256 `9b996a88e698155dfb9ea603f32b239da2652dd5ac5acdc552057b3564adc30e`.
+Validation artifacts `signed-library` `12557752813` and `central-deployment`
+`12557742874` expire on `2027-01-22T10:44:49Z`; local copies preserve recovery
+bytes beyond that expiry. Never rebuild/resign this version or move its tag.
+
+### Local qualification recovery
+
+The corrected tool admits the existing reviewed public groups at the selected
+Central endpoint because Resolver 1.9.22 groups downloads by URL. Local/GitHub
+targets remain own-group-only, public routes reject own groups, and all four own
+artifacts must record only `library-target` as origin. No external group or
+dependency was added. The workflow now uses `set -euo pipefail` around both
+consumer pipelines.
+
+`make library-publication-test` passes 121 cases. The two new regressions fail
+against the previous routing/workflow and pass with these corrections: the
+selected Central filter admits reviewed dependencies, and failures from either
+consumer propagate through `tee` with the original exit code. A Central failure
+also prevents the GitHub consumer from starting.
+
+The local recovery command uses the original signed bundle:
+
+```bash
+make library-consumer LIBRARY_COMPONENT=configuration \
+  LIBRARY_BUNDLE=.dev/configuration-release-0.3.0-rc.1/validated/signed-library \
+  LIBRARY_REPOSITORY=central
+```
+
+It passed with an empty cache, packaged inspection/migration API, the exact guide
+under default and application-BOM mediation, both dependency negatives, filtered
+missing-target rejection and its successful unfiltered alternate control. All
+four resolved primary files match the signed manifest and selected origin. The
+local log is `recovery-central-consumer.log`; the original failed
+`repository-consumers/central.log` and successful GitHub log remain separate.
+All are retained under `.dev/configuration-release-0.3.0-rc.1/`.
+`recovery-receipt.json` records tooling-file hashes, the recovery patch and log
+hashes separately from the immutable library source. `make ci-packaging`,
+`make docs` and `git diff --check` also pass. Production Java, Maven scope and
+analyzer/coverage membership are unchanged; the earlier reactor/PMD results
+describe their recorded source commits, not fresh recovery-worktree runs.
+
+These local results used working-tree tooling based on `0764e711`. The tooling
+corrections are now recorded in `18ce6eae`; no repaired Actions run is claimed.
+Integrate the corrections into `release-0.3.0`, then
+dispatch protected recovery using validation run `40087127800`, the original
+deployment ID and unchanged component tag. Skip rebuilding and signing; matching
+published bytes must be reused. A second deployed service, live external checks
+and other Boot baselines remain unqualified. The owner subsequently resumed
+events extraction in its separate plan on 2026-10-24.

@@ -1,9 +1,14 @@
 # ioc-config-spring-boot
 
 Property-name inspection and ordered declaration observations for a service-owned
-Spring Boot record schema. Requires Java 21. Standalone packaging and local cold-consumer checks use the `configuration`
-selector in the [publication guide](../../docs/guides/library-publication.md).
-Protected publication and consumers of the released version are separate gates.
+Spring Boot record schema. Requires Java 21.
+`io.github.xorex-lc:ioc-config-spring-boot:0.3.0-rc.1` is published to Central and
+GitHub Packages. The GitHub consumer passed in
+[run 40088095516](https://github.com/xORex-LC/ioc-extractor/actions/runs/40088095516).
+The Central consumer passed locally after correcting qualification-tool routing;
+the repaired workflow still needs integration and a CI recovery run.
+Standalone packaging and consumer checks use the `configuration` selector in the
+[publication guide](../../docs/guides/library-publication.md).
 
 **Layer rule:** a Spring integration adapter, consumed explicitly by bootstrap.
 Main dependencies are Spring Boot and Spring Core; no starter, auto-configuration,
@@ -111,14 +116,16 @@ For application-owned binding and semantic validation, use the
 It defines explicit YAML/override inputs and import/profile rejection, while IOC
 keeps ordinary effective Boot loading. `ConfigurationCheckRecipeIT` compiles the
 exact guide without IOC classes; this adds no runner, YAML loader, starter or
-new public type to this JAR. Cold repository consumption remains unqualified.
+new public type to this JAR. The released standalone consumer compiles and runs
+that same recipe from both repositories with default mediation and an application
+Boot BOM, verifying all four artifact hashes and selected-repository origin.
 
 `PropertyInspectionTest` covers matching, ambiguity, source order, immutable
 results, coverage and the no-value-read boundary. `PropertySchemaTest` covers
 supported and unsupported record shapes. `GenericConsumerTest` uses an unrelated
 collector schema and the real Boot Binder, including conversion failures and
-list replacement. These tests do not qualify a published consumer or another
-Boot version. See [configuration inspection](../../docs/dev/configuration-inspection.md)
+list replacement. These unit tests alone do not qualify a published version or
+another Boot version. See [configuration inspection](../../docs/dev/configuration-inspection.md)
 for the cross-module flow and extension rules.
 
 `MigrationInspectionTest` qualifies deprecated/removed names, indexed replacement

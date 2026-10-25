@@ -15,6 +15,7 @@ Spring JDBC/Integration, SQLite/HikariCP, SMBJ и Apache Camel.
 | Maven-модуль | Назначение |
 |---|---|
 | `adapter-config-spring-boot/` | Проверка имён параметров и наблюдения за источниками Spring Boot; schema и enforcement принадлежат сервису |
+| `adapter-events-spring/` | Явный Spring publisher событий, runtime containment и наблюдение результата; multicaster и recovery принадлежат сервису |
 | `adapter-cli-picocli/` | Driving CLI (`ioc extract`, `export`, `sync`, `import`, `health`) |
 | `adapter-regex-re2j/` | `PatternEngine`: RE2/J по умолчанию и JDK implementation |
 | `adapter-psl/` | Public Suffix List host classification на Guava |

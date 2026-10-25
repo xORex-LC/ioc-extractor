@@ -319,6 +319,7 @@ LIBRARY_VERSION ?= 0.3.0-SNAPSHOT
 LIBRARY_COMPONENT ?= concurrency
 LIBRARY_BUNDLE ?= .dev/library-bundle
 LIBRARY_REPOSITORY ?= local
+LIBRARY_DEPENDENCY_BUNDLE ?=
 
 library-bundle: ## Build library JAR, consumer POM, sources and Javadoc into a new immutable bundle
 	module=$$(python3 tools/ci/library-publication.py module --component "$(LIBRARY_COMPONENT)") && \
@@ -326,7 +327,7 @@ library-bundle: ## Build library JAR, consumer POM, sources and Javadoc into a n
 	python3 tools/ci/library-publication.py prepare --component "$(LIBRARY_COMPONENT)" --bundle "$(LIBRARY_BUNDLE)" --version "$(LIBRARY_VERSION)"
 
 library-consumer: ## Resolve the bundle with an independent consumer and empty Maven cache
-	python3 tools/ci/library-publication.py consume --component "$(LIBRARY_COMPONENT)" --bundle "$(LIBRARY_BUNDLE)" --repository "$(LIBRARY_REPOSITORY)"
+	python3 tools/ci/library-publication.py consume --component "$(LIBRARY_COMPONENT)" --bundle "$(LIBRARY_BUNDLE)" --repository "$(LIBRARY_REPOSITORY)" $(if $(LIBRARY_DEPENDENCY_BUNDLE),--dependency-bundle "$(LIBRARY_DEPENDENCY_BUNDLE)")
 
 library-publication-test: ## Run offline publication and recovery contract tests
 	python3 tools/tests/library-publication-test.py

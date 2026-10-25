@@ -1,5 +1,5 @@
 # scope	line-percent	branch-percent	rationale
-reactor	75	80	Release floor for the complete 24-module production aggregate.
+reactor	75	80	Release floor for the complete 25-module production aggregate.
 ioc-platform-errors	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-platform-diagnostics-api	none	none	JDK-only library; per-module ratchet.
 ioc-platform-diagnostics	none	none	Per-module ratchet only; no release-wide fixed floor.
@@ -24,3 +24,4 @@ ioc-adapter-transport-smb	none	none	Per-module ratchet only; no release-wide fix
 ioc-adapter-ingest	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-adapter-cli-picocli	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-app	none	none	Per-module ratchet only; no release-wide fixed floor.
+ioc-events-spring	none	none	Explicit Spring event adapter; measured per-module ratchet.

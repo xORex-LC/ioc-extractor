@@ -192,6 +192,11 @@ admissions до ordinary source ledger и отказывается re-rank-ит�
 terminal disposition. Rollback schema v11 требует coordinated restore обеих DB,
 configuration и service-owned files; composition не поддерживает schema strip.
 
+`EventCoordinationConfig` явно создаёт `SpringControlEventPublisher` из
+[adapter-events-spring](../../adapters/adapter-events-spring/README.md).
+IOC-наблюдатель, обработчики и настройки Spring dispatch остаются в bootstrap;
+общий адаптер не регистрирует multicaster или executor.
+
 ## Зависимости
 
 **Зависит от:** selected platform/core/adapters modules, Spring Boot and its
