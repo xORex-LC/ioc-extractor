@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Runs the consumer-guide examples with service-owned codes and no IOC runtime. */
+/** Runs the extracted guide sources and independent contracts without the IOC runtime. */
 public final class LibraryConsumer {
     private enum ImportCode implements DiagnosticCode {
         BAD_ROW, SUPPRESSED;
@@ -36,6 +36,9 @@ public final class LibraryConsumer {
      * @param args unused
      */
     public static void main(String[] args) {
+        DiagnosticResultExample.main(args);
+        DiagnosticBudgetExample.main(args);
+        DiagnosticDeliveryExample.main(args);
         Clock clock = Clock.fixed(Instant.parse("2026-10-18T00:00:00Z"), ZoneOffset.UTC);
         var factory = new DiagnosticFactory(clock);
         var warning = factory.create(ImportCode.BAD_ROW).with("row", 7).build();

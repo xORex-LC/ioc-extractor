@@ -17,7 +17,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Executable source for docs/guides/diagnostics-library.md. */
+/** Independent behavior checks for docs/guides/libraries/diagnostics.md. */
 class DiagnosticsLibraryExampleTest {
     private enum ImportCode implements DiagnosticCode {
         BAD_ROW, SUPPRESSED;

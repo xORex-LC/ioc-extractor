@@ -5,12 +5,15 @@ publication tool copies this project outside the checkout, supplies empty Maven
 settings and a fresh cache, and compares the resolved POM, main, sources and
 Javadoc JARs with the bundle manifest.
 
-The executable checks all three examples in the
-[consumer guide](../../../docs/guides/diagnostics-library.md): results and pure
+The publication tool extracts all three Java examples from the
+[consumer guide](../../../docs/guides/libraries/diagnostics.md), requires identical
+Java/XML blocks in its Russian translation, and compiles/runs those actual sources.
+The executable also retains independent checks of results and pure
 failure decisions, exact stage/run counts under a one-sample budget, and delivery
 failure callbacks. Codes belong to this consumer; no IOC catalog, exception,
 Spring or logging dependency is used. This qualifies packaging and API usage;
 integration into another production service remains future evidence.
+Running this fixture without the publication tool's source preparation is unsupported.
 
 From the repository root, run:
 

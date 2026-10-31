@@ -4,10 +4,12 @@ This standalone Java 21 application has no IOC parent and runs outside the
 checkout with an empty Maven cache. The publication tool supplies the selected
 library repository and explicit Resolver 1.9.22 group filters.
 
-`LibraryConsumer` checks the packaged name/migration API with a collector record,
+`LibraryConsumer` runs the actual
+[API guide example](../../../docs/guides/libraries/config-spring-boot.md) and checks the packaged name/migration API with a collector record,
 including name-only access, unknown declarations, shadowing and preserved indexes.
-The tool also compiles the exact Java block from the
-[closed-input guide](../../../docs/guides/configuration-library-check.md) and its
+The tool requires matching Java/XML/YAML blocks in the EN/RU guides and also
+compiles the exact Java block from the
+[closed-input guide](../../../docs/guides/libraries/config-spring-boot-check.md) and its
 existing independent driver. A separate JVM checks literal overrides, whole-list
 replacement, safe failures, rejected imports/profiles/placeholders, ambient input
 isolation and absence of component scanning.
@@ -30,3 +32,7 @@ origin. Third-party dependencies and plugins remain available from Central.
 Run through `make library-consumer LIBRARY_COMPONENT=configuration` after building
 its bundle. See the [publication guide](../../../docs/guides/library-publication.md)
 for bundle and repository options. No live collector service is started.
+
+The publication tool supplies the guide sources; running this fixture without
+that preparation is unsupported. Protected CI recovery for the published config
+release remains TOOL-8; a local consumer does not close that separate follow-up.

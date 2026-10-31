@@ -596,8 +596,31 @@ def consume(bundle, repository, dependency_bundle=None):
             consume_fixture(metadata, component, fixture, repository, url, artifacts)
 
 
+def bilingual_blocks(guide, counts):
+    """Read the canonical guide and require matching executable blocks in its translation."""
+    english = (ROOT / 'docs/guides/libraries' / (guide + '.md')).read_text()
+    russian = (ROOT / 'docs/guides/ru/libraries' / (guide + '.md')).read_text()
+    examples = {}
+    for language, count in counts.items():
+        blocks = re.findall(r'```' + language + r'\n(.*?)\n```', english, re.DOTALL)
+        translated = re.findall(r'```' + language + r'\n(.*?)\n```', russian, re.DOTALL)
+        require(blocks == translated, guide + ' guide ' + language + ' translations differ')
+        require(len(blocks) == count, guide + ' guide ' + language + ' example count changed')
+        examples[language] = blocks
+    return examples
+
+
 def populate_examples(component, fixture, project):
     """Compile the actual guide sources rather than a second copy of the examples."""
+    if component in (COMPONENTS['concurrency'], COMPONENTS['diagnostics']):
+        name = 'concurrency' if component == COMPONENTS['concurrency'] else 'diagnostics'
+        names = ('KeyedGuardExample', 'KeyedExecutorExample') if name == 'concurrency' else (
+            'DiagnosticResultExample', 'DiagnosticBudgetExample', 'DiagnosticDeliveryExample')
+        examples = bilingual_blocks(name, {'java': len(names), 'xml': 1})
+        for class_name, source in zip(names, examples['java']):
+            require('public final class ' + class_name + ' {' in source, name + ' guide class changed')
+            (project / (class_name + '.java')).write_text(source)
+        return
     if component in (COMPONENTS['events'], COMPONENTS['events-spring']):
         guide = (ROOT / 'docs/guides/events-library.md').read_text()
         blocks = re.findall(r'```java\n(.*?)\n```', guide, re.DOTALL)
@@ -611,14 +634,15 @@ def populate_examples(component, fixture, project):
                 path.write_text(source)
         return
     if component == COMPONENTS['configuration']:
-        guide = (ROOT / 'docs/guides/configuration-library-check.md').read_text()
+        api = bilingual_blocks('config-spring-boot', {'java': 1, 'xml': 1})
+        recipe = bilingual_blocks('config-spring-boot-check', {'java': 1, 'yaml': 1})
         destination = project / 'src/main/java/examples/configuration'
         destination.mkdir(parents=True, exist_ok=True)
-        for language, path in [('java', destination / 'CollectorConfigurationCheck.java'),
-                               ('yaml', project / 'collector.yml')]:
-            blocks = re.findall(r'```' + language + r'\n(.*?)\n```', guide, re.DOTALL)
-            require(len(blocks) == 1, 'guide example count changed')
-            path.write_text(blocks[0])
+        for name, source in [('ConfigurationInspectionExample', api['java'][0]),
+                             ('CollectorConfigurationCheck', recipe['java'][0])]:
+            require('public final class ' + name + ' {' in source, 'configuration guide class changed')
+            (destination / (name + '.java')).write_text(source)
+        (project / 'collector.yml').write_text(recipe['yaml'][0])
         shutil.copyfile(ROOT / 'bootstrap/ioc-app/src/test/resources/consumer/configuration/ConfigurationRecipeMain.java',
                         destination / 'ConfigurationRecipeMain.java')
         resources = project / 'src/main/resources'

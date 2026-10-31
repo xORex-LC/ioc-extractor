@@ -28,7 +28,7 @@ class ConfigurationCheckRecipeIT {
     @Test
     void documentedCheckUsesOnlyExplicitInputsAndDoesNotScanRuntimeComponents() throws Exception {
         Path root = Path.of("../..").toAbsolutePath().normalize();
-        String guide = Files.readString(root.resolve("docs/guides/configuration-library-check.md"));
+        String guide = Files.readString(root.resolve("docs/guides/libraries/config-spring-boot-check.md"));
         Path source = directory.resolve("CollectorConfigurationCheck.java");
         Files.writeString(source, block(guide, "java"));
         Path driver = directory.resolve("ConfigurationRecipeMain.java");
