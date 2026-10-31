@@ -12,4 +12,4 @@ A code's metadata, equality and hash code must stay stable.
 `result/` owns accumulation and decisions; `sink/` owns delivery. This package
 uses only JDK classes and never selects a catalog, logger or service exception.
 See the [module reference](../../../../../../../README.md) and
-[consumer guide](../../../../../../../../../docs/guides/diagnostics-library.md).
+[consumer guide](../../../../../../../../../docs/guides/libraries/diagnostics.md).

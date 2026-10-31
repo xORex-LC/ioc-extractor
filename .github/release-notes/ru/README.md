@@ -6,3 +6,5 @@
 
 - [ioc-platform-concurrency 0.3.0-rc.1](ioc-platform-concurrency-0.3.0-rc.1.md) —
   исходный коммит, подпись, хеши, публикация и проверка потребителей.
+- [ioc-platform-diagnostics-api 0.3.0-rc.1](ioc-platform-diagnostics-api-0.3.0-rc.1.md) —
+  границы API, этапы D0–D5 и неизменяемые сведения публикации.

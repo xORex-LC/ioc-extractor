@@ -9,13 +9,13 @@ keep their existing `com.iocextractor` names. All listed releases require Java 2
 | Library | Use it for | Production dependency boundary | Guide |
 |---|---|---|---|
 | `ioc-platform-concurrency` | Serial work or synchronous exclusion per key | JDK only | [Concurrency](concurrency.md) |
-| `ioc-platform-diagnostics-api` | Structured diagnostics, failure policies and bounded detail | JDK only | [Diagnostics](../diagnostics-library.md) |
+| `ioc-platform-diagnostics-api` | Structured diagnostics, failure policies and bounded detail | JDK only | [Diagnostics](diagnostics.md) |
 | `ioc-platform-logging-slf4j` | Typed SLF4J records, restoring MDC scopes and explicit masking | SLF4J API; service selects the provider | [Logging](../logging-library.md), [Boot ECS recipe](../logging-library-boot.md) |
 | `ioc-config-spring-boot` | Record-schema property-name inspection and migration observations | Spring Boot and Spring Core; service prepares sources and decides policy | [Configuration](../configuration-library.md), [restricted-context recipe](../configuration-library-check.md) |
 | `ioc-platform-events` | Local control-event metadata, publication contract and recording fixture | JDK only | [Local events](../events-library.md) |
 | `ioc-events-spring` | Explicit publication through a service-owned Spring publisher | Same-version events core, Spring Context and SLF4J API | [Spring adapter](../events-library.md#use-the-explicit-spring-adapter) |
 
-Concurrency has an English/Russian guide here. The other guides
+Concurrency and diagnostics have English/Russian guides here. The other guides
 remain at their existing paths while their code review and translations are
 prepared. Their current release and qualification limits are stated on those
 pages. ETL remains an internal module with extraction deferred.

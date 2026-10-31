@@ -17,5 +17,5 @@ SLF4J, adapters, application use cases or bootstrap imports belong here. A gener
 consumer code has no IOC category; rendering it returns its literal ID.
 
 The [generated catalog](../../docs/DIAGNOSTICS-CATALOG.md) remains IOC-owned.
-The [consumer guide](../../docs/guides/diagnostics-library.md) explains the shared
+The [consumer guide](../../docs/guides/libraries/diagnostics.md) explains the shared
 API; the [observability doc](../../docs/dev/observability.md) describes delivery.
