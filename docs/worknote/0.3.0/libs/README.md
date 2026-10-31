@@ -16,6 +16,14 @@ target; accepted published ADRs and release/publication evidence remain separate
 
 ## Current work order — 2026-10-25
 
+Documentation consolidation began on 2026-10-31 with concurrency. Its maintained
+[English](../../../guides/libraries/concurrency.md) and
+[Russian](../../../guides/ru/libraries/concurrency.md) consumer guides replace
+the completed LIB-1 execution worknote. The
+[permanent release record](../../../../.github/release-notes/ioc-platform-concurrency-0.3.0-rc.1.md)
+preserves hardening dispositions and publication evidence. Other library notes
+remain until their corresponding documentation is reviewed and promoted.
+
 Logging L3-0–L3-4 is complete. The
 [fixed contract](lib-3-logging-contract.md) defines eight public types, five ECS
 scalar descriptors and field/MDC/masking rules. L3-1 implements and documents the
@@ -31,24 +39,10 @@ and GitHub Packages. Separate cold consumers passed against both repositories in
 The [release record](lib-3-logging-design.md#protected-publication-record--2026-10-21)
 retains source/tag, deployment, hashes and consumer evidence. A deployed second
 service, live collector/Elasticsearch, load and other providers remain outside
-this qualification. The owner selected Spring Boot configuration next: C1
-implements the bounded inspection contract with C0 corrections. C2 adds explicit
-source policies, restricted-context qualification and an executable closed-input
-consumer guide. C3 promotes
-[ADR 0046](../../../ADR/0046-reusable-spring-boot-configuration-inspection.md),
-the consumer/reference/maps and publication-admission documentation, with unchanged
-Maven/analyzer/coverage scope. C4 adds the standalone POM, dependency mediation,
-packaged API/guide consumers and selected-repository routing; its checkpoint in
-the [configuration plan](configuration-library-design.md) records local evidence.
-PR 18 integrated configuration into `release-0.3.0`.
-`io.github.xorex-lc:ioc-config-spring-boot:0.3.0-rc.1` is published to Central and
-GitHub Packages from the immutable validated bundle. The GitHub cold consumer
-passed in run `40088095516`; Central passed locally after correcting a
-same-URL Resolver filter conflict. The original workflow concealed Central's
-failure behind `tee`. Routing and pipeline-failure fixes have regression coverage
-and were integrated through PR 19. A protected CI recovery run remains next. The
-[configuration release record](configuration-library-design.md#protected-publication-record--2026-10-24)
-separates the original failure, local recovery and immutable release identity.
+this qualification. Configuration extraction and publication are complete for the six-type API.
+Its [release record](../../../../.github/release-notes/ioc-config-spring-boot-0.3.0-rc.1.md)
+retains original GitHub success, Central CI failure and local recovery. PR 19
+integrated the tooling fixes; protected CI recovery remains [TOOL-8](../../../KNOWN-ISSUES.md).
 The owner selected events next on 2026-10-24. Its existing E0/two-unit design is
 retained; E1 implements JDK-contract documentation and 43 focused tests, strict
 Javadoc and a compiled/executed consumer example. E2 implements the explicit Spring bridge, IOC migration and the three corrected
@@ -66,52 +60,25 @@ retains both immutable identities, original signed bundles and qualification.
 Events extraction/publication is complete; ETL remains deferred pending a second
 consumer. Configuration's protected CI recovery remains a separate follow-up.
 
-Diagnostics publication is recorded in the release branch's D5 documentation
-(commit `ce5675e2a74243ede83211cca090570976c6bbce`). The older diagnostics checkpoint
-below describes local admission before publication; it is not the current
-publication status. This analysis does not reconcile that separate documentation
-commit into `r030-libraries` or republish either existing library.
+Diagnostics documentation is also consolidated as of 2026-10-31. Its
+[English](../../../guides/libraries/diagnostics.md) and
+[Russian](../../../guides/ru/libraries/diagnostics.md) guides describe the
+implemented API and execute the actual examples through the standalone consumer.
+The [permanent release record](../../../../.github/release-notes/ioc-platform-diagnostics-api-0.3.0-rc.1.md)
+preserves D0–D5 outcomes, source, signed hashes and repository evidence.
+The completed diagnostics plan/draft were removed after promotion to this record,
+the guide and accepted ADR 0044. Other libraries retain their own notes.
 
-## Previous diagnostics checkpoint — 2026-10-18
-
-Diagnostics extraction and publication are complete. PR 16 integrated the
-implementation into `release-0.3.0`; protected run
-[`39137777538`](https://github.com/xORex-LC/ioc-extractor/actions/runs/39137777538)
-published `ioc-platform-diagnostics-api:0.3.0-rc.1` and qualified separate Central
-and GitHub Packages consumers. Concurrency's published release and tag remain
-unchanged. No next library implementation has been selected. Events E1–E5 remain
-deferred; configuration and logging retain their proposals, and ETL remains
-deferred for lack of a confirmed second use case.
-
-Diagnostics D0 is complete for design: artifact/packages, 18-type public surface,
-maintainer, metadata/suppression seams and compatibility are fixed in its
-contract. D1 extraction and IOC migration are implemented, including API
-Javadoc/package docs, module READMEs and a consumer guide with compiled/executed
-examples. D2 public-boundary qualification is complete: generic and IOC
-regressions, budget/merge/delivery limits and failure ownership are verified.
-D3 independent packaging is complete: both components pass snapshot/RC
-empty-cache consumers, and diagnostics executes all guide examples. D4 promotes
-[ADR 0044](../../../ADR/0044-reusable-diagnostics-contract.md), reviews the final
-documentation and closes local admission with the recorded final gates.
-D5 closes authorized publication and repository qualification; its
-[release record](lib-2-diagnostics-design.md#d5-protected-publication-record--2026-10-18)
-retains source, signing, deployment and consumer evidence. A real second
-production-service integration remains future work.
+Configuration documentation is consolidated as of 2026-10-31. The
+[English](../../../guides/libraries/config-spring-boot.md) and
+[Russian](../../../guides/ru/libraries/config-spring-boot.md) guides cover the six
+public types and nested results; the paired restricted-context recipe preserves
+the original Java/YAML. Completed design/C0/extension notes and the obsolete C0
+source-copy probe were retired after promoting results to the guide, release
+record and accepted ADR 0046. Current API/recipe suites own supported behavior.
 
 ## Candidate documents
 
-- [Diagnostics contract and extraction plan](lib-2-diagnostics-design.md): D0
-  decisions, D1–D5 evidence, migration seams and published release identity.
-- [Diagnostics ADR promotion record](lib-2-diagnostics-adr-draft.md): preserved
-  draft path pointing to the accepted ADR 0044.
-- [Spring Boot configuration proposal](configuration-library-design.md): existing
-  mechanics, C1 inspection contract, service ownership, extraction slices and
-  publication-tooling prerequisites.
-- [C0 qualification results](configuration-c0-analysis.md): 54 synthetic scenarios,
-  actual Boot binding, extraction blockers and revised v1 support requirements.
-- [Configuration reuse after C1](configuration-extension-analysis.md): proposed
-  error/migration boundaries, reproduced output defects, command-source isolation,
-  test recipes and dependency/publication qualification.
 - [LIB-3 logging plan](lib-3-logging-design.md): SLF4J comparison, generic
   field/scope contracts, common ECS profile, masking, IOC migration and publication.
 - [LIB-3 ECS analysis](lib-3-logging-ecs-analysis.md): supported-field inventory,
@@ -136,14 +103,3 @@ production-service integration remains future work.
   required bridge corrections before extraction.
 - [LIB-5 ADR draft](lib-5-events-adr-draft.md): proposed architectural decision,
   alternatives and consequences for review.
-
-
-Historical local diagnostics checkpoint: D1 has a coherent shared-model
-implementation, documented public API and
-[consumer guide](../../../guides/diagnostics-library.md) with executable
-examples. Its [qualification record](lib-2-diagnostics-design.md#d1-implementation-and-qualification-record--2026-10-18)
-retains migration, documentation and analyzer review. D2 boundary qualification
-is complete. D3 standalone packaging/consumption and D4 final local admission
-are qualified. D5 repository consumers promote the artifact to
-`published-qualified`; [the inventory](../evidence/shared-code-inventory.md)
-records the release alongside the concurrency pilot.

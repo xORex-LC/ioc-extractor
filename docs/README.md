@@ -64,19 +64,23 @@ failure/recovery semantics и точки расширения, но не пер�
 - [guides/](guides/) — operator/integrator guidance: configuration,
   deployment/rollback, daemon operations, canonical lifecycle, aggregate and
   managed dataframe import, remote SMB storage and library publication.
+- [Каталог библиотек](guides/libraries/README.md) и
+  [русский каталог](guides/ru/libraries/README.md) помогают выбрать общий модуль.
+  Руководство concurrency описывает синхронное исключение, FIFO по ключу,
+  ёмкость, ошибки, телеметрию и завершение; его примеры исполняются на JAR.
 - [ADR 0044](ADR/0044-reusable-diagnostics-contract.md) фиксирует границу общей
-  диагностики; [руководство библиотеки](guides/diagnostics-library.md) объясняет
+  диагностики; [руководство библиотеки](guides/libraries/diagnostics.md) объясняет
   подключение, bounded counts, policy и delivery для другого сервиса.
 - [ADR 0045](ADR/0045-reusable-slf4j-logging-contract.md) фиксирует общий SLF4J
   API и scalar ECS profile; [руководство](guides/logging-library.md) и
   [рецепт Boot ECS](guides/logging-library-boot.md) содержат проверяемые примеры
   для другого сервиса.
-- [Проверка конфигурации в ограниченном контексте](guides/configuration-library-check.md)
+- [Проверка конфигурации в ограниченном контексте](guides/libraries/config-spring-boot-check.md)
   разделяет правила загрузки источников и состав бинов; пример для другого
   сервиса компилируется и проверяется без классов IOC.
 - [ADR 0046](ADR/0046-reusable-spring-boot-configuration-inspection.md) фиксирует
   общий контракт проверки имён и наблюдения миграций;
-  [руководство](guides/configuration-library.md) описывает подключение и обработку
+  [руководство](guides/libraries/config-spring-boot.md) описывает подключение и обработку
   неполного покрытия без переноса IOC-политики в библиотеку.
 - [Контракты локальных событий](guides/events-library.md) объясняют метаданные,
   результаты публикации и ограничения recording publisher; пример использует

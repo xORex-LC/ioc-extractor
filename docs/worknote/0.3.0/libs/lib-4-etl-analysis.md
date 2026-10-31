@@ -145,7 +145,7 @@ append-only guard; compaction restores the old WARN and loses the replacement.
 
 This requires a stage violating the intended append-only convention. It is a
 failure of its validation, not evidence that current IOC stages do this.
-[LIB-2](lib-2-diagnostics-design.md) already proposes severity-sensitive equality;
+[LIB-2](../../../../.github/release-notes/ioc-platform-diagnostics-api-0.3.0-rc.1.md) already proposes severity-sensitive equality;
 coordinate with that decision and define whether prefix preservation concerns
 values or exact occurrences. Equality alone does not enforce every occurrence
 invariant. Do not introduce a second diagnostics model to work around this.
@@ -216,7 +216,7 @@ library is declared directly, but the project-owned closure is not standalone.
 catalog-bound `PipelineDiagnosticCodes`, throws local `DiagnosticException`,
 calls `Notification.throwIfRejected`, and detects the suppression code by identity.
 
-The [diagnostics proposal](lib-2-diagnostics-design.md) keeps product throwing
+The [diagnostics proposal](../../../../.github/release-notes/ioc-platform-diagnostics-api-0.3.0-rc.1.md) keeps product throwing
 policy local and makes suppression construction explicit. ETL extraction must
 reconcile those decisions, including who owns runner failures and generic code
 metadata. The [logging proposal](lib-3-logging-design.md) keeps

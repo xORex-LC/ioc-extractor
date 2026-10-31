@@ -176,7 +176,7 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ io
 
 | Модуль | Ответственности |
 |---|---|
-| `platform-diagnostics-api` | Общие значения, result/policy, bounded collectors и sinks; только JDK 21; [руководство](guides/diagnostics-library.md) |
+| `platform-diagnostics-api` | Общие значения, result/policy, bounded collectors и sinks; только JDK 21; [руководство](guides/libraries/diagnostics.md) |
 | `platform-diagnostics` | IOC-каталог и `IocDiagnosticCode`, exception и renderer; зависит от `platform-diagnostics-api` и `platform-errors` |
 | `platform-etl` | Generic ETL kernel: `Envelope`, `Stage`, `Pipeline`, `PipelineRunner`, `PipelineObserver` |
 | `platform-events` | Framework-free publish-only control-event contracts и observers; без broker/durable delivery mechanics |

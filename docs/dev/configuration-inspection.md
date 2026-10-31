@@ -7,7 +7,7 @@ binding, conversion and precedence.
 
 The ownership decision is
 [ADR 0046](../ADR/0046-reusable-spring-boot-configuration-inspection.md).
-The [consumer guide](../guides/configuration-library.md) describes integration;
+The [consumer guide](../guides/libraries/config-spring-boot.md) describes integration;
 this document describes the implementation flow and its invariants.
 
 ## Runtime flow
@@ -27,7 +27,7 @@ is no durable state, retry, reload, background work or automatic bean scanning.
 
 ## Boundaries
 
-The [restricted-context guide](../guides/configuration-library-check.md) separates
+The [restricted-context guide](../guides/libraries/config-spring-boot-check.md) separates
 bean selection from source loading. IOC retains effective Boot sources, imports
 and profiles; the application-owned collector example accepts one explicit YAML
 document plus literal overrides and never invokes ConfigData. Its exact Java

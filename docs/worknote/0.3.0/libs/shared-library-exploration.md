@@ -36,7 +36,7 @@ justify publication.
 - [Release plan](../engineering-release.md).
 - [R030-LIB contract](../goals/R030-LIB-shared-libraries.md).
 - [Candidate inventory](../evidence/shared-code-inventory.md).
-- [LIB-1 evidence](../lib-1-concurrency-worknote.md).
+- [LIB-1 evidence](../../../../.github/release-notes/ioc-platform-concurrency-0.3.0-rc.1.md).
 - [Publication guide](../../../guides/library-publication.md).
 
 Repository checked on 2026-09-13: `release-0.3.0`, HEAD
@@ -352,7 +352,7 @@ renderer artifact is justified now. Shared runtime exceptions, category/impact
 contracts and exact public types still require review before admission.
 
 **Next step completed:** The owner authorized a code-backed boundary proposal.
-See [LIB-2 design](lib-2-diagnostics-design.md) for the type-by-type disposition,
+See [LIB-2 design](../../../../.github/release-notes/ioc-platform-diagnostics-api-0.3.0-rc.1.md) for the type-by-type disposition,
 proposed public API, independent consumer illustration and migration/validation
 plan. No unanswered feature question remains in this section. The proposal
 requires review before implementation and does not change candidate admission.
@@ -406,7 +406,7 @@ admission details; no unanswered question remains in this section.
 ## 10. Diagnostics technical design checkpoint
 
 The owner authorized completion of technical review before returning to the
-configuration interview. The [proposal](lib-2-diagnostics-design.md) now records
+configuration interview. The [proposal](../../../../.github/release-notes/ioc-platform-diagnostics-api-0.3.0-rc.1.md) now records
 source-level dependency closure for 15 diagnostics types plus the resilient
 sink, exact product seams, the remaining caller of `throwIfRejected`, and a
 coherent migration/qualification sequence. The existing publication ban on
@@ -593,7 +593,7 @@ The current answers support preparing a concrete existing-code boundary:
   remain service-owned; reload remains out of scope.
 
 **Design checkpoint, 2026-09-13:** The
-[configuration boundary proposal](configuration-library-design.md) records the
+[configuration boundary proposal](../../../../.github/release-notes/ioc-config-spring-boot-0.3.0-rc.1.md) records the
 existing-type review, supported naming/source limitations, proposed API and
 dependency direction, diagnostics integration, command isolation, publication
 tooling gaps and implementation slices. Recommendation: one Boot adapter library
@@ -604,7 +604,7 @@ qualification before it can admit this library.
 
 **C0 checkpoint, 2026-09-13:** The owner clarified that no second configuration
 exists and accepted a synthetic schema as a technical probe, not as design of a
-future service. The requested [C0 analysis](configuration-c0-analysis.md) reproduced
+future service. The requested [C0 analysis](../../../../.github/release-notes/ioc-config-spring-boot-0.3.0-rc.1.md) reproduced
 54 scenarios against Boot 4.0.8. It confirms a useful independent mechanism but
 rejects extracting the classes unchanged: relaxed-name mismatches, unsupported
 schema/source cases and inaccurate effective-provenance claims require explicit
@@ -1148,11 +1148,11 @@ the refreshed caller/dependency review. All work stays on `r030-libraries`.
 ## LIB-2 D0 contract fixed — 2026-10-18
 
 The owner requested proceeding with D0 and recording the contract. The
-[diagnostics plan](lib-2-diagnostics-design.md) now fixes the artifact/packages,
+[diagnostics plan](../../../../.github/release-notes/ioc-platform-diagnostics-api-0.3.0-rc.1.md) now fixes the artifact/packages,
 18-type surface, JDK-only closure, maintainer `xORex-LC`, lockstep compatibility,
 local IOC metadata extension, consumer-supplied suppression marker and resilient
 fallback. D0 is complete for design; the
-[ADR draft](lib-2-diagnostics-adr-draft.md) records alternatives and trade-offs
+[ADR draft](../../../ADR/0044-reusable-diagnostics-contract.md) records alternatives and trade-offs
 for promotion in D4. Earlier proposed API descriptions remain historical.
 
 The fixed contract retains severity-sensitive code/context equality with
@@ -1170,7 +1170,7 @@ of D0. The next implementation slice is D1, followed by D2 hardening.
 ## LIB-2 documentation scope — 2026-10-18
 
 The owner requested substantive code and external documentation for the library.
-The [plan](lib-2-diagnostics-design.md) now makes source contracts and consumer
+The [plan](../../../../.github/release-notes/ioc-platform-diagnostics-api-0.3.0-rc.1.md) now makes source contracts and consumer
 documentation D1 deliverables: Javadoc for all 18 public types and their API,
 package documentation, comments explaining non-obvious invariants, module
 references and an independent-service usage guide. Examples must compile/run

@@ -18,11 +18,14 @@ not automatically define a stable external API. Direct consumers below are
 reactor-local; the future `feeds-collector` is a confirmed nearest consumer,
 not a current publication test.
 
+Dated D0–D4 checkpoints below preserve historical admission states. The current
+module/candidate tables and published-release rows record completed qualification.
+
 ## Existing modules
 
 | Module/capability | Category | Responsibility | Current consumers | IOC-specific coupling | Publication disposition |
 |---|---|---|---|---|---|
-| `adapters/adapter-config-spring-boot` | Published cross-service integration | Record-schema name inspection and ordered source observations | IOC bootstrap, unrelated-schema Binder tests and executable restricted-context guide | Spring Boot/Core with transitive Spring Context closure; schemas, source loading and enforcement remain service-owned | `0.3.0-rc.1` published to Central/GitHub; GitHub CI consumer and local Central recovery passed; tooling fixes integrated in PR 19, protected CI recovery pending; [release record](../libs/configuration-library-design.md#protected-publication-record--2026-10-24) |
+| `adapters/adapter-config-spring-boot` | Published cross-service integration | Record-schema name inspection and ordered source observations | IOC bootstrap, unrelated-schema Binder tests and executable restricted-context guide | Spring Boot/Core with transitive Spring Context closure; schemas, source loading and enforcement remain service-owned | `0.3.0-rc.1` published to Central/GitHub; GitHub CI consumer and local Central recovery passed; tooling fixes integrated in PR 19, protected CI recovery pending; [release record](../../../../.github/release-notes/ioc-config-spring-boot-0.3.0-rc.1.md#original-failure-and-local-recovery) |
 | `adapters/adapter-events-spring` | Published cross-service adapter | Explicit Spring publication and runtime observation containment | IOC bootstrap and isolated plain/Boot consumers | Same-version contracts + Context 7.0.9 + SLF4J API 2.0.18; no provider or Boot runtime | `published-qualified`; `0.3.0-rc.1` from Central/GitHub; both consumers checked eight primary artifacts and exact dependency/routing behavior |
 | `platform/platform-errors` | Service-shared | Root unchecked exception contract | diagnostics, ETL, application, four adapters, bootstrap | High: `IocExtractorException` and `com.iocextractor.common` express this product | Keep internal; not a first publication unit |
 | `platform/platform-diagnostics-api` | Cross-service platform | JDK-only values, results/policies, bounded samples/counts and sinks | Local diagnostics, ETL, application, adapters and bootstrap | JDK-only closure; isolated local and remote RC consumers qualified | `published-qualified`; `0.3.0-rc.1` from Central and GitHub Packages |
@@ -39,14 +42,15 @@ not a current publication test.
 | ID | Candidate | Category | Owner | Consumers | Dependency closure | State |
 |---|---|---|---|---|---|---|
 | `LIB-1` | `platform-concurrency` | Cross-service platform | Platform coordination | Current application/adapter-ingest/bootstrap; planned Java + Spring Boot `feeds-collector`, execution policy undecided | No runtime dependencies beyond JDK | `published-qualified`; Central and GitHub Packages cold consumers passed |
-| `LIB-2` | Generic diagnostics model/result/sink subset | Cross-service platform | Misyurkeev Denis (`xORex-LC`) / Diagnostics | Current reactor consumers + planned `feeds-collector` | JDK-only shared module; IOC catalogs, exceptions and logging remain local | `design-admitted`; D0–D4 locally qualified with ADR 0044; D5 remote publication/consumers pending |
+| `LIB-2` | Generic diagnostics model/result/sink subset | Cross-service platform | Misyurkeev Denis (`xORex-LC`) / Diagnostics | Current reactor consumers + planned `feeds-collector` | JDK-only shared module; IOC catalogs, exceptions and logging remain local | `published-qualified`; D0–D5 complete; `0.3.0-rc.1` qualified from Central and GitHub Packages |
 | `LIB-3` | `platform-logging-slf4j` | Cross-service platform | Misyurkeev Denis (`xORex-LC`) / Observability | IOC facades, independent plain/Boot consumers; planned collectors | Required SLF4J API only; no provider/IOC/ETL dependency | `published-qualified`; `0.3.0-rc.1`, both repositories and negative dependency checks passed |
 | `LIB-4` | `platform-etl` | Cross-service platform | ETL | Current `ioc-application`; nearest consumer planned only | diagnostics + errors + their accepted publication closure | `deferred-second-consumer` |
 | `LIB-5` | `platform-events` local control API + separate Spring bridge | Cross-service platform, non-wire | Event coordination | Current application/bootstrap and separate JDK/Spring consumers; future services selected by owner, not deployed evidence | JDK core; Spring bridge requires same-version core + Spring Context + SLF4J API | `published-qualified`; E1–E5 complete; both `0.3.0-rc.1` artifacts and separate Central/GitHub consumers passed; [release record](../libs/lib-5-events-design.md#protected-publication-record--2026-10-25) |
 
 `LIB-1-HARDEN-01` implements bounded hardening of the existing module. Its
-[execution record](../lib-1-concurrency-worknote.md) documents real consumers,
-alternatives, proposed API and compatibility boundaries. ADR 0028 and the publication implementation now add the admitted API,
+[release record](../../../../.github/release-notes/ioc-platform-concurrency-0.3.0-rc.1.md)
+preserves consumers, alternatives, hardening dispositions, compatibility and
+immutable publication evidence. ADR 0028 and the publication implementation add the admitted API,
 consumer-resolvable POM, sources/Javadoc and standalone local resolution.
 Protected signing, immutable recovery publication and separate Central/GitHub
 Packages consumers now pass. Future feeds business semantics remain open and
@@ -60,13 +64,13 @@ execution record.
 ### LIB-2 D0 design admission — 2026-10-18
 
 The owner requested fixing the diagnostics contract. Its
-[D0 record](../libs/lib-2-diagnostics-design.md) selects
+[D0 record](../../../../.github/release-notes/ioc-platform-diagnostics-api-0.3.0-rc.1.md) selects
 `io.github.xorex-lc:ioc-platform-diagnostics-api`, an 18-type JDK 21 surface,
 named maintainer `xORex-LC`, zero non-JDK production dependencies and lockstep
 versions. All 38 existing diagnostics types are disposed: 17 extracted after
 adaptation, 21 retained locally, plus the adapted resilient sink from the logging
-bridge. The [ADR draft](../libs/lib-2-diagnostics-adr-draft.md) records rationale
-for D4 promotion.
+bridge. The [promoted ADR 0044](../../../ADR/0044-reusable-diagnostics-contract.md) records
+the rationale accepted during D4.
 
 `design-admitted` means the implementation target is fixed. It does not claim
 the dependency seams have been removed, public signatures compiled, migration
@@ -77,7 +81,7 @@ evidence.
 
 ### LIB-2 D1 implementation — 2026-10-18
 
-The [D1 record](../libs/lib-2-diagnostics-design.md#d1-implementation-and-qualification-record--2026-10-18)
+The [D1 record](../../../../.github/release-notes/ioc-platform-diagnostics-api-0.3.0-rc.1.md#pre-release-qualification)
 tracks the coherent shared-model migration, code/API/package documentation and
 consumer guide with executable examples. IOC catalogs, exception and logging
 metadata remain local. The reactor's new API coordinate has no non-JDK runtime
@@ -87,7 +91,7 @@ D3 standalone packaging remain separate from publication admission.
 
 ### LIB-2 D2 boundary qualification — 2026-10-18
 
-The [D2 record](../libs/lib-2-diagnostics-design.md#d2-public-boundary-qualification--2026-10-18)
+The [D2 record](../../../../.github/release-notes/ioc-platform-diagnostics-api-0.3.0-rc.1.md#pre-release-qualification)
 extends the API suite from 49 to 77 cases and qualifies IOC pipeline/checkpoint
 behavior, exact counts and delivery, partial failures and documented boundaries.
 One runner defect is fixed: terminal delivery cannot replace the original failure
@@ -201,7 +205,7 @@ component-tag admission. Signed bundle/recovery contracts run for both component
 This is local file-repository packaging evidence, not Central/GitHub publication
 or a second production-service integration. D4 final admission and explicitly
 authorized D5 publication remain pending. See the
-[D3 record](../libs/lib-2-diagnostics-design.md#d3-independent-packaging-record--2026-10-18).
+[D3 record](../../../../.github/release-notes/ioc-platform-diagnostics-api-0.3.0-rc.1.md#pre-release-qualification).
 
 ### LIB-2 D4 final admission — 2026-10-18
 
@@ -213,7 +217,7 @@ replacement and closes symbolic manifest/repository/recovery-file redirection
 before publication side effects. There are 78 API tests and 51 publication
 contracts. Analyzer/coverage source scopes, suite inventory and gate thresholds
 remain unchanged. Final offline gates and raw-report dispositions are owned by
-the [D4 record](../libs/lib-2-diagnostics-design.md#d4-final-admission-record--2026-10-18)
+the [D4 record](../../../../.github/release-notes/ioc-platform-diagnostics-api-0.3.0-rc.1.md#pre-release-qualification)
 and exact-worktree tool evidence. D5 publication and separate remote consumers
 remain pending; LIB-2 is not `published-qualified`.
 

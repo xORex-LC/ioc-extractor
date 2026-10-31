@@ -1,5 +1,15 @@
 # Publishing reusable platform libraries
 
+For choosing and using a library, start with the
+[library catalog](libraries/README.md). Concurrency's immutable first-release
+evidence is retained in its
+[release record](../../.github/release-notes/ioc-platform-concurrency-0.3.0-rc.1.md).
+Diagnostics has its own
+[release record](../../.github/release-notes/ioc-platform-diagnostics-api-0.3.0-rc.1.md),
+with the original tagged source, signed bundle and both repository consumers.
+Configuration's [release record](../../.github/release-notes/ioc-config-spring-boot-0.3.0-rc.1.md)
+separately retains the original Central CI failure and successful local recovery.
+
 The reviewed components use Java 21 and have exact dependency contracts:
 
 | Component selector | Artifact (`io.github.xorex-lc`) | Module | Required main dependencies |
@@ -194,10 +204,11 @@ URLs under a restrictive target filter. The shell also concealed the failure
 behind `tee`, so that workflow's green status is not Central qualification.
 A local recovery consumer passed on 2026-10-24 with corrected routing, the same
 signed bundle and empty caches. The workflow now propagates pipeline failures;
-these tooling corrections still need release-branch integration and a CI recovery
-run. The original failed log is retained. Its
-[consumer guide](configuration-library.md) supplies the released dependency
-and the [restricted-context recipe](configuration-library-check.md) qualifies
+PR 19 integrated these tooling corrections into `release-0.3.0`. A protected CI
+recovery run remains pending as [TOOL-8](../KNOWN-ISSUES.md). The original failed
+log is retained. Its
+[consumer guide](libraries/config-spring-boot.md) supplies the released dependency
+and the [restricted-context recipe](libraries/config-spring-boot-check.md) qualifies
 service-owned binding and validation. This evidence covers that version and the
 documented Boot baseline; it does not qualify a deployed second service.
 
@@ -212,7 +223,7 @@ Versions remain centrally managed in the reactor and lockstep with the product.
 
 The [standalone consumer](../../tools/fixtures/configuration-consumer/README.md)
 checks inspection/migration and the exact
-[closed-input guide](configuration-library-check.md) from packaged artifacts.
+[closed-input guide](libraries/config-spring-boot-check.md) from packaged artifacts.
 It qualifies the ten-JAR library closure plus application-owned SnakeYAML 2.6,
 then repeats the guide with the application's Boot 4.0.8 BOM. Default mediation
 selects Commons Logging 1.3.5 and JSpecify 1.0.0; the application BOM selects
@@ -283,7 +294,7 @@ the checkout, uses an empty Maven cache, and compares all four resolved artifact
 to the bundle manifest. The default concurrency fixture checks FIFO, queue
 rejection, independent keys, shutdown and synchronous nested execution/failure
 propagation. The diagnostics fixture runs the three
-[guide examples](diagnostics-library.md) with its own codes: results and policy
+[guide examples](libraries/diagnostics.md) with its own codes: results and policy
 decisions, bounded stage/run counts and delivery failure callbacks. Both consumer
 POMs stand alone, with no IOC parent or reactor class directories.
 
@@ -468,8 +479,8 @@ After a version has passed publication qualification, add:
 ```
 
 The example uses the qualified concurrency pilot release. The
-[diagnostics guide](diagnostics-library.md) and
-[configuration guide](configuration-library.md) supply their released dependencies.
+[diagnostics guide](libraries/diagnostics.md) and
+[configuration guide](libraries/config-spring-boot.md) supply their released dependencies.
 Central needs no additional repository configuration. For GitHub Packages use
 `https://maven.pkg.github.com/xorex-lc/ioc-extractor` and matching Maven server
 credentials with package read access. Even public GitHub Maven packages require

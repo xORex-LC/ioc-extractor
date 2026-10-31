@@ -7,6 +7,10 @@
 
 | Гайд | О чём |
 |---|---|
+| [libraries/](libraries/README.md) | Каталог библиотек и руководства concurrency, diagnostics и config на русском; остальные руководства пока доступны на английском |
+| [libraries/diagnostics.md](libraries/diagnostics.md) | Коды сервиса, результаты и политики, точные счётчики, ограниченные выборки и синхронная доставка диагностик |
+| [libraries/config-spring-boot.md](libraries/config-spring-boot.md) | Проверка имён и миграций, полнота покрытия и границы решений сервиса |
+| [libraries/config-spring-boot-check.md](libraries/config-spring-boot-check.md) | Проверка одного явного YAML без imports/profiles в ограниченном контексте |
 | [configuration.md](configuration.md) | Полный операторский справочник поддерживаемой конфигурации, допустимых значений и рекомендаций |
 | [deployment.md](deployment.md) | Установка, обновление, reconciliation конфигурации, backup, rollback, restore и uninstall |
 | [daemon-operations.md](daemon-operations.md) | Подача sources, health/logs, failed files, backlog, retention и recovery daemon |

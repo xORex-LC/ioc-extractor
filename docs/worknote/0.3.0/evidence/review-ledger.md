@@ -147,7 +147,7 @@ Categories include:
 
 ## LIB-1 — Concurrency pilot
 
-`LIB-1-HARDEN-01`: [разбор и dispositions](../lib-1-concurrency-worknote.md).
+`LIB-1-HARDEN-01`: [разбор и dispositions](../../../../.github/release-notes/ioc-platform-concurrency-0.3.0-rc.1.md).
 Находки `LIB-1-01..07` охватывают возраст очереди, reentrant telemetry,
 FIFO/exclusion, ограничения worker pool, ёмкость, lifecycle и bounded tests.
 Hardening сам по себе не закрывал admission. ADR 0028/0029, publication

@@ -75,7 +75,7 @@ module POMs and publication tooling. Project references:
 [ADR-0019](../../../ADR/0019-spring-boot-4-nested-ecs.md),
 [module map](../../../MODULARIZATION.md),
 [publication guide](../../../guides/library-publication.md), and
-[diagnostics proposal](lib-2-diagnostics-design.md).
+[diagnostics proposal](../../../../.github/release-notes/ioc-platform-diagnostics-api-0.3.0-rc.1.md).
 Historical ADR status/version prose is not treated as current implementation state.
 
 The 2026-10-19 refresh uses `r030-libraries` at
@@ -371,7 +371,7 @@ dependency descriptors. Concurrency and diagnostics retain zero-dependency
 guards; logging requires exactly `org.slf4j:slf4j-api:2.0.18` as a compile JAR,
 without a provider. L3-4 implements the dependency-aware publication work
 identified in the
-[configuration proposal](configuration-library-design.md#publication-tooling-work-required):
+[configuration proposal](../../../../.github/release-notes/ioc-config-spring-boot-0.3.0-rc.1.md#extraction-outcomes-and-ownership):
 parent-independent resolved POMs, explicit allowed dependencies and target-repository
 isolation with separate third-party resolution. Future components still require
 their own reviewed descriptor and qualification. Existing release identities stay immutable.

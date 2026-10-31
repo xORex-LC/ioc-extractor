@@ -314,4 +314,4 @@ FIFO относится только к async admission; synchronous guard га�
 validation выполнены в run `34222437897`; recovery publication и раздельные
 Central/GitHub Packages consumers выполнены в run `34233605995` из того же
 immutable signed bundle.
-Подробности и границы: [execution record](../lib-1-concurrency-worknote.md).
+Подробности и границы: [release record](../../../../.github/release-notes/ioc-platform-concurrency-0.3.0-rc.1.md).

@@ -51,7 +51,7 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 Граница проверки имён конфигурации и наблюдения миграций принята в
 [ADR 0046](ADR/0046-reusable-spring-boot-configuration-inspection.md).
 Сервис выбирает источники и состав бинов независимо: IOC сохраняет импорты и
-профили Boot, а отдельный [рецепт](guides/configuration-library-check.md)
+профили Boot, а отдельный [рецепт](guides/libraries/config-spring-boot-check.md)
 проверяет один явный документ с закрытым набором входов.
 
 ## Слои и пакеты

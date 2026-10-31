@@ -20,7 +20,7 @@ language: "ru"
 | `R030-BUILD` | `verified` | [build-quality ledger](evidence/build-quality-ledger.md), [closure PR #10](https://github.com/xORex-LC/ioc-extractor/pull/10) | Required project-owned statuses are active on `main` and `release-0.3.0`; all five release-branch checks passed under the active policy in run `34679847573` |
 | `R030-TEST` global controls | `verified` | [test-quality ledger](evidence/test-quality-ledger.md) | All global work items, including separate out-of-reactor Central and GitHub Packages consumers in run `34233605995`, are verified. Applicable per-module hardening cells remain independently tracked below |
 | `R030-SEC` | `in-progress` | Dependency remediation is qualified on exact commit `3307d1e2`: CI and Dependency Security runs passed with 0 unsuppressed findings | [Dependency security evidence](evidence/dependency-security.md); remaining repository, workflow and publication-security gap analysis |
-| `R030-LIB` | `verified` | [shared-code inventory](evidence/shared-code-inventory.md), [LIB-1 hardening](lib-1-concurrency-worknote.md) | `ioc-platform-concurrency:0.3.0-rc.1` was published from the immutable validated bundle and separately consumed from Central and GitHub Packages in protected run `34233605995`; logging `0.3.0-rc.1` is separately published/qualified in run `39455105300` ([release record](libs/lib-3-logging-design.md#protected-publication-record--2026-10-21)); events core/adapter `0.3.0-rc.1` are separately published and qualified in runs `40160627532` / `40162675262` ([record](libs/lib-5-events-design.md#protected-publication-record--2026-10-25)) |
+| `R030-LIB` | `verified` | [shared-code inventory](evidence/shared-code-inventory.md), [LIB-1 hardening](../../../.github/release-notes/ioc-platform-concurrency-0.3.0-rc.1.md) | `ioc-platform-concurrency:0.3.0-rc.1` was published from the immutable validated bundle and separately consumed from Central and GitHub Packages in protected run `34233605995`; logging `0.3.0-rc.1` is separately published/qualified in run `39455105300` ([release record](libs/lib-3-logging-design.md#protected-publication-record--2026-10-21)); events core/adapter `0.3.0-rc.1` are separately published and qualified in runs `40160627532` / `40162675262` ([record](libs/lib-5-events-design.md#protected-publication-record--2026-10-25)) |
 | `R030-DOC` | `planned` | — | Translation inventory |
 | `R030-REL` | `planned` | — | All prerequisite goals |
 
@@ -66,7 +66,7 @@ language: "ru"
 | `BUILD-PMD-06` | `R030-BUILD` | Same fail-closed 25-project disposition and 19 production `src/main/java` roots as CPD; root, TCK, tests, generated/vendor sources and build-only POMs excluded | P3 adopted a reduced 22-rule policy with calibrated `CognitiveComplexity=16` and `ExcessiveParameterList.minimum=13`; a separate executable 3-rule watchlist preserves ownership/size signal without regular-CI adoption. Post-import requalification removed bounded defects; 21 policy findings in 16 files and 29 watchlist findings in 19 files remain visible. Follow-up enforcement gives 17 omitted-from-snapshot rules zero tolerance and requires exact counts for five reviewed advisory rules; no finding suppression/identity baseline. Harness: 7 happy / 56 negative scenarios | AI agent | `verified` (`P0/P1/P2/P3` completed; requalified 2026-08-31; ratcheted 2026-09-01) | [PMD adoption worknote](build-pmd-06-worknote.md) |
 | `ING-10 / SB04-116` | `R030-QUAL` | Single-daemon ingestion startup, recovery/poller ordering, per-source-key execution and file/JDBC ledger transitions | Five checkpoints implemented the startup barrier, shared keyed guard, fresh-state recovery, monotonic CAS transitions, lifecycle health and exact-1 configuration guard; restart/watched-inbox and observability regressions passed, and `SB04-116` is absent from current reports | AI agent | `verified` | [ING-10 execution worknote](ing-10-ingestion-lifecycle-hardening.md) |
 
-`LIB-1-HARDEN-01`: [ограниченный hardening concurrency](lib-1-concurrency-worknote.md)
+`LIB-1-HARDEN-01`: [ограниченный hardening concurrency](../../../.github/release-notes/ioc-platform-concurrency-0.3.0-rc.1.md)
 проверен по подтверждённым текущим consumers (23 module tests, полный verify,
 PMD policy/watchlist и docs). Это не полное закрытие
 module cells и не publication admission.
@@ -122,7 +122,7 @@ explicit migration observations, IOC integration and the executable closed-input
 context recipe. [ADR 0046](../../ADR/0046-reusable-spring-boot-configuration-inspection.md)
 accepts the ownership boundary. Maven, analyzer and coverage registries include
 the adapter as a normal production module; their topology and fixed floors remain
-unchanged. The [C3 checkpoint](libs/configuration-library-design.md#c3-build-and-documentation-checkpoint--2026-10-22)
+unchanged. The [C3 checkpoint](../../../.github/release-notes/ioc-config-spring-boot-0.3.0-rc.1.md#extraction-outcomes-and-ownership)
 records final local gates. C4 standalone POMs, dependency mediation, cold consumers
 and separately authorized publication remain open for this component; the earlier
 `R030-LIB` pilot closure does not qualify it automatically.
@@ -130,7 +130,7 @@ and separately authorized publication remain open for this component; the earlie
 
 ### Configuration C4 local publication qualification — 2026-10-24
 
-The [C4 checkpoint](libs/configuration-library-design.md#c4-standalone-packaging-and-consumer-checkpoint--2026-10-24)
+The [C4 checkpoint](../../../.github/release-notes/ioc-config-spring-boot-0.3.0-rc.1.md#extraction-outcomes-and-ownership)
 records the standalone POM, full default/application-BOM dependency graphs,
 packaged inspection/migration and exact restricted-context guide, empty-cache
 repository-routing negatives/control, and older component regressions. The CI
@@ -147,9 +147,10 @@ GitHub's cold consumer passed. The original Central consumer failed because of
 same-URL repository filtering; `tee` concealed that failure from the job result.
 A local cold Central consumer passed after correcting routing, with unchanged
 release bytes. Two regressions cover routing and pipeline-failure propagation;
-121 publication tests pass. Tooling integration and a protected CI recovery run
-remain open, alongside the separate second-service deployment qualification.
-The [release record](libs/configuration-library-design.md#protected-publication-record--2026-10-24)
+121 publication tests passed at this checkpoint. PR 19 subsequently integrated
+the tooling corrections. A protected CI recovery run remains open as
+[TOOL-8](../../KNOWN-ISSUES.md), alongside separate second-service qualification.
+The [release record](../../../.github/release-notes/ioc-config-spring-boot-0.3.0-rc.1.md#original-failure-and-local-recovery)
 retains identities and distinguishes the original failure from local recovery.
 
 ### LIB-5 implementation resumed and E1 qualification — 2026-10-24
@@ -161,8 +162,9 @@ contracts, recording limitations, 43 focused tests and strict Javadoc. The exact
 consumer-guide example compiles/runs locally. No coordinate or dependency changes
 in E1; E2 extracts the Spring bridge and qualifies the three known corrections.
 E3–E5, standalone repository consumers and publication admission remain pending.
-The configuration workflow-recovery changes are recorded separately and
-need reviewed integration before extending publication tooling. ETL stays deferred.
+The configuration workflow-recovery changes were subsequently integrated in PR 19;
+their separate protected CI recovery remains [TOOL-8](../../KNOWN-ISSUES.md).
+ETL stays deferred.
 
 
 ### LIB-5 E2 explicit Spring adapter — 2026-10-24

@@ -33,7 +33,7 @@ Diagnostic -> LoggingDiagnosticSink -> ordinary typed LogEvent
 Граница общей библиотеки и IOC-части принята в
 [ADR 0044](../ADR/0044-reusable-diagnostics-contract.md). Контракты для внешнего
 потребителя и исполняемые примеры — в
-[руководстве по diagnostics](../guides/diagnostics-library.md).
+[руководстве по diagnostics](../guides/libraries/diagnostics.md).
 
 ## Общие инструменты логирования
 
@@ -302,7 +302,7 @@ Diagnostic occurrence для retry/rejection/runtime failure создаёт од
 ## Источники истины
 
 - Общая модель/policy/bounded/sinks: `platform-diagnostics-api`, включая
-  [исполняемые примеры руководства](../guides/diagnostics-library.md).
+  [исполняемые примеры руководства](../guides/libraries/diagnostics.md).
 - IOC catalog/exception/rendering: `platform-diagnostics` и generated catalog tests.
 - Pipeline delivery: `PipelineRunnerTest`, failure-policy/budget tests.
 - Logging schema: `EventAction`, `LogField`, `LogEvent` и
