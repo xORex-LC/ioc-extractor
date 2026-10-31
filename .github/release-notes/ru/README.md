@@ -8,3 +8,5 @@
   исходный коммит, подпись, хеши, публикация и проверка потребителей.
 - [ioc-platform-diagnostics-api 0.3.0-rc.1](ioc-platform-diagnostics-api-0.3.0-rc.1.md) —
   границы API, этапы D0–D5 и неизменяемые сведения публикации.
+- [ioc-config-spring-boot 0.3.0-rc.1](ioc-config-spring-boot-0.3.0-rc.1.md) —
+  этапы C0–C4, исходный Central CI-отказ и локальное восстановление.

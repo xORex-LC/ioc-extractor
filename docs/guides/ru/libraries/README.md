@@ -12,11 +12,12 @@ Java-пакетов сохраняют префикс `com.iocextractor`. Все
 | `ioc-platform-concurrency` | Последовательные задачи или синхронное исключение по ключу | Только JDK | [Concurrency](concurrency.md) |
 | `ioc-platform-diagnostics-api` | Структурированные диагностики, политика ошибок и ограниченный объём подробностей | Только JDK | [Diagnostics](diagnostics.md) |
 | `ioc-platform-logging-slf4j` | Типизированные SLF4J-записи, восстанавливающие MDC scopes и явное маскирование | SLF4J API; провайдер выбирает сервис | [Logging, EN](../../logging-library.md), [рецепт Boot ECS, EN](../../logging-library-boot.md) |
-| `ioc-config-spring-boot` | Проверка имён свойств по record-схеме и наблюдение миграций | Spring Boot и Spring Core; источники и политику определяет сервис | [Конфигурация, EN](../../configuration-library.md), [ограниченный контекст, EN](../../configuration-library-check.md) |
+| `ioc-config-spring-boot` | Проверка имён свойств по record-схеме и наблюдение миграций | Spring Boot и Spring Core; источники и политику определяет сервис | [Конфигурация](config-spring-boot.md), [ограниченный контекст](config-spring-boot-check.md) |
 | `ioc-platform-events` | Метаданные локальных событий, контракт публикации и запись событий для проверок | Только JDK | [Локальные события, EN](../../events-library.md) |
 | `ioc-events-spring` | Явная публикация через Spring publisher сервиса | Events core той же версии, Spring Context и SLF4J API | [Spring-адаптер, EN](../../events-library.md#use-the-explicit-spring-adapter) |
 
-Руководства concurrency и diagnostics находятся здесь на двух языках.
+Руководства concurrency, diagnostics и configuration находятся в новой структуре
+на двух языках.
 Остальные руководства сохраняют прежние пути до сверки с кодом и подготовки
 переводов. Их текущие версии и границы проверок указаны на соответствующих
 страницах. ETL остаётся внутренним модулем; выделение отложено.
