@@ -21,7 +21,7 @@ language: "ru"
 | `R030-TEST` global controls | `verified` | [test-quality ledger](evidence/test-quality-ledger.md) | All global work items, including separate out-of-reactor Central and GitHub Packages consumers in run `34233605995`, are verified. Applicable per-module hardening cells remain independently tracked below |
 | `R030-SEC` | `in-progress` | Dependency remediation is qualified on exact commit `3307d1e2`: CI and Dependency Security runs passed with 0 unsuppressed findings | [Dependency security evidence](evidence/dependency-security.md); remaining repository, workflow and publication-security gap analysis |
 | `R030-LIB` | `verified` | [shared-code inventory](evidence/shared-code-inventory.md), [LIB-1 hardening](../../../.github/release-notes/ioc-platform-concurrency-0.3.0-rc.1.md) | `ioc-platform-concurrency:0.3.0-rc.1` was published from the immutable validated bundle and separately consumed from Central and GitHub Packages in protected run `34233605995`; logging `0.3.0-rc.1` is separately published/qualified in run `39455105300` ([release record](../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md)); events core/adapter `0.3.0-rc.1` are separately published and qualified in runs `40160627532` / `40162675262` ([record](../../../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md)) |
-| `R030-DOC` | `planned` | — | Translation inventory |
+| `R030-DOC` | `in-progress` | [Inventory и очередь пакетов](documentation/README.md), [проверки](documentation/evidence.md) | `DOC-INV-01`: учёт исходных 329 Markdown paths; `DOC-01A`: boundary/build gates и library publication; остальные переводы и semantic reviews остаются в очереди |
 | `R030-REL` | `planned` | — | All prerequisite goals |
 
 ## 2. Module hardening matrix
@@ -31,17 +31,23 @@ language: "ru"
 | Maven module | `R030-QUAL` | `R030-RETIRE` | `R030-ARCH` | `R030-TEST` | affected `R030-DOC` |
 |---|---|---|---|---|---|
 | `platform/platform-errors` | `planned` | `planned` | `planned` | `planned` | `planned` |
+| `platform/platform-diagnostics-api` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `platform/platform-diagnostics` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `platform/platform-etl` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `platform/platform-events` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `platform/platform-concurrency` | `in-progress` | `planned` | `in-progress` | `in-progress` | `in-progress` |
+| `platform/platform-logging-slf4j` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `platform/platform-observability` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `platform/platform-diagnostics-logging` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `core/ioc-domain` | `planned` | `planned` | `planned` | `planned` | `planned` |
+| `core/ioc-processing` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `core/ioc-application` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `core/ioc-application-tck` | `planned` | `planned` | `planned` | `planned` | `planned` |
+| `adapters/adapter-config-spring-boot` | `planned` | `planned` | `planned` | `planned` | `planned` |
+| `adapters/adapter-events-spring` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `adapters/adapter-regex-re2j` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `adapters/adapter-psl` | `planned` | `planned` | `planned` | `planned` | `planned` |
+| `adapters/adapter-processing-camel` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `adapters/adapter-source-tika` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `adapters/adapter-csv` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `adapters/adapter-manifest-json-jackson` | `planned` | `planned` | `planned` | `planned` | `planned` |
@@ -51,10 +57,17 @@ language: "ru"
 | `adapters/adapter-cli-picocli` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `bootstrap/ioc-app` | `planned` | `planned` | `planned` | `planned` | `planned` |
 
+Модульный inventory приведён к текущим 26 функциональным JAR в `DOC-INV-01`.
+Состояния существующих cells не переоценены: `planned` означает необходимость
+сверки owning DoD/evidence, а не доказанный пробел реализации. Публикация
+библиотеки или глобальное закрытие TEST не закрывает эти cells автоматически.
+
 ## 3. Work items
 
 | Work item | Goal | Scope | Stage | Owner | State | Evidence |
 |---|---|---|---|---|---|---|
+| `DOC-INV-01` | `R030-DOC` | Все 329 Markdown paths исходного `2c76d8b0`, co-located README, release records и execution bundle | Census, источники, проверки, translation policy, hashes, находки и очередь пакетов определены; содержательное review отмечено отдельно | Documentation / owning modules | `verified` | [inventory](documentation/README.md), [evidence](documentation/evidence.md) |
+| `DOC-01A` | `R030-DOC` | BOUNDARIES EN/RU и раздел library publication в RELEASE-PROCESS | Blocking/advisory policies и шесть publication selectors сверены с live code; 34 architecture, 1 convention и 228 publication tests прошли, links и inventory integrity проверены | Documentation / build / publication | `verified` | [пакет и проверки](documentation/evidence.md) |
 | `DATA-AGGREGATE-01` | `R030-DATA` | Новый самостоятельный IOC aggregate artifact; обновление name при совпадении остальных public fields | P0-P7 реализованы и квалифицированы: самостоятельный артефакт и export profile, managed import, единый dataframe-owned порядок наблюдений для file/JDBC ledger, конфигурируемые occurrence/write policies, schema v11, переходные операции и диагностика. Проверены fresh/upgrade/restart/restore, оба daemon ledger, import, 100k/250k duplicate-heavy load и реальная systemd-активация; артефакт стартует пустым без backfill | AI agent + user review | `verified` | [рабочий комплект](ioc-aggregate/README.md), [evidence](ioc-aggregate/evidence.md), [release contract](ioc-aggregate/release-contract.md), [implementation plan](ioc-aggregate/implementation-plan.md), [verification matrix](ioc-aggregate/verification-matrix.md), [ADR-0030](../../ADR/0030-registered-observation-order-for-artifact-fields.md) |
 | `DATA-TTL-01` | `R030-DATA` | Canonical record expiry, stable sparse reusable export slots, revision-significant identical delivery and bounded idle lifecycle runtime | P0–P9 implementation, automated evidence and packaged qualification complete; lifecycle-owned dataframe schemas through v6 and service foundation v8; combined repository schemas are v9/v9 after DATA-IMPORT-01 migrations. Final committed-HEAD gate passed on `b3aee0a3` with `verify.fresh=true` | AI agent + user review | `verified` | [evidence](data-ttl-01/evidence.md), [export-slot correction](data-ttl-01/export-slot-correction.md), [implementation plan](data-ttl-01/implementation-plan.md), [ADR-0020](../../ADR/0020-canonical-record-expiration-lifecycle.md), [ADR-0021](../../ADR/0021-stable-reusable-export-slots.md), [ADR-0022](../../ADR/0022-revision-significant-identical-export.md), [ADR-0023](../../ADR/0023-bounded-lifecycle-reconciliation-runtime.md) |
 | `DATA-IMPORT-01` | `R030-DATA` | Managed local/SMB structured dataframe deliveries into SQLite truth; versioned recognition/mapping, active-only patch, atomic promotion and recovery | P0-P9 implementation, 100k/1M load, fairness, local/live SMB baseline, exact-v0.2/fresh packaged qualification and final committed-HEAD gate complete. ADR-0025 H1-H4 are implemented; unavailable H5 two-identity live breadth is explicitly deferred to `OPS-8`, not reported as a pass, and managed SMB import stays disabled pending deployment qualification | AI agent + user review | `verified` (`H5 breadth deferred`) | [P0 evidence](dataframe-import/p0-evidence.md), [P1 evidence](dataframe-import/p1-evidence.md), [P2 evidence](dataframe-import/p2-evidence.md), [P3 evidence](dataframe-import/p3-evidence.md), [P4 evidence](dataframe-import/p4-evidence.md), [P5 evidence](dataframe-import/p5-evidence.md), [P6 evidence](dataframe-import/p6-evidence.md), [P7 evidence](dataframe-import/p7-evidence.md), [P8 evidence](dataframe-import/p8-evidence.md), [P9 evidence](dataframe-import/p9-evidence.md), [architecture](dataframe-import/architecture-project.md), [release contract](dataframe-import/release-contract.md), [implementation plan](dataframe-import/implementation-plan.md), [verification matrix](dataframe-import/verification-matrix.md), [ADR-0024](../../ADR/0024-managed-dataframe-import.md), [ADR-0025](../../ADR/0025-managed-import-smb-service-namespace-and-terminal-retention.md) |
