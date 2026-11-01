@@ -10,3 +10,5 @@
   границы API, этапы D0–D5 и неизменяемые сведения публикации.
 - [ioc-config-spring-boot 0.3.0-rc.1](ioc-config-spring-boot-0.3.0-rc.1.md) —
   этапы C0–C4, исходный Central CI-отказ и локальное восстановление.
+- [ioc-platform-logging-slf4j 0.3.0-rc.1](ioc-platform-logging-slf4j-0.3.0-rc.1.md) —
+  API, исторические ECS-исправления, неизменяемые файлы и plain/Boot consumers.

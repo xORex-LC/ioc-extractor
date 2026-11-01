@@ -37,12 +37,14 @@ repository qualification using the same signed files in both repositories.
 
 ## Use and limits
 
-Start with the [consumer guide](../../docs/guides/logging-library.md); its three
+Start with the [English guide](../../docs/guides/libraries/logging-slf4j.md) or
+[Russian guide](../../docs/guides/ru/libraries/logging-slf4j.md); its three
 complete Java examples are compiled and executed by the module tests. Public
 Javadoc describes null handling, exceptions, ownership and scalar conversions.
 The [accepted contract](../../docs/ADR/0045-reusable-slf4j-logging-contract.md)
 records the boundary and compatibility policy. The separate
-[Boot ECS recipe](../../docs/guides/logging-library-boot.md) is compiled and
+[Boot ECS recipe](../../docs/guides/libraries/logging-slf4j-boot.md)
+([Russian](../../docs/guides/ru/libraries/logging-slf4j-boot.md)) is compiled and
 executed by `LoggingBootRecipeIT` in bootstrap; Boot remains outside this JAR.
 
 Field identity is its key; null omission retains the declared type. Wrong types
@@ -63,8 +65,10 @@ Run `make test-module MODULE=platform/platform-logging-slf4j`. The
 review. `make library-bundle LIBRARY_COMPONENT=logging` and
 `make library-consumer LIBRARY_COMPONENT=logging` exercise actual plain/Boot
 guide examples through packaged JARs with separate empty caches. The tooling
-also rejects missing/unavailable SLF4J and wrong repository provenance. Each new
-version requires its own protected release and public repository qualification.
+also rejects missing/unavailable SLF4J and wrong repository provenance. The tool also requires matching EN/RU Java/XML/YAML blocks before compilation.
+The [permanent release record](../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md)
+retains source, signed bytes and repository evidence. Each new version requires
+its own protected release and public repository qualification.
 
 ## Test ownership
 
