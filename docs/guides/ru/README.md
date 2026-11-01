@@ -7,8 +7,12 @@
 
 | Гайд | О чём |
 |---|---|
-| [libraries/](libraries/README.md) | Каталог библиотек и руководства concurrency, diagnostics и config на русском; остальные руководства пока доступны на английском |
+| [libraries/](libraries/README.md) | Каталог всех опубликованных библиотек с парными руководствами EN/RU |
 | [libraries/diagnostics.md](libraries/diagnostics.md) | Коды сервиса, результаты и политики, точные счётчики, ограниченные выборки и синхронная доставка диагностик |
+| [libraries/logging-slf4j.md](libraries/logging-slf4j.md) | Типизированные записи SLF4J, MDC, ECS helpers, маскирование и границы ответственности |
+| [libraries/logging-slf4j-boot.md](libraries/logging-slf4j-boot.md) | Синхронный Boot ECS-рецепт, dataset/error ownership и проверка реального JSON |
+| [libraries/events.md](libraries/events.md) | Метаданные и publish-only порт локальных управляющих событий, no-ops и recorder |
+| [libraries/events-spring.md](libraries/events-spring.md) | Явный Spring-адаптер с границами ошибок, частичной доставкой и настройками сервиса |
 | [libraries/config-spring-boot.md](libraries/config-spring-boot.md) | Проверка имён и миграций, полнота покрытия и границы решений сервиса |
 | [libraries/config-spring-boot-check.md](libraries/config-spring-boot-check.md) | Проверка одного явного YAML без imports/profiles в ограниченном контексте |
 | [configuration.md](configuration.md) | Полный операторский справочник поддерживаемой конфигурации, допустимых значений и рекомендаций |

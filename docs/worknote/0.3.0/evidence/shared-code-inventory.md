@@ -45,7 +45,7 @@ module/candidate tables and published-release rows record completed qualificatio
 | `LIB-2` | Generic diagnostics model/result/sink subset | Cross-service platform | Misyurkeev Denis (`xORex-LC`) / Diagnostics | Current reactor consumers + planned `feeds-collector` | JDK-only shared module; IOC catalogs, exceptions and logging remain local | `published-qualified`; D0–D5 complete; `0.3.0-rc.1` qualified from Central and GitHub Packages |
 | `LIB-3` | `platform-logging-slf4j` | Cross-service platform | Misyurkeev Denis (`xORex-LC`) / Observability | IOC facades, independent plain/Boot consumers; planned collectors | Required SLF4J API only; no provider/IOC/ETL dependency | `published-qualified`; `0.3.0-rc.1`, both repositories and negative dependency checks passed |
 | `LIB-4` | `platform-etl` | Cross-service platform | ETL | Current `ioc-application`; nearest consumer planned only | diagnostics + errors + their accepted publication closure | `deferred-second-consumer` |
-| `LIB-5` | `platform-events` local control API + separate Spring bridge | Cross-service platform, non-wire | Event coordination | Current application/bootstrap and separate JDK/Spring consumers; future services selected by owner, not deployed evidence | JDK core; Spring bridge requires same-version core + Spring Context + SLF4J API | `published-qualified`; E1–E5 complete; both `0.3.0-rc.1` artifacts and separate Central/GitHub consumers passed; [release record](../libs/lib-5-events-design.md#protected-publication-record--2026-10-25) |
+| `LIB-5` | `platform-events` local control API + separate Spring bridge | Cross-service platform, non-wire | Event coordination | Current application/bootstrap and separate JDK/Spring consumers; future services selected by owner, not deployed evidence | JDK core; Spring bridge requires same-version core + Spring Context + SLF4J API | `published-qualified`; E1–E5 complete; both `0.3.0-rc.1` artifacts and separate Central/GitHub consumers passed; [release record](../../../../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md) |
 
 `LIB-1-HARDEN-01` implements bounded hardening of the existing module. Its
 [release record](../../../../.github/release-notes/ioc-platform-concurrency-0.3.0-rc.1.md)
@@ -234,7 +234,7 @@ Protected validation run `39433697620` and publication run `39455105300`
 used the same signed 20-file bundle and Central deployment. Separate cold plain
 and Boot consumers passed against Central and GitHub Packages, including primary
 hashes, selected-repository origin and negative SLF4J dependency checks. The
-[release record](../libs/lib-3-logging-design.md#protected-publication-record--2026-10-21)
+[release record](../../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md)
 retains immutable identity, artifacts and limits. A second production service
 and live collector/backend/load qualification are outside these fixture results.
 Existing concurrency/diagnostics release identities remain unchanged.

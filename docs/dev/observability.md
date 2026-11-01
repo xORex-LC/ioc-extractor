@@ -48,12 +48,12 @@ IOC использует обёртки из `platform-observability`, кото�
 а `EventOutcome` связывается с общей ECS vocabulary. Каталоги IOC, ETL observer,
 diagnostics bridge, fingerprint/severity policy и Boot encoder остаются в сервисе. Контракт, ограничения
 и примеры, компилируемые тестом непосредственно из Markdown, описаны в
-[руководстве потребителя](../guides/logging-library.md). Состав модуля — в
+[руководстве потребителя](../guides/libraries/logging-slf4j.md). Состав модуля — в
 [README](../../platform/platform-logging-slf4j/README.md).
 
 Принятая граница API и владения описана в
 [ADR 0045](../ADR/0045-reusable-slf4j-logging-contract.md).
-[Рецепт Boot ECS](../guides/logging-library-boot.md) содержит исполняемые YAML/XML
+[Рецепт Boot ECS](../guides/libraries/logging-slf4j-boot.md) содержит исполняемые YAML/XML
 и пример encoder для другого сервиса. `LoggingBootRecipeIT` компилирует текст
 руководства и запускает отдельную JVM без IOC-классов; проверяются фактические
 байты, типы, отсутствие duplicate keys и внутренние статусы appender.

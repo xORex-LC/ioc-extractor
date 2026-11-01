@@ -46,8 +46,8 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 возвращает данные и решение, но не выполняет commit или восстановление.
 Общий SLF4J API, scalar ECS profile и граница IOC/backend приняты в
 [ADR 0045](ADR/0045-reusable-slf4j-logging-contract.md). Подключение другого
-сервиса описано в [руководстве](guides/logging-library.md) и отдельном
-[рецепте Boot ECS](guides/logging-library-boot.md).
+сервиса описано в [руководстве](guides/libraries/logging-slf4j.md) и отдельном
+[рецепте Boot ECS](guides/libraries/logging-slf4j-boot.md).
 Граница проверки имён конфигурации и наблюдения миграций принята в
 [ADR 0046](ADR/0046-reusable-spring-boot-configuration-inspection.md).
 Сервис выбирает источники и состав бинов независимо: IOC сохраняет импорты и
@@ -67,7 +67,7 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Platform | `platform/etl` | `Envelope`, `EnvelopeMeta`, `Stage`, `StageId`, `Pipeline`, `PipelineRunner` |
 | Platform | `diagnostics-api` | JDK-only Diagnostic, results, policies, bounded collectors and sink contracts |
 | Platform | `diagnostics` | IOC catalogs, metadata, exception and rendering |
-| Platform | `platform/logging` | Общий SLF4J API, restoring MDC, ECS scalar profile и explicit masks; [контракт потребителя](guides/logging-library.md) |
+| Platform | `platform/logging` | Общий SLF4J API, restoring MDC, ECS scalar profile и explicit masks; [контракт потребителя](guides/libraries/logging-slf4j.md) |
 | Platform | `observability` | MDC/log event helpers and logging taxonomy |
 | Platform | `events` | Framework-free control-event marker, metadata envelope, publish port and observers; no broker/delivery mechanics |
 | Platform | `concurrent` | In-memory keyed single-flight executor, observer hooks and health snapshots |

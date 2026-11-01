@@ -219,7 +219,7 @@ calls `Notification.throwIfRejected`, and detects the suppression code by identi
 The [diagnostics proposal](../../../../.github/release-notes/ioc-platform-diagnostics-api-0.3.0-rc.1.md) keeps product throwing
 policy local and makes suppression construction explicit. ETL extraction must
 reconcile those decisions, including who owns runner failures and generic code
-metadata. The [logging proposal](lib-3-logging-design.md) keeps
+metadata. The [logging proposal](../../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md) keeps
 `LoggingPipelineObserver` local; it must not move back into the generic logging
 library just because ETL might be extracted.
 

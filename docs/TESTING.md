@@ -58,7 +58,7 @@ run against the retained backend.
 Logging test ownership is deliberate: the shared module owns generic mechanics
 and executable plain examples; IOC observability owns catalogs, facade binding,
 ETL correlation and callback cleanup; bootstrap owns IOC producer JSON and the
-application-owned [Boot recipe](guides/logging-library-boot.md). The integration
+application-owned [Boot recipe](guides/libraries/logging-slf4j-boot.md). The integration
 recipe does not move Boot dependencies into the shared module. Its immutable
 snapshot rejection is not a failure of the library's separate async contract.
 

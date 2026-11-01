@@ -72,8 +72,8 @@ failure/recovery semantics и точки расширения, но не пер�
   диагностики; [руководство библиотеки](guides/libraries/diagnostics.md) объясняет
   подключение, bounded counts, policy и delivery для другого сервиса.
 - [ADR 0045](ADR/0045-reusable-slf4j-logging-contract.md) фиксирует общий SLF4J
-  API и scalar ECS profile; [руководство](guides/logging-library.md) и
-  [рецепт Boot ECS](guides/logging-library-boot.md) содержат проверяемые примеры
+  API и scalar ECS profile; [руководство](guides/libraries/logging-slf4j.md) и
+  [рецепт Boot ECS](guides/libraries/logging-slf4j-boot.md) содержат проверяемые примеры
   для другого сервиса.
 - [Проверка конфигурации в ограниченном контексте](guides/libraries/config-spring-boot-check.md)
   разделяет правила загрузки источников и состав бинов; пример для другого
@@ -82,10 +82,14 @@ failure/recovery semantics и точки расширения, но не пер�
   общий контракт проверки имён и наблюдения миграций;
   [руководство](guides/libraries/config-spring-boot.md) описывает подключение и обработку
   неполного покрытия без переноса IOC-политики в библиотеку.
-- [Контракты локальных событий](guides/events-library.md) объясняют метаданные,
+- [JDK-контракты](guides/libraries/events.md) и
+  [Spring-адаптер](guides/libraries/events-spring.md) локальных событий объясняют метаданные,
   результаты публикации и ограничения recording publisher; пример использует
   собственное событие другого сервиса. [ADR 0047](ADR/0047-explicit-spring-control-event-adapter.md)
-  фиксирует отдельный Spring-адаптер и границы его ошибок; публикация ещё не выполнена.
+  фиксирует отдельный Spring-адаптер и границы его ошибок. Оба артефакта
+  опубликованы; исходные сведения сохраняют записи
+  [core](../.github/release-notes/ioc-platform-events-0.3.0-rc.1.md) и
+  [adapter](../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md).
 
 Локальные рабочие заметки и временные issue-списки не входят в авторитетный
 комплект документации, по умолчанию игнорируются Git и не используются

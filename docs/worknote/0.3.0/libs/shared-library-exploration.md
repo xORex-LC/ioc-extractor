@@ -797,7 +797,7 @@ No production changes or automatic detection of secrets are authorized here.
 
 The owner requested code analysis and a plan-proposal using system-design,
 java-code-review, multi-module-maven, architecture-review and SOLID guidance.
-The [logging library proposal](lib-3-logging-design.md) records the completed
+The [logging library proposal](../../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md) records the completed
 review and stages L3-0 through L3-4.
 
 Recommendation: one SLF4J API-dependent JAR for scope restoration, typed fields
@@ -953,10 +953,17 @@ Validation: source/test inspection and primary documentation comparison only;
 no runtime claims, dependency substitutions or production changes. Tests and
 full verify/PMD were not rerun for this discussion correction.
 
+Events checkpoints below are historical. Current JDK and Spring contracts are
+maintained in the [library catalog](../../../guides/libraries/README.md) and
+[paired release records](../../../../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md).
+E0's ARCH-4/OBS-7/OBS-8 findings were corrected in E2; E1–E5 and both component
+publications are complete. Older deferral/admission statements record their dates,
+not a new implementation task.
+
 ## LIB-5 local event exploration checkpoint — 2026-09-16
 
 The owner requested review of `platform-events` before advancing diagnostics.
-The [assessment](lib-5-events-analysis.md) records the initial code/dependency
+The [assessment](../../../../.github/release-notes/ioc-platform-events-0.3.0-rc.1.md#packaged-consumers-and-extraction-outcomes) records the initial code/dependency
 review and comparison with Spring and CloudEvents on `edca8d69`.
 
 The existing module offers a framework-free publication port and shared event
@@ -1059,7 +1066,7 @@ prior notes remain historical evidence. Library component tags remain intact.
 ## LIB-5 design resumed — 2026-10-17
 
 The owner requested an events plan-project and questions after router/storage
-work. The [draft proposal](lib-5-events-design.md) refreshes the current baseline
+work. The [draft proposal](../../../../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md) refreshes the current baseline
 at `d98bf415`. The events module and Spring publisher source remain unchanged
 from the original assessment; this does not establish unchanged callers.
 
@@ -1091,7 +1098,7 @@ commit, push or merge is implied by accepting this behavioral boundary.
 
 The owner requested the next step using system-design, architecture-review,
 architecture-designer, event-driven-architecture and java-code-review. The
-[E0 worknote](lib-5-events-e0-analysis.md) completes the current dependency,
+[E0 worknote](../../../../.github/release-notes/ioc-platform-events-0.3.0-rc.1.md#packaged-consumers-and-extraction-outcomes) completes the current dependency,
 caller/listener and exception-boundary analysis on `d98bf415`.
 
 The two-unit boundary remains viable. Proposed adapter package now includes
@@ -1118,8 +1125,8 @@ Local fixtures/logs stay ignored under `.dev`; the initial fatal expectation
 failure is retained. Docs/link checks and `git diff --check` passed. No new Java
 or build scope, full verify/PMD, commit, push, merge or publication.
 
-The [proposal](lib-5-events-design.md) now has the precise contracts and E1/E2
-regression requirements; the [ADR draft](lib-5-events-adr-draft.md) records the
+The [proposal](../../../../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md) now has the precise contracts and E1/E2
+regression requirements; the [ADR draft](../../../../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md) records the
 trade-offs as proposed. E1 is the next implementation slice. This checkpoint
 completes E0 rather than claiming the Spring bridge is already qualified.
 
@@ -1181,6 +1188,12 @@ completeness/consistency review, ADR promotion and evidence checks. This scope
 clarification does not change the D0 API or start implementation; no Java,
 build or publication changes are made here.
 
+Logging checkpoints below are historical. The implemented public contract now
+lives in the [consumer guide](../../../guides/libraries/logging-slf4j.md), accepted
+ADR 0045 and the [release record](../../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md).
+In particular, OBS-9/OBS-10 were corrected during L3-2, and the 62-case probe
+is retired historical evidence rather than a current test command.
+
 ## LIB-3 shared ECS requirement and analysis — 2026-10-19
 
 After diagnostics publication, the owner selected logging tools and asked whether
@@ -1188,7 +1201,7 @@ the ECS model could provide one consistent approach for future services. The
 earlier proposal kept all field/outcome definitions service-owned; it therefore
 covered reusable mechanics but only part of this requirement.
 
-The [ECS analysis](lib-3-logging-ecs-analysis.md) recommends a small supported ECS
+The [ECS analysis](../../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md) recommends a small supported ECS
 profile inside the same SLF4J library, with custom fields/actions and IOC observers
 remaining local. Backend serialization stays outside the main JAR and needs a
 tested integration recipe. It records 108 current fields, standard-field
@@ -1197,14 +1210,14 @@ that can discard a failure record (OBS-10).
 
 Existing focused tests passed: 23 observability cases, one control-event observer
 case and two Boot ECS integration cases. Seventeen exploratory scenarios confirmed
-the documented baseline behaviors and limits. The [updated proposal](lib-3-logging-design.md)
+the documented baseline behaviors and limits. The [updated proposal](../../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md)
 makes ECS subset/array support, ownership, error/dataset handling and explicit wire
 corrections L3-0 decisions. This is analysis, not L3-0 closure or authorization to
 publish. No production code, accepted ADR, build scope or logging API changed.
 
 ## LIB-3 L3-0 contract fixed — 2026-10-19
 
-The owner authorized L3-0. The [fixed contract](lib-3-logging-contract.md) selects
+The owner authorized L3-0. The [fixed contract](../../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md) selects
 `io.github.xorex-lc:ioc-platform-logging-slf4j`, Java 21, SLF4J-only main
 dependencies and eight public types. A five-field ECS scalar subset and shared
 outcome vocabulary sit beside the generic facade. Type/category arrays are
@@ -1219,13 +1232,13 @@ omit outcome; control-event names move to `ioc.event.type`. Throwable records
 leave `error.*` to the encoder. OBS-9/10 remain open until L3-2 implements and
 tests those explicit wire corrections.
 
-The [isolated probe](l3-0-probe/README.md) passed 62 cases with an unrelated
+The [isolated probe](../../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md#extraction-outcomes-and-ownership) passed 62 cases with an unrelated
 `collector.*` catalog, current algorithms and the real Boot/Logback encoder.
 Source/dependency hashes prevent silent baseline drift. Expected defect
 reproductions are not fixes; the proposed public API and new helper behavior
 remain L3-1 test requirements. The focused observer case and `make doctor-core`
 also passed. Full verify/PMD remain stale; no production/build changes or new
-packaged consumer are claimed. The [ADR draft](lib-3-logging-adr-draft.md) stays
+packaged consumer are claimed. The [ADR draft](../../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md) stays
 Proposed until implementation qualification. L3-1 is next, with API documentation
 written alongside code and integration documentation completed in L3-3.
 
@@ -1241,7 +1254,7 @@ SLF4J API only; parent-independent local packaging includes source/Javadoc JARs.
 
 Reactor/report membership, measured coverage, suite inventory and affected
 architecture/capability maps are updated together without relaxing prior floors,
-ratchets or analyzer exclusions. The [L3-1 qualification record](lib-3-logging-design.md#l3-1-implementation-and-qualification--2026-10-19)
+ratchets or analyzer exclusions. The [L3-1 qualification record](../../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md)
 records commands, analyzer disposition and the stale local NVD limitation. Final
 unchanged-tree verify/PMD evidence is checked through `make context` after the
 documentation freeze. This does not admit publication or external consumption.
@@ -1258,7 +1271,7 @@ ETL observer, diagnostics renderer/disclosure and Boot wiring remain local.
 Scope-returning callbacks close partial initialization before rethrowing.
 OBS-9/10 are fixed with real producer / JSON bytes / encoder-status regressions;
 the logging catalog, query migration docs and release notes are updated.
-The [L3-2 record](lib-3-logging-design.md#l3-2-ioc-migration-and-qualification--2026-10-19)
+The [L3-2 record](../../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md)
 records ownership, test inventory and final gate requirements. L3-3 is next;
 ADR promotion, reusable Boot qualification and independent publication remain
 separate gates. No commit/push/publication requested; earlier work is preserved.
@@ -1266,7 +1279,7 @@ separate gates. No commit/push/publication requested; earlier work is preserved.
 
 ## LIB-3 L3-3 integration checkpoint — 2026-10-20
 
-The [L3-3 record](lib-3-logging-design.md#l3-3-integration-documentation-and-qualification--2026-10-20)
+The [L3-3 record](../../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md)
 consolidates generic/IOC/backend test ownership, reviews API Javadoc and promotes
 [ADR 0045](../../../ADR/0045-reusable-slf4j-logging-contract.md). The application-owned
 Boot recipe is executable from its actual Markdown Java/YAML/XML, with JSON/status
@@ -1286,7 +1299,7 @@ Events remain deferred. No commit or push was requested for this slice.
 
 The owner authorized committing L3-3 and starting L3-4. Two scoped commits preserve
 callback cleanup (`721e5093`) and the Boot integration recipe (`0d32551f`). The
-[L3-4 record](lib-3-logging-design.md#l3-4-packaging-and-independent-consumers--2026-10-20)
+[L3-4 record](../../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md)
 adds logging to the existing publication/CI workflows with an exact required
 SLF4J API dependency contract. Concurrency and diagnostics remain dependency-free;
 retained-bundle reads enforce the same guards without changing manifest identity.

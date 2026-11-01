@@ -9,6 +9,11 @@ Diagnostics has its own
 with the original tagged source, signed bundle and both repository consumers.
 Configuration's [release record](../../.github/release-notes/ioc-config-spring-boot-0.3.0-rc.1.md)
 separately retains the original Central CI failure and successful local recovery.
+Logging's [release record](../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md)
+retains its exact signed files and separate plain/Boot repository consumers. Events retain separate
+[core](../../.github/release-notes/ioc-platform-events-0.3.0-rc.1.md) and
+[adapter](../../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md) records,
+including the original qualified core handoff and immutable pair recovery.
 
 The reviewed components use Java 21 and have exact dependency contracts:
 
@@ -40,7 +45,7 @@ No version is claimed published until the repository checks below pass.
 Logging `0.3.0-rc.1` passed protected publication and separate Central/GitHub
 Packages cold plain Java and Boot consumers in
 [run 39455105300](https://github.com/xORex-LC/ioc-extractor/actions/runs/39455105300).
-Its [consumer guide](logging-library.md) supplies the released dependency;
+Its [consumer guide](libraries/logging-slf4j.md) supplies the released dependency;
 the [module reference](../../platform/platform-logging-slf4j/README.md) describes
 the qualified API/backend boundary. This does not qualify a later version.
 
@@ -76,7 +81,7 @@ Each bundle has four primary files and its own identity/hashes. The Spring bundl
 contains only the adapter; contracts are a normal dependency, never shaded or
 silently copied into it. A release must publish and qualify the contracts
 first in **each selected repository**, then release the adapter at the same
-version. Their component tags will be `ioc-platform-events-v<version>` and
+version. Their component tags use `ioc-platform-events-v<version>` and
 `ioc-events-spring-v<version>`; existing component tags and bundles are unchanged.
 
 The JDK fixture has no framework dependencies. The Spring fixture's **main**
@@ -304,7 +309,7 @@ sources/Javadoc dependencies exclude SLF4J API so only the library's main POM
 can supply it. Two further offline checks use that warmed cache: excluding API
 must fail compilation, and selecting an unavailable API version must fail
 dependency resolution. An unrelated failure is not a passing negative check.
-The Boot consumer compiles the actual [recipe](logging-library-boot.md), loads
+The Boot consumer compiles the actual [recipe](libraries/logging-slf4j-boot.md), loads
 its YAML/XML and checks five JSON records plus encoder status. It selects its
 own Boot/Logback dependencies; these are not dependencies of the library.
 

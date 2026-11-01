@@ -20,7 +20,7 @@ language: "ru"
 | `R030-BUILD` | `verified` | [build-quality ledger](evidence/build-quality-ledger.md), [closure PR #10](https://github.com/xORex-LC/ioc-extractor/pull/10) | Required project-owned statuses are active on `main` and `release-0.3.0`; all five release-branch checks passed under the active policy in run `34679847573` |
 | `R030-TEST` global controls | `verified` | [test-quality ledger](evidence/test-quality-ledger.md) | All global work items, including separate out-of-reactor Central and GitHub Packages consumers in run `34233605995`, are verified. Applicable per-module hardening cells remain independently tracked below |
 | `R030-SEC` | `in-progress` | Dependency remediation is qualified on exact commit `3307d1e2`: CI and Dependency Security runs passed with 0 unsuppressed findings | [Dependency security evidence](evidence/dependency-security.md); remaining repository, workflow and publication-security gap analysis |
-| `R030-LIB` | `verified` | [shared-code inventory](evidence/shared-code-inventory.md), [LIB-1 hardening](../../../.github/release-notes/ioc-platform-concurrency-0.3.0-rc.1.md) | `ioc-platform-concurrency:0.3.0-rc.1` was published from the immutable validated bundle and separately consumed from Central and GitHub Packages in protected run `34233605995`; logging `0.3.0-rc.1` is separately published/qualified in run `39455105300` ([release record](libs/lib-3-logging-design.md#protected-publication-record--2026-10-21)); events core/adapter `0.3.0-rc.1` are separately published and qualified in runs `40160627532` / `40162675262` ([record](libs/lib-5-events-design.md#protected-publication-record--2026-10-25)) |
+| `R030-LIB` | `verified` | [shared-code inventory](evidence/shared-code-inventory.md), [LIB-1 hardening](../../../.github/release-notes/ioc-platform-concurrency-0.3.0-rc.1.md) | `ioc-platform-concurrency:0.3.0-rc.1` was published from the immutable validated bundle and separately consumed from Central and GitHub Packages in protected run `34233605995`; logging `0.3.0-rc.1` is separately published/qualified in run `39455105300` ([release record](../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md)); events core/adapter `0.3.0-rc.1` are separately published and qualified in runs `40160627532` / `40162675262` ([record](../../../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md)) |
 | `R030-DOC` | `planned` | — | Translation inventory |
 | `R030-REL` | `planned` | — | All prerequisite goals |
 
@@ -156,7 +156,7 @@ retains identities and distinguishes the original failure from local recovery.
 ### LIB-5 implementation resumed and E1 qualification — 2026-10-24
 
 The owner selected events extraction for future services, superseding its earlier
-deferral. The [E1 checkpoint](libs/lib-5-events-design.md#e1-jdk-contract-qualification--2026-10-24)
+deferral. The [E1 checkpoint](../../../.github/release-notes/ioc-platform-events-0.3.0-rc.1.md#packaged-consumers-and-extraction-outcomes)
 retains the existing seven-type JDK API, precise metadata/publication/observation
 contracts, recording limitations, 43 focused tests and strict Javadoc. The exact
 consumer-guide example compiles/runs locally. No coordinate or dependency changes
@@ -169,7 +169,7 @@ ETL stays deferred.
 
 ### LIB-5 E2 explicit Spring adapter — 2026-10-24
 
-The [E2 checkpoint](libs/lib-5-events-design.md#e2-explicit-spring-adapter--2026-10-24)
+The [E2 checkpoint](../../../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md#historical-corrections-and-ownership)
 extracts reactor-local `ioc-events-spring`, migrates IOC composition and corrects
 ARCH-4/OBS-7/OBS-8. Tests cover partial synchronous dispatch, real annotated-listener
 Error propagation, observer/suppression boundaries and throwing fallback logging.
@@ -189,7 +189,7 @@ admit both new groups and reject the old coordinates. Consumer-less components
 cannot sign, publish or pass an empty consumer run; protected workflow choices
 remain limited to the four previously qualified components. E4 owns cold
 two-artifact consumers and repository routing; E5 and publication remain pending.
-See the [E3 checkpoint](libs/lib-5-events-design.md#e3-standalone-publication-packaging--2026-10-24).
+See the [E3 checkpoint](../../../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md#historical-corrections-and-ownership).
 
 ### LIB-5 E4 isolated consumers — 2026-10-25
 
@@ -201,7 +201,7 @@ application-BOM mediation, excluded/unavailable APIs, incompatible Spring and
 missing-target/missing-core routing have explicit positive and negative oracles.
 Regular CI requires both consumers; E5 still blocks signing/remote writes and
 protected-workflow admission. No scope/floor or production-code change is made.
-See the [E4 checkpoint](libs/lib-5-events-design.md#e4-isolated-packaged-consumers--2026-10-25).
+See the [E4 checkpoint](../../../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md#packaged-consumers-and-retained-evidence).
 
 ### LIB-5 E5 release admission — 2026-10-25
 
@@ -213,7 +213,7 @@ Recovery reuses both original bundles and rejects a replacement core-run input.
 API/version ownership and Java 21 / Context 7.0.9 / SLF4J 2.0.18 support are
 documented. No registry release occurs in this checkpoint; committed-candidate
 CI and current security evidence precede a separately authorized publication.
-See the [E5 checkpoint](libs/lib-5-events-design.md#e5-protected-release-admission--2026-10-25).
+See the [E5 checkpoint](../../../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md#historical-corrections-and-ownership).
 
 ### LIB-5 protected publication — 2026-10-25
 
@@ -224,7 +224,7 @@ See the [E5 checkpoint](libs/lib-5-events-design.md#e5-protected-release-admissi
 подписанные файлы без пересборки и повторной подписи; адаптер сохранил тот же core.
 Проверены фактические логи, manifests, хеши четырёх/восьми артефактов, источники
 загрузки, plain/Boot BOM, отрицательные проверки зависимостей и маршрутов.
-[Запись выпуска](libs/lib-5-events-design.md#protected-publication-record--2026-10-25)
+[Запись выпуска](../../../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md)
 содержит теги, deployment ID, хеши и сохранённые подтверждения. ETL остаётся
 отложенным. Выпуск сервиса и проверка второго развёрнутого сервиса в эту работу
 не входили; protected CI recovery конфигурационной библиотеки остаётся отдельно.

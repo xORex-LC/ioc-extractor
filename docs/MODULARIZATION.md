@@ -8,9 +8,12 @@ adapters и bootstrap собираются как отдельные Maven-мо�
 `io.github.xorex-lc`; выделенный `platform-diagnostics-api` использует ту же
 группу. Опубликованные `platform-logging-slf4j` и
 `adapter-config-spring-boot` (`ioc-config-spring-boot`) также
-используют `io.github.xorex-lc`. Подготовленные к публикации
+используют `io.github.xorex-lc`. Опубликованные
 `platform-events` и `adapter-events-spring` (`ioc-events-spring`) используют ту же
-группу; их независимые consumer-проверки и выпуск ещё не выполнены. Остальные модули сохраняют `com.iocextractor`. Публикуемый
+группу; отдельные consumers прошли для Central и GitHub Packages. Исходные
+сведения сохраняют записи [core](../.github/release-notes/ioc-platform-events-0.3.0-rc.1.md)
+и [adapter](../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md).
+Остальные модули сохраняют `com.iocextractor`. Публикуемый
 POM библиотеки не зависит от parent реактора. Политика —
 [ADR 0028](ADR/0028-pilot-library-publication.md), контракт диагностики —
 [ADR 0044](ADR/0044-reusable-diagnostics-contract.md), контракт логирования —
@@ -130,8 +133,9 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ io
   executor и recovery принадлежат сервису. Контракт и исправления ошибок —
   [ADR 0047](ADR/0047-explicit-spring-control-event-adapter.md). Оба events-модуля
   имеют самостоятельные POM и селекторы локальной упаковки; у Spring-модуля
-  обязательная зависимость от events-контрактов той же версии. Независимые
-  consumer-проверки и публикация квалифицируются отдельно.
+  обязательная зависимость от events-контрактов той же версии. Версия `0.3.0-rc.1`
+  опубликована и проверена отдельными consumers в обоих репозиториях;
+  другая версия или развёрнутый сервис требует собственной квалификации.
 - `ioc-application-tck` содержит test-scope contract tests; реализации портов
   подключают его только в тестовом scope.
 - `ioc-app` (bootstrap) собирает исполняемый артефакт и зависит от подключённых
@@ -181,7 +185,7 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ io
 | `platform-etl` | Generic ETL kernel: `Envelope`, `Stage`, `Pipeline`, `PipelineRunner`, `PipelineObserver` |
 | `platform-events` | Framework-free publish-only control-event contracts и observers; без broker/durable delivery mechanics |
 | `platform-concurrency` | Async FIFO по ключу с bounded admission; synchronous exclusion без FIFO; [контракты и health snapshots](../platform/platform-concurrency/README.md) |
-| `platform-logging-slf4j` | Общий logging API; SLF4J API — единственная main-зависимость; [руководство](guides/logging-library.md); IOC делегирует ему через observability |
+| `platform-logging-slf4j` | Общий logging API; SLF4J API — единственная main-зависимость; [руководство](guides/libraries/logging-slf4j.md); IOC делегирует ему через observability |
 | `platform-observability` | Observability/logging: MdcScope, LogEvent, logging taxonomy, `LoggingPipelineObserver` |
 | `platform-diagnostics-logging` | Bridge `DiagnosticSink` → LogEvent/SLF4J (`LoggingDiagnosticSink`); зависит на `platform-diagnostics` + `platform-observability` |
 | `platform-errors` | базовые ошибки/common-типы и трансляция; нижний слой для `DiagnosticException` |
