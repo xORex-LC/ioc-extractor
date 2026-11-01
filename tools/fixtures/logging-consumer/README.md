@@ -2,7 +2,7 @@
 
 A standalone Java 21 Maven project, outside the reactor. Publication tooling
 copies it to a temporary directory and extracts the three complete Java examples
-from the [logging guide](../../../docs/guides/logging-library.md). The consumer
+from the [logging guide](../../../docs/guides/libraries/logging-slf4j.md). The consumer
 checks native scalar values, omission, explicit masks, Throwable delivery and
 MDC restoration through its own Logback provider. The shared classes must come
 from a JAR.
@@ -25,3 +25,10 @@ This is local packaging evidence until the same consumer downloads a protected
 release from Central and GitHub Packages separately. It does not qualify a
 second production service or another provider. The companion
 [Boot consumer](../logging-boot-consumer/README.md) checks the application recipe.
+
+Executable Java/XML/YAML blocks must match the Russian versions; the publication
+tool rejects translation drift before compilation. The unchanged independent
+assertions/driver remain separate from the guide sources. The
+[permanent release record](../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md)
+retains successful original Central/GitHub qualification for `0.3.0-rc.1`.
+Run `make library-publication-test` for extraction/parity guards.

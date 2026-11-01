@@ -855,17 +855,18 @@ class ConsumerGuardTest(unittest.TestCase):
                                                        PUB.COMPONENTS['events'], project, 'file:///alternate')
 
     def test_events_examples_are_extracted_exactly_for_their_supported_classpath(self):
-        blocks = PUB.re.findall(r'```java\n(.*?)\n```',
-                               (PUB.ROOT / 'docs/guides/events-library.md').read_text(), PUB.re.DOTALL)
+        blocks = {guide: PUB.re.findall(r'```java\n(.*?)\n```',
+                                        (PUB.ROOT / ('docs/guides/libraries/' + guide + '.md')).read_text(),
+                                        PUB.re.DOTALL)[0] for guide in ('events', 'events-spring')}
         for component, spring in [('events', False), ('events-spring', True)]:
             with self.subTest(component=component), tempfile.TemporaryDirectory() as folder:
                 project = Path(folder)
                 PUB.populate_examples(PUB.COMPONENTS[component], component + '-consumer', project)
                 source = project / 'src/main/java'
-                self.assertEqual((source / 'LocalEventsExample.java').read_text(), blocks[0])
+                self.assertEqual((source / 'LocalEventsExample.java').read_text(), blocks['events'])
                 self.assertEqual((source / 'SpringEventsExample.java').exists(), spring)
                 if spring:
-                    self.assertEqual((source / 'SpringEventsExample.java').read_text(), blocks[1])
+                    self.assertEqual((source / 'SpringEventsExample.java').read_text(), blocks['events-spring'])
 
     def test_central_download_group_admits_only_own_and_reviewed_public_groups(self):
         for repository, url in [('central', PUB.CENTRAL), ('github', PUB.GITHUB), ('local', 'file:///selected')]:
@@ -1067,6 +1068,109 @@ class ConfigurationGuideTest(unittest.TestCase):
                         path.write_text(text.replace(original, replacement) if name == guide else text)
                 with patch.object(PUB, 'ROOT', root), self.assertRaisesRegex(ValueError, diagnostic):
                     PUB.populate_examples(PUB.COMPONENTS['configuration'], 'configuration-consumer', root)
+
+
+class EventsGuideTest(unittest.TestCase):
+    def copy_guides(self, root, guide, original, replacement, translated_only=False):
+        for name in ('events', 'events-spring'):
+            for directory in ('libraries', 'ru/libraries'):
+                relative = 'docs/guides/' + directory + '/' + name + '.md'
+                content = (PUB.ROOT / relative).read_text()
+                if name == guide and (not translated_only or directory == 'ru/libraries'):
+                    self.assertIn(original, content)
+                    content = content.replace(original, replacement)
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content)
+
+    def test_translation_drift_is_rejected_for_both_artifacts(self):
+        for guide, language, original in [('events', 'java', 'collector.refresh-requested'),
+                                          ('events', 'xml', '<version>0.3.0-rc.1</version>'),
+                                          ('events-spring', 'java', 'feed-a'),
+                                          ('events-spring', 'xml', '<version>0.3.0-rc.1</version>')]:
+            with self.subTest(guide=guide, language=language), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                self.copy_guides(root, guide, original, 'Changed example text', translated_only=True)
+                with patch.object(PUB, 'ROOT', root), self.assertRaisesRegex(ValueError, language + ' translations differ'):
+                    PUB.populate_examples(PUB.COMPONENTS[guide], guide + '-consumer', root / 'consumer')
+
+    def test_missing_or_renamed_examples_cannot_pass(self):
+        for guide, original, replacement, diagnostic in [
+                ('events', '```java', '```text', 'example count changed'),
+                ('events', '```xml', '```text', 'example count changed'),
+                ('events-spring', '```java', '```text', 'example count changed'),
+                ('events-spring', '```xml', '```text', 'example count changed'),
+                ('events', 'LocalEventsExample', 'UnexpectedExample', 'events guide example changed'),
+                ('events-spring', 'SpringEventsExample', 'UnexpectedExample', 'events guide example changed')]:
+            with self.subTest(guide=guide, diagnostic=diagnostic), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                self.copy_guides(root, guide, original, replacement)
+                with patch.object(PUB, 'ROOT', root), self.assertRaisesRegex(ValueError, diagnostic):
+                    PUB.populate_examples(PUB.COMPONENTS[guide], guide + '-consumer', root / 'consumer')
+
+
+class LoggingGuideTest(unittest.TestCase):
+    guides = ('logging-slf4j', 'logging-slf4j-boot')
+    driver = 'bootstrap/ioc-app/src/test/resources/consumer/logging/BootRecipeMain.java'
+
+    def copy_guides(self, root, guide, original, replacement, translated_only=False):
+        for name in self.guides:
+            for directory in ('libraries', 'ru/libraries'):
+                relative = 'docs/guides/' + directory + '/' + name + '.md'
+                content = (PUB.ROOT / relative).read_text()
+                if name == guide and (not translated_only or directory == 'ru/libraries'):
+                    self.assertIn(original, content)
+                    content = content.replace(original, replacement)
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content)
+        driver = root / self.driver
+        driver.parent.mkdir(parents=True)
+        driver.write_bytes((PUB.ROOT / self.driver).read_bytes())
+
+    def test_consumers_receive_actual_examples_configuration_and_independent_driver(self):
+        for fixture in ('logging-consumer', 'logging-boot-consumer'):
+            with self.subTest(fixture=fixture), tempfile.TemporaryDirectory() as folder:
+                project = Path(folder)
+                PUB.populate_examples(PUB.COMPONENTS['logging'], fixture, project)
+                names = ('CollectionExample', 'OmissionExample', 'FailureExample')
+                document = (PUB.ROOT / 'docs/guides/libraries/logging-slf4j.md').read_text()
+                for name, source in zip(names, PUB.re.findall(r'```java\n(.*?)\n```', document, PUB.re.DOTALL)):
+                    self.assertEqual((project / ('src/main/java/examples/' + name + '.java')).read_text(), source)
+                if fixture == 'logging-boot-consumer':
+                    document = (PUB.ROOT / 'docs/guides/libraries/logging-slf4j-boot.md').read_text()
+                    for language, path in [('java', 'src/main/java/examples/logging/CollectorEcsEncoder.java'),
+                                            ('yaml', 'src/main/resources/recipe/application.yml'),
+                                            ('xml', 'src/main/resources/recipe/logback-spring.xml')]:
+                        self.assertEqual((project / path).read_text(),
+                                         PUB.re.findall(r'```' + language + r'\n(.*?)\n```', document, PUB.re.DOTALL)[0])
+                    self.assertEqual((project / 'src/main/java/qualification/BootRecipeMain.java').read_bytes(),
+                                     (PUB.ROOT / self.driver).read_bytes())
+
+    def test_translation_drift_is_rejected_in_both_guides(self):
+        for guide, language, original in [('logging-slf4j', 'java', 'collection completed'),
+                                          ('logging-slf4j', 'xml', '<version>0.3.0-rc.1</version>'),
+                                          ('logging-slf4j-boot', 'java', 'eventDataset must not be blank'),
+                                          ('logging-slf4j-boot', 'yaml', 'name: feeds-collector'),
+                                          ('logging-slf4j-boot', 'xml', '<append>true</append>')]:
+            with self.subTest(guide=guide, language=language), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                self.copy_guides(root, guide, original, 'Changed example text', translated_only=True)
+                with patch.object(PUB, 'ROOT', root), self.assertRaisesRegex(ValueError, language + ' translations differ'):
+                    PUB.populate_examples(PUB.COMPONENTS['logging'], 'logging-boot-consumer', root / 'consumer')
+
+    def test_missing_or_renamed_examples_cannot_pass(self):
+        for guide, original, replacement, diagnostic in [
+                ('logging-slf4j', '```java', '```text', 'example count changed'),
+                ('logging-slf4j-boot', '```yaml', '```text', 'example count changed'),
+                ('logging-slf4j-boot', '```xml', '```text', 'example count changed'),
+                ('logging-slf4j', 'CollectionExample', 'UnexpectedExample', 'class changed'),
+                ('logging-slf4j-boot', 'CollectorEcsEncoder', 'UnexpectedExample', 'class changed')]:
+            with self.subTest(guide=guide, diagnostic=diagnostic), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                self.copy_guides(root, guide, original, replacement)
+                with patch.object(PUB, 'ROOT', root), self.assertRaisesRegex(ValueError, diagnostic):
+                    PUB.populate_examples(PUB.COMPONENTS['logging'], 'logging-boot-consumer', root / 'consumer')
 
 
 class ProxyTest(unittest.TestCase):

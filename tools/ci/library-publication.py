@@ -622,16 +622,15 @@ def populate_examples(component, fixture, project):
             (project / (class_name + '.java')).write_text(source)
         return
     if component in (COMPONENTS['events'], COMPONENTS['events-spring']):
-        guide = (ROOT / 'docs/guides/events-library.md').read_text()
-        blocks = re.findall(r'```java\n(.*?)\n```', guide, re.DOTALL)
-        names = ['LocalEventsExample', 'SpringEventsExample']
-        require(len(blocks) == len(names), 'events guide Java example count changed')
-        for name, source in zip(names, blocks):
+        guides = [('events', 'LocalEventsExample')]
+        if component == COMPONENTS['events-spring']:
+            guides.append(('events-spring', 'SpringEventsExample'))
+        for guide, name in guides:
+            source = bilingual_blocks(guide, {'java': 1, 'xml': 1})['java'][0]
             require('public final class ' + name + ' {' in source, 'events guide example changed')
-            if name == 'LocalEventsExample' or component == COMPONENTS['events-spring']:
-                path = project / 'src/main/java' / (name + '.java')
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(source)
+            path = project / 'src/main/java' / (name + '.java')
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(source)
         return
     if component == COMPONENTS['configuration']:
         api = bilingual_blocks('config-spring-boot', {'java': 1, 'xml': 1})
@@ -651,31 +650,30 @@ def populate_examples(component, fixture, project):
         return
     if component != COMPONENTS['logging']:
         return
-    guides = ['logging-library.md']
+    guides = [('logging-slf4j', {'java': 3, 'xml': 1},
+               ('CollectionExample', 'OmissionExample', 'FailureExample'))]
     if fixture == 'logging-boot-consumer':
-        guides.append('logging-library-boot.md')
+        guides.append(('logging-slf4j-boot', {'java': 1, 'yaml': 1, 'xml': 1},
+                       ('CollectorEcsEncoder',)))
         driver = ROOT / 'bootstrap/ioc-app/src/test/resources/consumer/logging/BootRecipeMain.java'
         destination = project / 'src/main/java/qualification/BootRecipeMain.java'
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(driver, destination)
-    for guide in guides:
-        document = (ROOT / 'docs/guides' / guide).read_text()
-        blocks = re.findall(r'```java\n(.*?)\n```', document, re.DOTALL)
-        require(len(blocks) == (3 if guide == 'logging-library.md' else 1), 'guide Java example count changed')
-        for source in blocks:
+    for guide, counts, names in guides:
+        examples = bilingual_blocks(guide, counts)
+        for expected_name, source in zip(names, examples['java']):
             package = re.search(r'^package ([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*);', source, re.MULTILINE)
             name = re.search(r'public final class (\w+)', source)
             require(package is not None and name is not None, 'incomplete guide Java example')
+            require(name.group(1) == expected_name, 'logging guide class changed')
             path = project / 'src/main/java' / package.group(1).replace('.', '/') / (name.group(1) + '.java')
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(source)
-        if guide == 'logging-library-boot.md':
+        if guide == 'logging-slf4j-boot':
             resources = project / 'src/main/resources/recipe'
             resources.mkdir(parents=True, exist_ok=True)
             for language, filename in [('yaml', 'application.yml'), ('xml', 'logback-spring.xml')]:
-                blocks = re.findall(r'```' + language + r'\n(.*?)\n```', document, re.DOTALL)
-                require(len(blocks) == 1, 'guide configuration count changed')
-                (resources / filename).write_text(blocks[0])
+                (resources / filename).write_text(examples[language][0])
 
 
 def verify_resolved_artifacts(metadata, component, cache, origin='library-target'):
