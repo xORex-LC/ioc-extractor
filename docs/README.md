@@ -68,6 +68,11 @@ failure/recovery semantics и точки расширения, но не пер�
   [русский каталог](guides/ru/libraries/README.md) помогают выбрать общий модуль.
   Руководство concurrency описывает синхронное исключение, FIFO по ключу,
   ёмкость, ошибки, телеметрию и завершение; его примеры исполняются на JAR.
+- [Разработка библиотек](guides/libraries/development.md) и
+  [русское руководство](guides/ru/libraries/development.md) описывают обязательный
+  поиск готового API, его развитие и согласованный переход на независимые версии.
+  Правила версий принадлежат [RELEASE-PROCESS.md](RELEASE-PROCESS.md#reusable-library-versions);
+  техническая активация остаётся открытым TOOL-9.
 - [ADR 0044](ADR/0044-reusable-diagnostics-contract.md) фиксирует границу общей
   диагностики; [руководство библиотеки](guides/libraries/diagnostics.md) объясняет
   подключение, bounded counts, policy и delivery для другого сервиса.

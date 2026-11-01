@@ -22,6 +22,9 @@ follow-up; see its guide and release record.
 
 ## Where to look next
 
+- Follow [Developing and versioning libraries](development.md) before adding
+  another mechanism or changing a shared API. Independent library versions are
+  accepted; their Maven/CI activation is still pending as TOOL-9.
 - Start with a library guide for dependencies, working examples, errors and
   resource ownership. Use the linked module README for its package map and
   Javadoc for exact public contracts.

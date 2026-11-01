@@ -64,8 +64,8 @@
 | [0044-reusable-diagnostics-contract.md](0044-reusable-diagnostics-contract.md) | Общий JDK-only контракт diagnostics: коды сервиса, чистые policy decisions, bounded samples и точные counts; локальные IOC-каталоги/исключения и отдельный допуск публикации. Принято 2026-10-18; удалённая публикация ожидает отдельного разрешения. |
 | [0045-reusable-slf4j-logging-contract.md](0045-reusable-slf4j-logging-contract.md) | Общий SLF4J API, восстановление MDC, скалярный профиль ECS и явное маскирование; IOC-каталоги и Boot backend остаются локальными. Синхронный рецепт и границы квалификации проверяются отдельно от публикации. Принято 2026-10-20. |
 | [0046-reusable-spring-boot-configuration-inspection.md](0046-reusable-spring-boot-configuration-inspection.md) | Общая проверка имён и наблюдение миграций по неизменяемому снимку; загрузка источников, binding, валидация значений и область отказа принадлежат сервису. Ограниченный контекст и закрытые входы проверяются раздельно; публикация требует отдельного допуска. Принято 2026-10-22. |
-
 | [0047-explicit-spring-control-event-adapter.md](0047-explicit-spring-control-event-adapter.md) | Явный Spring publisher отдельно от JDK-контрактов; исходный Error, первичная ошибка публикации и ограничение резервного логирования; настройка обработчиков остаётся у сервиса. Принято 2026-10-24; публикация требует отдельной квалификации. |
+| [0048-independent-library-versions-and-reuse.md](0048-independent-library-versions-and-reuse.md) | Независимые версии библиотек и единое семейство events; сначала проверяем готовый API, развиваем библиотеку вместе с потребителем. Принято 2026-11-01; заменяет lockstep-политику ADR 0029/0044–0047 после технической активации TOOL-9. |
 
 ## Формат
 

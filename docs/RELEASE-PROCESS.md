@@ -2,8 +2,9 @@
 
 This document defines the project-wide contract for versioning, building,
 publishing, deploying, and maintaining ioc-extractor releases. It applies to
-the whole Maven reactor and to the single bootable application produced by
-`bootstrap/ioc-app`.
+the whole Maven reactor, the bootable application produced by `bootstrap/ioc-app`,
+and the separately published reusable libraries. Application release operations
+and library publication remain separate.
 
 Project-wide security principles, control states, vulnerability disposition,
 suppression rules, and maturity roadmap are defined in
@@ -12,7 +13,7 @@ consumes those controls; it does not redefine them.
 
 The process has four goals:
 
-1. one authoritative product version;
+1. one authoritative version per product or library release family;
 2. an immutable mapping from a released version to source and binary bytes;
 3. a repeatable quality gate before publication;
 4. enough runtime metadata to identify and support a deployed build.
@@ -26,6 +27,8 @@ one value:
 |---|---|---|---|
 | Product version | `0.2.0` | User-visible software release and compatibility statement | Maven `${revision}` |
 | Source tag | `v0.2.0` | Immutable source commit selected for the release | Git |
+| Library coordinate | `io.github.xorex-lc:ioc-platform-events:0.3.0-rc.1` | A specific reusable artifact release | Component POM and qualified bundle |
+| Component tag | `ioc-platform-events-v0.3.0-rc.1` | Immutable source commit for one library artifact | Git and publication admission |
 | Source revision | `0f60b0ad990d...` | Exact source tree used by a build | Git commit |
 | Binary digest | SHA-256 | Exact released bytes | Release workflow |
 | Build metadata | version, commit, build time | Runtime support and traceability data embedded in the application | Maven/Spring Boot build |
@@ -61,10 +64,16 @@ commit and digest, the digest proves the built bytes, the tag proves the source.
 
 ## Product version authority
 
-ioc-extractor is one product released from a lockstep multi-module Maven
-reactor. All reactor modules therefore share one product version. Modules do
-not receive independent versions unless they become independently published
-and acquire separate compatibility lifecycles.
+ioc-extractor's application and internal modules share one product version.
+The accepted policy gives the published reusable libraries independent release
+versions, with events core and its Spring adapter sharing one family version;
+see [Reusable library versions](#reusable-library-versions) and
+[ADR 0048](ADR/0048-independent-library-versions-and-reuse.md).
+
+**Current implementation:** all source modules still share the product version.
+The following POM rules describe that existing reactor. Independent library
+versioning is not operational until the activation criteria below pass; do not
+interpret this policy change as a completed POM or publication migration.
 
 The root `pom.xml` owns the only editable product version through Maven's
 CI-friendly `${revision}` placeholder:
@@ -97,11 +106,122 @@ installer metadata, documentation examples, and tests must derive their
 version from the Maven project or from the built artifact. A second editable
 copy of the product version is a defect.
 
-CI-friendly versions require flattened consumer POMs when individual reactor
-modules are installed or deployed for consumption outside the reactor. The
-project does not publish those modules today. If that changes, introduce and
-verify `flatten-maven-plugin` as part of the repository-publication design; do
-not add it merely for the bootable application build.
+Six reusable artifacts are already published under `io.github.xorex-lc`; the
+[library catalog](guides/libraries/README.md) identifies them. Their
+`library-publication` profiles use `flatten-maven-plugin` to produce consumer
+POMs without the private reactor parent. Their artifacts and dependency closure
+are checked by isolated consumers. Other internal modules are not published as
+libraries. The application build does not need another flattening mechanism.
+
+## Reusable library versions
+
+### Release ownership and compatibility
+
+Concurrency, diagnostics, logging and configuration each own a release version
+independent of the service and of one another. Events core and its Spring adapter
+initially share one version: the adapter requires that exact core version. Each
+events artifact retains its own tag, bundle and repository evidence; core is
+published and qualified before the adapter. A release of either member advances
+the family version and releases both, even if the other's implementation is
+unchanged. These are the accepted ownership rules; the current implementation
+remains shared until activation.
+
+A service release does not require a release of an unchanged library. Each
+consumer selects an exact qualified library version and owns when it upgrades.
+The repository location, parent build configuration and publication credentials
+do not determine a library's compatibility version. One monorepo can contain
+independent library releases and product-versioned internal modules.
+
+Use the following increments for a library or release family:
+
+| Change to the supported library contract | Increment |
+|---|---|
+| Compatible bug/security fix or internal hardening | PATCH |
+| Compatible public API addition or deprecation | MINOR |
+| Incompatible supported-contract change during `0.x` | MINOR, with migration notes |
+| Incompatible supported-contract change from `1.0` onward | MAJOR, with migration notes |
+
+These `0.x` guarantees are explicit project policy. Review the actual impact,
+not just the change label: a security fix or dependency upgrade can be breaking.
+Compatibility includes source and binary API, validation, failure behavior,
+thread safety and ordering, resource ownership, emitted field names/types and
+minimum Java/framework requirements. A package move can break consumers even
+when a method's implementation is unchanged.
+
+`-SNAPSHOT` identifies development. RCs have their own immutable coordinates;
+they do not inherit a guarantee that the eventual final release is compatible.
+Version `1.0.0` needs an explicit stable-contract decision for that library or
+family and is independent of IOC reaching `1.0.0`. Prose-only guide corrections
+can be maintained without publishing another binary.
+
+Every published version, including an RC, is immutable. Corrections use a new
+version and component tag. Recovery reuses original signed files and deployment
+identity; it does not rebuild, re-sign, overwrite or retag a published coordinate.
+The existing `0.3.0-rc.1` releases keep their recorded identities.
+
+### Library changes required by a service feature
+
+Check the existing library API and callers before implementing another mechanism.
+Use a suitable API. Extend or fix its owning library when the missing behavior is
+a focused shared capability; keep service business rules, catalogs, schemas,
+wiring and recovery policy in the service. The
+[development guide](guides/libraries/development.md) explains this workflow.
+
+Library and consumer changes may be developed together in one branch or PR.
+Independent versions do not require a separate repository or a publication before
+consumer development can continue. After activation, advance the changed
+library/family to its next development version before changing its released
+content. Until activation, use the existing shared development version and
+record the component's intended change and compatibility impact.
+
+Before release, review the API and behavior against the selected published
+baseline, add meaningful regressions, update public Javadoc and paired guides,
+run the applicable build/analyzer gates and isolated packaged consumer. Automated
+source/binary comparison is tracked as TOOL-6; existing consumers do not cover
+all possible API incompatibilities and must not be described as doing so.
+
+Publish and qualify the required library in both repositories before releasing
+the consuming service. Pin the selected released version and verify the final
+integration. The service release must use the qualified library content; reactor
+resolution must not silently ship newer local source under a released coordinate.
+SNAPSHOT/local packaging results are development evidence, not a qualification of
+published dependencies. Publication follows the protected procedure in
+[the publication guide](guides/library-publication.md); a code change alone does
+not authorize publishing a library or releasing the application.
+
+### Activation of independent versions
+
+Implementation remains open as [TOOL-9](KNOWN-ISSUES.md). Until it is complete,
+`${revision}`, `${project.version}` dependencies and the release-branch/version
+admission retain their existing shared-version behavior. The current
+`LIBRARY_VERSION`/`-Drevision` override versions the selected reactor build; it
+does not independently version a library. Do not bypass admission or rename a
+product release branch merely to force a library version through it.
+
+Activate the new scheme only after a reviewed implementation proves:
+
+1. Each library/family has one version authority distinct from the product.
+   Parent resolution, reactor build order and dependency management work with
+   different product/library versions; unchanged libraries outside a changed
+   release family retain their versions.
+2. Component tag, source ancestry, selected build version, flattened and embedded
+   POMs, dependency closure and recovery agree without assuming that a library
+   version equals the product release branch. Protected source/ref admission
+   remains explicit, and application `v*` release triggers remain separate.
+3. Events still use an exact-version core dependency, core-first repository
+   qualification and the original signed-core handoff/recovery contract.
+4. A service build selects its intended released library content even with local
+   library sources present. Qualification detects source drift under an existing
+   released coordinate. Development uses next-version sources without presenting
+   them as an already published release.
+5. Per-component packaging and cold consumers prove correct versions, origin and
+   hashes; regressions reject a wrong component/family version or missing released
+   dependency. Product-only and library-only release scenarios work, with current
+   component tags and recovery evidence preserved.
+
+Update this current-state description, the publication guide, module references,
+paired development guides and local agent guidance in that implementation change.
+No new library version is published merely by accepting ADR 0048.
 
 ## Versioning policy
 
@@ -500,7 +620,8 @@ claims:
 - generated SBOM with a defined consumer and retention contract;
 - coordinated activation of authenticity and composition-transparency controls;
 - automated changelog aggregation from a stricter commit convention;
-- independently versioned/published Maven modules and flattened POMs;
+- activation of independently versioned reusable libraries (ADR 0048 / TOOL-9);
+  publication and flattened consumer POMs already exist;
 - multiple maintained release lines with automated backport tracking;
 - reproducible-build comparison across independent runners.
 

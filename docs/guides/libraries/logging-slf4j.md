@@ -47,7 +47,10 @@ The reviewed implementation matches tag `ioc-platform-logging-slf4j-v0.3.0-rc.1`
 the reactor remains at `0.3.0-SNAPSHOT`. The
 [permanent release record](../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md)
 retains the original signed files, source and repository qualification.
-Product/library versions remain lockstep. No starter or provider is included.
+The current reactor/publication implementation remains lockstep; independent
+library versions are accepted but pending activation. Follow the
+[development policy](development.md) for API changes and release ownership.
+No starter or provider is included.
 
 ## Public tools
 

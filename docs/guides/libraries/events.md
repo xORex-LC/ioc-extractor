@@ -34,8 +34,10 @@ retains source, signed hashes and qualification evidence.
 
 The reviewed implementation matches tag `ioc-platform-events-v0.3.0-rc.1`;
 the reactor remains at `0.3.0-SNAPSHOT`. Packages retain
-`com.iocextractor.platform.events`. Product/library versions remain lockstep;
-the metadata's `eventVersion` is a separate service-owned payload version.
+`com.iocextractor.platform.events`. Current POMs/publication remain lockstep;
+the accepted [development policy](development.md) gives the events family an
+independent version after technical activation. The metadata's `eventVersion`
+is a separate service-owned payload version.
 For Spring delivery use the same-version [explicit adapter](events-spring.md).
 A second deployed service and a wire protocol remain outside qualification.
 

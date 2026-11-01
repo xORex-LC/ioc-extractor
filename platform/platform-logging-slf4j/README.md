@@ -30,8 +30,11 @@ are test dependencies. Main code has no IOC catalog, ETL, diagnostics, Spring,
 Logback, JSON encoder or automatic context-propagation dependency.
 
 Coordinates: `io.github.xorex-lc:ioc-platform-logging-slf4j`, using the parent
-`${revision}` in product lockstep. Artifact metadata follows the existing platform
-libraries. The publication tooling admits this component's exact required SLF4J
+`${revision}` in the current product-lockstep implementation. Independent library
+versions are accepted but pending technical activation; see the
+[development guide](../../docs/guides/libraries/development.md).
+Artifact metadata follows the existing platform libraries. The publication
+tooling admits this component's exact required SLF4J
 compile dependency. The released version passed protected publication and live
 repository qualification using the same signed files in both repositories.
 

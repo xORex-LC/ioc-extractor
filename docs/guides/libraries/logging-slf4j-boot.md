@@ -17,8 +17,10 @@ logging configuration before deployment.
 ## Dependencies
 
 Use the service's Spring Boot dependency management and `spring-boot-starter`
-for its selected provider. Add the logging library at the same product/library
-version as the other platform libraries. The published `0.3.0-rc.1` dependency
+for its selected provider. Pin the chosen published logging version. The current
+reactor/publication implementation uses a shared product/library version;
+independent versions await the activation described in the
+[development guide](development.md). The published `0.3.0-rc.1` dependency
 is shown in the [plain Java guide](logging-slf4j.md#dependency-and-status).
 This recipe passed separate cold consumers from Central and GitHub Packages;
 a consuming service still qualifies its own complete backend configuration.

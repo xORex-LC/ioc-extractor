@@ -299,6 +299,8 @@ The recipe closes its short-lived context and returns a detached immutable model
   explains IOC integration. [TOOL-8](../../KNOWN-ISSUES.md)
   retains the pending protected Central consumer recovery.
 
-Product/library versions remain lockstep. Another deployed service, another Boot
-baseline and a generic live-reload mechanism remain outside qualification. Update
-both languages, code examples and the recipe when these public behaviors change.
+Current POMs/publication remain lockstep; independent configuration versions are
+accepted but pending the activation in the [development policy](development.md).
+Another deployed service, another Boot baseline and a generic live-reload
+mechanism remain outside qualification. Update both languages, code examples and
+the recipe when these public behaviors change.

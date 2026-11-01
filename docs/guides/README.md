@@ -14,7 +14,8 @@
 
 | Гайд | Русская версия | О чём |
 |---|---|---|
-| [libraries/](libraries/README.md) | [ru/libraries/](ru/libraries/README.md) | Выбор переиспользуемой библиотеки; concurrency, diagnostics и config описаны в парных руководствах EN/RU |
+| [libraries/](libraries/README.md) | [ru/libraries/](ru/libraries/README.md) | Выбор из шести опубликованных артефактов с парными руководствами EN/RU |
+| [libraries/development.md](libraries/development.md) | [ru/libraries/development.md](ru/libraries/development.md) | Переиспользование и развитие API, независимые версии как целевая схема и текущий общий Maven/CI version |
 | [configuration.md](configuration.md) | [ru/configuration.md](ru/configuration.md) | Полный операторский справочник всех поддерживаемых параметров, значений и рекомендаций; источник для настройки production template |
 | [deployment.md](deployment.md) | [ru/deployment.md](ru/deployment.md) | Установка, upgrade, reconciliation конфигурации, backup, rollback, restore и uninstall |
 | [bulk-resource-sizing.md](bulk-resource-sizing.md) | — | Ресурсный профиль массовой обработки, границы concurrency, измерение памяти/диска и завершение квалификации |

@@ -8,6 +8,7 @@
 | Гайд | О чём |
 |---|---|
 | [libraries/](libraries/README.md) | Каталог всех опубликованных библиотек с парными руководствами EN/RU |
+| [libraries/development.md](libraries/development.md) | Поиск готового API, доработка библиотеки вместе с фичей, совместимость и переход на независимые версии |
 | [libraries/diagnostics.md](libraries/diagnostics.md) | Коды сервиса, результаты и политики, точные счётчики, ограниченные выборки и синхронная доставка диагностик |
 | [libraries/logging-slf4j.md](libraries/logging-slf4j.md) | Типизированные записи SLF4J, MDC, ECS helpers, маскирование и границы ответственности |
 | [libraries/logging-slf4j-boot.md](libraries/logging-slf4j-boot.md) | Синхронный Boot ECS-рецепт, dataset/error ownership и проверка реального JSON |

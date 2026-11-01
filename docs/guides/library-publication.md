@@ -1,7 +1,19 @@
 # Publishing reusable platform libraries
 
 For choosing and using a library, start with the
-[library catalog](libraries/README.md). Concurrency's immutable first-release
+[library catalog](libraries/README.md). For reuse, API changes and version
+ownership, follow the [development guide](libraries/development.md) and
+[release policy](../RELEASE-PROCESS.md#reusable-library-versions).
+
+**Current publication implementation:** source versions and release admission
+remain product/library lockstep. Independent library versions are accepted in
+[ADR 0048](../ADR/0048-independent-library-versions-and-reuse.md), but their Maven
+and CI activation is pending as TOOL-9. The commands below describe the existing
+process. A global `-Drevision` or another `LIBRARY_VERSION` does not implement
+per-library versions, and a component version must still match the admitted
+product release branch. Component publication does not release the application.
+
+Concurrency's immutable first-release
 evidence is retained in its
 [release record](../../.github/release-notes/ioc-platform-concurrency-0.3.0-rc.1.md).
 Diagnostics has its own
@@ -58,7 +70,8 @@ Two additional selectors prepare separate bundles and run isolated consumers:
 | `events` | `ioc-platform-events` | None; JDK 21 only |
 | `events-spring` | `ioc-events-spring` | `ioc-platform-events` at the bundle's exact version, Spring Context 7.0.9, SLF4J API 2.0.18 |
 
-Both inherit the reactor's lockstep version and build settings during development.
+Both currently inherit the reactor's lockstep version and build settings during
+development. Independent-version activation preserves their shared family version.
 The flattened distribution POM resolves those settings and removes the parent,
 test dependencies and build configuration. This uses the existing
 [Flatten plugin behavior](https://www.mojohaus.org/flatten-maven-plugin/flatten-mojo.html).
@@ -139,7 +152,9 @@ behavior. Services own event payloads, event type/version catalogs, timestamps,
 IDs, listeners, safe exception text and durable recovery. The metadata's event
 `version` describes a service-owned payload; it is unrelated to the Maven version.
 
-Product and library versions remain lockstep, including release candidates.
+The current POM/workflow implementation keeps product and library versions
+lockstep, including release candidates. ADR 0048 accepts independent library
+versions after TOOL-9; events retains a shared core/adapter family version.
 The adapter requires the exact same core version. A change to public signatures,
 validation or failure behavior needs contract review, regression/consumer checks
 and release notes. An already released coordinate is immutable: a correction uses
@@ -224,7 +239,9 @@ The `configuration` selector prepares a parent-independent POM with exactly two
 required compile JAR dependencies: Boot 4.0.8 and Spring Core 7.0.9. The JAR's
 embedded POM must match it. Private parents, BOM imports, build/profiles/repository
 leaks, starters, extra dependencies and executable Boot packaging are rejected.
-Versions remain centrally managed in the reactor and lockstep with the product.
+The current POM/workflow implementation keeps versions centrally managed and
+lockstep with the product. Its independent version is an accepted target, pending
+the activation criteria in the release policy.
 
 The [standalone consumer](../../tools/fixtures/configuration-consumer/README.md)
 checks inspection/migration and the exact

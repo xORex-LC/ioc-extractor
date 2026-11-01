@@ -40,7 +40,10 @@ and [repository settings](../library-publication.md#consumption). Other Spring/B
 baselines and a second deployed service remain outside qualification.
 
 The Java implementation matches tag `ioc-events-spring-v0.3.0-rc.1`;
-the reactor remains at `0.3.0-SNAPSHOT`. Product/library versions stay lockstep.
+the reactor remains at `0.3.0-SNAPSHOT`. Current POMs/publication stay lockstep;
+the accepted [development policy](development.md) gives the events family an
+independent version after technical activation, preserving exact core/adapter
+version equality.
 The public package remains `com.iocextractor.adapter.out.events.spring`.
 
 ## Construct the adapter explicitly

@@ -21,6 +21,15 @@ POM библиотеки не зависит от parent реактора. По�
 [ADR 0046](ADR/0046-reusable-spring-boot-configuration-inspection.md), процедура —
 [руководство по публикации](guides/library-publication.md).
 
+Независимые версии библиотек приняты в
+[ADR 0048](ADR/0048-independent-library-versions-and-reuse.md). Текущие POM и
+допуск публикации ещё сохраняют общую версию продукта; технический переход
+отслеживается как TOOL-9 в [KNOWN-ISSUES.md](KNOWN-ISSUES.md). Events core и
+Spring-адаптер сохраняют одну версию семейства. Перед новым общим механизмом
+проверяем готовый API; подходящий используем, недостающий развиваем в его
+библиотеке. Практические правила — в
+[руководстве разработки](guides/ru/libraries/development.md).
+
 > Статус: **реализовано на этапе 9**. Фактическая структура ниже. Границы
 > модулей подкрепляются Maven-зависимостями, Maven Enforcer и ArchUnit
 > ([boundaries.md](BOUNDARIES.md)).
