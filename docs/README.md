@@ -18,7 +18,7 @@
 | [PRINCIPLES.md](PRINCIPLES.md) | Инженерные принципы: SOLID / DRY / OCP / KISS и проектные тенеты (агностичные модули, порты-и-адаптеры, конфигурируемость) |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Текущая архитектура: Clean Hexagonal + Onion, слои, правило зависимостей, конвейер обработки |
 | [MODULARIZATION.md](MODULARIZATION.md) | Многомодульная структура: Maven-реактор, platform/core/adapters/bootstrap и правила зависимостей |
-| [BOUNDARIES.md](BOUNDARIES.md) | Защита архитектурных границ: ArchUnit, Maven Enforcer, JPMS (дорожная карта) |
+| [BOUNDARIES.md](BOUNDARIES.md), [RU](ru/BOUNDARIES.md) | Архитектурные границы, Maven Enforcer и действующие blocking/advisory правила анализаторов |
 | [CONVENTIONS.md](CONVENTIONS.md) | Стандарт Javadoc, конвенция «README в каждом каталоге» (+ шаблон), правила кода |
 | [SECURITY-ENGINEERING.md](SECURITY-ENGINEERING.md) | Secure SDLC policy: активы и trust boundaries, security-контроли, vulnerability lifecycle, gates, evidence и roadmap |
 | [THREAT-MODEL.md](THREAT-MODEL.md) | Базовая threat model: risk-based STRIDE по границам доверия, DFD, трассировка актив×угроза×контроль и остаточный риск |

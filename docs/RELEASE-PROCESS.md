@@ -630,21 +630,43 @@ their lifecycle cost.
 
 ## Library publication
 
-Reusable library publication uses a separate protected manual workflow and an
-immutable artifact bundle. Its explicit `component` selector admits concurrency
-and diagnostics with no dependencies, logging with exactly the required SLF4J
-API compile JAR, and configuration with exactly the required Spring Boot and
-Spring Core compile JARs. Each component still needs its own reviewed release
+Reusable library publication uses a separate
+[protected manual workflow](../.github/workflows/library-publication.yml) and
+immutable artifact bundles. Its explicit `component` selector admits six components:
+
+| Selector | Main dependency contract |
+|---|---|
+| `concurrency` | JDK only |
+| `diagnostics` | JDK only |
+| `logging` | Required SLF4J API; consumer selects its provider |
+| `configuration` | Required Spring Boot and Spring Core APIs; validated transitive closure |
+| `events` | JDK only |
+| `events-spring` | Exact same-version events core, Spring Context and SLF4J API |
+
+Exact coordinates, versions and dependency graphs are enforced by the component
+descriptors in [publication tooling](../tools/ci/library-publication.py), packaged
+POM checks and isolated consumers. Each component needs its own reviewed release
 admission. See the [publication guide](guides/library-publication.md) and
 [ADR 0028](ADR/0028-pilot-library-publication.md), refined by
 [ADR 0029](ADR/0029-release-branch-library-publication.md). Logging's dependency
 and backend boundary is recorded in [ADR 0045](ADR/0045-reusable-slf4j-logging-contract.md);
 configuration inspection and service-owned source/enforcement policy are recorded
 in [ADR 0046](ADR/0046-reusable-spring-boot-configuration-inspection.md).
-Each library retains the product version but uses a component tag and matching
-release branch.
+[ADR 0047](ADR/0047-explicit-spring-control-event-adapter.md) owns the events
+core/adapter boundary. Events publication qualifies core in both repositories
+before admitting the adapter, retains separate bundles and reuses the original
+signed core during adapter publication and recovery. Adapter consumers verify
+both artifacts and their repository origin.
+
+Current POMs and publication admission retain the shared product version, a
+component tag and matching release branch. Independent version activation remains
+TOOL-9 under [ADR 0048](ADR/0048-independent-library-versions-and-reuse.md).
 Application release automation does not publish Maven packages. Local packaging
 does not close live repository qualification. Existing concurrency releases and
 their component tags remain immutable when another library is added. Consumers
 must verify selected-repository origin as well as the four artifact hashes.
 Third-party dependencies and application-owned logging backends resolve separately.
+Configuration's original Central CI consumer failure and corrected local result
+remain distinct from the pending protected recovery tracked as TOOL-8; use its
+[release record](../.github/release-notes/ioc-config-spring-boot-0.3.0-rc.1.md)
+for the immutable recovery identity.
