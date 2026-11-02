@@ -1,82 +1,73 @@
 # Release Process
 
-This document defines the project-wide contract for versioning, building,
-publishing, deploying, and maintaining ioc-extractor releases. It applies to
-the whole Maven reactor, the bootable application produced by `bootstrap/ioc-app`,
-and the separately published reusable libraries. Application release operations
-and library publication remain separate.
+[Русская версия](ru/RELEASE-PROCESS.md)
 
-Project-wide security principles, control states, vulnerability disposition,
-suppression rules, and maturity roadmap are defined in
-[SECURITY-ENGINEERING.md](SECURITY-ENGINEERING.md). This release process
-consumes those controls; it does not redefine them.
+This document defines standing project-wide rules for preparing, versioning,
+qualifying, publishing and maintaining releases of the application and admitted
+reusable libraries. Apply it to every release, selecting the supported scope
+and relevant checks before work begins.
 
-The process has four goals:
+## Policy and evidence ownership
 
-1. one authoritative version per product or library release family;
-2. an immutable mapping from a released version to source and binary bytes;
-3. a repeatable quality gate before publication;
-4. enough runtime metadata to identify and support a deployed build.
+| Owner | Content |
+|---|---|
+| This policy | Release identity, compatibility, admission, promotion, recovery and completion rules |
+| Release notes and component release records | A version's changes, operator/consumer impact, upgrade actions, limits and evidence references |
+| Candidate execution evidence | Exact source, bundle hashes, runs, target qualification, blockers and reviewed dispositions |
+| POM, workflows and tooling | Executable version authority, triggers, permissions, assets and validation |
+| Capability docs and guides | Detailed subsystem migrations, operation and publication procedures |
+| ADR | Accepted decisions and their historical context |
+
+Keep candidate progress, measured results and individual publication incidents
+with their records. Update this policy when a project rule changes. A new
+reusable component follows the same admission rules; it does not require copying
+its release history or a changing component inventory into this document.
+
+[TESTING.md](TESTING.md) owns test/coverage policy;
+[SECURITY-ENGINEERING.md](SECURITY-ENGINEERING.md) owns security controls,
+vulnerability disposition and suppression policy. This process consumes those
+requirements. Their implementation status must be supported by evidence, not
+inferred from a policy statement or workflow name.
 
 ## Release identity model
 
-Several identifiers describe different things and must not be collapsed into
-one value:
+Keep these identities distinct:
 
-| Identifier | Example | Meaning | Authority |
-|---|---|---|---|
-| Product version | `0.2.0` | User-visible software release and compatibility statement | Maven `${revision}` |
-| Source tag | `v0.2.0` | Immutable source commit selected for the release | Git |
-| Library coordinate | `io.github.xorex-lc:ioc-platform-events:0.3.0-rc.1` | A specific reusable artifact release | Component POM and qualified bundle |
-| Component tag | `ioc-platform-events-v0.3.0-rc.1` | Immutable source commit for one library artifact | Git and publication admission |
-| Source revision | `0f60b0ad990d...` | Exact source tree used by a build | Git commit |
-| Binary digest | SHA-256 | Exact released bytes | Release workflow |
-| Build metadata | version, commit, build time | Runtime support and traceability data embedded in the application | Maven/Spring Boot build |
-| Deployment ID | commit plus timestamp | One activation of a build on a host | Deployment tooling |
-| Schema/protocol version | migration or manifest version | Compatibility of a specific durable or wire contract | Owning subsystem |
+| Identity | Meaning | Authority |
+|---|---|---|
+| Product version, `X.Y.Z[-rc.N]` | Application compatibility statement | Effective Maven product version |
+| Application tag, `vX.Y.Z[-rc.N]` | Immutable selected source | Annotated Git tag |
+| Library coordinate | Group, artifact and exact component/family version | Admitted component POM and bundle |
+| Component tag | Immutable source for one library artifact | Protected publication admission |
+| Source revision | Full Git object ID used by a build | Resolved source commit |
+| Bundle/digest | Exact qualified files and their hashes | Build manifest/checksum evidence |
+| Runtime build information | Version, source commit and build time | Packaged application metadata |
+| Deployment ID | One activation on a target | Deployment tooling and target evidence |
+| Schema/protocol version | A durable or wire-format contract | Owning subsystem |
 
-The product version is not a substitute for a Git commit or binary digest.
-Likewise, a deployment ID is not a product version.
+The chain is source selection → build → qualified bytes → publication → target
+activation. Compare each link with its authority. A version or deployment ID
+alone does not identify binary bytes, and a checksum must be checked against the
+intended artifact from the approved distribution source.
 
-The identifiers form one chain from source to a running host. Each link is
-established once and never rewritten downstream:
-
-```text
-  Maven ${revision}      annotated tag        checked-out commit
-  (product version) ──▶  vX.Y.Z         ──▶   <full-git-sha>
-                                                   │
-                                                   ▼
-                                         one `clean verify` build
-                                                   │
-                        embedded build-info  ◀──────┘
-                        (version, commit, time)
-                                   │
-                                   ▼
-                            SHA-256 of the jar
-                                   │
-                                   ▼
-                    deployment ID (commit + timestamp)
-                       one activation on one host
-```
-
-Verification always flows backwards along this chain: a deployed host proves its
-commit and digest, the digest proves the built bytes, the tag proves the source.
+Source-level checks belong to the candidate commit; binary/stand checks belong
+to the exact bundle and target configuration. Rebuilding changes the candidate
+bundle unless byte equality is established. Earlier binary evidence must not be
+silently attached to different bytes.
 
 ## Product version authority
 
-ioc-extractor's application and internal modules share one product version.
-The accepted policy gives the published reusable libraries independent release
-versions, with events core and its Spring adapter sharing one family version;
-see [Reusable library versions](#reusable-library-versions) and
-[ADR 0048](ADR/0048-independent-library-versions-and-reuse.md).
+The application and its internal modules share one product version. Every
+release family has one editable version authority; resources, artifact names,
+metadata and tests derive from its effective build version. There is no parallel
+editable `VERSION` file.
 
-**Current implementation:** all source modules still share the product version.
-The following POM rules describe that existing reactor. Independent library
-versioning is not operational until the activation criteria below pass; do not
-interpret this policy change as a completed POM or publication migration.
+Use the versioning mode admitted by the POMs and publication tooling. The
+[publication guide](guides/library-publication.md) describes implementation
+availability; accepting independent ownership does not by itself activate an
+independent Maven version scheme.
 
-The root `pom.xml` owns the only editable product version through Maven's
-CI-friendly `${revision}` placeholder:
+In the shared-version reactor mode, the root owns Maven's CI-friendly revision:
 
 ```xml
 <version>${revision}</version>
@@ -86,7 +77,7 @@ CI-friendly `${revision}` placeholder:
 </properties>
 ```
 
-Every child POM references the reactor parent with `${revision}`:
+Child parent declarations use the same revision:
 
 ```xml
 <parent>
@@ -97,289 +88,206 @@ Every child POM references the reactor parent with `${revision}`:
 </parent>
 ```
 
-Inter-module dependencies continue to use `${project.version}` through the
-root `dependencyManagement`. `${revision}` must not replace
-`${project.version}` in dependency declarations.
-
-There is no separate `VERSION` file. Runtime resources, release assets,
-installer metadata, documentation examples, and tests must derive their
-version from the Maven project or from the built artifact. A second editable
-copy of the product version is a defect.
-
-Six reusable artifacts are already published under `io.github.xorex-lc`; the
-[library catalog](guides/libraries/README.md) identifies them. Their
-`library-publication` profiles use `flatten-maven-plugin` to produce consumer
-POMs without the private reactor parent. Their artifacts and dependency closure
-are checked by isolated consumers. Other internal modules are not published as
-libraries. The application build does not need another flattening mechanism.
+These are contextual POM fragments; replace the illustrative version for an
+actual build. Managed reactor dependencies use `${project.version}`, not
+`${revision}`, in this mode. A global `-Drevision`/`LIBRARY_VERSION` override
+versions the selected shared reactor; it does not independently version a
+component. A different mode requires the activation criteria below.
 
 ## Reusable library versions
 
 ### Release ownership and compatibility
 
-Concurrency, diagnostics, logging and configuration each own a release version
-independent of the service and of one another. Events core and its Spring adapter
-initially share one version: the adapter requires that exact core version. Each
-events artifact retains its own tag, bundle and repository evidence; core is
-published and qualified before the adapter. A release of either member advances
-the family version and releases both, even if the other's implementation is
-unchanged. These are the accepted ownership rules; the current implementation
-remains shared until activation.
+Reusable libraries own compatibility independently of the consuming service.
+The [library catalog](guides/libraries/README.md), component contracts and
+[ADR 0048](ADR/0048-independent-library-versions-and-reuse.md) identify owners
+and coupled release families. Exact-version core/adapter families advance
+together: releasing either member releases the declared family, including an
+unchanged partner. Each artifact retains its own source/tag, bundle and qualification.
+The required core is qualified before its adapter.
 
-A service release does not require a release of an unchanged library. Each
-consumer selects an exact qualified library version and owns when it upgrades.
-The repository location, parent build configuration and publication credentials
-do not determine a library's compatibility version. One monorepo can contain
-independent library releases and product-versioned internal modules.
+An unchanged library does not need a release merely because the service changes.
+Consumers select exact qualified versions and own upgrades. Repository location,
+parent build settings and publication credentials do not define compatibility.
 
-Use the following increments for a library or release family:
+Compatibility includes source/binary API, validation and failure behavior,
+thread safety/ordering, resource ownership, emitted names/types and minimum
+Java/framework requirements. Review package moves, dependency upgrades and
+security fixes for observable impact as carefully as new APIs.
 
-| Change to the supported library contract | Increment |
-|---|---|
-| Compatible bug/security fix or internal hardening | PATCH |
-| Compatible public API addition or deprecation | MINOR |
-| Incompatible supported-contract change during `0.x` | MINOR, with migration notes |
-| Incompatible supported-contract change from `1.0` onward | MAJOR, with migration notes |
-
-These `0.x` guarantees are explicit project policy. Review the actual impact,
-not just the change label: a security fix or dependency upgrade can be breaking.
-Compatibility includes source and binary API, validation, failure behavior,
-thread safety and ordering, resource ownership, emitted field names/types and
-minimum Java/framework requirements. A package move can break consumers even
-when a method's implementation is unchanged.
-
-`-SNAPSHOT` identifies development. RCs have their own immutable coordinates;
-they do not inherit a guarantee that the eventual final release is compatible.
-Version `1.0.0` needs an explicit stable-contract decision for that library or
-family and is independent of IOC reaching `1.0.0`. Prose-only guide corrections
-can be maintained without publishing another binary.
-
-Every published version, including an RC, is immutable. Corrections use a new
-version and component tag. Recovery reuses original signed files and deployment
-identity; it does not rebuild, re-sign, overwrite or retag a published coordinate.
-The existing `0.3.0-rc.1` releases keep their recorded identities.
+Published versions, including RCs, are immutable. A correction uses a new version
+and component tag. Recovery reuses original signed files and deployment identity;
+it does not rebuild, re-sign, overwrite or retag an existing coordinate.
 
 ### Library changes required by a service feature
 
-Check the existing library API and callers before implementing another mechanism.
-Use a suitable API. Extend or fix its owning library when the missing behavior is
-a focused shared capability; keep service business rules, catalogs, schemas,
-wiring and recovery policy in the service. The
-[development guide](guides/libraries/development.md) explains this workflow.
+Inspect the existing API and callers first. Reuse a suitable mechanism or extend
+its owning library for a focused shared capability. Service rules, catalogs,
+schemas, composition and recovery policy stay with the service; follow the
+[development guide](guides/libraries/development.md).
 
-Library and consumer changes may be developed together in one branch or PR.
-Independent versions do not require a separate repository or a publication before
-consumer development can continue. After activation, advance the changed
-library/family to its next development version before changing its released
-content. Until activation, use the existing shared development version and
-record the component's intended change and compatibility impact.
+Library and consumer changes may be developed together. Under independent
+versioning, advance the changed library/family's development version before
+changing released content. Under shared versioning, use the admitted common
+development version and record the intended component/compatibility change.
 
-Before release, review the API and behavior against the selected published
-baseline, add meaningful regressions, update public Javadoc and paired guides,
-run the applicable build/analyzer gates and isolated packaged consumer. Automated
-source/binary comparison is tracked as TOOL-6; existing consumers do not cover
-all possible API incompatibilities and must not be described as doing so.
+Before release, compare against the selected published baseline, add meaningful
+regressions, update public Javadoc and paired guides, run applicable build/
+analyzer checks and isolated packaged consumers. A consumer fixture is a bounded
+compatibility witness, not exhaustive source/binary API comparison; implementation
+gaps belong in [KNOWN-ISSUES.md](KNOWN-ISSUES.md).
 
-Publish and qualify the required library in both repositories before releasing
-the consuming service. Pin the selected released version and verify the final
-integration. The service release must use the qualified library content; reactor
-resolution must not silently ship newer local source under a released coordinate.
-SNAPSHOT/local packaging results are development evidence, not a qualification of
-published dependencies. Publication follows the protected procedure in
-[the publication guide](guides/library-publication.md); a code change alone does
-not authorize publishing a library or releasing the application.
+Publish and qualify required library content before releasing the consuming
+service. Pin the selected released version and verify the final integration.
+Local reactor sources must not silently replace released content under the same
+coordinate. Local/SNAPSHOT packaging is development evidence, not proof of
+published dependencies. Release/publication authorization remains explicit.
 
 ### Activation of independent versions
 
-Implementation remains open as [TOOL-9](KNOWN-ISSUES.md). Until it is complete,
-`${revision}`, `${project.version}` dependencies and the release-branch/version
-admission retain their existing shared-version behavior. The current
-`LIBRARY_VERSION`/`-Drevision` override versions the selected reactor build; it
-does not independently version a library. Do not bypass admission or rename a
-product release branch merely to force a library version through it.
+A transition from shared to independent source versions needs a reviewed
+implementation that proves:
 
-Activate the new scheme only after a reviewed implementation proves:
+1. One distinct version authority per library/family and product; parent
+   resolution, reactor ordering and dependency management work with differing
+   versions, while unchanged families keep their versions.
+2. Agreement between component tag, source ancestry, build version, flattened/
+   embedded POMs, dependency closure and recovery. Protected admission does not
+   assume a component version equals the product release branch.
+3. Exact-version core/adapter coupling, core-first repository qualification and
+   original signed-core handoff/recovery remain intact.
+4. Service builds select intended released content even with local library
+   sources present. Qualification detects changed source under a released
+   coordinate; development sources use their next version.
+5. Product-only and library-only scenarios, isolated consumers, selected origin,
+   hashes and negative version/dependency cases pass without changing existing
+   publication identities.
 
-1. Each library/family has one version authority distinct from the product.
-   Parent resolution, reactor build order and dependency management work with
-   different product/library versions; unchanged libraries outside a changed
-   release family retain their versions.
-2. Component tag, source ancestry, selected build version, flattened and embedded
-   POMs, dependency closure and recovery agree without assuming that a library
-   version equals the product release branch. Protected source/ref admission
-   remains explicit, and application `v*` release triggers remain separate.
-3. Events still use an exact-version core dependency, core-first repository
-   qualification and the original signed-core handoff/recovery contract.
-4. A service build selects its intended released library content even with local
-   library sources present. Qualification detects source drift under an existing
-   released coordinate. Development uses next-version sources without presenting
-   them as an already published release.
-5. Per-component packaging and cold consumers prove correct versions, origin and
-   hashes; regressions reject a wrong component/family version or missing released
-   dependency. Product-only and library-only release scenarios work, with current
-   component tags and recovery evidence preserved.
-
-Update this current-state description, the publication guide, module references,
-paired development guides and local agent guidance in that implementation change.
-No new library version is published merely by accepting ADR 0048.
+Update owning POM/tooling, consumer fixtures, guides, module references and
+local guidance together. Until that scheme is implemented and qualified, keep
+the admitted shared-version behavior. Track transition status in the
+[publication guide](guides/library-publication.md) and
+[issue registry](KNOWN-ISSUES.md), rather than treating this policy as execution
+evidence.
 
 ## Versioning policy
 
-Versions follow Semantic Versioning syntax:
+Versions use Semantic Versioning syntax:
 
 ```text
 MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
 ```
 
-During the `0.x` development line, the project uses this explicit policy:
+Apply the following compatibility rules to the product or library release family:
 
-- `PATCH` is a compatible bug fix, security fix, documentation correction, or
-  internal hardening change that preserves supported external contracts.
-- `MINOR` adds a substantial capability or intentionally changes a supported
-  external contract. During `0.x`, incompatible contract changes normally
-  increment `MINOR`.
-- `MAJOR` marks a stable public contract from `1.0.0` onward; after that point,
-  incompatible supported-contract changes increment `MAJOR`.
-- A release candidate uses `X.Y.Z-rc.N` and is never retagged as the final
-  release.
-- A normal development version ends in `-SNAPSHOT`.
-- A final release version has no `-SNAPSHOT` or prerelease suffix.
+| Change | Increment |
+|---|---|
+| Compatible bug/security fix, documentation correction or internal hardening | PATCH |
+| Compatible supported capability/API addition | MINOR |
+| Incompatible supported-contract change during `0.x` | MINOR, with migration notes |
+| Incompatible supported-contract change from `1.0` onward | MAJOR, with migration notes |
 
-The supported external contract includes more than Java APIs:
+`-SNAPSHOT` marks development. RCs use immutable `X.Y.Z-rc.N` coordinates;
+the eventual final version is a separate release, not a moved tag. A final
+version has no prerelease suffix. An RC does not guarantee compatibility with
+the later final release. Each library/family needs its own explicit stable-
+contract decision before `1.0.0`.
 
-- CLI commands, options, output intended for automation, and exit codes;
-- `ioc.*` configuration keys, validation, defaults, and migration rules;
-- generated artifact, export manifest, and control-event schemas;
-- documented ECS fields and their JSON scalar types;
-- health and operational endpoints;
-- supported storage upgrade and rollback behavior;
-- installer and deployment interfaces used by operators.
+Application automation admits the narrower tag subset `vX.Y.Z` or
+`vX.Y.Z-rc.N`, with positive RC numbers; broader SemVer syntax does not imply
+workflow support for every suffix/build-metadata form.
 
-Internal refactoring does not determine the version by size. The observable
-contract and migration impact do.
+Supported application contracts include CLI/options/output/exit codes,
+configuration/defaults/preflight, artifacts/manifests, documented event/logging
+formats, health endpoints, storage upgrades/rollback and installation interfaces.
+Internal change size does not determine the version; observable impact does.
+Prose-only guide corrections do not inherently require a new library binary.
 
 ### Deprecation and removal
 
-A supported contract is not removed in the same release that stops recommending
-it. Removal follows a deprecation window so operators and integrators can react:
+1. Announce the deprecated contract, replacement and migration window in release
+   notes; provide a stable actionable runtime warning where the surface permits.
+2. Normally support old and replacement contracts together for at least one
+   published release, or the explicitly announced alternative window.
+3. Remove in a later release as a breaking/observable change. Removed
+   configuration keys fail preflight with a migration hint rather than silently
+   becoming no-ops.
 
-1. **Announce.** A release marks the contract deprecated in its notes, states the
-   replacement, and — where a runtime surface allows — emits a stable, actionable
-   warning.
-2. **Coexist.** The deprecated and replacement contracts normally work together
-   for at least one published release, or for another migration window stated
-   explicitly when deprecation is announced. A security or correctness defect
-   may force earlier removal, which is itself a documented breaking change.
-3. **Remove.** A later release removes the contract and its removal is a breaking
-   or observable change under the versioning policy above. A removed key becomes
-   a hard preflight rejection with a migration hint, not a silent no-op. The
-   `read-timeout` → `request-timeout` transition and
-   `CONFIG.LEGACY_SYNC_TIMEOUT` are the current removal-phase precedent.
-
-An emergency removal that skips the window is permitted only for a security or
-data-integrity reason, is called out in release notes with the reason, and states
-the operator action explicitly.
-
-Subsystem versions such as SQLite migrations, export manifests, diagnostic
-catalogs, control events, and artifact identity epochs remain independently
-owned. They must not be forced to match the product version.
+Emergency removal that skips the window needs an explicit security/data-integrity reason, breaking-change
+disposition and operator/consumer action. Subsystem schema, manifest, catalog,
+event and identity versions remain separately owned; do not force them to equal
+the product version.
 
 ## Runtime build information
 
-The bootable application must expose build identity without duplicating the
-version manually:
+The application derives identity from the build:
 
-- `spring-boot:build-info` generates `META-INF/build-info.properties` from the
-  Maven project;
-- Actuator `/actuator/info` exposes available build information in daemon mode;
-- the lightweight `ioc --version` path reports the product version without
-  starting Spring;
-- ECS `service.version` is filtered from `@project.version@` during the Maven
-  resource build;
-- release/deployment metadata records the Git commit and build time;
-- the published SHA-256 digest identifies the exact released jar bytes.
+- `spring-boot:build-info` in `bootstrap/ioc-app` generates
+  `META-INF/build-info.properties`.
+- Daemon `/actuator/info` exposes available build data.
+- Lightweight `ioc --version` reports identity without starting Spring.
+- Maven filters ECS `service.version` from `@project.version@`.
+- Release/deployment evidence links full source revision, build time and digest.
 
-The `build-info` execution belongs only to `bootstrap/ioc-app`. A normal local
-build omits commit metadata instead of inventing an `unknown` value. A build
-that already knows the immutable source revision injects the full SHA
-explicitly:
-
-```bash
-./mvnw -B -ntp -T 1C -Dbuild.commit=<full-git-sha> clean verify
-```
-
-The `embed-build-commit` Maven profile is activated by that property and writes
-it as `build.commit`; Maven Enforcer rejects a non-full or non-hexadecimal Git
-object ID. The application never invokes Git at runtime and does not depend on
-a `.git` directory being present.
-
-The intended operator-facing shape is:
+A build that knows the immutable revision supplies `build.commit`.
+The `embed-build-commit` profile validates a full hexadecimal Git object ID
+and embeds it; a normal build without it omits the optional field. Runtime does
+not invoke Git or require `.git`. The packaged shape is:
 
 ```text
-ioc-extractor 0.2.0
-commit: 0f60b0ad990d
-built: 2026-07-17T15:00:00Z
+ioc-extractor X.Y.Z
+commit: <first-12-hex-digits>
+built: <UTC-build-instant>
 ```
 
-The version command may omit unavailable optional metadata in an IDE or
-unpackaged test run, but it must never invent fallback release data.
-
-Build metadata must not contain credentials, local source paths, or a dirty
-working-tree diff. A dirty local deployment may be labelled as dirty by the
-deployment ID, but a published release is always built from a clean tagged
-commit.
+Optional unavailable metadata may be absent in IDE/unpackaged use; do not invent
+fallback release facts. Metadata must contain no credentials, local source
+paths or dirty diff. A dirty development deployment may carry an explicit dirty
+identity, but published releases originate from clean selected source.
 
 ## Branches and tags
 
-Git tags, not branch names, are the authority for published releases.
+Tags select release source; branch names describe workflow.
 
-- `main` represents the current integration line.
-- A release branch may be used temporarily for stabilization and release-only
-  fixes. It is not proof that a release exists.
-- Maintenance branches may be introduced only when more than one supported
-  line needs backports.
-- Final releases use annotated tags named `vX.Y.Z`.
-- Release candidates use annotated tags named `vX.Y.Z-rc.N`.
-- A published tag is immutable. Never move, delete, or reuse it to replace
-  released bytes.
-- A correction after publication receives a new version and a new tag.
+- Integration, stabilization and maintenance branches have explicit owners and
+  support/backport purposes. A release branch is not publication evidence.
+- Application final/RC releases use annotated `vX.Y.Z`/`vX.Y.Z-rc.N` tags.
+- Component tags follow their protected publication admission and select that
+  artifact's qualified source.
+- Never move, delete or reuse a published tag. Corrections get a new version/tag.
+- Required checks/reviews protect eligible source; tag/environment protections
+  prevent unauthorized promotion.
 
-Tag protection or repository rules should prevent accidental updates to
-`v*` tags. Required CI checks should protect integration and release branches.
+Verify effective external repository settings before claiming their enforcement;
+workflow text alone cannot prove branch/tag protection.
 
 ## Release artifacts
 
-The minimum published release set is:
-
-| Artifact | Required content |
+| Family | Required identity and content |
 |---|---|
-| `ioc-extractor-X.Y.Z.jar` | Bootable application built from the tagged source |
-| `ioc-extractor-X.Y.Z.jar.sha256` | SHA-256 digest of that exact jar |
-| Release notes | User-visible changes, upgrade notes, and known issues |
-| Git tag `vX.Y.Z` | Source identity for the release |
+| Application | Annotated source tag, curated notes, `ioc-extractor-X.Y.Z.jar` and its `.sha256` sidecar |
+| Reusable library | Admitted coordinate/tag, parent-independent POM, main/sources/Javadoc and license, manifest/checksums, required signatures and repository qualification |
 
-Source archives generated by the repository host are supplementary; they do
-not replace the tested bootable jar.
+The component descriptors and [publication guide](guides/library-publication.md)
+own exact library files/dependencies. Source archives supplement the tested
+application JAR; they do not replace it. Additional application signing, SBOM or
+attestation controls become mandatory when adopted with a defined trust/consumer
+and verification workflow. Library repository signing requirements remain scoped
+to their publication contract.
 
-An SBOM, signatures, and build attestations are recommended future supply-chain
-extensions. They become mandatory only after the project defines their
-consumer and verification workflow.
-
-The release workflow builds the jar once. The same bytes are attached to the
-release and promoted to deployment targets. Rebuilding separately for a test
-stand, release page, and production would create different binaries carrying
-the same product version and is prohibited.
+Build one qualified bundle and promote its exact bytes across draft, release,
+stand and production. Multiple development builds are allowed; each newly built
+bundle needs its own applicable binary evidence. Same source/version does not
+establish reproducible bytes across runs.
 
 ## Release notes contract
 
-Release notes are curated for users and operators. They are not a dump of Git
-subjects, ADRs, or `KNOWN-ISSUES.md`. Automated notes may be used as a draft,
-but a maintainer reviews the public impact.
+### Application notes
 
-Copy [`.github/release-notes/TEMPLATE.md`](../.github/release-notes/TEMPLATE.md)
-to the intended tag name. Every release source keeps this structure; a section
-without applicable content carries an explicit `Not applicable` disposition
-instead of disappearing:
+Copy [TEMPLATE.md](../.github/release-notes/TEMPLATE.md) to
+`.github/release-notes/<application-tag>.md`. The tag workflow reads the file
+from selected source. Keep each required section in order; use an explicit
+`Not applicable` disposition when no content applies:
 
 ```markdown
 # IOC Extractor X.Y.Z
@@ -395,278 +303,223 @@ instead of disappearing:
 ## Artifacts and checksums
 ```
 
-An optional `Technical references` section may follow. References are selected
-for explanation rather than volume, in this order:
+An optional `Technical references` section may follow. Notes explain user/
+operator outcomes, not Git subjects, ADR contents or the entire debt registry.
+For each observable/breaking change state what changed, affected users, automatic
+migration, required action and rollback support. Explain prerequisites, the
+backup/recovery unit and post-upgrade validation.
 
-1. a pull request or issue for reviewed scope and discussion;
-2. an ADR for architectural rationale;
-3. one compare range for the complete implementation history;
-4. a raw commit only when no better durable reference exists and the precise
-   implementation transition materially helps investigation.
+For machine-readable changes include minimal before/after payloads and parser/
+query examples where relevant. Distinguish field/path, physical shape, scalar
+type and presence/value semantics; unchanged names alone do not imply compatibility.
 
-Release identity does not depend on per-bullet commit links: the annotated tag,
-embedded commit and artifact digest already provide that chain. Avoid turning
-operator notes into a Git subject list.
+Record actual verification scope, unavailable external checks and approved
+dispositions. Put exact final commit/digest/run identities in produced evidence;
+do not guess them before the candidate exists. Link user-relevant known issues
+and mitigations. Never include secrets or sensitive operator data.
 
-Each breaking or operationally observable change states:
-
-1. what changed;
-2. who is affected;
-3. whether data/configuration is migrated automatically;
-4. what the operator must do;
-5. whether rollback remains supported after migration.
-
-For a machine-readable contract, the notes also include a minimal before/after
-payload and a before/after parser or query example. The description distinguishes
-four independent compatibility axes: logical field/path, physical wire shape,
-JSON scalar type, and presence/value semantics. Keeping the same logical field
-name does not make a flat-to-nested or string-to-number change compatible.
-
-`KNOWN-ISSUES.md` remains the complete engineering debt registry. Release notes
-contain only issues relevant to users of that release. ADRs remain the immutable
-decision history and are linked only when their rationale helps an operator or
-maintainer.
+Prefer PR/issue references, then ADR rationale, one full compare range, and a raw
+commit only when its exact transition adds useful evidence. The tag, packaged
+identity and digest carry release identity; per-bullet commit links are unnecessary.
 
 `make release-notes-context PREVIOUS_TAG=vX.Y.Z TARGET_REF=HEAD` produces a
-read-only inventory of commits, changed areas/modules, PR or issue references
-and dependency/security candidates. `GITHUB=1` additionally queries merged PRs
-whose merge commit belongs to the selected range. This output and GitHub's
-generated notes are curation inputs, never the published source. They can miss
-direct commits and cannot determine compatibility, migration or operator impact.
+read-only inventory; `GITHUB=1` adds eligible merged PRs. Treat generated
+inventories and notes as curation inputs, with human review of compatibility
+and operator impact. Historical imports must be explicitly labelled and must
+not rewrite immutable tags or already-published notes; archive exceptions are
+documented in the [notes reference](../.github/release-notes/README.md).
 
-From `v0.2.0` onward, the committed `.github/release-notes/<tag>.md` file is the
-source consumed by the tag workflow. `v0.1.0.md` is a marked historical import:
-the release predates this rule, the file was not retroactively inserted into its
-immutable tag, and the already-published GitHub Release remains read-only.
+### Component release records
+
+Library releases have component-scoped records, not application titles or a
+forced copy of the application template. Identify coordinate/family, source/tag,
+supported API/dependencies, compatibility/migration, original manifest/signed
+bundle, repository consumers and any incomplete qualification/recovery.
+
+Use the [catalog](guides/libraries/README.md) and
+[publication guide](guides/library-publication.md) to find those records and their
+naming conventions. A record must distinguish original publication, recovery
+and later consumer evidence without changing immutable identities.
 
 ## Release lifecycle
 
 ### 1. Plan and stabilize
 
-1. Select the intended version using the compatibility policy above.
-2. Define the release scope and explicitly defer unrelated work.
-3. Ensure release-blocking issues have owners and acceptance criteria.
-4. Review upgrade, rollback, storage migration, configuration, logging, and
-   packaging impacts.
-5. Enter the release line as `X.Y.Z-SNAPSHOT` until the final release commit.
+Select product/component/family scope, intended version and supported upgrade
+paths. Assign blockers, acceptance criteria and reviewed deferrals. Review all
+observable surfaces, migrations and rollback boundaries. Keep development on its
+admitted `-SNAPSHOT` scheme until preparing a candidate.
 
 ### 2. Prepare the release commit
 
-1. Set `${revision}` to final `X.Y.Z`.
-2. Update release notes and affected published documentation.
-3. Remove stale hard-coded version examples or derive them from the build.
-4. Verify `ioc --version`, `/actuator/info`, ECS `service.version`, the jar
-   name, and packaging metadata agree.
-5. Confirm the working tree is clean and the release commit is pushed.
+Set the exact final or RC version, update affected docs and notes, and reconcile
+version-derived metadata/assets. Identify required libraries and qualify their
+selected content before the consuming product is released. Commit clean source
+and make it available to required CI; candidate progress belongs to its evidence.
 
 ### 3. Run the quality gate
 
-The minimum repository gate is:
+Use the complete adopted controls, not a selected fast suite:
 
 ```bash
-./mvnw -B -ntp -T 1C verify
+make verify
+make pmd-analysis
+make docs
+make lint-shell
 git diff --check
 ```
 
-Also run release-specific checks:
+[TESTING.md](TESTING.md) and [build quality](dev/build-quality.md) own coverage,
+analyzer policies, report integrity and freshness. Qualify the exact candidate
+source; after changes, rerun affected checks and the final required gates.
 
-- a successful manual `Dependency Security` workflow on the exact candidate
-  commit, as required by [SECURITY-ENGINEERING.md](SECURITY-ENGINEERING.md),
-  with no untriaged Critical/High findings and no unused suppression rules;
-- documentation link validation;
-- shell syntax checks for packaging scripts;
-- rendered systemd unit validation;
-- lightweight CLI help and version commands;
-- oneshot extraction/export smoke;
-- daemon startup, actuator health, and build-info smoke;
-- upgrade and rollback smoke against representative durable state;
-- stand checks required by accepted ADRs or release notes.
+Also obtain applicable security evidence under the
+[security policy](SECURITY-ENGINEERING.md), packaged identity/help/version and
+runtime smoke, supported migration/rollback evidence, target-specific external
+checks and library compatibility/packaged/repository consumers. Define
+applicability before release and record an explicit disposition for unavailable
+checks. Advisory reporting does not substitute for blocking project controls.
+Reviewed dispositions apply only where the owning contract permits them;
+a failed blocking gate remains blocking until fixed or explicitly changed
+through the project's policy/scope decision process.
 
-A skipped environment-dependent check is recorded in the release notes; it is
-not silently treated as passed.
+Source gates may build development artifacts. Final binary qualification must
+refer to the bundle actually promoted. Do not infer that one release workflow
+automates every independent security, analyzer or stand requirement.
 
 ### 4. Create the source release
 
-After required checks pass:
-
-```bash
-git tag -a vX.Y.Z -m "Release X.Y.Z"
-git push origin vX.Y.Z
-```
-
-The tag must point to a commit whose effective Maven version is exactly
-`X.Y.Z`. The tag is created only after the branch commit has passed required
-CI; the tag workflow verifies the contract again.
+After required source checks pass, create the admitted annotated tag on the
+selected commit. Its version must agree with the effective build version.
+Preserve tag/source identity throughout publication and recovery.
 
 ### 5. Build and publish once
 
-The tag-triggered release workflow:
+The [application workflow](../.github/workflows/release.yml) resolves exact
+source/tag/version, verifies annotation and commit selection for draft creation,
+injects source identity, runs one `clean verify`, rejects source-tree changes,
+and verifies packaged build metadata plus lightweight version output. It
+prepares the JAR/checksum once and passes those bytes to a separate write-enabled
+job that performs no Maven build.
 
-1. checks out the exact tag;
-2. verifies `tag == v${project.version}`;
-3. rejects `-SNAPSHOT` and dirty/generated differences;
-4. runs one complete Maven `verify` invocation, which also builds the bootable
-   jar;
-5. verifies embedded version/build metadata;
-6. computes SHA-256;
-7. creates or updates a draft release;
-8. uploads the jar and checksum;
-9. leaves publication as an explicit maintainer action after assets and notes
-   have been reviewed.
+A manual build-only dispatch validates/builds the selected ref and retains
+workflow artifacts; it does not create a release. Draft mode requires the
+named existing tag to select the checked-out commit. Tag pushes follow draft
+mode. Retention and exact inputs belong to the workflow.
 
-The release job receives only the permissions required to create release
-assets. Pull-request validation jobs do not receive release write permission.
+The [draft helper](../packaging/publish-release-draft.sh) checks supplied
+version/files/checksum/notes and creates or repairs only a draft. Source/tag
+admission belongs to the workflow. Existing required assets are downloaded and
+compared byte-for-byte; a mismatch fails, never clobbers. Published releases are
+read-only. A rerun that rebuilds different bytes is not recovery of the original
+bundle and cannot reuse its binary evidence.
 
-The executable implementation is `.github/workflows/release.yml`, supported by
-the local helpers in `packaging/`. A `workflow_dispatch` run accepts the expected
-tag identity and defaults to build-only mode: it validates and builds the
-selected ref, uploads the jar/checksum as a short-lived workflow artifact, but
-does not create a GitHub Release. Enabling `create_draft` additionally requires
-that the named remote tag already select the checked-out commit. A `v*` tag push
-always follows the draft path. GitHub exposes manual dispatch only after the
-workflow file exists on the repository's default branch.
-
-Both paths enforce the project tag subset (`vX.Y.Z` or `vX.Y.Z-rc.N`), exact
-Maven-version equality and a non-SNAPSHOT version. Any path that creates a
-draft also requires an annotated tag selecting the checked-out commit. The
-workflow injects that resolved commit into `spring-boot:build-info`, runs the
-complete reactor `clean verify` once, and verifies the packaged metadata plus
-the lightweight `--version` output before naming public assets. The separate
-write-enabled job downloads those same workflow-artifact bytes; it never runs
-Maven.
-
-Curated notes live at `.github/release-notes/<tag>.md` in the tagged source.
-The release job creates only a draft. On rerun it may restore missing draft
-assets or metadata, but it downloads every existing required asset and requires
-exact byte equality. It never uses replacement/clobber behavior; different
-bytes under the same tag fail the release-integrity gate. Once a release is
-published, the automation treats it as read-only and only verifies its required
-assets.
+[Library publication](#library-publication) follows its own protected workflow.
+Publication is an explicit authorized promotion after notes, assets and required
+evidence have been reviewed; building a bundle or accepting an ADR does not
+authorize it.
 
 ### 6. Deploy and verify
 
-Deployment consumes the published jar and verifies its checksum before
-activation. The existing immutable release directory, SQLite backup, health
-gate, and rollback protocol remain the deployment authority.
+Qualify the exact candidate bundle on the required stand before publication
+where the release plan requires it; promote the same approved bytes to targets.
+Use the supported [packaging protocol](../packaging/README.md), verify checksum
+before host mutation and compare installed version, full source identity,
+deployment ID, digest, build information and local storage/artifact health.
 
-The standalone installer takes the exact artifact through `--jar` and consumes
-an explicit `--checksum` or an adjacent `<jar>.sha256`; a mismatch fails before
-host mutation. Optional autodiscovery accepts exactly one candidate and never
-selects by filename version or modification time. Local checkout deployment
-uses a commit-and-time deployment ID, builds from `clean verify`, and rechecks
-the expected artifact SHA-256 after crossing the privileged boundary.
+A release version alone does not prove installation-layout, configuration or
+schema compatibility. Reconcile operator configuration explicitly, validate it
+with the candidate in the effective service environment, and keep the agreed
+backup/restore unit. New template files do not automatically migrate installed
+configuration.
 
-After activation, record and verify:
-
-- product version;
-- Git commit and deployment ID;
-- jar SHA-256;
-- `/actuator/info` build identity;
-- storage and artifact health;
-- known external dependency degradation that is intentionally outside the
-  deployment rollback gate.
+Checkout-based local deployment builds its own identified bundle; it does not
+prove deployment of an already published JAR. Optional remote degradation must
+be distinguished from local activation failure according to the deployment
+health contract.
 
 ### 7. Close and advance
 
-1. Mark the release milestone complete.
-2. Link the tag, published artifacts, checksum, and verification evidence.
-3. Merge or backport release-only fixes according to the active branch model.
-4. Move the development line to the next intended `-SNAPSHOT` version.
-5. Do not rewrite the released tag or its assets.
-6. Monitor the first deployment window and open a new patch release for any
-   required correction.
+Record authorized publication, immutable tag/assets, required qualification and
+remaining dispositions. Merge/backport release-only fixes as supported, select
+the next development version, monitor the deployment window and issue a new
+version for corrections. Publication state and completion of all release
+acceptance obligations remain separately observable.
 
 ## Rollback and hotfix policy
 
-Rollback restores the previous immutable application release and the matching
-pre-upgrade SQLite snapshot according to the packaging protocol. Before a
-release, every schema migration must state whether rollback requires restoring
-the database snapshot rather than only switching the application symlink.
+Every supported upgrade states its rollback boundary before activation:
+binary-only switch, coordinated restore, side-by-side migration or explicitly
+unsupported rollback. Qualify that claim against representative previous state;
+do not infer support from an additive migration or a healthy startup alone.
 
-If a released defect needs correction:
+An application recovery point includes the matching application, operator configuration,
+systemd/unit state and both SQLite databases with a consistent backup procedure.
+Keep relevant side files, permissions and ownership as required by packaging.
+Never copy a live SQLite file with an ordinary filesystem copy and assume the
+result is consistent.
 
-1. reproduce and classify it;
-2. create a fix from the appropriate supported line;
-3. run the normal release gate;
-4. publish a new patch version and tag;
-5. document whether already-upgraded state needs remediation.
+The deployment automation restores only its documented scope. Configuration
+reconciliation, moved input files, projections/slices and completed remote side
+effects may require separate recovery. Pause intake/sync for rollback-sensitive
+qualification; automatic local rollback cannot reverse remote effects.
 
-Never replace the jar attached to an existing release version, even if the
-original artifact is known to be defective.
+For a hotfix, reproduce/classify the defect, fix the supported line, run normal
+gates, publish a new compatible patch or an appropriate breaking version, and
+state remediation for already-upgraded data/configuration. Never replace an
+existing version's JAR or Maven files.
 
 ## Definition of Done
 
-A version is released only when all applicable statements are true:
+Close a product/component release when:
 
-- one final non-SNAPSHOT Maven version is used by the whole reactor;
-- required CI and release-specific gates passed;
-- published docs and release notes describe observable changes and upgrade
-  actions;
-- the tag points to the verified release commit;
-- runtime version/build identity matches the tag;
-- the released jar was built once from that tag;
-- its SHA-256 is published and verified;
-- the release contains no known unrecorded blocker;
-- deployment and rollback evidence exists for the supported installation path;
-- the next development version is selected after publication.
+- scope, supported contracts and upgrade/rollback paths are explicit;
+- one effective version authority exists per product/release family;
+- required blocking gates passed and exact-bundle/target qualification satisfies
+  its governing acceptance contract, with only permitted reviewed dispositions;
+- notes/docs explain observable changes, actions and remaining user impact;
+- immutable source/tag, packaged metadata, bundle hashes and repository origin agree;
+- required artifacts/signatures/checksums are present and validated;
+- publication is authorized and no unrecorded release blocker remains;
+- deployment/recovery evidence exists for claimed supported paths;
+- next development ownership and post-release follow-up are recorded.
+
+Build, publication and deployment are distinct results. An RC, local consumer,
+successful upload or documentation update alone does not establish all of them.
 
 ## Deferred automation
 
-The following are deliberate follow-up improvements, not hidden release
-claims:
-
-- artifact signing/provenance with a maintained trust root and a real verifier
-  in download/deployment paths;
-- generated SBOM with a defined consumer and retention contract;
-- coordinated activation of authenticity and composition-transparency controls;
-- automated changelog aggregation from a stricter commit convention;
-- activation of independently versioned reusable libraries (ADR 0048 / TOOL-9);
-  publication and flattened consumer POMs already exist;
-- multiple maintained release lines with automated backport tracking;
-- reproducible-build comparison across independent runners.
-
-They should be activated when a real consumer or support requirement justifies
-their lifecycle cost.
+New controls need an owner, consumer, verification contract and retained evidence
+before becoming release requirements. Examples include application authenticity/
+attestation, composition transparency/SBOM, independent version activation,
+automated backports, changelog assistance and reproducible-build comparison.
+Track their adoption/status with owning implementation and issue records.
+Do not describe a planned control as enforced or relax an adopted one silently.
 
 ## Library publication
 
-Reusable library publication uses a separate
-[protected manual workflow](../.github/workflows/library-publication.yml) and
-immutable artifact bundles. Its explicit `component` selector admits six components:
+Use the separate [protected workflow](../.github/workflows/library-publication.yml)
+and the component descriptors in [publication tooling](../tools/ci/library-publication.py).
+The catalog identifies admitted components; adding a library requires explicit
+source/version admission, dependency/API scope, package/license/docs checks,
+signed immutable bundle, isolated consumers and repository qualification.
 
-| Selector | Main dependency contract |
-|---|---|
-| `concurrency` | JDK only |
-| `diagnostics` | JDK only |
-| `logging` | Required SLF4J API; consumer selects its provider |
-| `configuration` | Required Spring Boot and Spring Core APIs; validated transitive closure |
-| `events` | JDK only |
-| `events-spring` | Exact same-version events core, Spring Context and SLF4J API |
+Publish identical library files to the required repositories. The project uses
+Maven Central as primary and GitHub Packages for the same bytes; verify selected
+origin and hashes in each claimed repository. Alternate-cache/repository success
+must not mask a missing selected artifact or transitive dependency.
 
-Exact coordinates, versions and dependency graphs are enforced by the component
-descriptors in [publication tooling](../tools/ci/library-publication.py), packaged
-POM checks and isolated consumers. Each component needs its own reviewed release
-admission. See the [publication guide](guides/library-publication.md) and
-[ADR 0028](ADR/0028-pilot-library-publication.md), refined by
-[ADR 0029](ADR/0029-release-branch-library-publication.md). Logging's dependency
-and backend boundary is recorded in [ADR 0045](ADR/0045-reusable-slf4j-logging-contract.md);
-configuration inspection and service-owned source/enforcement policy are recorded
-in [ADR 0046](ADR/0046-reusable-spring-boot-configuration-inspection.md).
-[ADR 0047](ADR/0047-explicit-spring-control-event-adapter.md) owns the events
-core/adapter boundary. Events publication qualifies core in both repositories
-before admitting the adapter, retains separate bundles and reuses the original
-signed core during adapter publication and recovery. Adapter consumers verify
-both artifacts and their repository origin.
+Exact-version families qualify core before adapter, preserve separate artifact
+records, and hand off the original signed core during adapter publication/recovery.
+A partial publication resumes from original signed files and repository evidence.
+A later component's release never changes an earlier artifact's tag, bytes or
+qualification history.
 
-Current POMs and publication admission retain the shared product version, a
-component tag and matching release branch. Independent version activation remains
-TOOL-9 under [ADR 0048](ADR/0048-independent-library-versions-and-reuse.md).
-Application release automation does not publish Maven packages. Local packaging
-does not close live repository qualification. Existing concurrency releases and
-their component tags remain immutable when another library is added. Consumers
-must verify selected-repository origin as well as the four artifact hashes.
-Third-party dependencies and application-owned logging backends resolve separately.
-Configuration's original Central CI consumer failure and corrected local result
-remain distinct from the pending protected recovery tracked as TOOL-8; use its
-[release record](../.github/release-notes/ioc-config-spring-boot-0.3.0-rc.1.md)
-for the immutable recovery identity.
+Flattened consumer POMs must not require the private reactor parent; validated
+third-party dependencies and application-owned backends retain separate owners.
+Application release automation does not publish Maven libraries. Detailed
+commands, active admission constraints and recovery procedures belong to the
+[publication guide](guides/library-publication.md), with decisions in
+[ADR 0028](ADR/0028-pilot-library-publication.md),
+[ADR 0029](ADR/0029-release-branch-library-publication.md) and
+[ADR 0048](ADR/0048-independent-library-versions-and-reuse.md).

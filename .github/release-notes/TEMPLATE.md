@@ -1,7 +1,9 @@
 <!--
 release-notes-template
 
-Copy this file to vX.Y.Z.md or vX.Y.Z-rc.N.md. Replace every placeholder and
+Application notes only: copy to vX.Y.Z.md or vX.Y.Z-rc.N.md. Library publication
+records use their component-scoped contract instead of this application title.
+Replace every placeholder and
 remove all guidance comments before review. Keep every H2 section; write an
 explicit "Not applicable" disposition instead of silently deleting a section.
 Public notes are curated for users and operators, not copied from Git history.
@@ -13,7 +15,7 @@ Public notes are curated for users and operators, not copied from Git history.
 
 ## Highlights
 
-<!-- Three to seven user-visible outcomes, not implementation chronology. -->
+<!-- A small set of user-visible outcomes, scaled to release impact. -->
 
 - <release highlight>
 
@@ -38,8 +40,12 @@ Public notes are curated for users and operators, not copied from Git history.
 ## Upgrade notes
 
 <!--
-State prerequisites, backup unit, data/config migration, operator actions and
-rollback. Explicitly say when this is a fresh install or rollback is unsupported.
+State supported previous versions/layouts, prerequisites and the backup/recovery
+unit: application, operator configuration, unit state and consistent durable data.
+Separate automatic data migration from manual configuration/actions. Include
+activation and representative post-upgrade checks. State destructive or one-way
+steps and whether rollback needs a coordinated restore or is unsupported.
+Describe fresh/side-by-side installation explicitly when in-place upgrade is unsupported.
 -->
 
 1. <pre-upgrade or installation action>
@@ -50,25 +56,30 @@ Rollback: <supported procedure, boundary or explicit unsupported disposition>.
 ## Breaking or observable contract changes
 
 <!--
-For every applicable surface state: what changed, who is affected, automatic
-migration, operator action and rollback. Machine-readable changes also require
-minimal before/after payloads and parser/query examples.
+For every applicable surface state: previous/new behavior, affected consumers,
+automatic migration, required action and rollback. Machine-readable changes also
+need minimal before/after payloads and parser/query examples where relevant.
+Consider CLI/exit codes, configuration/defaults, storage/identity, artifact/wire
+formats, logging/health and installation interfaces. Use Not applicable only
+after reviewing the supported surfaces; a compatible fix may still affect operation.
 -->
 
-Not applicable. <!-- Replace when the release changes an observable contract. -->
+- <changed behavior or explicit Not applicable disposition>
 
 ## Known issues
 
-<!-- Only operator/user-relevant issues; link the durable registry ID. -->
+<!-- Only issues relevant to this release's users; link ID, impact and mitigation. -->
 
 - <issue ID, impact, safe mitigation or explicit Not applicable disposition>
 
 ## Verification
 
 <!--
-Record the required gate classes and any deliberately skipped environment check.
-Exact candidate commit/digest evidence lives in the release ledger/workflow and
-must not be guessed before the final commit exists.
+Record required source gates and exact-bundle/target checks with their scope,
+result and evidence references. Separate passed, failed, unavailable and explicitly
+deferred checks; an offline skip is not a live pass. Exact final commit, bundle
+digest and run identities live in produced evidence and must not be guessed
+before the final candidate exists. Do not reuse evidence for different bytes.
 -->
 
 - <reactor, security, packaging and stand verification summary>

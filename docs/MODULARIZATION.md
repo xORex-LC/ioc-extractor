@@ -1,271 +1,151 @@
-# Многомодульность
+# Module map
 
-Проект переведён в **Maven-реактор**: агностичные platform-подсистемы, core,
-adapters и bootstrap собираются как отдельные Maven-модули с явными
-зависимостями.
+[Русская версия](ru/MODULARIZATION.md)
 
-Пилотная библиотека `platform-concurrency` использует Maven groupId
-`io.github.xorex-lc`; выделенный `platform-diagnostics-api` использует ту же
-группу. Опубликованные `platform-logging-slf4j` и
-`adapter-config-spring-boot` (`ioc-config-spring-boot`) также
-используют `io.github.xorex-lc`. Опубликованные
-`platform-events` и `adapter-events-spring` (`ioc-events-spring`) используют ту же
-группу; отдельные consumers прошли для Central и GitHub Packages. Исходные
-сведения сохраняют записи [core](../.github/release-notes/ioc-platform-events-0.3.0-rc.1.md)
-и [adapter](../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md).
-Остальные модули сохраняют `com.iocextractor`. Публикуемый
-POM библиотеки не зависит от parent реактора. Политика —
-[ADR 0028](ADR/0028-pilot-library-publication.md), контракт диагностики —
-[ADR 0044](ADR/0044-reusable-diagnostics-contract.md), контракт логирования —
-[ADR 0045](ADR/0045-reusable-slf4j-logging-contract.md), граница конфигурации —
-[ADR 0046](ADR/0046-reusable-spring-boot-configuration-inspection.md), процедура —
-[руководство по публикации](guides/library-publication.md).
+The Maven reactor separates domain behavior, application orchestration, shared
+technical contracts, technology integrations and runtime composition.
+[ARCHITECTURE.md](ARCHITECTURE.md) describes their interaction;
+[PRINCIPLES.md](PRINCIPLES.md) guides ownership choices and
+[BOUNDARIES.md](BOUNDARIES.md) maps enforcement.
 
-Независимые версии библиотек приняты в
-[ADR 0048](ADR/0048-independent-library-versions-and-reuse.md). Текущие POM и
-допуск публикации ещё сохраняют общую версию продукта; технический переход
-отслеживается как TOOL-9 в [KNOWN-ISSUES.md](KNOWN-ISSUES.md). Events core и
-Spring-адаптер сохраняют одну версию семейства. Перед новым общим механизмом
-проверяем готовый API; подходящий используем, недостающий развиваем в его
-библиотеке. Практические правила — в
-[руководстве разработки](guides/ru/libraries/development.md).
+## Reactor topology
 
-> Статус: **реализовано на этапе 9**. Фактическая структура ниже. Границы
-> модулей подкрепляются Maven-зависимостями, Maven Enforcer и ArchUnit
-> ([boundaries.md](BOUNDARIES.md)).
+The root [pom.xml](../pom.xml) declares 31 projects: one parent/aggregator,
+26 functional JARs and four build-only report POMs. Of the JARs, 25 contain
+production code and one is reusable test support. Only
+[bootstrap/ioc-app](../bootstrap/ioc-app/README.md) is Boot-repackaged and runnable.
 
-## Зачем
+The tables are the module responsibility map. Each linked directory README owns
+its package/API reference; its POM owns exact direct dependencies.
+A dagger (†) identifies one of the six separately published reusable artifacts.
 
-- **Защита границ компиляцией.** Если `domain` — отдельный модуль без зависимости
-  на Spring, нарушить правило «domain framework-free» становится физически
-  нельзя: класс просто не найдётся.
-- **Выделяемость.** Агностичные подсистемы (диагностика, ETL, control events,
-  keyed concurrency и observability) можно переиспользовать в других
-  приложениях/сервисах без копипасты.
-- **Управляемость зависимостей.** Каждый модуль декларирует ровно то, что ему
-  нужно; направление зависимостей видно в `pom.xml`, а не «на доверии».
-- **Параллельная сборка и изоляция тестов** по модулям.
+### Platform
 
-## Фактическая структура реактора
-
-Реактор содержит 31 Maven-проект: parent, 26 функциональных JAR и четыре
-отчётных POM. Из JAR 25 относятся к production, один — тестовый TCK.
-
-```
-ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <modules>)
-├── platform/                      ← агностичные, переиспользуемые подсистемы
-│   ├── platform-errors            (базовые ошибки/common-типы)
-│   ├── platform-diagnostics-api   (JDK-only модель, result/policy, bounded collectors, sinks)
-│   ├── platform-diagnostics       (IOC-каталог, metadata, exception, renderer)
-│   ├── platform-etl               (generic Envelope/Stage/Pipeline/PipelineRunner)
-│   ├── platform-events            (framework-free control-event contracts)
-│   ├── platform-concurrency       (keyed single-flight primitives)
-│   ├── platform-logging-slf4j     (общие SLF4J events, MDC, scalar ECS profile, explicit masks)
-│   ├── platform-observability     (MdcScope, LogEvent, taxonomy, PipelineObserver impl)
-│   └── platform-diagnostics-logging (bridge: DiagnosticSink → LogEvent)
-├── core/
-│   ├── ioc-domain                 (единый IOC bounded context; capability = пакеты + ArchUnit-DAG)
-│   ├── ioc-processing             (чистая композиция IOC views, classification и field mapping)
-│   ├── ioc-application            (порты in/out + use cases + IOC ETL stages)
-│   └── ioc-application-tck        (переиспользуемые contract tests driven-портов)
-├── adapters/
-│   ├── adapter-config-spring-boot (общая проверка имён настроек и отчёт о декларациях → Spring Boot/Core)
-│   ├── adapter-events-spring      (ioc-events-spring: явный publisher → Spring Context, SLF4J API)
-│   ├── adapter-regex-re2j         (PatternEngine → RE2J/JDK fallback)
-│   ├── adapter-source-tika        (SourceReader → Tika)
-│   ├── adapter-csv                (strict CSV parsing + ArtifactPreparer/projection/export → commons-csv)
-│   ├── adapter-processing-camel   (bounded selection, recovery, execution and lifecycle → Camel; selected IOC flows)
-│   ├── adapter-manifest-json-jackson (SliceManifestCodec → Jackson)
-│   ├── adapter-store-jdbc         (service/dataframe storage → Spring JDBC + sqlite-jdbc)
-│   ├── adapter-transport-smb      (FileTransport → smbj)
-│   ├── adapter-psl                (HostClassifier → Guava PSL)
-│   ├── adapter-ingest             (daemon file ingest → Spring Integration)
-│   └── adapter-cli-picocli        (входной адаптер CLI)
-├── bootstrap/
-│   └── ioc-app                    (Spring Boot, composition root, исполняемый jar)
-└── build-support/
-    ├── build-quality              (JDK-only verifier/tests; не reactor module)
-    ├── coverage-report            (build-only JaCoCo aggregate; не runtime/library)
-    ├── spotbugs-report            (build-only SpotBugs aggregate + report integrity; не runtime/library)
-    ├── cpd-report                 (build-only repository-wide PMD CPD report + integrity; не runtime/library)
-    └── pmd-report                 (build-only PMD source policy/watchlist + integrity; не runtime/library)
-```
-
-> ArtifactId имеют префикс `ioc-*`, например `ioc-platform-etl`,
-> `ioc-application`, `ioc-adapter-csv`, `ioc-app`.
-
-`ioc-processing/session` содержит ограниченное переиспользование успешной
-классификации и host-пар в рамках одного вызова. Владелец документной сессии —
-application stage; для попытки staging импорта — application staging service
-через порт session, для прямого вызова одной строки — bootstrap preparer. Camel не
-знает ключей семантического кеша и не владеет его жизненным циклом.
-
-### Направление зависимостей между модулями
-
-```
-ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ ioc-domain
-   │              │             │              └────────────▶ platform/*
-   │              │             └───────────────────────────▶ platform/*
-   │              └─────────────────────────────────────────▶ platform/*
-   └────────────────────────────────────────────────────────▶ platform/*
-```
-
-- `platform/*` образуют собственный направленный DAG и не тянут
-  application/domain/adapters: events, concurrency и errors автономны;
-  diagnostics зависит от diagnostics-api/errors; ETL — от diagnostics-api/diagnostics/errors; observability —
-  от ETL и logging-slf4j; diagnostics-logging bridge — от diagnostics/observability.
-  Logging-slf4j зависит только от SLF4J API; IOC-обёртки делегируют ему запись,
-  нормализацию, MDC и очистку компонентов URL.
-- `platform-etl` зависит только на diagnostics-api/diagnostics/errors и не знает про IOC domain.
-- `ioc-domain` не зависит на application/adapters/bootstrap/platform-etl и
-  остаётся framework-free.
-- `ioc-processing` зависит только от `ioc-domain` и `platform-errors`: он
-  владеет единой классификацией значения и декларативным заполнением полей,
-  но не canonical key, commit, диагностикой или Camel. Его граница описана в
-  [README модуля](../core/ioc-processing/README.md).
-- `ioc-application` зависит внутрь от `ioc-domain` и framework-free platform
-  contracts для ETL, diagnostics, control events и keyed concurrency. Точный
-  прямой Maven-граф принадлежит [POM модуля](../core/ioc-application/pom.xml),
-  а не дублируется здесь; errors contract доступен транзитивно через platform DAG.
-- Driving и infrastructure adapters зависят на нужный внутренний контракт:
-  большинство — на `ioc-application`, а domain SPI adapters (`adapter-regex-re2j`,
-  `adapter-psl`) — непосредственно на `ioc-domain`. Каждый адаптер подключает
-  только свою технологическую библиотеку/integration family.
-- `adapter-config-spring-boot` зависит только от Spring Boot/Core и JDK.
-  Bootstrap передаёт схему и префикс, затем интерпретирует найденные проблемы.
-  Описания устаревших и удалённых ключей сопоставляются с тем же снимком
-  деклараций; миграция значений и проверка конфликтов остаются в сервисе.
-  IOC-модель, semantic validators, CONFIG-коды и CLI остаются в сервисе;
-  библиотека не запускает контекст автоматически и не входит в core/platform.
-- `adapter-events-spring` зависит от JDK-контрактов events, Spring Context и
-  SLF4J API. Bootstrap явно создаёт publisher; observer, multicaster, обработчики,
-  executor и recovery принадлежат сервису. Контракт и исправления ошибок —
-  [ADR 0047](ADR/0047-explicit-spring-control-event-adapter.md). Оба events-модуля
-  имеют самостоятельные POM и селекторы локальной упаковки; у Spring-модуля
-  обязательная зависимость от events-контрактов той же версии. Версия `0.3.0-rc.1`
-  опубликована и проверена отдельными consumers в обоих репозиториях;
-  другая версия или развёрнутый сервис требует собственной квалификации.
-- `ioc-application-tck` содержит test-scope contract tests; реализации портов
-  подключают его только в тестовом scope.
-- `ioc-app` (bootstrap) собирает исполняемый артефакт и зависит от подключённых
-  runtime-адаптеров. `adapter-processing-camel` исполняет обязательный документный
-  план и явно связанные processed-import планы; альтернативных путей dispatch нет.
-  Runtime допускает весь проверенный каталог планов при запуске.
-- `build-quality` не является Maven-модулем: root `validate` компилирует его
-  JDK-only verifier и synthetic-reactor contract harness напрямую.
-- `coverage-report` зависит на все production-модули только для формирования
-  полного JaCoCo aggregate.
-- `spotbugs-report` зависит на те же 25 production-модуля для reactor ordering,
-  формирует общий SpotBugs XML/HTML и проверяет наличие всех module/aggregate
-  reports.
-- `cpd-report` зависит на 25 production-модуля только для reactor ordering и
-  анализирует единым PMD CPD execution явный allowlist их `src/main/java`;
-  fail-closed registry сверяет reactor, ordering dependencies, source roots и
-  итоговый XML source universe.
-- `pmd-report` зависит на те же 25 production-модуля только для reactor
-  ordering и type resolution. Поимённая 22-rule policy выполняется
-  отдельным regular CI job, а 3-rule ownership/size watchlist остаётся
-  локально opt-in. Оба профиля анализируют явный allowlist
-  `src/main/java`; fail-closed registry проверяет reactor, source roots,
-  engine/ruleset contract и итоговые XML/HTML. Обычный `make verify`
-  не активирует ни один из PMD source профилей.
-  Все четыре build-support модуля не входят в runtime-архитектуру, не публикуются
-  как библиотеки и не могут быть зависимостями production-кода.
-
-## Принципы нарезки на модули
-
-1. **Один модуль — одна выделяемая ответственность** (подсистема/слой), с явной
-   ролью и API.
-2. **Агностичность внутрь.** Чем «глубже» модуль (ближе к platform/domain), тем
-   меньше у него зависимостей; технологическая специфика — наружу, в адаптеры.
-3. **Зависимости только вниз/внутрь.** Реактор + проверки запрещают обратные и
-   циклические связи.
-4. **Версии — централизованно** через root parent `dependencyManagement`; модули
-   не дублируют версии.
-
-## Карта ответственности по модулям
-
-Ответственности распределены по модулям так:
-
-| Модуль | Ответственности |
+| Module | Responsibility and dependency boundary |
 |---|---|
-| `platform-diagnostics-api` | Общие значения, result/policy, bounded collectors и sinks; только JDK 21; [руководство](guides/libraries/diagnostics.md) |
-| `platform-diagnostics` | IOC-каталог и `IocDiagnosticCode`, exception и renderer; зависит от `platform-diagnostics-api` и `platform-errors` |
-| `platform-etl` | Generic ETL kernel: `Envelope`, `Stage`, `Pipeline`, `PipelineRunner`, `PipelineObserver` |
-| `platform-events` | Framework-free publish-only control-event contracts и observers; без broker/durable delivery mechanics |
-| `platform-concurrency` | Async FIFO по ключу с bounded admission; synchronous exclusion без FIFO; [контракты и health snapshots](../platform/platform-concurrency/README.md) |
-| `platform-logging-slf4j` | Общий logging API; SLF4J API — единственная main-зависимость; [руководство](guides/libraries/logging-slf4j.md); IOC делегирует ему через observability |
-| `platform-observability` | Observability/logging: MdcScope, LogEvent, logging taxonomy, `LoggingPipelineObserver` |
-| `platform-diagnostics-logging` | Bridge `DiagnosticSink` → LogEvent/SLF4J (`LoggingDiagnosticSink`); зависит на `platform-diagnostics` + `platform-observability` |
-| `platform-errors` | базовые ошибки/common-типы и трансляция; нижний слой для `DiagnosticException` |
-| `ioc-domain` | Refanger, IndicatorExtractor, SourceAttributor, MatchPolicy, модели, feature extraction |
-| `ioc-application` | Pipeline/ingest use cases; framework-free Artifact Emission, Remote Sync, canonical lifecycle и managed dataframe-import contracts/models/ports, exact recognition, tri-state mapping, staging orchestration, retry/cadence, sagas и policies |
-| `ioc-application-tck` | Переиспользуемые JUnit contract tests application ports, включая import delivery ledger и canonical promotion, исполняемые каждой реализацией |
-| `adapter-config-spring-boot` | Общая проверка имён настроек по схеме, обнаружение неоднозначностей и value-free отчёт о декларациях; Spring Boot/Core; политика запуска и IOC-семантика остаются в bootstrap |
-| `adapter-regex-re2j` | PatternEngine implementation (RE2J + JDK fallback) |
-| `adapter-source-tika` | SourceReader (Tika; progressive HTML and SAX DOCX) |
-| `adapter-csv` | Strict delimited-row parsing, import transforms/processed-row preparation, artifact mapping, cursor-streamed canonical CSV projection, callback-streaming immutable slices, integrity verification, atomic local publish и directory-level slice retention |
-| `adapter-manifest-json-jackson` | Deterministic versioned JSON codec for immutable slice manifests |
-| `adapter-store-jdbc` | Service/dataframe SQLite: canonical/revision/lifecycle storage, typed history/receipts, reusable export-slot registry, bounded reconcile checkpoint, strict active snapshot reader, ingest/export/fetch/publish/import ledgers, private sealed document preparation/import staging, migrations и health; Native is the sole canonical backend ([storage](dev/storage.md)) |
-| `adapter-transport-smb` | smbj boundary: shared lazy SMB2/3 sessions, streaming get, atomic slice publish, server-side managed-import claim/materialization/disposition и `CHANGE_NOTIFY` doorbells за application ports |
-| `adapter-psl` | HostClassifier (PSL/Guava) |
-| `adapter-ingest` | Single document detector, bounded durable dispatcher и ordered promotion через `PrepareIngestionUseCase`; `SourceLifecycle`, file `IngestionLedger`/admission journal; local managed-import claim/snapshot/disposition; `FileSystemRetentionStore` (reaper IO) |
-| `adapter-cli-picocli` | входной CLI: `extract`, lazy `export`, `sync fetch|publish|all`, remote daemon `health` |
-| `ioc-app` (bootstrap) | composition root, lazy export/sync graphs, transport registry; fetch/export/publish/retention/lifecycle/import schedulers, strict lifecycle/import config compilation, local/SMB import routing, conditional web и health |
-| `build-quality` (build-support tooling) | Общий JDK-only fail-fast scope/report verifier и synthetic-reactor contract matrix; не является Maven reactor project |
-| `coverage-report` (build-support) | Непубликуемый Maven report-модуль: полный JaCoCo HTML/XML aggregate |
-| `spotbugs-report` (build-support) | Непубликуемый Maven report-модуль: полный SpotBugs XML/HTML aggregate и report-integrity gate для production bytecode reactor |
-| `cpd-report` (build-support) | Непубликуемый Maven report-модуль: repository-wide PMD CPD XML/HTML, report-integrity и reviewed group-count ratchet для production Java sources |
-| `pmd-report` (build-support) | Непубликуемый Maven report-модуль: regular zero/advisory count-ratcheted PMD source policy, локально opt-in watchlist и fail-closed scope/ruleset/report integrity для production Java sources |
+| [platform-errors](../platform/platform-errors/README.md) | Product root exception contract; JDK only |
+| [platform-diagnostics-api](../platform/platform-diagnostics-api/README.md) † | Generic values, results/policies, bounded collectors and sinks; JDK only |
+| [platform-diagnostics](../platform/platform-diagnostics/README.md) | IOC diagnostic catalogs, metadata, rendering and exceptions; depends on generic diagnostics and product errors |
+| [platform-etl](../platform/platform-etl/README.md) | Framework-free Pipes-and-Filters runner; diagnostics/error contracts, without domain/application coupling |
+| [platform-events](../platform/platform-events/README.md) † | Local publish-only control-event contracts and recording fixture; JDK only |
+| [platform-concurrency](../platform/platform-concurrency/README.md) † | Keyed asynchronous serialization and synchronous exclusion; JDK only |
+| [platform-logging-slf4j](../platform/platform-logging-slf4j/README.md) † | Typed logs, restoring MDC, scalar ECS profile and explicit masks; SLF4J API, with the provider selected by the consumer |
+| [platform-observability](../platform/platform-observability/README.md) | IOC logging catalogs/facades and ETL observer; shared logging, ETL and SLF4J |
+| [platform-diagnostics-logging](../platform/platform-diagnostics-logging/README.md) | Service diagnostic-to-logging bridge; IOC diagnostics and observability |
 
-## Гранулярность
+Platform is a set of cohesive subsystems, not a claim that every module is generic
+or JDK-only. IOC vocabulary and the current ETL diagnostic/error closure remain
+internal; ETL publication is deferred.
 
-Решение: **средняя гранулярность**.
+### Core
 
-- `platform-*` и `adapter-*` вынесены в отдельные артефакты, потому что у них
-  независимые роли и/или внешние зависимости.
-- `ioc-domain` оставлен единым Maven-модулем: это один bounded context с общим
-  языком IOC. Capability (`model/refang/extract/feature/classify/attribute`)
-  разделены пакетами и защищены внутридоменным ArchUnit-DAG.
-- Первым кандидатом на будущий вынос из domain остаётся `refang`, если появится
-  реальное переиспользование вне этого приложения.
+| Module | Responsibility and dependency boundary |
+|---|---|
+| [ioc-domain](../core/ioc-domain/README.md) | IOC model, refang/extraction, attribution, features and classification contracts; no production dependencies |
+| [ioc-processing](../core/ioc-processing/README.md) | IOC views, classification composition, field mapping and invocation-owned semantic reuse; domain and product errors |
+| [ioc-application](../core/ioc-application/README.md) | Use cases, inward-facing ports, pipelines, admission/order, canonical/lifecycle/import/export and sync orchestration; domain, processing and framework-free platform contracts |
+| [ioc-application-tck](../core/ioc-application-tck/README.md) | Reusable JUnit/AssertJ port contracts; test support, consumed in adapter test scope and excluded from production analysis/coverage denominators |
 
-Подробное решение: [dev/0009](ADR/0009-modularization-granularity.md).
+The domain remains one IOC bounded context. Capability packages and their DAG
+provide internal structure without one JAR per capability. Application capabilities
+such as lifecycle and Artifact Emission use existing ports/adapters; a separate
+business responsibility need not introduce another Maven module.
 
-Artifact Emission не образует новый Maven-модуль: его framework-free модель и
-ports принадлежат `ioc-application`; технологические границы уже разнесены по
-JDBC, CSV/filesystem и Jackson adapters. ArchUnit отдельно запрещает JDBC/Spring
-во внутренних слоях, Jackson вне manifest adapter/bootstrap и JDBC-зависимость
-у callback slice writer.
+### Adapters
 
-Canonical record lifecycle также не образует новый Maven-модуль или shared
-library: это application capability внутри текущего bounded context, а его
-SQLite и Spring runtime mechanics уже принадлежат существующим JDBC adapter и
-composition root. Выделение оправдано только при появлении второго реального
-consumer с независимым release/dependency lifecycle; текущая package/port
-граница обеспечивает extension без нового artifact graph.
+| Module | Responsibility and integration family |
+|---|---|
+| [adapter-config-spring-boot](../adapters/adapter-config-spring-boot/README.md) † | Record-schema name/source inspection and migration observations; Spring Boot/Core. IOC schemas, source loading and startup enforcement stay in bootstrap |
+| [adapter-events-spring](../adapters/adapter-events-spring/README.md) † | Explicit Spring control-event publication; same-version events core, Spring Context and SLF4J. Service owns dispatch configuration and recovery |
+| [adapter-regex-re2j](../adapters/adapter-regex-re2j/README.md) | Domain pattern-engine implementations; RE2/J and JDK regex fallback |
+| [adapter-psl](../adapters/adapter-psl/README.md) | Host classification; Guava Public Suffix List |
+| [adapter-source-tika](../adapters/adapter-source-tika/README.md) | Document text extraction; Tika parser family |
+| [adapter-csv](../adapters/adapter-csv/README.md) | Strict CSV import, artifact preparation/projection and slice output; Commons CSV |
+| [adapter-processing-camel](../adapters/adapter-processing-camel/README.md) | Bounded execution of required local processing plans; Camel, without canonical commit authority |
+| [adapter-manifest-json-jackson](../adapters/adapter-manifest-json-jackson/README.md) | Immutable slice manifest codec; Jackson |
+| [adapter-store-jdbc](../adapters/adapter-store-jdbc/README.md) | Native canonical storage, lifecycle/history, workspaces/receipts, slots, ledgers and migrations; Spring JDBC, SQLite JDBC and HikariCP |
+| [adapter-transport-smb](../adapters/adapter-transport-smb/README.md) | Remote sync and managed-import ownership/materialization/disposition/notifications; SMBJ |
+| [adapter-ingest](../adapters/adapter-ingest/README.md) | File detection, ownership and bounded daemon dispatch; Spring Integration and filesystem lifecycle |
+| [adapter-cli-picocli](../adapters/adapter-cli-picocli/README.md) | Driving CLI, lightweight launch and command/result rendering; picocli and Boot integration |
 
-## Поэтапный переход
+Each adapter groups one integration family behind the relevant inward-facing
+contracts. A tightly coupled family can contain several third-party libraries.
+Generic SLF4J logging and reusable Spring adapters retain their explicit technology
+dependencies; they do not justify putting those dependencies into the core.
 
-Этап 9 выполнен инкрементально:
+### Composition and build support
 
-1. parent reactor + `platform-etl`/`StageId`;
-2. platform modules;
-3. core modules;
-4. adapter modules;
-5. Enforcer + ArchUnit guardrails + CI reactor build.
+| Project/directory | Responsibility |
+|---|---|
+| [ioc-app](../bootstrap/ioc-app/README.md) | Product composition root, typed configuration/preflight, runtime lifecycle, health and runnable Boot JAR |
+| [coverage-report](../build-support/coverage-report/README.md) | Build-only JaCoCo aggregation and integrity over production scopes |
+| [spotbugs-report](../build-support/spotbugs-report/README.md) | Build-only raw/filtered SpotBugs aggregate and exact reviewed-finding gate |
+| [cpd-report](../build-support/cpd-report/README.md) | Build-only repository-wide source report and duplication-group count ratchet |
+| [pmd-report](../build-support/pmd-report/README.md) | Build-only source policy and separate advisory watchlist, with scope/ruleset/report integrity |
 
-Дальнейшее дробление domain capability — только по критерию независимого
-жизненного цикла/переиспользования.
+[build-quality](../build-support/build-quality/README.md) and
+[test-quality](../build-support/test-quality/README.md) are JDK-only verifier
+sources and tests, not Maven projects. Root build executions run their checks.
+Report POM dependencies order analysis after production projects; they do not
+make reports runtime dependencies or publication candidates.
 
-## Отложенный долг
+The four reports have their own scope registries. The TCK is intentionally outside
+production denominators. [TESTING.md](TESTING.md) and
+[build quality](dev/build-quality.md) own lifecycle, coverage and analyzer policy.
 
-Не входит в реализацию этапа 9:
+## Dependency direction and composition
 
-- Spring Modulith/canvas для дополнительной верхнеуровневой визуализации модулей;
-- `dependencyConvergence` и более жёсткие Maven Enforcer build-hygiene правила;
-- JPMS `module-info.java`.
+The main inward chain is bootstrap → adapters → application → processing → domain.
+Bootstrap and adapters also depend directly on the inward contracts they need.
+Platform subsystems form their own acyclic graph; logging/diagnostic bridges are
+outer integration consumers of those contracts.
 
-Эти проверки можно добавить отдельным техническим шагом после стабилизации
-reactor-структуры. Базовая защита границ уже обеспечена Maven module graph,
-текущими Enforcer rules и ArchUnit.
+Maven dependencies determine classpath availability, while ArchUnit and Enforcer
+constrain allowed use. A successful module graph alone does not prove that a public
+API hides every implementation detail. Use narrow contracts and deliberate Java
+visibility; detailed checks are in [BOUNDARIES.md](BOUNDARIES.md).
+
+Spring composes objects in bootstrap. Core use cases do not become Spring services
+to obtain injection or transactions; JDBC transaction mechanisms stay in the
+storage adapter. Required document and processed-import plans execute through the
+Camel adapter. Processing-session ownership stays with the invoking application
+workflow; Camel does not own semantic cache identity or canonical recovery.
+
+## Build and publication ownership
+
+The root parent centralizes dependency/plugin management and the shared
+`${revision}` development version. Managed inter-module dependencies currently
+use `${project.version}`; management supplies versions without adding every
+managed dependency to every child classpath.
+
+Six published artifacts use `io.github.xorex-lc`; other reactor modules use
+`com.iocextractor`. Java packages retain their documented `com.iocextractor`
+names. Publication profiles produce standalone consumer POMs without the private
+reactor parent. The [library catalog](guides/libraries/README.md), module POMs and
+component release records identify artifact coordinates and qualified releases.
+
+[ADR 0048](ADR/0048-independent-library-versions-and-reuse.md) accepts independent
+library versions, with events core/adapter as one exact-version family. POM/CI
+activation remains TOOL-9; today's reactor still uses shared versions. Component
+tags, immutable signed bundles and isolated repository consumers are separate from
+the application release. [RELEASE-PROCESS.md](RELEASE-PROCESS.md) owns release
+policy and activation criteria.
+
+A module boundary is not automatically a publication boundary. New extraction
+needs a cohesive API, owner, concrete consumer need, acceptable dependency closure
+and independent qualification. Extend an admitted library when the responsibility
+belongs there; keep service policy local. See the
+[development guide](guides/libraries/development.md).
+
+## Changing the module graph
+
+Change a module boundary when ownership, dependency isolation or independent
+lifecycle warrants the additional build/public API cost. Preserve supported
+contracts and record significant decisions in an ADR; the original granularity
+rationale is [ADR 0009](ADR/0009-modularization-granularity.md).
+
+A module addition/removal also updates the root reactor, dependency management,
+module references, architecture checks and applicable analyzer/coverage/test
+registries in the same change. Generated reports do not replace those source
+registries. JPMS, Spring Modulith/canvas and dependency convergence remain deferred;
+their absence does not imply failure of the currently adopted checks.

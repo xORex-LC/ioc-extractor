@@ -15,15 +15,15 @@
 
 | Документ | О чём |
 |---|---|
-| [PRINCIPLES.md](PRINCIPLES.md) | Инженерные принципы: SOLID / DRY / OCP / KISS и проектные тенеты (агностичные модули, порты-и-адаптеры, конфигурируемость) |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Текущая архитектура: Clean Hexagonal + Onion, слои, правило зависимостей, конвейер обработки |
-| [MODULARIZATION.md](MODULARIZATION.md) | Многомодульная структура: Maven-реактор, platform/core/adapters/bootstrap и правила зависимостей |
+| [PRINCIPLES.md](PRINCIPLES.md), [RU](ru/PRINCIPLES.md) | Принципы ответственности, декларативной политики, переиспользования, durable truth и проверяемых контрактов |
+| [ARCHITECTURE.md](ARCHITECTURE.md), [RU](ru/ARCHITECTURE.md) | Текущие runtime flows, слои, владение данными, границы транзакций, recovery и ограничения |
+| [MODULARIZATION.md](MODULARIZATION.md), [RU](ru/MODULARIZATION.md) | Ответственность всех Maven-модулей, направления зависимостей, build support и publication boundaries |
 | [BOUNDARIES.md](BOUNDARIES.md), [RU](ru/BOUNDARIES.md) | Архитектурные границы, Maven Enforcer и действующие blocking/advisory правила анализаторов |
-| [CONVENTIONS.md](CONVENTIONS.md) | Стандарт Javadoc, конвенция «README в каждом каталоге» (+ шаблон), правила кода |
+| [CONVENTIONS.md](CONVENTIONS.md) · [RU](ru/CONVENTIONS.md) | Владение документацией, содержательный Javadoc и единый стиль, README (+ шаблон), языки и правила кода |
 | [SECURITY-ENGINEERING.md](SECURITY-ENGINEERING.md) | Secure SDLC policy: активы и trust boundaries, security-контроли, vulnerability lifecycle, gates, evidence и roadmap |
 | [THREAT-MODEL.md](THREAT-MODEL.md) | Базовая threat model: risk-based STRIDE по границам доверия, DFD, трассировка актив×угроза×контроль и остаточный риск |
-| [RELEASE-PROCESS.md](RELEASE-PROCESS.md) | Сквозной контракт версионирования, сборки, публикации, deployment и сопровождения релизов |
-| [TESTING.md](TESTING.md) | Общепроектный test lifecycle, taxonomy, команды, evidence и flake policy |
+| [RELEASE-PROCESS.md](RELEASE-PROCESS.md), [RU](ru/RELEASE-PROCESS.md) | Постоянные правила подготовки, версионирования, квалификации, публикации и сопровождения релизов приложения/библиотек |
+| [TESTING.md](TESTING.md), [RU](ru/TESTING.md) | Содержательные тесты, coverage floors/ratchets, lifecycle, taxonomy, evidence и flake policy |
 | [DIAGNOSTICS-CATALOG.md](DIAGNOSTICS-CATALOG.md) | Генерируемая карта диагностических кодов из `DiagnosticCatalogs` |
 | [LOGGING-CATALOG.md](LOGGING-CATALOG.md) | Генерируемая карта log actions и полей из `EventAction` / `LogField` |
 | [KNOWN-ISSUES.md](KNOWN-ISSUES.md) | Единый реестр технического долга, заложенных seam'ов и статуса этапов (ID, статус, эфф., приоритет) |
@@ -35,7 +35,8 @@
 failure/recovery semantics и точки расширения, но не пересказывают классы,
 полный YAML или историю реализации. Точные детали остаются рядом с кодом и в
 тестах; каждый guide явно указывает источники истины и триггеры обновления.
-Имена имеют форму `lowercase-kebab-case.md`; шаблон — [dev/template.md](dev/template.md).
+Имена имеют форму `lowercase-kebab-case.md`; шаблон — [dev/template.md](dev/template.md)
+([RU](dev/ru/template.md)).
 
 | Документ | О чём |
 |---|---|
@@ -51,7 +52,7 @@ failure/recovery semantics и точки расширения, но не пер�
 | [dev/configuration-inspection.md](dev/configuration-inspection.md) | Shared Spring Boot name inspection, source coverage and service enforcement boundary |
 | [dev/configuration-failure-reports.md](dev/configuration-failure-reports.md) | Controlled failure categories, schema paths, phase limits and operator rendering |
 | [dev/observability.md](dev/observability.md) | Diagnostics, failure policy, typed ECS logging, MDC и redaction |
-| [dev/build-quality.md](dev/build-quality.md) | Maven quality lifecycle, SpotBugs exact ratchet, CPD, coverage and dependency-analysis controls |
+| [dev/build-quality.md](dev/build-quality.md), [RU](dev/ru/build-quality.md) | Maven quality lifecycle, SpotBugs/CPD/PMD, механика coverage gate и сопровождение областей/отчётов |
 | [dev/canonical-record-lifecycle.md](dev/canonical-record-lifecycle.md) | Fixed canonical validity, expiry/history reconciliation, active reads and recovery |
 
 > Генерируемые `DIAGNOSTICS-CATALOG.md` и `LOGGING-CATALOG.md` остаются

@@ -12,7 +12,8 @@ language: "ru"
 
 Контракт: [R030-DOC](../goals/R030-DOC-documentation.md).
 Исходная точка — `2c76d8b095a2162c7038c64de896b244517cf4c7`, ветка
-`docs/quality`, чистое дерево. Дата среза: 2026-11-01, Asia/Irkutsk.
+`docs/quality`, чистое дерево. Исходный census — 2026-11-01;
+текущий inventory обновлён 2026-11-02 в `DOC-01B.4` (Asia/Irkutsk).
 
 ## Что покрывает срез
 
@@ -26,23 +27,27 @@ language: "ru"
 корню репозитория; несколько значений разделены `;`. Владельцы указаны по
 ответственности, без назначения новых персональных обязательств.
 
-Срез содержит 329 исходных Markdown-файлов и три новых: эту заметку,
-[evidence.md](evidence.md) и русский перевод `BOUNDARIES.md`.
-Всего 332 строки и 61 набор источников. Сам inventory и карта источников — TSV,
+Срез содержит 329 исходных Markdown-файлов и пятнадцать новых: эту заметку,
+[evidence.md](evidence.md), [архитектурный аудит](architecture-audit.md),
+[аудит конвенций](conventions-audit.md), [аудит тестирования](testing-quality-audit.md),
+[аудит общих релизных правил](release-process-audit.md), семь RU-переводов root maps
+(`BOUNDARIES`, `PRINCIPLES`, `ARCHITECTURE`, `MODULARIZATION`, `CONVENTIONS`, `TESTING`, `RELEASE-PROCESS`)
+и RU-переводы capability template/build-quality.
+Всего 344 строки и 64 набора источников. Сам inventory и карта источников — TSV,
 поэтому они не увеличивают Markdown denominator.
 
-| Роль | Исходных файлов | После первого пакета |
+| Роль | Исходных файлов | После DOC-01B.4 |
 |---|---:|---:|
 | README вне worknotes | 127 | 127 |
-| Root maps/rules, без README и generated catalogs | 10 | 11 |
-| Capability docs, включая шаблон | 16 | 16 |
+| Root maps/rules, без README и generated catalogs | 10 | 17 |
+| Capability docs, включая шаблон | 16 | 18 |
 | ADR, без README | 49 | 49 |
 | Руководства, без README и переходных страниц | 35 | 35 |
 | Переходные страницы старых guide paths | 6 | 6 |
 | Generated catalogs | 2 | 2 |
 | Release records/template, без README | 16 | 16 |
-| Worknotes, включая их README | 68 | 70 |
-| **Всего** | **329** | **332** |
+| Worknotes, включая их README | 68 | 74 |
+| **Всего** | **329** | **344** |
 
 ## Как читать реестр
 
@@ -81,9 +86,27 @@ Javadoc всего публичного Java API в этом срезе не и�
 | `DOC-F04` | M | Ряд README содержит русскую или смешанную прозу; механическая кириллица также встречается в разрешённой навигации и примерах | `DOC-04`: проверить prose, перевести README на месте, сверить package/module map и зависимости |
 | `DOC-F05` | M | `docs/guides/ru/README.md`, `docs/guides/ru/libraries/README.md` и `.github/release-notes/ru/README.md` являются русскими README | `DOC-04`: сохранить русский навигационный контент в подходящей странице, а прежние README paths — как английские точки входа; guides не удалять |
 | `DOC-F06` | M | Перенос русского ADR в `ru/` меняет базу его относительных ссылок; побайтовое сохранение запрещает исправлять оригинал внутри файла | `DOC-03`: сначала план разрешения ссылок и проверка будущих targets, затем перенос с hash equality и явно помеченный исторический EN-перевод. Массовый перенос сейчас не выполнен |
-| `DOC-F07` | M | Отсутствуют 77 обязательных RU-пар: 9 root docs, 16 capability docs, 49 ADR и 3 guides; существующая пара сама по себе не доказывает semantic parity | `DOC-01B/02/03`: проверить смысл, создать пары и навигацию; список отсутствующих paths берётся из TSV |
+| `DOC-F07` | M | После DOC-01B.4 отсутствуют 69 обязательных RU-пар: 3 root docs, 14 capability docs, 49 ADR и 3 guides; существующая пара сама по себе не доказывает semantic parity | `DOC-01B/02/03`: проверить смысл, создать пары и навигацию; список отсутствующих paths берётся из TSV |
 | `DOC-F08` | L | Часть исторического execution bundle написана на английском, хотя целевой контракт задаёт русские worknotes | `DOC-05`: отдельно определить обращение с исторической прозой; новые execution notes пишутся по-русски. Исторические замеры и результаты не переписывать под текущий HEAD |
 | `DOC-F09` | L | EN/RU `remote-storage-sync.md` отличаются в двух YAML-блоках переведёнными комментариями; значения и остальные блоки совпадают | `DOC-02`: привести комментарии к English и сохранить семантику. Это языковой drift, а не доказанный дефект конфигурации |
+
+Находки `DOC-A01..10`, проверка полноты и привязка к источникам архитектурного
+комплекта зафиксированы в [DOC-01B.1](architecture-audit.md). Проверены шесть
+страниц EN/RU; эти результаты не распространяются на другие root docs.
+
+Находки `DOC-C01..07`, требования к содержанию/стилю Javadoc и обновление
+шаблона возможности отражены в [DOC-01B.2](conventions-audit.md). Проверены
+четыре страницы EN/RU и буквальный Java-пример; общий аудит Javadoc ещё не выполнен.
+
+Находки `DOC-T01..09`, явная политика coverage quality gate и поведенческого
+качества тестов описаны в [DOC-01B.3](testing-quality-audit.md). Связанный комплект
+TESTING/build-quality начинает содержательный review capability docs в DOC-02;
+другие тестовые классы и документы не получают verified автоматически.
+
+Находки `DOC-R01..09` и граница общей release policy / конкретных records
+зафиксированы в [DOC-01B.4](release-process-audit.md). SECURITY-ENGINEERING и
+THREAT-MODEL пользователь отложил для отдельного комплекта; это не исключение
+из R030-DOC и не изменение состояния R030-SEC.
 
 ### Границы известных открытых обязательств
 
@@ -104,11 +127,15 @@ TOOL-4/5/6/7/8/9 сохраняют свои triggers и критерии зак
 |---|---|---|
 | `DOC-INV-01` | `verified` | Все исходные Markdown paths учтены ровно один раз; источник, владелец, перевод, review state, hashes и очередь определены; ссылки реестра проверены |
 | `DOC-01A` | `verified` | Исправлены карта boundary/build gates и раздел library publication; EN/RU parity для BOUNDARIES проверена; architecture/convention/publication tests и links прошли |
-| `DOC-01B` | `planned` | Остальные root maps/rules: утверждения сверены с POM/Make/CI/config, canonical EN и RU, vocabulary/navigation согласованы |
-| `DOC-02` | `planned` | Capability docs и guides: границы, failure/recovery/defaults и примеры сверены с owning source/tests; пары и runnable examples проверены |
+| `DOC-01B` | `in-progress` | Архитектурный комплект, CONVENTIONS, TESTING и RELEASE-PROCESS завершены; KNOWN-ISSUES остаётся, security docs отложены пользователем для отдельного комплекта |
+| `DOC-01B.1` | `verified` | PRINCIPLES/ARCHITECTURE/MODULARIZATION: точность и полнота, три RU-перевода, навигация, 61 focused test и parity review; [аудит и проверки](architecture-audit.md) |
+| `DOC-01B.2` | `verified` | CONVENTIONS и capability template EN/RU: содержательный Javadoc, единый стиль и распределение документации; literal Java compile/doclint, 1 convention test, parity, inventory и links прошли; [аудит и проверки](conventions-audit.md) |
+| `DOC-01B.3` | `verified` | TESTING/build-quality EN/RU: policy/mechanism coverage, полезные тесты, текущие области и admission; 147 synthetic scenarios, 4 lifecycle tests, tools contracts, 12 dry-runs, parity/inventory/links прошли; [аудит и проверки](testing-quality-audit.md) |
+| `DOC-01B.4` | `verified` | Общий RELEASE-PROCESS EN/RU, release-notes README/template, policy/evidence ownership; 6 contract tests, 228 offline publication tests, packaging/tools, examples/parity/inventory/links прошли; [аудит и проверки](release-process-audit.md) |
+| `DOC-02` | `in-progress` | build-quality проверен в связанном `DOC-01B.3`; остальные capability docs/guides ожидают сверки границ, failure/recovery/defaults, переводов и runnable examples |
 | `DOC-03` | `planned` | ADR: original hashes сохранены, migration link plan выполнен, historical EN labels/status/number и semantic parity проверены |
-| `DOC-04` | `planned` | README: English-only, корректные package/module references, русская навигация сохранена, прежние targets разрешаются |
-| `DOC-05` | `planned` | Сверка matrix/ledgers/release notes с фактическими evidence; явные dispositions, неизменность publication identities и исторических замеров |
+| `DOC-04` | `in-progress` | Release-notes README проверен в связанном DOC-01B.4; остальные README ожидают language/reference/semantic review, с сохранением русской навигации |
+| `DOC-05` | `in-progress` | Правила и шаблон release notes проверены в DOC-01B.4; содержательная сверка остальных matrix/ledgers/records и исторических measurements остаётся |
 
 Каждый пакет получает focused checks по изменённому контракту. `make docs`
 проверяет локальные links; смысл, язык и parity проверяются отдельно. Изменения

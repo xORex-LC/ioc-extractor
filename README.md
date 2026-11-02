@@ -184,8 +184,10 @@ docs/       project maps, capability guides, ADRs and operator guides
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md), [modularization](docs/MODULARIZATION.md)
-  and [boundaries](docs/BOUNDARIES.md) — system maps and dependency rules.
+- [Engineering principles](docs/PRINCIPLES.md), [architecture](docs/ARCHITECTURE.md)
+  and [module map](docs/MODULARIZATION.md) — system maps with paired Russian
+  versions linked from each document; [boundaries](docs/BOUNDARIES.md) describes
+  their executable enforcement.
 - [Processing](docs/dev/processing.md), [storage](docs/dev/storage.md),
   [ingestion](docs/dev/ingestion.md), [artifact export](docs/dev/artifact-export.md),
   [sync](docs/dev/sync.md), [configuration](docs/dev/configuration.md) and

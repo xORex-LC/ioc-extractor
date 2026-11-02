@@ -1,5 +1,7 @@
 # Build quality
 
+[Русская версия](ru/build-quality.md)
+
 Build quality is a repository-owned Maven capability, not an external service.
 The canonical `verify` lifecycle compiles and tests the reactor, enforces module
 and architecture rules, analyzes production code and builds aggregate reports.
@@ -26,10 +28,11 @@ make verify
        |    compile JDK-only quality verifiers
        |    run their synthetic-reactor contract matrices
        |    reconcile reactor modules with SpotBugs/CPD/PMD scope manifests
+       |    validate test discovery/source inventory and coverage topology
        |    validate the accepted SpotBugs baseline and generate its filter
        |
        +-- initialize
-       |    remove stale module and aggregate analyzer outputs
+       |    remove stale test, coverage and analyzer outputs
        |
        +-- ordinary reactor lifecycle
        |    compile -> test -> package
@@ -38,12 +41,14 @@ make verify
        |    filtered SpotBugs presentation reports
        |
        +-- final build-support modules
-            JaCoCo aggregate
+            JaCoCo aggregate + exact test-report union + coverage policy
             raw and filtered SpotBugs aggregates + exact baseline gate
             repository-wide PMD CPD report + exact group-count ratchet
 
-CI build completion
+successful Maven build
   -> revalidate the Codecov aggregate input
+
+CI build completion (success or failure)
   -> upload test, coverage, SpotBugs and CPD evidence even when the build failed late
 
 successful CI build
@@ -162,7 +167,7 @@ registry gives every root reactor project exactly one disposition:
 
 - `analyzed` — a production JAR that must produce raw and filtered reports;
 - `excluded` — no production-bytecode analysis; a child module must explicitly
-  configure `spotbugs.skip=true`;
+  configure the inherited SpotBugs plugin with `<skip>true</skip>`;
 - `aggregate` — the one build-only module that owns reactor aggregation and the
   late gate.
 
@@ -236,7 +241,7 @@ The root `validate` execution:
 
 1. compiles the shared verifiers;
 2. runs the scope and baseline synthetic fixture matrices;
-3. reconciles the reactor and both analyzer manifests;
+3. reconciles the reactor, analyzer manifests and report dependencies;
 4. validates baseline schema, identities, metadata and review triggers;
 5. generates the operational presentation filter.
 
@@ -282,21 +287,6 @@ The proposal is deliberately non-accepting: it cannot populate human judgement
 fields or modify the tracked baseline. It also fails when module raw reports are
 missing or unhealthy. Run it before a focused Maven command, because focused
 lifecycles may delete or replace only part of the reactor report set.
-
-The `NATIVE-TEMP-SQL-ISOLATION` review (2026-10-14) refreshed seven bytecode
-anchors in `JdbcExportSlotRegistry` after explicitly qualifying TEMP identifiers
-and adding SQL-backed preferred-request scratch. Raw hashes, occurrences,
-members, severities and suppression selectors stayed unchanged: 137 accepted
-findings and 133 selectors. Each query still validates/quotes artifact names and
-binds business values. Same-named main tables are preserved by integration
-regressions. This is an identity refresh of existing SQL false positives, not
-permission to accept additional findings.
-
-The same review extracted shared failure-preserving cleanup and connection
-restoration. The CPD snapshot decreased from 23 to 22 groups after review of the
-complete report. The former `DoNotThrowExceptionInFinally` finding disappeared,
-so its nonzero PMD count was removed; the rule now has zero tolerance. No
-analyzer rule, selector, scope or coverage threshold was relaxed.
 
 ### Toolchain and analyzer upgrades
 
@@ -467,61 +457,111 @@ drift fail the command.
 
 ## Coverage
 
-The inherited JaCoCo agent records Surefire and Failsafe execution for
-functional modules. When tests are enabled, stale reports and execution data
-are removed during `initialize`; `-DskipTests` analyzer/package runs preserve
-the latest test evidence. The agent then appends both test JVM cohorts to the
-module's one execution-data file.
-Module reports are written under `target/site/jacoco/`; the final build-only
-coverage module combines the applicable production universe under
+[TESTING.md](../TESTING.md#coverage-quality-gate) owns the coverage/test-quality
+policy, including fixed floors and how to add useful behavioral tests. This
+section explains collection, authority and enforcement.
+
+### Collection and report authority
+
+The inherited JaCoCo agent appends Surefire and Failsafe execution to each
+functional module's `target/jacoco.exec`. With tests enabled, `initialize`
+removes old test reports, execution data and module/aggregate coverage directories.
+A skipped-test packaging/analyzer run preserves previous evidence; it does not
+refresh coverage.
+
+Module XML/HTML is generated under `target/site/jacoco/` during that module's
+`verify`. The build-only coverage module runs afterwards and combines execution
+data across the production graph under
 `build-support/coverage-report/target/site/jacoco-aggregate/`.
+A module's aggregate group can include downstream integration/E2E execution that
+its earlier local report could not see. Gate decisions use aggregate/group
+counters; local reports are required investigation/integrity evidence, not a
+second baseline authority. Reactor ratios are computed from summed counters,
+not an average of module percentages.
 
-The reusable TCK is not part of the production coverage denominator. The
-fail-closed `coverage-scope.tsv` registry gives all 31 reactor projects an
-explicit disposition and must match both the root module list and the coverage
-report POM dependencies. Twenty-five production JARs are covered with no class or
-package exclusions. Twenty-four must produce non-empty module XML/HTML plus
-execution data. `ioc-platform-errors` is explicitly aggregate-only because it
-has no local test JVM; it must still be present in the aggregate through
-downstream execution. Root, TCK and build-only outputs are rejected if they
-unexpectedly appear as coverage evidence.
+### Scope and policy registries
 
-Root `validate` compiles the JDK-only `CoverageVerifier`, runs its synthetic
-reactor matrix and checks the scope, snapshot and Maven wiring. The final
-coverage-report execution requires current aggregate XML/HTML, checks the exact
-25-group union and counter sums, validates expected local reports and applies
-`coverage-ratchets.tsv`. Line and branch ratios use exact cross-multiplied
-integer fractions, so decimal rounding cannot hide a drop. An increased absolute
-missed-branch count also fails; small modules additionally reject increased
-missed instructions, while larger scopes retain missed instructions as review
-context.
+| Registry | Authority |
+|---|---|
+| [coverage-scope.tsv](../../build-support/coverage-report/coverage-scope.tsv) | Every reactor project's disposition and required/aggregate-only/no local report |
+| [coverage-ratchets.tsv](../../build-support/coverage-report/coverage-ratchets.tsv) | Exact line/branch baseline counters, missed instructions, explicit instruction policy and rationale |
+| [coverage-floors.tsv](../../build-support/coverage-report/coverage-floors.tsv) | Fixed line/branch floors, or explicit `none` for ratchet-only scopes |
 
-The cleanup contract removes module and aggregate report directories whenever
-tests run, so a missing new report cannot be satisfied by an older file.
-`-DskipTests` continues to preserve the most recent analyzer/test evidence, but
-it is not the canonical fresh verification command. A failed ratchet requires a
-behavior/test review. Never lower a baseline, change an aggregate-only
-disposition or add an exclusion merely to restore green. Accepted stable
-improvements should update their counters and rationale in the same reviewed
-change.
+The scope currently contains 31 projects, 25 production groups and 24 required
+local reports. Root, reusable TCK and build-only POMs are outside production
+denominators; `ioc-platform-errors` is aggregate-only because it has no local
+test JVM. Its downstream execution still belongs to the production aggregate.
+Manual JaCoCo class/package includes/excludes and covered-module skip overrides
+are rejected.
 
-The independent fixed-floor policy enforces `75% / 80%` lines/branches for the
-complete production aggregate and `85% / 90%` for both `ioc-domain` and
-`ioc-application`. All other production modules explicitly remain ratchet-only.
+Root `validate` compiles the JDK-only `CoverageVerifier`, runs its
+synthetic-reactor matrix and reconciles the reactor, registries, artifact
+coordinates, aggregate ordering dependencies, inherited agent/report/cleanup
+wiring and late gate. Each aggregate/production scope needs both a ratchet row
+and a floor-policy row.
 
-After a successful CI build, `tools/ci/codecov.sh verify-input` repeats this
-project-owned report validation before artifact retention. A separate reporting
-job downloads the evidence, checks the expected aggregate XML handoff and calls
-a full-SHA-pinned Codecov Action with a pinned CLI. It uploads only that explicit
-file; report discovery, plugins and uploader telemetry are disabled. GitHub OIDC
-permission is scoped to the reporting job, not the Maven build.
+Late `verify` requires non-empty aggregate XML/HTML, exact group membership and
+counter sums, plus expected local XML/HTML and execution data. Unexpected local
+reports/data from excluded or aggregate-only scopes are rejected. Stale-output cleanup prevents
+an older file from satisfying a missing report in the canonical test lifecycle.
+The separate test-lifecycle verifier checks the exact source/Surefire/Failsafe
+union. Healthy percentages cannot compensate for a report-integrity failure.
 
-Codecov's absolute project, base-relative project and changed-lines patch
-statuses are informational. The external Action is the only best-effort step:
-missing project-owned evidence remains a CI failure, while an external upload or
-status failure does not replace or weaken Maven coverage enforcement. Current
-commands, targets and failure semantics are documented in
-[`docs/TESTING.md`](../TESTING.md).
+### Exact comparisons
+
+For reactor and every production group, the gate checks line/branch
+non-regression against the recorded fraction and independently checks any fixed
+floor:
+
+```text
+actualCovered * baselineTotal >= baselineCovered * actualTotal
+actualCovered * 100 >= minimumPercent * actualTotal
+```
+
+The implementation uses integer cross-products, so rounded HTML percentages
+cannot hide a regression. Ratchet comparison rejects a newly nonzero counter
+after a zero-denominator baseline and disappearance of a previously nonzero
+counter; a fixed-floor scope cannot use an absent denominator to pass.
+
+Absolute missed branches also cannot grow. For example, going from 80/100
+covered branches to 170/200 improves the ratio from 80% to 85%, but increases
+missed branches from 20 to 30 and fails the missed-count check.
+
+Missed instructions are enforced only when the registry column
+`absolute-instructions` is `enforced`; `observed` retains the number for review.
+Small scopes commonly use this extra protection, but the explicit registry
+setting decides. The gate does not infer policy from module size.
+
+### Diagnose a coverage failure
+
+1. Identify whether the failure is topology/report integrity, a fixed floor,
+   a ratio, missed branches or enforced missed instructions. Read the named
+   scope and exact counters before changing tests.
+2. For incomplete evidence, restore the correct lifecycle/report wiring and run
+   the full gate. A focused or skipped-test run is not a replacement aggregate.
+3. For a behavioral gap, follow the
+   [coverage workflow](../TESTING.md#reach-the-gate-through-useful-tests): choose
+   a contract case and independent oracle at the owning layer.
+4. For legitimate removal/refactoring or a new scope/counter, review the changed
+   denominator, behavior and tests explicitly. Keep floors intact; do not lower
+   a baseline, relabel a report or add an exclusion to obtain a pass.
+5. Run the complete gate after focused checks. Accept stable improvements with
+   exact counters and rationale in the same reviewed change; inspect the
+   protected metrics together so one update cannot loosen another.
+
+### Codecov handoff
+
+After a successful CI build, `tools/ci/codecov.sh verify-input` repeats local
+report/policy verification before retention. A separate job downloads that
+evidence and requires its aggregate XML before the full-SHA-pinned Codecov Action
+and pinned CLI upload only the explicit file. Report discovery, plugins and
+telemetry are disabled; OIDC permission belongs to the reporting job.
+
+The Codecov project/base/patch statuses are informational. Missing project-owned
+evidence fails its owning check; only the external upload Action is best-effort.
+An external failure cannot replace local enforcement or turn failed local
+coverage green. Exact reporting targets belong to
+[TESTING.md](../TESTING.md#codecov-reporting).
 
 ## Dependency and security analysis
 
@@ -543,20 +583,20 @@ SpotBugs or CPD code-quality acceptance.
 
 ## Adding or changing a Maven module
 
-1. Add or change the module in the root reactor and preserve dependency
-   direction.
-2. Give the project an explicit disposition in the SpotBugs, CPD and PMD
-   manifests; dispositions may differ only for a documented reason.
-3. For an analyzed scope, add the matching ordering dependency and, for CPD or
-   PMD, the exact production source root to the owning report module.
-4. For a SpotBugs-excluded child project, configure inherited analysis with an
-   explicit `skip=true`.
-5. Run full `make verify` and `make pmd-analysis`; confirm the expected
-   raw/filtered module reports, aggregate membership and count-ratchet results.
-6. Use `make ci`/`make pre-push` for the complete regular local gate and require
-   both `verify.fresh=true` and `pmd.fresh=true` before claiming fresh evidence.
-7. Update the module map and relevant co-located README when the module's role
-   or production/test/build-only classification changes.
+1. Add/change the root reactor module and preserve dependency direction.
+2. Give it explicit coverage, SpotBugs, CPD and PMD dispositions. Differences
+   require a documented reason; no registry may silently omit a project.
+3. Add the matching report-ordering dependencies and exact CPD/PMD production
+   source roots. Review the coverage local-report requirement, aggregate group,
+   measured ratchet and fixed-floor entry, including explicit `none` where applicable.
+4. For a SpotBugs-excluded child, explicitly set inherited analysis `skip=true`.
+   Review added/removed/reclassified suites and the lifecycle source registry.
+5. Run focused tests, then full `make verify` and `make pmd-analysis`; inspect
+   report membership, findings and counter/baseline deltas together.
+6. Use `make ci`/`make pre-push` for the complete regular local gate. Both
+   `verify.fresh=true` and `pmd.fresh=true` are needed for fresh local evidence.
+7. Update affected capability docs, module map and local README when
+   responsibility or production/test/build-only classification changes.
 
 Never satisfy a new-module failure by weakening registry equality or report
 checks. The required disposition is the control that prevents silent analyzer
@@ -600,6 +640,13 @@ release bundles are not part of the supported quality lifecycle.
 - Shared reactor/source/report integrity:
   [`BuildQualityVerifier.java`](../../build-support/build-quality/BuildQualityVerifier.java)
   and its synthetic-reactor matrix.
+- Coverage policy/report verification:
+  [`CoverageVerifier.java`](../../build-support/coverage-report/CoverageVerifier.java),
+  [`CoverageVerifierTest.java`](../../build-support/coverage-report/CoverageVerifierTest.java)
+  and the three coverage registries linked above.
+- Test discovery and report-union verification:
+  [`TestLifecycleVerifier.java`](../../build-support/test-quality/TestLifecycleVerifier.java)
+  and [`test-lifecycle.properties`](../../build-support/test-quality/test-lifecycle.properties).
 - Stable commands and developer-safe proposal procedure:
   [`Makefile`](../../Makefile) and [`tools/README.md`](../../tools/README.md).
 - CI execution and retained artifacts:
@@ -639,71 +686,34 @@ individual accepted finding unless the mechanism itself changes.
 
 ## Reusable library coordinates and publication admission
 
-Report membership admits `io.github.xorex-lc` only for
-`ioc-platform-concurrency`, `ioc-platform-diagnostics-api` and
-`ioc-platform-logging-slf4j`, plus the reactor-only
-`ioc-config-spring-boot`; other reactor
-JARs must retain `com.iocextractor`. Verifier negative fixtures reject a foreign
-group for an ordinary module and the retired group for each admitted library.
+Report verifiers admit `io.github.xorex-lc` for the six artifacts in the
+[library catalog](../guides/libraries/README.md): concurrency, diagnostics API,
+SLF4J logging, configuration inspection, events core and its Spring adapter.
+Other reactor JARs retain `com.iocextractor`. Negative fixtures reject foreign
+coordinates and the retired group for admitted libraries.
 
-The configuration adapter is a production scope in all four report registries:
-JaCoCo, SpotBugs, CPD and PMD. It has a required local coverage report and an
-aggregate group; the report POM dependencies and CPD/PMD source roots include it.
-At configuration extraction the topology was 30 reactor projects, 24 production
-groups and 23 local coverage reports (E2 extends it below). The configuration
-module has an explicit coverage ratchet;
-publication admission must not change that denominator or relax any floor.
+Extracting or publishing a library does not remove its runtime bytecode from
+coverage or static-analysis scope. All four registries, report dependencies,
+source roots and local-report requirements must remain consistent. The TCK's
+explicit test-support classification is a different reason for exclusion.
 
-Its main POM declares Boot and Spring Core; the reactor manages their versions.
-Boot also brings Spring Context and other dependencies transitively. The
-`ConfigurationCheckRecipeIT` suite compiles the exact application-owned guide
-and runs with shared configuration classes plus third-party JARs, without IOC.
-It is ordinary Failsafe evidence and adds no report module or YAML dependency
-to the library. Architecture tests enforce its Spring adapter boundary.
-[ADR 0046](../ADR/0046-reusable-spring-boot-configuration-inspection.md) records
-that ownership; parent-independent POMs, mediation and cold repository consumers
-remain a separate [publication admission](../guides/library-publication.md#configuration-library-admission).
+Publication admission is a separate contract: parent-independent consumer POM,
+component-specific dependency closure, main/sources/Javadoc/license bytes,
+signatures, immutable bundles and recovery. The
+[publication tooling](../../tools/ci/library-publication.py) owns exact artifact/
+dependency rules; the [publication guide](../guides/library-publication.md) owns
+usage and the [release policy](../RELEASE-PROCESS.md#reusable-library-versions)
+owns versioning/admission.
 
-The logging module joins the report manifests, regular reactor gates and the
-standalone library-consumer matrix. Its resolved POM must preserve exactly one
-required compile dependency, SLF4J API 2.0.18. Providers and Boot remain outside
-the JAR; the older libraries still reject every dependency.
+The CI component matrix qualifies concurrency, diagnostics, logging and
+configuration. A separate events job qualifies core before the Spring adapter;
+the `library-consumer` aggregate status succeeds only if both jobs succeed.
+Failed, cancelled or skipped consumer jobs cannot produce a successful aggregate.
+Whether that status is required is external branch/ruleset state.
 
-The Boot logging recipe is qualified in bootstrap's `LoggingBootRecipeIT`.
-It compiles guide sources and runs a bounded JVM with only shared logging classes
-and third-party JARs; backend configuration is not a new library dependency or
-report module. Its suite is included in the ordinary integration inventory.
-This local fixture does not substitute for the separate cold repository matrix.
-
-The separate `library-consumer` CI matrix qualifies all three admitted components.
-An aggregate job keeps the required status name `library-consumer` stable for
-branch protection. It runs even after an unsuccessful matrix and passes only
-when every component consumer succeeds; failed, cancelled or skipped consumers
-cannot produce a successful aggregate check.
-Each builds a parent-independent POM with its exact dependency contract, main JAR with
-the distribution license, sources and Javadoc. Publication contracts reject
-cross-component tags/bundles, coupled POMs and incomplete/foreign archives;
-signature and partial-publication recovery checks run for all three components.
-The copied consumer uses empty Maven settings/cache outside the checkout and
-checks all four resolved artifacts against the manifest and selected repository
-origin. Logging runs plain SLF4J and Boot recipe projects with separate empty
-caches, extracting actual guide sources/configuration. Its required API must
-arrive through the library POM; two offline negative checks reject excluded or
-unavailable SLF4J. These tool fixtures do not change reactor suite or report
-membership. Network-dependent
-plugin resolution and local file-repository qualification do not substitute for
-the deterministic reactor gate or prove public publication. See the
-[publication guide](../guides/library-publication.md).
-
-
-### Explicit Spring event adapter
-
-E2 adds `adapters/adapter-events-spring` as an ordinary production JAR to all
-four report manifests, aggregate ordering dependencies and CPD/PMD source roots.
-Current topology is 31 Maven projects, 25 production coverage groups and 24 local
-coverage reports; the TCK remains excluded and errors remains downstream-only.
-The stub publisher suite moves from bootstrap to the adapter (fast suite count
-unchanged); one real Spring-context IT suite increases the integration inventory
-from 82 to 83 and deterministic-offline union from 311 to 312. The module has
-an explicit measured coverage ratchet. Existing ratchets, fixed floors and
-analyzer finding/count policies remain unchanged.
+Standalone consumers use isolated settings/caches outside the checkout, verify
+manifest bytes and selected origin, and exercise actual guide examples.
+Application-owned Boot recipes remain bootstrap integration tests, with Boot
+outside the shared logging JAR. Tool fixtures do not add reactor suites or
+production groups. Local file-repository success is not proof of public
+publication or a second deployed service.

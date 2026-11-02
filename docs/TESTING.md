@@ -1,8 +1,92 @@
 # Testing
 
-The repository has one lossless Maven test lifecycle. Surefire owns fast test
-classes and Failsafe owns integration test classes; a full `verify` runs both
-cohorts and is the authoritative deterministic offline gate.
+[Русская версия](ru/TESTING.md)
+
+Tests establish supported behavior and protect it against regression. Coverage
+identifies code that needs investigation; a percentage does not establish that
+the right result, invariant or recovery outcome was checked. A passing quality
+gate and a review of test quality are both required.
+
+This document owns repository-wide test and coverage policy. The
+[build-quality capability](dev/build-quality.md) explains its Maven/report
+implementation; [CONVENTIONS](CONVENTIONS.md) owns documentation and code style.
+
+## Test design and failure policy
+
+### Choose cases from the contract
+
+Before adding tests, identify the observable guarantee, its risk and the outcomes
+that would distinguish a correct implementation from a plausible defect. Use the
+public API, port contract, documented format or invariant as the oracle. Derive
+expected values independently of the algorithm under test.
+
+| Concern | Useful evidence |
+|---|---|
+| Normal operation | Exact result, ordering or durable state that the caller relies on |
+| Boundary | Immediately before, at and after a meaningful threshold; empty/absent/distinct values where supported |
+| Rejection | Exception/result category and the protected state or effect that must remain unchanged |
+| Partial failure | Which effects occurred, which did not, and the reported primary/secondary failure |
+| Recovery/idempotency | Retry/restart reaches the supported state without repeating a committed effect |
+| Ownership/concurrency | Copy or alias behavior, ordering/exclusion scope, bounded cancellation and released resources |
+
+Select relevant cases; this is not a requirement for six tests per method.
+A fixed defect receives a regression that fails for the defect and asserts the
+supported outcome. Keep each test focused on one coherent behavior; several
+related assertions may be needed to establish that behavior.
+
+### Fixtures, assertions and isolation
+
+- Use JUnit Jupiter and AssertJ. Separate arrange, act and assert clearly; a short
+  test does not need ceremonial comments. Name the behavior and condition in the
+  method name or `@DisplayName`.
+- Use minimal synthetic fixtures owned by the test in `src/test/resources` or
+  `@TempDir`. Write outputs to temporary locations. Unit/domain tests do not
+  read operator documents, runtime CSVs or production YAML. A contract test may
+  intentionally read production resources when their configuration/format is the
+  contract, and must make that purpose clear.
+- Assert exact public values, diagnostic/result categories and meaningful state
+  transitions. For rejection, check absence of forbidden side effects when that
+  is the guarantee. An assertion that a call returned, a result is non-null or a
+  mock was invoked is insufficient when value/state correctness matters.
+- Use parameterized tests for independent cases of the same rule. Do not derive
+  expected output through the same production helper or regenerate a golden
+  fixture from the producer being tested.
+- Use mocks/stubs at a dependency boundary when they isolate the behavior.
+  Interaction assertions are appropriate for a contractual effect or ordering;
+  asserting every private call couples the test to implementation.
+- Prefer a small unit/component test for pure decisions, a shared TCK for an
+  interchangeable port, and a deterministic integration test for real adapter,
+  transaction, serialization or framework behavior. E2E tests connect important
+  flows; they do not replace focused negative and boundary cases.
+
+For example, this method from
+[RecordLifecycleTest](../core/ioc-application/src/test/java/com/iocextractor/application/artifact/lifecycle/RecordLifecycleTest.java)
+uses that class's `FIRST` and `POLICY` fixtures. It checks the meaning of an
+expiry boundary with explicit times, without waiting for wall-clock time:
+
+```java
+@Test
+void uses_a_half_open_active_interval() {
+    RecordLifecycle lifecycle = RecordLifecycle.start(
+            new LifecycleId(1), FIRST, POLICY.decide(FIRST));
+
+    assertThat(lifecycle.isActiveAt(
+            EffectiveTime.at(Instant.parse("2026-08-16T00:59:59.999Z")))).isTrue();
+    assertThat(lifecycle.isDueAt(
+            EffectiveTime.at(Instant.parse("2026-08-16T01:00:00Z")))).isTrue();
+    assertThat(lifecycle.isDueAt(
+            EffectiveTime.at(Instant.parse("2026-08-16T01:00:00.001Z")))).isTrue();
+}
+```
+
+The neighboring tests check renewal identity and rejection of a due lifecycle.
+Together these cases explain the contract; repeatedly calling a constructor or
+asserting getters would not establish it.
+
+Do not add automatic retries or hide intermittent failures. A flaky test needs
+an owner, retained seed/failure evidence and a fix or explicit disposition.
+Deterministic database, filesystem and framework integrations belong to ordinary
+verification; provision only genuinely external dependencies explicitly.
 
 ## Test lifecycle
 
@@ -13,81 +97,21 @@ Class names determine Maven lifecycle ownership:
 | `Test*`, `*Test`, `*Tests`, `*TestCase` | Surefire | `test` |
 | `IT*`, `*IT`, `*ITCase` | Failsafe | `integration-test`, then `verify` |
 
-Every Failsafe suite must also carry integration semantics through
-`@IntegrationTest`, `@EndToEndTest` or `@ExternalTest`. Naming controls Maven
-discovery; tags describe test semantics. They are complementary and neither is
-a substitute for the complete release gate.
+Every Failsafe suite also carries `@IntegrationTest`, `@EndToEndTest` or
+`@ExternalTest`. Naming controls discovery; tags describe semantics. Do not
+invent an undiscovered suffix such as `Should` or reclassify an integration
+test as a unit test to get a faster or greener run.
 
-The reviewed source universe is 234 fast classes and 83 integration classes,
-including five external shells (312 deterministic classes). Diagnostics extraction
-moves eight existing suites to the JDK-only API module and adds one executable
-consumer-guide suite. Logging adds seven suites for the public API, scalar ECS
-profile, explicit masks,
-MDC/provider failures, architecture boundaries and compiled consumer-guide examples.
-`IocLogFieldBindingTest` replaces the removed private-normalizer suite with
-observable IOC-facade assertions. `LoggingMigrationIT` adds five real producer /
-Boot encoder / byte-writing appender regressions, including watch-provider
-failure with bounded worker cleanup. `LoggingBootRecipeIT` compiles the actual
-plain/Boot guides and runs their YAML/XML in a bounded separate JVM with only the
-shared logging classes and third-party JARs. It checks JSON types, duplicate keys,
-metadata, disclosure and observable appender failures for unsupported inputs.
-This is backend integration evidence, not repository-consumption evidence.
-Configuration extraction adds four module-local suites: `PropertyInspectionTest`,
-`PropertySchemaTest`, `GenericConsumerTest` and `MigrationInspectionTest`. They check the shared name and
-source-coverage contract, unsupported schema boundaries and a consumer with an
-unrelated prefix and record model. Migration fixtures compare accepted and removed
-names, indexed replacements, ambiguity and shadowed declarations with real Binder
-results. The added migration suite accounts for the source-universe increase;
-the verifier and coverage/analyzer ratchets are unchanged. These fixtures do not establish
-a second deployed service or published-artifact consumption.
-C2 adds two Failsafe suites deliberately: `ConfigurationCheckRecipeIT` compiles
-the exact closed-input guide and runs it without IOC classes; `IocConfigurationContextIT`
-checks effective Boot imports/profiles/overrides, source-expansion rejection,
-command lifetime and actual IOC whole-list binding. Both own bounded child JVMs
-and assert cleanup. The two suites account for the integration/source-universe
-increase; no test is reclassified and no coverage or analyzer floor is lowered.
-The exact source inventory records these changes. Coverage floors, report integrity,
-architecture checks and analyzer rules remain enforced. Events extraction moves the publisher unit suite to `ioc-events-spring` and
-adds `SpringControlEventPublisherIT` for real ordered Spring dispatch, partial
-delivery, fatal propagation and service-owned multicaster configuration. Its
-integration-suite addition accounts for the current 83-class inventory. Packaging
-checks do not establish an independent events consumer.
-The Native lifecycle and import TCK bindings
-run against the retained backend.
+Shared composed annotations live in `ioc-application-tck` under
+`com.iocextractor.application.tck.junit`. Adapter/bootstrap test scopes may
+depend on that module. Framework-free core modules use direct JUnit tags when
+a test-support dependency would point outward.
 
-Logging test ownership is deliberate: the shared module owns generic mechanics
-and executable plain examples; IOC observability owns catalogs, facade binding,
-ETL correlation and callback cleanup; bootstrap owns IOC producer JSON and the
-application-owned [Boot recipe](guides/libraries/logging-slf4j-boot.md). The integration
-recipe does not move Boot dependencies into the shared module. Its immutable
-snapshot rejection is not a failure of the library's separate async contract.
-
-`StreamingSourceContractIT` and `JdbcDocumentSourceWorkspaceIT` check real
-HTML/DOCX parsing, independent source outcomes, disk-backed text, overlap priority,
-positions and resource admission. Native document-workspace tests preserve seal,
-quota, corruption, replay and owned-resource failure coverage.
-
-`NativeDeliveryLifecycleIT` connects production Spring/YAML processing, Native
-canonical writes, immutable CSV export and durable fetch/publish ledgers. Only
-UTC and the SMB wire boundary are substituted. It checks receipt-only replay
-with deleted input, renewal, exact TTL expiry, non-reusable canonical identity,
-reusable export slots and retry after a lost publication reply.
-`RouterSelectedImportDeliveryIT` connects real processed-route configuration and
-physical CSV to canonical commit, COALESCE and receipt-only delivery recovery.
-
-Native JDBC contracts check rollback of fan-out mutations/receipt evidence,
-source/registration authority, expiry/history rollback, receipt snapshots during
-retirement, malformed ordered positions and connection release on failed close.
-Admission tests force competing completion/recovery operations and reject
-changed claim/file evidence, namespace, rank and stale versions. Compatibility
-writes preserve duplicate observation/ID behavior and distinguish metadata-only
-origins from public changes. These are correctness checks, not load acceptance;
-live and historical load scopes are recorded in [native capacity](dev/native-capacity.md).
-
-The shared composed annotations live in `ioc-application-tck` under
-`com.iocextractor.application.tck.junit`. Adapter and bootstrap test scopes may
-depend on that module. Framework-free core modules use direct JUnit tags when a
-test-support dependency would point in the wrong architectural direction.
+The exact accepted suite counts live in
+[test-lifecycle.properties](../build-support/test-quality/test-lifecycle.properties),
+not in a second prose inventory. Adding, removing or reclassifying a suite requires
+deliberate source/report-universe review and a same-change registry update.
+Equal suite counts do not prove equivalent test quality.
 
 ## Tag taxonomy
 
@@ -102,13 +126,117 @@ Only these JUnit tags are accepted:
 | `slow` | Identifies deliberately expensive evidence without changing lifecycle ownership |
 | `external` | Requires explicitly provisioned infrastructure; implies integration |
 
-Ordinary unit and component tests intentionally have no `unit` tag. Do not add
-feature, module, author or temporary issue tags. Extend the accepted taxonomy
-and its verifier deliberately if a new cross-repository semantic is needed.
+Ordinary unit/component tests have no `unit` tag. Do not add feature, module,
+author or temporary issue tags. A new cross-repository semantic needs a reviewed
+taxonomy/verifier change. Abstract TCKs carry `@ContractTest`; a concrete
+integration implementation uses both `@IntegrationTest` and `@ContractTest`.
 
-Reusable abstract TCK classes carry `@ContractTest`; subclasses inherit the
-tag. A concrete integration implementation of a TCK uses both
-`@IntegrationTest` and `@ContractTest`.
+## Coverage quality gate
+
+### Floors and ratchets
+
+The authoritative measurement is the complete local JaCoCo reactor aggregate
+and its production-module groups. It includes downstream test execution.
+Module-local HTML helps investigate a component, but may show less execution
+than its aggregate group. Codecov is advisory.
+
+Every production group and the reactor aggregate must satisfy both applicable
+fixed floors and its accepted baseline:
+
+| Scope | Line floor | Branch floor | Additional protection |
+|---|---:|---:|---|
+| Reactor production aggregate | 75% | 80% | Aggregate ratchet |
+| `ioc-domain`, `ioc-application` | 85% | 90% | Per-module ratchet |
+| Other production groups | No fixed floor | No fixed floor | Per-module ratchet |
+
+[coverage-floors.tsv](../build-support/coverage-report/coverage-floors.tsv) owns
+fixed floors; `none` means ratchet-only, not exempt.
+[coverage-ratchets.tsv](../build-support/coverage-report/coverage-ratchets.tsv)
+owns exact baseline counters and rationale. For every scope:
+
+- line and branch ratios must not fall below their respective baseline ratios;
+- absolute missed branches must not increase, even if a growing denominator
+  improves the percentage;
+- missed instructions must not increase where `absolute-instructions=enforced`;
+  `observed` retains the number as review context.
+
+Comparisons use exact integer fractions, not rounded HTML percentages. A new
+counter after a zero-denominator baseline, or disappearance of a previously
+nonzero counter, requires explicit review. The
+[verifier mechanism](dev/build-quality.md#coverage) describes these checks.
+
+[coverage-scope.tsv](../build-support/coverage-report/coverage-scope.tsv) owns
+production/report membership. There are no manual class/package exclusions.
+Test-support TCK, parent and report POMs are outside production denominators.
+`ioc-platform-errors` is explicitly aggregate-only; lack of its local test JVM
+does not remove its production bytecode from the aggregate.
+
+### Reach the gate through useful tests
+
+1. Start with the changed behavior and relevant contract cases, not a target
+   number of test methods. Run the smallest suitable suite.
+2. Open the affected group in the aggregate HTML after a complete run; use its
+   source view and missed branch/instruction counters to locate untested decisions.
+   Check report scope and freshness before concluding that a test is missing.
+3. For each gap, identify a missing supported scenario: for example equality at
+   expiry, a failed commit preserving state, a retry after committed delivery, or
+   cancellation releasing an owned worker. State an independent expected result.
+4. Add the smallest test at the owning layer that can observe that result.
+   Check that assertions distinguish a plausible wrong result, a missing required
+   state change or a broken invariant. A bug regression should reproduce
+   the original failure.
+5. Run focused tests, then `make verify` for the complete source/report union
+   and aggregate policy. Inspect any changed missed counters, not just the
+   headline percentage; run other controls required by the change.
+6. Review residual uncovered behavior and test clarity. Accepted stable
+   improvements update exact baseline counters and rationale in the same reviewed
+   change, without loosening another protected metric.
+
+A floor is a minimum safeguard, not a target to stop testing at. High coverage
+does not prove assertion strength, complete failure/recovery cases, live transport
+support or resource acceptance. Conversely, adding unrelated easy assertions to
+offset an important untested path does not satisfy the test-quality policy.
+
+Do not pad tests with repeated inputs, meaningless getter/constructor calls,
+broad `isNotNull()` checks or assertions of private implementation just to raise
+coverage. Do not delete required behavior, lower floors/baselines, add exclusions,
+relabel reports or alter suite counts to make a failing build green. Legitimate
+retirement/refactoring or module changes require a same-change scope, counter,
+test and documentation review; the ratchet is not a ban on simplifying code.
+Mutation diagnostics can help assess assertion strength, but do not replace
+contract review or justify changing correct production behavior to kill a mutant.
+
+## Integrity checks and reports
+
+Root `validate` runs the JDK-only
+[TestLifecycleVerifier](../build-support/test-quality/TestLifecycleVerifier.java).
+It rejects unknown tags, invalid composed annotations, undiscovered/ambiguous
+names, wrong lifecycle semantics, unguarded external suites, lifecycle filtering
+and reviewed source-count drift.
+
+Late `verify` in the coverage-report module checks the exact source/Surefire/
+Failsafe report union. Missing, duplicate or wrong-owner reports fail.
+Coverage validation separately reconciles scope/POM wiring, expected aggregate
+groups, counter sums, local XML/HTML and execution data, then applies floors and
+ratchets. A healthy percentage cannot compensate for incomplete evidence.
+
+| Evidence | Location |
+|---|---|
+| Fast results | `*/target/surefire-reports/` |
+| Integration/external-shell results | `*/target/failsafe-reports/` |
+| Module coverage | `*/target/site/jacoco/` |
+| Authoritative aggregate HTML/XML | `build-support/coverage-report/target/site/jacoco-aggregate/` |
+
+When tests run, `initialize` deletes stale test reports, JaCoCo data and coverage
+directories; the agent appends Surefire and Failsafe execution within that lifecycle.
+A `-DskipTests` run preserves previous evidence and does not establish fresh test
+coverage. Focused commands can replace only part of the reports; they cannot
+qualify the complete reactor. CI retains available reports even after a late failure.
+
+`make context` reports the recorded commit/worktree freshness. After production
+Java or analyzer-scope changes, run focused tests followed by `make verify` and
+`make pmd-analysis` on the final worktree. Both controls must be passed and fresh
+for a complete local quality claim; PMD freshness is independent of coverage.
 
 ## Commands
 
@@ -119,295 +247,156 @@ Use the Maven Wrapper through the Make facade:
 make test
 make test-fast
 
-# Deterministic Failsafe cohort plus provisioned external suite shells.
+# Deterministic Failsafe cohort plus skipped external shells unless provisioned.
 make test-integration
 
-# Complete release-quality reactor: both cohorts, reports and quality gates.
+# Complete reactor gate: both cohorts, reports and quality controls.
 make verify
 
 # One module and its upstream dependencies.
 make test-module MODULE=core/ioc-domain
 make test-integration-module MODULE=adapters/adapter-store-jdbc
 
-# One class or method; the facade selects Surefire or Failsafe from its name.
+# One class or method; lifecycle selection follows its name.
 make test-one MODULE=core/ioc-domain TEST=DefaultIndicatorNormalizerTest#strips_trailing_semicolon
+make test-one MODULE=core/ioc-application TEST=RecordLifecycleTest
 make test-one MODULE=adapters/adapter-cli-picocli TEST=SpringCommandConstructionIT
 ```
 
-`make test-integration` skips the fast cohort deliberately. It is a focused
-developer command, not a replacement for `make verify`. Selecting tags manually
-is diagnostic only and does not prove release completeness.
+`make test-integration` skips the fast cohort deliberately. Tag/selector-filtered
+runs are diagnostics, not substitutes for the complete gate.
 
-## Diagnostic pilots
+## Bounded waits and worker cleanup
 
-Mutation and stability pilots are opt-in diagnostics, not ordinary PR or
-release gates:
+Asynchronous, concurrency, filesystem and transport tests need two independent
+bounds: a timed coordination primitive (latch, barrier, future, join or described
+condition deadline), and a containing JUnit `@Timeout` safety boundary.
 
-```bash
-# Mutate the complete core/ioc-domain production scope with one sequential worker.
-make mutation-pilot
+Offline wait-bearing suites normally use five seconds for coordination and
+30 seconds for the suite. Release or cancel owned workers in `finally` or an
+`AutoCloseable` fixture and assert bounded termination. Preserve interrupted
+status when adapting `InterruptedException`; name the awaited event on timeout.
 
-# Run the complete functional test universe three times with seeds 42, 43 and 44.
-make stability-pilot
+Short sleeps are acceptable only within an explicit polling deadline when no
+coordination signal exposes the condition. The live SMB `CHANGE_NOTIFY` test's
+deliberate wait beyond its request timeout is protocol evidence, not an offline
+test pattern. See its [contract suite](../adapters/adapter-transport-smb/src/test/java/com/iocextractor/adapter/out/transport/smb/SmbChangeNotifyContractIT.java).
 
-# Reproduce or extend a stability observation explicitly.
-make stability-pilot SEED=73 REPEAT=1
-```
-
-The `mutation-pilot` Maven profile exists only in `core/ioc-domain`. It uses the
-default PIT mutators with zero score thresholds: a broken test or tool remains a
-failure, while a survived mutant requires review rather than automatically
-blocking a release. Stable HTML/XML reports are written to
-`core/ioc-domain/target/pit-reports/`; the wrapper summary is written under
-`target/test-pilots/`.
-
-The `stability-pilot` profile randomizes Surefire/Failsafe class order and JUnit
-class/method order from the same published seed. The wrapper advances the seed
-by one for each repetition, runs all 25 functional JAR modules sequentially,
-and verifies the exact source/report union after every pass. It archives each
-pass under `target/test-pilots/stability/run-N-seed-S/` before the next Maven
-lifecycle deletes current reports. The first failure stops the pilot and keeps
-its seed and partial XML evidence; there is no automatic retry.
-
-The scheduled/manual `Test Diagnostics` workflow publishes both pilot bundles
-for 30 days. It is intentionally absent from push and pull-request triggers.
-PIT and stability remain scheduled/manual diagnostics unless a later reviewed
-decision adopts a narrower blocking policy. Evidence-driven PIT expansion to
-other production modules is tracked separately as
-[`TOOL-5`](KNOWN-ISSUES.md#9-developer-tooling--build-tool); it is not part of
-the 0.3.0 mutation universe.
+Surefire/Failsafe do not impose one fixed fork timeout. Forks can own several
+suites and provisioned external work; local operation timeouts plus suite-level
+bounds own the deadline. Reconsider a fork watchdog if a reproducible hang
+survives those bounds; never conceal an unbounded primitive with retries.
 
 ## External and slow evidence
 
-External suites remain discoverable by Failsafe but are disabled unless their
-explicit system property is `true`:
+External suites stay Failsafe-discoverable and are disabled unless their explicit
+provisioning system property is `true`:
 
 | Property | Provisioned evidence |
 |---|---|
 | `ioc.smb.contract` | Live SMB managed-import and `CHANGE_NOTIFY` contracts |
 | `ioc.smb.encryption.contract` | Effective authenticated-session encryption |
-| `ioc.smb.hardening.contract` | Two-identity namespace/ACL hardening contract |
+| `ioc.smb.hardening.contract` | Two-identity namespace/ACL hardening |
 | `ioc.import.load.enabled` | Managed-import load profile |
 
-An external skip is not a pass. Release evidence must record whether the
-provisioned suite ran or received an explicit disposition. External tests must
-not silently enter the deterministic offline cohort. The `slow` tag alone does
-not disable or move a test.
+An offline skip is not live evidence. Record target/capabilities without secrets,
+executed counts, cleanup and unavailable checks or explicit dispositions.
+`slow` alone does not disable or move a test. Do not let external requirements
+silently enter the deterministic offline cohort.
 
-Live SMB credentials are read directly from environment pairs such as
-`SMB_USER`/`SMB_PASSWORD` or `SMB_SERVICE_USER`/`SMB_SERVICE_PASSWORD`. Never
-forward a password through `-D`: Failsafe serializes JVM system properties into
-its XML reports, and CI retains those reports as release evidence. Non-secret
-fixture selectors (`host`, `port`, `share`, `remotePath`, encryption policy)
-remain explicit system properties so the qualified target can be identified.
+Read credentials directly from environment, such as `SMB_USER`/`SMB_PASSWORD`
+or `SMB_SERVICE_USER`/`SMB_SERVICE_PASSWORD`. Never forward them through `-D`:
+Failsafe retains system properties in XML. Non-secret host/share/path/encryption
+selectors identify the qualified target. The centralized external harness remains
+[TOOL-4](KNOWN-ISSUES.md#9-developer-tooling--build-tool); current bring-your-own
+fixtures do not imply automated provisioning or a broader support claim.
 
-This is currently a bring-your-own-fixture boundary rather than a centralized
-environment-management platform. The capability-driven suite registry,
-provisioning/lease lifecycle, exact executed-count gate, result classification,
-evidence bundle and verified cleanup required before more external integration
-families are added are tracked as [`TOOL-4`](KNOWN-ISSUES.md#9-developer-tooling--build-tool).
-That follow-up does not turn an offline skip into live evidence or reopen an
-already target-qualified run.
+## Diagnostic pilots
 
-## Integrity checks and reports
+Mutation and stability pilots are scheduled/manual diagnostics:
 
-Root `validate` runs the JDK-only verifier in `build-support/test-quality`. It
-fails on unknown tags, invalid composed annotations, a test class outside both
-Maven naming conventions, integration semantics owned by Surefire, a Failsafe
-suite without integration semantics, an unguarded external suite, lifecycle
-filtering or reviewed source-count drift.
+```bash
+make mutation-pilot
+make stability-pilot
+make stability-pilot SEED=73 REPEAT=1
+```
 
-At the end of a full reactor `verify`, the coverage-report module also compares
-the source inventory with Surefire and Failsafe XML. Missing, stale, duplicate
-or wrong-engine reports fail the build. The accepted source universe is kept in
-`build-support/test-quality/test-lifecycle.properties`; it is an integrity
-ratchet, not permission to replace one test with a weaker same-count test.
+The domain-only `mutation-pilot` profile uses default PIT mutators and zero score
+thresholds. Tool/test failures fail the command; survived mutants require semantic
+triage, not automatic production changes. Reports live in
+`core/ioc-domain/target/pit-reports/` with summaries under `target/test-pilots/`.
+Expansion beyond domain is [TOOL-5](KNOWN-ISSUES.md#9-developer-tooling--build-tool).
 
-Generated evidence is written to:
+The stability pilot runs all functional JAR modules sequentially, randomizing
+Maven/JUnit order with the published seed and incrementing it per repetition.
+It verifies the exact source/report union and archives each pass under
+`target/test-pilots/stability/run-N-seed-S/`. The first failure stops execution
+with its seed and partial reports; there is no automatic retry.
 
-- `*/target/surefire-reports/` for fast results;
-- `*/target/failsafe-reports/` for integration and external-shell results;
-- `*/target/site/jacoco/` for module coverage;
-- `build-support/coverage-report/target/site/jacoco-aggregate/` for aggregate
-  HTML/XML coverage.
-
-When tests are enabled, the build deletes stale test reports, JaCoCo execution
-data, module coverage directories and the aggregate coverage directory during
-`initialize`. A `-DskipTests` analyzer/package run preserves the latest test
-evidence. JaCoCo appends execution data from the Surefire and Failsafe JVMs
-within the clean test lifecycle, so downstream integration/E2E execution is
-retained in the aggregate. CI uploads test and coverage directories even when a
-later step fails.
-
-The aggregate report and its groups are the authoritative release measurement.
-`build-support/coverage-report/coverage-scope.tsv` gives every reactor project
-an explicit disposition. The production denominator is exactly 24 JAR modules;
-the reusable TCK, root and build-only POMs are excluded, with no class or package
-exclusions. Twenty-three production modules must generate local XML/HTML reports.
-`ioc-platform-errors` has no local test JVM and is declared aggregate-only, but
-its downstream execution must still appear as an aggregate group.
-
-`make verify` checks that this complete report topology exists and contains no
-stale or unexpected evidence. It applies the aggregate and per-module baselines
-in `coverage-ratchets.tsv`: line and branch ratios cannot fall, and missed branch
-counts cannot rise. Ratios are compared as integer fractions rather than rounded
-percentages. Small-denominator modules also reject an increase in missed
-instructions; larger scopes retain that absolute value as review context.
-
-The same project-owned late gate applies `coverage-floors.tsv`. Every aggregate
-or production-module scope has an explicit entry: `none` means ratchet-only,
-while the reactor aggregate enforces `75%` lines / `80%` branches and both
-`ioc-domain` and `ioc-application` enforce `85%` / `90%`. Floor comparisons also
-use exact integer fractions, so a rounded display value cannot make a failing
-ratio pass. Ratchets still protect stronger existing results independently of
-the fixed floors.
-
-Do not lower a floor or baseline, add an exclusion or relabel a local report to
-make a change pass. Review the changed behavior and tests; when a stable
-improvement is accepted, update its exact counters and rationale in the same
-change. Local JaCoCo remains authoritative; Codecov reporting is advisory.
-
-## Codecov reporting
-
-The successful CI build revalidates the complete aggregate with
-`tools/ci/codecov.sh verify-input` before retaining it as an artifact. A separate
-`Codecov advisory` job downloads that already verified evidence and requires the
-expected aggregate XML to be present before invoking the external uploader. It
-does not rerun tests or generate a second coverage universe.
-
-Repository `codecov.yml` defines three informational status contexts:
-
-| Context | Target | Tolerance | Scope |
-|---|---:|---:|---|
-| `codecov/project/absolute-floor` | `75%` | `0%` | Complete production aggregate |
-| `codecov/project/base-ratchet` | Base (`auto`) | `0.1%` | Complete production aggregate |
-| `codecov/patch/changed-lines` | `90%` | `0%` | Pull-request changed lines |
-
-All three use Codecov informational mode and are not required merge or release
-gates. GitHub Checks annotations are enabled, while the mutable PR comment is
-disabled. Review still requires meaningful positive, negative and boundary
-outcomes for changed behavior; a patch percentage is not a substitute.
-
-The reporting job receives OIDC permission without exposing it to the Maven
-build job. Its Action and CLI versions are pinned in the workflow. Automatic
-report search, uploader plugins and telemetry are disabled, and the only
-coverage payload named for upload is
-`build-support/coverage-report/target/site/jacoco-aggregate/jacoco.xml`.
-
-Missing, stale or malformed project-owned coverage evidence fails Maven or the
-pre-upload handoff. The Codecov Action alone is `continue-on-error`: an outage,
-authentication failure, rate limit or missing remote status remains visible as
-an external reporting failure but cannot turn a failed local coverage check
-green or block an otherwise valid release.
+The [Test Diagnostics workflow](../.github/workflows/test-pilots.yml) retains
+both bundles for 30 days. Neither pilot is an ordinary PR/release gate.
 
 ## Reference consumer contracts
 
-Accepted non-Java integration surfaces have repository-owned reference
-consumers and exact golden resources. These tests are compatibility witnesses:
-they detect producer-side wire drift without reusing the production decoder,
-but they do not prove that a named deployed consumer has accepted a release.
+Use independent reference consumers and exact synthetic golden fixtures for
+supported external formats. They detect producer drift without reusing its
+decoder; they do not prove acceptance by a named deployed consumer.
 
-| Surface | Contract evidence |
+| Surface | Existing evidence |
 |---|---|
-| Mutable CSV projections | `GoldenPipelineIT` compares all five artifacts byte-for-byte, including UTF-8, semicolon quoting, `NULL`, column order and CRLF records, then parses them through the independent reference consumer |
-| Immutable export slice | `ReferenceArtifactConsumerTest` consumes committed complete v1 and explicit-layout v2 slices without production manifest/model classes and rejects checksum or `_SUCCESS` drift; `OnDemandExportIntegrationIT` applies the same consumer to local and published copies |
-| CLI automation | CLI tests compare root help, version, usage errors, sync summaries and extraction completion blocks with exact stdout/stderr fixtures; only the generated run ID is replaced by an explicit token |
-| ECS logging | `LogbackConfigurationIT` compares one deterministic ECS JSON event byte-for-byte after replacing only the build version, then evaluates the committed JSON-pointer query corpus with exact scalar types and values |
+| Mutable CSV projections | `GoldenPipelineIT`: all configured artifacts, exact UTF-8/semicolon/NULL/column-order/CRLF bytes, independent consumer |
+| Immutable slices | `ReferenceArtifactConsumerTest`: complete v1/explicit-layout v2 fixtures and checksum/marker rejection; `OnDemandExportIntegrationIT`: actual local/published copies |
+| CLI automation | Exact help/version/error/summary/completion fixtures; only the generated run ID is tokenized |
+| ECS logging | `LogbackConfigurationIT`: exact deterministic JSON and independent JSON-pointer queries/types, with only build version substituted |
+| Regex/configuration | Shared RE2/J and JDK contract plus bootstrap binding/selection and configured-pattern compatibility |
 
-The fixtures live below the owning modules' `src/test/resources/consumer/`
-directories. Useful focused commands are:
+Fixtures remain with the owning modules' `src/test/resources/consumer/` where
+applicable. Precise format and scenario contracts belong there and in the owning
+capability docs.
 
-```bash
-make test-one MODULE=bootstrap/ioc-app TEST=ReferenceArtifactConsumerTest
-make test-one MODULE=bootstrap/ioc-app TEST=GoldenPipelineIT
-make test-one MODULE=bootstrap/ioc-app TEST=OnDemandExportIntegrationIT
-make test-one MODULE=adapters/adapter-cli-picocli TEST=EarlyCliLauncherTest
-make test-one MODULE=bootstrap/ioc-app TEST=LogbackConfigurationIT
-```
+Out-of-reactor library consumers are separate network-dependent tool fixtures.
+They resolve parent-independent packaged artifacts with isolated settings/caches,
+check selected repository origin and bundle bytes, and exercise actual guide
+examples. They add no reactor suite or production-coverage scope. CI qualifies
+all six cataloged components: four independent component consumers plus events
+core/Spring adapter, joined by the `library-consumer` aggregate status. Its
+existence does not prove external branch-protection settings or public publication.
+See the [publication guide](guides/library-publication.md).
 
-The out-of-reactor Maven publication consumer is a different contract. It is
-introduced only after `R030-LIB` admits coordinates and a public API; these
-wire-format fixtures do not create or imply such a library contract.
-The admitted logging component now runs separate plain SLF4J and Boot recipe
-projects with empty caches. Both compile actual guide blocks from packaged JARs;
-the plain fixture also checks excluded/unavailable API failures. These are
-network-dependent tool checks, outside the reactor suite inventory, and local
-file-repository success does not prove public publication.
+## Codecov reporting
 
-Events adds a JDK-only project and a plain Spring project using unrelated
-collector payloads. Both compile exact guide examples. The Spring project must
-receive its core/Context/SLF4J classes through the adapter's main POM, checks real
-ordered listeners and exception/observation boundaries, and runs with/without
-the application's BOM. Excluded/unavailable APIs and incompatible mediation must
-fail for their expected reasons. Separate empty-cache routing probes qualify a
-missing selected artifact and a missing transitive core even with a populated
-alternate; unfiltered controls verify the alternate can supply the exact bytes.
-Every core/adapter POM, main JAR, sources and Javadoc is checked against its own
-manifest and selected origin. These tool fixtures add no reactor suite or
-production coverage scope; their processes have bounded timeouts and close all
-Spring contexts without starting workers. CI's existing library gate requires
-both events consumers alongside the four previously admitted components.
+CI revalidates the complete aggregate with `tools/ci/codecov.sh verify-input`
+before retention. A separate reporting job downloads it, requires the expected
+XML, then runs the pinned external uploader; it does not rerun tests.
 
-## Test design and failure policy
+| Informational context | Target | Tolerance |
+|---|---:|---:|
+| `codecov/project/absolute-floor` | 75% | 0% |
+| `codecov/project/base-ratchet` | Base (`auto`) | 0.1% |
+| `codecov/patch/changed-lines` | 90% | 0% |
 
-Tests own their fixtures and outputs. Prefer synthetic data, `@TempDir`, bounded
-waits and assertions on supported behavior. Contract tests may intentionally
-read production resources when those resources are the public contract. A fixed
-defect receives a regression test with positive, negative and boundary outcomes
-appropriate to its risk.
+[codecov.yml](../codecov.yml) makes all three informational. The patch percentage
+is review information, not a local 90% changed-lines gate. Checks annotations are
+enabled and mutable PR comments disabled.
 
-Do not add automatic retries or hide intermittent failures. A flaky test needs
-an owner, evidence and a fix or explicit disposition. Environment-dependent
-behavior belongs behind an explicit external provision, while deterministic
-database, filesystem and framework integrations remain part of ordinary
-`verify`.
-
-The regex adapter runs one shared fast contract against both the default RE2/J
-and JDK fallback implementations. It verifies stable engine identity,
-compile-once reuse and exact ordered half-open spans. A bootstrap contract binds
-the live classpath configuration, verifies `ioc.engine=jdk` selection and runs
-every configured IOC detector and source section marker against both engines.
-Keep configured patterns RE2-compatible; the fallback is not permission to add
-JDK-only look-around or back-references.
-
-## Bounded waits and worker cleanup
-
-Every asynchronous, concurrency, filesystem or transport test must have two
-independent bounds:
-
-- the coordination primitive itself uses a timed latch, barrier, future, join
-  or condition-polling deadline with a description of the expected event;
-- the containing wait-bearing suite uses a JUnit `@Timeout` safety boundary.
-
-Offline wait-bearing suites normally use a five-second coordination bound and a
-30-second suite bound. A test that owns a worker must release or cancel it from
-`finally` or an `AutoCloseable` fixture, then assert bounded termination. Preserve
-the interrupted status when adapting `InterruptedException`. A timeout failure
-must name the awaited event; adding a retry is not a timeout fix.
-
-Short sleeps remain acceptable only inside an explicit polling deadline when no
-latch, future or callback exposes the condition. The live SMB `CHANGE_NOTIFY`
-contract intentionally sleeps for three seconds to prove survival beyond its
-two-second request timeout; its polling deadline is ten seconds and its suite
-boundary is 60 seconds. These waits are protocol evidence, not a model for
-offline tests.
-
-Surefire and Failsafe do not set one fixed fork timeout for 0.3.0. A fork can own
-multiple suites, including explicitly provisioned external work, so a single
-process deadline would provide a less precise owner and could terminate valid
-evidence. Local operation timeouts plus suite-level JUnit boundaries are the
-authoritative policy. Reconsider a fork watchdog if a reproducible hang can
-survive those bounds; do not use it to conceal an unbounded test primitive.
-
-CSV output format has a dedicated fast suite for independent header/value
-quoting, LF/CRLF bytes and strict unquoted ambiguity. Filesystem projection and
-slice integration suites check failure preservation and manifest recovery. The
-suite inventory includes the formatter suite; existing v1 golden fixtures stay
-unchanged to guard byte compatibility.
+OIDC permission belongs only to the reporting job. The full-SHA-pinned Action
+and pinned CLI upload only the named aggregate XML; report discovery, plugins
+and telemetry are disabled. Only the external Action is best-effort:
+missing/invalid project-owned input fails its owning check, while an external
+upload/status failure does not weaken Maven enforcement or block an otherwise
+valid release.
 
 ## Update triggers
 
-Update this document and the lifecycle verifier when changing naming patterns,
-tag semantics, Maven phase ownership, external provisioning, report locations,
-coverage collection or flake policy. Update the mutable release evidence ledger
-for measured counts and durations; do not copy those changing values here.
+Update policy, applicable verifiers/registries and affected docs together when
+changing test discovery, tags, external provisioning, report topology, coverage
+collection/floors/ratchets or flake rules. Review the semantics of a suite-universe
+change instead of updating a count silently. Changing measurements/durations
+belong to retained execution evidence, not a prose inventory here.
+
+Sources of truth:
+
+- [Root POM](../pom.xml), [Makefile](../Makefile) and [CI workflow](../.github/workflows/ci.yml).
+- [Test lifecycle registry/verifier/tests](../build-support/test-quality/README.md).
+- [Coverage registry/verifier/tests](../build-support/coverage-report/README.md).
+- [Build-quality mechanics](dev/build-quality.md) and [module boundaries](BOUNDARIES.md).

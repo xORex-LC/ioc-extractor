@@ -1,72 +1,98 @@
-# Принципы
+# Engineering principles
 
-Инженерные принципы проекта. Они первичны по отношению к любому конкретному коду:
-если решение им противоречит — меняем решение, а не принципы.
+[Русская версия](ru/PRINCIPLES.md)
 
-## Базовые (industry standard)
+These principles guide design and review across the project. They state how to
+choose responsibilities and preserve contracts. [ARCHITECTURE.md](ARCHITECTURE.md)
+describes the running system; [MODULARIZATION.md](MODULARIZATION.md) maps its
+modules; [BOUNDARIES.md](BOUNDARIES.md) identifies executable enforcement.
 
-- **SRP (Single Responsibility).** Каждый класс/модуль отвечает за одну причину
-  изменения. Парсинг, рефанг, классификация, атрибуция, запись — разные
-  ответственности и разные единицы.
-- **OCP (Open/Closed).** Расширяемся конфигурацией либо новой реализацией за
-  существующей границей, а не правкой ядра. Новый CSV-артефакт обычно задаётся
-  конфигурацией текущего sink-адаптера; новая технология чтения, записи или
-  доставки получает отдельный адаптер за соответствующим портом.
-- **LSP / ISP.** Порты узкие и сфокусированные (`SourceReader`, `ArtifactPreparer`,
-  `ArtifactIdBaseline`, `PatternEngine`); реализации взаимозаменяемы.
-- **DIP (Dependency Inversion).** Зависимости направлены на абстракции. Ядро
-  определяет порты, инфраструктура их реализует. Внедрение — через конструктор.
-- **DRY.** Один источник истины: специфика — в конфиге, доменные правила — в
-  доменных сервисах, форматирование — в мапперах. Дублирование выносим.
-- **KISS.** Простейшее решение, удовлетворяющее принципам. Абстракции вводим
-  под реальную потребность (точку расширения), а не «на всякий случай».
+## Responsibility before abstraction
 
-## Проектные тенеты
+Give each component one coherent reason to change. Separate IOC semantics,
+workflow orchestration, persistence, transport and runtime composition.
 
-1. **Чистая гексагональная архитектура (порты и адаптеры) + Onion.**
-   Зависимости направлены внутрь. `domain` не зависит ни от чего; фреймворки
-   (Spring, Tika, RE2/J, commons-csv, picocli) живут только в адаптерах и
-   composition root. Детали — в [architecture.md](ARCHITECTURE.md).
+Introduce a port when a use case crosses a technology, side-effect or replaceable
+implementation boundary. Pure collaborators within one layer may use each other
+directly. An interface for every class and a new Maven module for every package
+are not requirements. Prefer the smallest design that meets a demonstrated need.
+Keep ports narrow and implementations substitutable: validation, failure and
+resource-ownership guarantees are part of the contract.
 
-2. **Порты защищают архитектурные границы.** Порт вводится там, где use case
-   пересекает слой, технологию или side-effect boundary: filesystem, parser,
-   storage, transport, clock, telemetry либо независимо заменяемую реализацию.
-   Чистые collaborators и policies внутри одного слоя могут зависеть друг от
-   друга напрямую через конструктор; интерфейс ради каждого класса не требуется.
-   Сквозные подсистемы остаются отделены от бизнес-логики — см.
-   [observability.md](dev/observability.md).
+Dependencies point inward. Domain and processing remain framework-free;
+application owns use cases and inward-facing ports. Adapters implement technology
+boundaries; bootstrap composes them. A platform directory does not automatically
+make a component generic or suitable for publication.
 
-3. **Агностичность и выделяемость.** Бизнес-логика и инфраструктура, не
-   привязанные к конкретному приложению, проектируются так, чтобы их можно было
-   вынести в отдельный модуль без переписывания. Дорожная карта —
-   [modularization.md](MODULARIZATION.md).
+## Declarative policy and explicit execution
 
-4. **Декларативная специфика, тонкие инструменты.** Правила и логика, по которым
-   формируется результат (заполнение артефактов, классификация масок, паттерны,
-   рефанг, атрибуция), задаются **декларативно в конфиге**, а не зашиваются в код.
-   В коде — максимально **тонкие, переиспользуемые** механизмы (провайдеры,
-   трансформации, предикаты, вычислители правил), которые лишь интерпретируют
-   декларации. Специфики в коде — **минимально возможно**; менять поведение
-   можно правкой конфигурации, без изменения кода.
+Keep operator-specific rules in validated configuration: refang replacements,
+patterns, attribution markers, classification rules, named processing plans and
+artifact mapping. Code implements the supported operations and their invariants.
+Configuration selects those operations; it is not an arbitrary scripting or
+workflow engine.
 
-5. **Защита границ — не на доверии.** Архитектурные границы подкрепляются
-   автоматическими проверками (тесты ArchUnit, зависимости модулей, enforcer) —
-   см. [boundaries.md](BOUNDARIES.md).
+Prefer an existing extension point when it fits. A new capability can still need a
+focused change to its owning component. Open/Closed does not prohibit correcting a
+defect or extending a public contract. Keep processing order, transaction boundaries
+and recovery ownership explicit.
 
-6. **Качественный Javadoc обязателен.** Контракты портов и публичный API
-   документируются всегда — см. [conventions.md](CONVENTIONS.md#javadoc).
+## Reuse follows ownership
 
-7. **Связные способности и единый конвейер (DDD + EIP).** Доменная логика
-   группируется по связным capabilities, а технологические и side-effect
-   границы выражаются портами. ETL-обработка строится по **Pipes-and-Filters**
-   с неизменяемым `Envelope` и `Result/Either` — единообразно для batch и stream
-   ([processing.md](dev/processing.md)).
+Remove duplicated knowledge when it has one owner and one reason to change.
+Similar code with different lifecycle, failure or security contracts does not by
+itself justify a shared abstraction.
 
-## Как принимаем решения
+Before adding shared mechanics, inspect the
+[library catalog](guides/libraries/README.md), public contracts, implementation,
+tests and callers. Use a suitable API; fix or extend its library when the gap is a
+coherent generic responsibility. Keep IOC catalogs, schemas, business rules and
+durable recovery in the service. The [development guide](guides/libraries/development.md)
+and [ADR 0048](ADR/0048-independent-library-versions-and-reuse.md) define this
+workflow and the distinction between accepted version policy and current tooling.
 
-- Сначала формулируем границу/ответственность, потом класс.
-- Новая зависимость между единицами логики — повод спросить: «не должно ли это
-  быть портом?».
-- Перед хардкодом специфики — спрашиваем: «не место ли этому в конфиге?».
-- Перед правкой существующего поведения под новый случай — спрашиваем: «нельзя
-  ли это сделать новой реализацией за портом (OCP)?».
+## Durable truth and explicit identity
+
+SQLite canonical state is business truth. Mutable CSV files and immutable export
+slices are derived views. Coordination ledgers and commit receipts define what
+can be resumed after a failure; filesystem notifications and control events
+accelerate discovery.
+
+Keep identities distinct: a delivered occurrence, its content hash, canonical row,
+lifecycle, ordered observation and reusable export slot serve different contracts.
+A public slot is meaningful in its profile/artifact context. Equal bytes do not
+prove that two business occurrences are the same.
+
+Evaluate failure policy before canonical writes. State transaction scope explicitly
+and recover committed work forward from durable evidence. A projection or delivery
+failure does not undo a successful canonical commit. Upgrade and rollback must
+preserve a consistent application/configuration/database state.
+
+## Bounded work and visible failures
+
+Own resources explicitly and bound queues, workers, retained details and workspace
+admission. Separate preparation from durable promotion where the workflow requires
+it. An admission estimate is not a whole-process memory guarantee; capacity claims
+need a named workload and measured evidence.
+
+Diagnostics are structured outcomes with stable service-owned codes. Preserve the
+primary failure and exact severity counts even when retained detail is bounded.
+Logging, health and events support observation without becoming commit authority.
+Secrets and untrusted IOC content require explicit disclosure boundaries.
+
+## Contracts and evidence change together
+
+Document public APIs and port guarantees with meaningful English Javadoc.
+Update affected maps, capability docs, module references and guides with the change.
+Keep generated references tied to their generators. [CONVENTIONS.md](CONVENTIONS.md)
+defines documentation responsibilities.
+
+Preserve supported behavior unless an intentional change has explicit compatibility,
+migration and verification evidence. Architecture tests and build gates enforce
+their declared scope; passing them does not replace semantic review or prove live
+deployment, performance or every external consumer. Record unavailable evidence
+and residual risks honestly. Test policy belongs to [TESTING.md](TESTING.md);
+security policy belongs to [SECURITY-ENGINEERING.md](SECURITY-ENGINEERING.md).
+
+Significant architectural changes use append-only ADRs. Keep their rationale
+separate from a current architecture map and from release execution evidence.

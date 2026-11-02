@@ -1,89 +1,92 @@
-# [Название способности]
+# [Capability name]
+
+[Русская версия](ru/template.md)
 
 <!--
-Lean capability guide для разработчика, который будет менять эту часть системы.
-Это карта чтения кода, а не его словесная копия.
+Copy this template for one developer-facing capability guide.
+Remove this comment and the template's language-navigation line before publishing;
+add links to the actual English/Russian document pair instead.
 
-Оставляйте только устойчивые сведения:
-- границу способности и основной runtime flow;
-- инварианты и модель корректности;
-- side effects, отказы и восстановление;
-- путь расширения;
-- исполняемые источники истины и triggers обновления документа.
+Keep durable knowledge: responsibility, runtime flow, model/invariants, effects,
+failure/recovery, extension path, live sources and update triggers.
+Select the sections relevant to the capability; do not invent a state machine.
 
-Не переносите сюда:
-- перечни всех классов и методов;
-- версии библиотек и полные YAML-блоки;
-- историю этапов реализации и roadmap;
-- данные, которые можно получить из POM, config schema, generated catalog или IDE.
-
-Удалите комментарий перед публикацией.
+Do not copy complete class/method inventories, library versions, full configuration,
+implementation milestones or facts already maintained by a generator.
+The document is a map for reading and changing code, not a prose copy of it.
 -->
 
-Одним абзацем: что делает способность, где начинается и заканчивается. Явно
-назовите то, чего она не делает.
+In one paragraph, explain the capability, its input/result and its boundary.
+Name relevant responsibilities owned elsewhere.
 
 ## Runtime flow
 
-Один основной поток данных или управления. Показывайте durable/side-effect
-границы, если они влияют на корректность.
+Show the main data/control flow. Mark durable or side-effect boundaries when
+they affect correctness; use the actual phases, including a checkpoint if needed.
 
 ```text
-[вход] -> [решение] -> [commit] -> [выход]
+[input] -> [decision] -> [commit] -> [output]
 ```
 
-## Границы
+## Boundaries
 
-- Какие слои и Maven-модули участвуют.
-- Где находятся driving/driven ports.
-- Какая технология скрыта адаптером.
-- Кто владеет source of truth.
+Identify participating layers/modules, the main driving/driven ports and the
+technology hidden by an adapter. State who owns authoritative data and coordination.
 
-Не перечисляйте все implementation classes: для этого есть module/package
-`README.md` и код.
+Link to module/package `README.md` for local structure and dependency rules, and
+to Javadoc for precise type/operation contracts. Retain the key relationships
+needed to understand this capability without listing every implementation class.
 
-## Инварианты
+## Model and invariants
 
-Только условия, которые нельзя нарушать при рефакторинге.
+Explain non-obvious values/structures, identity, ordering, units and boundary
+conditions that affect correctness. Describe ownership, lifecycle, concurrency
+and resource bounds where relevant. Keep exact member contracts with their code.
 
-1. **[Инвариант].** Почему он важен и чем исполняемо защищён.
+1. **[Invariant].** Why it matters, where it is enforced and which test protects it.
 
-## Отказы и восстановление
+## Failures and recovery
 
-Опишите только нетривиальные failure/recovery semantics. Если durable state
-machine отсутствует, не придумывайте её.
+Describe meaningful partial outcomes and failure/recovery behavior. Name what
+has already happened when a failure is reported, who retries, and what makes a
+retry safe. If no durable state machine exists, do not introduce one in prose.
 
-| Ситуация | Поведение | Источник корректности |
+| Situation | Behavior | Correctness authority |
 |---|---|---|
-| … | … | ledger / transaction / retry / operator action |
+| [Failure or interruption] | [Outcome and recovery] | [Transaction / ledger / retry / operator action] |
 
-## Как расширять
+## How to extend
 
-Короткий путь для типового изменения: какой контракт расширить, где добавить
-адаптер или декларативное правило и какие tests обновить.
+Give a short route for a typical change: the contract to extend, the adapter or
+declarative rule to add, and the tests to update. Distinguish capability policy
+from reusable mechanisms and service composition.
 
-## Источники истины
+## Sources of truth
 
-Три-семь точек входа для проверки актуальной механики:
+Provide a small set of concrete, linked entry points sufficient to verify the
+mechanism, usually:
 
-- production assembly / основной use case;
-- public port или state model;
-- authoritative config;
-- contract/TCK/integration test;
-- generated reference, если он есть.
+- Production assembly or primary use case.
+- Public port or state model.
+- Authoritative configuration.
+- Contract/TCK/integration test.
+- Generated reference, if one exists.
 
-## Когда обновлять документ
+Replace these categories with actual relative links. Follow
+[CONVENTIONS](../CONVENTIONS.md) for documentation ownership and style.
 
-Перечислите изменения смысла, а не переименования implementation details:
+## When to update this document
 
-- меняется граница durable commit;
-- меняется state machine или recovery;
-- меняется владелец source of truth;
-- появляется новый поддерживаемый extension contract.
+Name changes in behavior or responsibility, such as:
 
-## Связанные документы
+- Commit/side-effect boundaries or partial outcomes.
+- State model, invariants, resource ownership or concurrency guarantees.
+- Recovery/retry rules or the owner of authoritative data.
+- A newly supported extension contract.
 
-- Решения: ADR.
-- Карты и правила: root docs.
-- Эксплуатация: guides.
-- Точный состав модулей: co-located `README.md`.
+A class rename requires fixing links; rewrite behavior only when its meaning changes.
+
+## Related documents
+
+Link to decisions in ADRs, root maps/policies, operator guides and co-located
+module/directory `README.md`. Include each only when it helps the reader's next step.

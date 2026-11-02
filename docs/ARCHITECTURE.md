@@ -1,340 +1,236 @@
-# Архитектура
+# Architecture
 
-Стиль — **Clean Hexagonal (порты и адаптеры) + Onion**. Приложение — мини-ETL
-по извлечению индикаторов компрометации (IOC): читает документ, деобфусцирует
-(refang), извлекает/нормализует индикаторы, классифицирует сетевые маски,
-проставляет `source` из заголовков секций, дедуплицирует и пишет в выходные
-артефакты.
+[Русская версия](ru/ARCHITECTURE.md)
 
-## Правило зависимостей
+IOC Extractor is a modular Java ETL application using Clean Hexagonal
+(ports and adapters) and Onion architecture. It turns documents and managed CSV
+deliveries into canonical IOC data, mutable CSV projections and immutable export
+slices. It runs as a synchronous oneshot CLI or a daemon with durable intake,
+recovery and remote synchronization.
 
-Зависимости направлены **внутрь**:
+## Dependency direction and responsibility
 
-```
-bootstrap ─▶ adapters ─▶ application ─▶ domain
-    │           │             └──────────────▶ platform/*
-    │           └─────────────────────────────────▶ platform/*
-    └─────────────────────────────────────────────▶ platform/*
-```
-
-- `platform` содержит переиспользуемые подсистемы: errors, diagnostics,
-  generic ETL kernel, observability, control-event contracts, keyed concurrency
-  primitives and diagnostics-logging bridge.
-- `domain` не зависит от application/adapters/bootstrap/platform и не тянет
-  фреймворки или IO-библиотеки.
-- `application` зависит внутрь от `domain` и framework-free platform contracts
-  для ETL, diagnostics, control events и keyed concurrency. Точный прямой
-  Maven-граф принадлежит [POM модуля](../core/ioc-application/pom.xml), а не
-  дублируется здесь; errors contract приходит транзитивно через platform DAG.
-- Технологии parsing/storage/transport/CLI и Spring wiring живут в adapters и
-  bootstrap (Tika, RE2/J, commons-csv, picocli, JDBC, SMBJ). Platform-модуль
-  observability использует SLF4J API. Отдельный `platform-logging-slf4j` реализует
-  общий API typed events, MDC и scalar ECS profile; IOC-обёртки в observability
-  делегируют ему механику, сохраняя локальные каталоги и ETL observer. Ни один из этих модулей не входит в domain/application.
-- `adapter-config-spring-boot` (`com.iocextractor.config.boot`) проверяет
-  имена настроек по переданной схеме и описывает видимые декларации без чтения
-  значений. По явным описаниям старых имён он также возвращает наблюдения для
-  миграции, сохраняя индексы, неоднозначность и неполное покрытие источников.
-  Его зависимости — Spring Boot/Core; IOC-схема, семантические
-  validators, CONFIG-коды и решение об отказе запуска остаются в bootstrap.
-  Регистрация явная; core/platform не зависят от этой библиотеки.
-- Внутренние слои **никогда** не импортируют из внешних.
-
-Граница общей модели diagnostics и локальных IOC-каталогов, исключений и
-логирования принята в [ADR 0044](ADR/0044-reusable-diagnostics-contract.md).
-Сервис владеет failure-policy checkpoint и durable effects; общая библиотека
-возвращает данные и решение, но не выполняет commit или восстановление.
-Общий SLF4J API, scalar ECS profile и граница IOC/backend приняты в
-[ADR 0045](ADR/0045-reusable-slf4j-logging-contract.md). Подключение другого
-сервиса описано в [руководстве](guides/libraries/logging-slf4j.md) и отдельном
-[рецепте Boot ECS](guides/libraries/logging-slf4j-boot.md).
-Граница проверки имён конфигурации и наблюдения миграций принята в
-[ADR 0046](ADR/0046-reusable-spring-boot-configuration-inspection.md).
-Сервис выбирает источники и состав бинов независимо: IOC сохраняет импорты и
-профили Boot, а отдельный [рецепт](guides/libraries/config-spring-boot-check.md)
-проверяет один явный документ с закрытым набором входов.
-
-## Слои и пакеты
-
-| Слой | Пакет | Содержимое |
-|---|---|---|
-| Domain | `domain/model` | `Indicator`, `IndicatorType`, `IndicatorCategory`, `SourceContext`, `MaskMatch` |
-| Domain | `domain/refang` | `Refanger` (порт) + `ReplacementRefanger`, `RefangRule` |
-| Domain | `domain/extract` | `PatternEngine` (порт), `IndicatorExtractor` (порт) + `RegexIndicatorExtractor`, `Span`, `RawIndicator` |
-| Domain | `domain/feature` | Normalization and feature extraction (`IndicatorFeatures`, `HostClassifier`) |
-| Domain | `domain/classify` | `MatchPolicy`, rule-based classification |
-| Domain | `domain/attribute` | `SourceAttributor` (порт) + `MarkerSourceAttributor` |
-| Platform | `platform/etl` | `Envelope`, `EnvelopeMeta`, `Stage`, `StageId`, `Pipeline`, `PipelineRunner` |
-| Platform | `diagnostics-api` | JDK-only Diagnostic, results, policies, bounded collectors and sink contracts |
-| Platform | `diagnostics` | IOC catalogs, metadata, exception and rendering |
-| Platform | `platform/logging` | Общий SLF4J API, restoring MDC, ECS scalar profile и explicit masks; [контракт потребителя](guides/libraries/logging-slf4j.md) |
-| Platform | `observability` | MDC/log event helpers and logging taxonomy |
-| Platform | `events` | Framework-free control-event marker, metadata envelope, publish port and observers; no broker/delivery mechanics |
-| Platform | `concurrent` | In-memory keyed single-flight executor, observer hooks and health snapshots |
-| Application | `application/port/in` | `ExtractIocsUseCase`, `ExtractionCommand`, `ExtractionResult` (driving) |
-| Application | `application/port/out` | `SourceReader`, `ArtifactPreparer`, canonical artifact/id-baseline ports, ingestion/export/sync ports, `RetentionStore` (driven) |
-| Application | `application/pipeline/payload` | IOC-specific payload records between stages |
-| Application | `application/pipeline/stage` | IOC ETL stage implementations |
-| Application | `application/service` | `IocExtractionService` — use-case orchestrator |
-| Application | `application/ingest` | daemon ingestion orchestration (`IngestionService`) |
-| Application | `application/artifact` | storage-neutral artifact row identity, canonical artifact snapshots and ingest run recovery model |
-| Application | `application/maintenance` | retention reaper: `RetentionPolicy` (pure) + `RetentionService` |
-| Application | `application/sync`, `application/port/*/sync` | Transport-neutral fetch/publish use cases, remote source monitor, control events, retry/error policy и delivery ledgers/catalog ports |
-| Adapter | `config/boot` | Общая проверка имён настроек, неоднозначностей и покрытия источников; отчёт о декларациях без значений; библиотека Spring Boot/Core |
-| Adapter (in) | `adapter/in/cli` | `IocRootCommand`, `ExtractCommand`, `CliRunner` (picocli) |
-| Adapter (out) | `adapter/out/regex` | `Re2jPatternEngine` (default), `JdkRegexPatternEngine` |
-| Adapter (out) | `adapter/out/source` | `TikaSourceReader` |
-| Adapter (out) | `adapter/out/sink/csv` | `CsvArtifactPreparer`, `RowMapper` + мапперы, `CsvArtifactProjection`, export slice writers |
-| Adapter (out) | `adapter/out/store/jdbc` | Canonical/lifecycle/history repositories, reusable export-slot registry, ledgers, migrations, health |
-| Adapter (in) | `adapter/in/ingest` | Spring Integration file-poll daemon, filesystem lifecycle, file ledger |
-| Adapter (out) | `adapter/out/maintenance` | `FileSystemRetentionStore` (reaper IO; в модуле `adapter-ingest`) |
-| Adapter (out) | `adapter/out/transport/smb` | SMB2/3 sync и managed-import transport на smbj: shared endpoint sessions, server-side import claim/materialization, remote disposition и `CHANGE_NOTIFY` |
-| Bootstrap | `bootstrap` | `IocProperties` (конфиг), `AppConfig` (composition root), daemon schedulers, `DaemonWebEnvironmentPostProcessor` (web only in daemon), health indicators |
-| Platform | `common` | `IocExtractorException` (`ioc-platform-errors`) |
-
-## Конвейер обработки
-
-Выражен через generic `platform-etl` contracts и IOC-specific application
-stages:
-
-```
-read (SourceReader)
-  → refang (Refanger)
-  → extract (IndicatorExtractor / PatternEngine)
-  → attribute source (SourceAttributor)
-  → route and prepare (именованный план → private workspace, без canonical id)
-  → failure-policy checkpoint
-  → commit canonical rows → project derived CSV
+```mermaid
+flowchart LR
+    B["Bootstrap / composition"] --> A["Technology adapters"]
+    B --> U["Application / use cases"]
+    A --> U
+    U --> P["IOC processing"]
+    U --> D["Domain"]
+    P --> D
+    U --> C["Framework-free platform contracts"]
+    P --> E["Platform error contract"]
 ```
 
-Подход к конвейеру (Pipes-and-Filters + `Envelope`/diagnostics) —
-[processing.md](dev/processing.md).
+Arrows show dependency direction, not execution order or every Maven edge.
+The [module map](MODULARIZATION.md) and POMs define the concrete graph;
+[BOUNDARIES.md](BOUNDARIES.md) maps its executable checks.
 
-Конвейер — цепочка независимых стадий: новую стадию/реализацию добавляем, не
-трогая остальные (OCP). Маршрутизация по типу индикатора и декларативным
-`include`/`exclude`-фильтрам позволяет одному прогону наполнять несколько
-артефактов: сетевые маски, bare-IP list, address blacklist, файловые хэши и
-standalone IOC aggregate.
-
-Подготовка документа использует один private SQLite workspace с общим бюджетом
-памяти для всех артефактов. Он закрепляет исходный файл и identity наблюдения,
-выполняет глобальный выбор целых строк и запечатывается до failure-policy
-checkpoint. Writer и receipts читают повторяемые курсоры с ограниченными
-буферами; каноническая атомарность остаётся на уровне артефакта. Владение,
-квоты и восстановление описаны в
-[ADR-0036](ADR/0036-sealed-document-preparation-workspace.md).
-
-Исходный и refanged текст также принадлежат document workspace: UTF-16 файлы
-и фиксированный page cache заменяют полные строки и списки occurrences.
-Domain определяет lazy regex/marker cursors и протоколы refang/overlap;
-application владеет порядком стадий, adapters — файлами, parser и SQLite scratch.
-Scratch удаляется до seal и при отказе. Fatal worker error останавливает dispatcher
-видимо для health; durable admissions восстанавливаются после restart через
-общий recovery barrier. Контракт: [ADR-0039](ADR/0039-streamed-document-source-processing.md).
-
-## Порты (контракты)
-
-| Порт | Тип | Назначение |
-|---|---|---|
-| `ExtractIocsUseCase` | driving (in) | Единая точка входа прикладного ядра |
-| `SourceReader` | driven (out) | Формат-независимая граница извлечения текста из документа |
-| `ArtifactPreparer` | driven (out) | Side-effect-free routing/mapping одного артефакта до policy checkpoint |
-| `DocumentPreparationWorkspaceFactory` / `DocumentPreparationWorkspace` / `RowSource` | driven (out) | Private preparation, seal и повторяемые owned-курсоры; JDBC остаётся в адаптере |
-| `PipelineDecisionTracer` | driven (out) | Gated TRACE уже вычисленных per-item outcomes без logging dependency в application/domain |
-| `ArtifactIdBaseline` | driven (out) | Чтение текущего public `max(id)` из canonical storage для продолжения id-последовательностей |
-| `CanonicalArtifactRepository` / `ArtifactProjection` | driven (out) | Canonical write/read с provenance и генерация CSV-проекций |
-| `PatternEngine` | domain SPI | Движок regex (RE2/J по умолчанию, JDK — замена) |
-| `IngestSourceUseCase` | driving (in) | Обработка одного daemon source unit |
-| `PrepareIngestionUseCase` / `PreparedIngestion` / `PreparedExtraction` | driving (in) | Подготовка sealed workspace отдельно от ordered canonical promotion; отмена освобождает owned handle |
-| `RunRetentionUseCase` / `RetentionStore` | driving (in) / driven (out) | Reaper растущих каталогов по возрасту/количеству (delete/archive) |
-| `RemoteFetchUseCase` / `ArtifactPublishUseCase` | driving (in) | Remote → inbox и verified export slice → targets |
-| `ControlEventPublisher` | platform driving port | Publish-only control-plane notification; delivery adapter живёт в bootstrap |
-| `FileTransport` | driven (out) | Stateless remote file operations + atomic multi-file publish intent |
-| `RemoteFetchLedger` / `PublishLedger` | driven (out) | Fetch idempotency и независимая per-slice/per-target delivery saga |
-
-Pipeline возвращает `ExtractionResult` с `CompletionStatus`, bounded diagnostics и
-`DiagnosticSummary`. `fail-fast`/`collect-and-continue` применяются до canonical
-commit после preparation stage. Extraction/preparation ограничивают diagnostic
-details внутри своих циклов: `DiagnosticBatch` передаёт выборку и точные
-severity counts через `Envelope`; runner сохраняет поздние ERROR/FATAL и
-доставляет один итоговый suppression summary. Saga-контуры ingest/export/sync остаются
-ledger-first: diagnostic наблюдает final transition, но не заменяет его.
-
-Remote sync не меняет extraction pipeline: fetch заканчивается в штатном inbox, а
-publish начинается только после локального export `_SUCCESS`. Подробный protocol и
-операторская модель — [sync.md](dev/sync.md).
-
-## Классификация сетевых масок
-
-`MatchPolicy` (домен) определяет коды `url_match`/`host_match` по варианту
-совпадения значения с маской. Решение (какой вариант) — доменная логика,
-заменяемая реализацией; сами коды и их колонки — конфигурируемы.
-
-| # | url_match | host_match | Когда |
-|---|---|---|---|
-| 1 | `u:hAS` | `h:dAS` | Регистрируемый домен (или IP): домен + все поддомены и содержимое |
-| 2 | `u:hEX` | `h:dEX` | Поддомен (точный хост 3-го уровня) |
-| 3 | `u:hEX,dEX` | `null` | Хост с путём/файлом или портом, без вложенных папок |
-| 4 | `u:hAS,pEX` | `null` | URL с параметрами (query) |
-
-Разграничение «регистрируемый домен vs поддомен» (вариант 1 vs 2) — по
-**Public Suffix List** (Guava `InternetDomainName`), что корректно для
-многосоставных суффиксов (`com.br`, `co.uk`, `workers.dev`). Триггеры и
-открытые случаи — в [dev/0002](ADR/0002-output-mapping-and-matching.md).
-
-Политика — **rule-based и декларативная**: тонкий вычислитель + реестр
-предикатов над признаками индикатора; сами правила и коды задаются конфигом
-(не зашиты в код). Модель — в
-[processing.md](dev/processing.md).
-
-> Ручной эталон использует только варианты 1 и 3; варианты 2 и 4 — по
-> авторитетному правилу, поэтому вывод на поддоменах/параметрах закономерно
-> расходится с ручной заливкой.
-
-## Артефакты и заполнение
-
-Колонки и правила заполнения артефактов **декларативны в конфиге**, не в коде
-(provider/transform-модель). Детали — [processing.md](dev/processing.md).
-Обязательный именованный план выбирает представление и артефакт для новых
-document/processed-import наблюдений; ограниченный Camel-адаптер исполняет
-маршрут, а canonical identity, commit и recovery остаются за application и
-storage. Порядок включения описан в
-[руководстве по маршрутам](guides/ioc-processing-routes.md).
-
-Текущие артефакты:
-
-| Артефакт | Содержимое | Id-space |
-|---|---|---|
-| `masks` | сетевые IOC кроме голых IP: домены, URL, IP с port/path | свой, baseline из canonical SQLite `max(id)` |
-| `ip_list` | только голые IPv4 | свой, baseline из canonical SQLite `max(id)` |
-| `address_blacklist` | простой список `forbidden_url` / `forbidden_ip`; без id | нет id |
-| `hashes` | MD5/SHA1/SHA256 по разным колонкам | свой, baseline из canonical SQLite `max(id)` |
-| `ioc_aggregate` | один carrier на строку: IPv4, URL, FQDN или hash; `name` обновляется по durable admission order | без public id; identity по четырём carrier-колонкам |
-
-**Словарь колонок (masks):**
-
-| Колонка | Назначение |
+| Responsibility | Owner |
 |---|---|
-| `id` | идентификатор записи (ascending, продолжается от max в canonical storage) |
-| `mask` | маска: адрес (URL) или имя домена (FQDN) |
-| `url_match` | вариант совпадения адреса (URL) с маской |
-| `host_match` | вариант совпадения имени домена с маской |
-| `score` | значение интегральной уязвимости |
-| `time_last_seen` | дата последнего изменения информации об артефакте |
-| `time_first_seen` | дата появления информации об артефакте |
-| `threat_type` | тип угрозы |
-| `source` | источник перечня IoC |
-| `description` | дополнительная информация о записи |
+| IOC values, refang/extraction protocols, attribution, features and classification contracts | Framework-free domain |
+| Reusable IOC representations, classification composition and declarative field mapping | Framework-free `ioc-processing` |
+| Stage order, policy checkpoints, use cases, identity/ordering and recovery contracts | Application |
+| Parsing, regex engines, PSL, CSV, SQLite, SMB, CLI and local Camel execution | Their technology adapters |
+| Configuration binding/preflight, dependency injection, schedulers, startup and health | Bootstrap |
+| Generic diagnostics, keyed execution and local event contracts | Their framework-free reusable libraries |
+| Typed logging, configuration inspection and Spring event publication | Dedicated libraries with explicit SLF4J/Spring dependency boundaries |
 
-В текущих эталонах `score`/`time_*`/`threat_type`/`description` всегда `NULL`
-(обогащение — опционально, на будущее).
+IOC diagnostic codes, event payloads, logging catalogs and persistence policies
+remain service-owned. Shared libraries do not own business commits or recovery.
+The [library catalog](guides/libraries/README.md) describes their public contracts.
 
-### Canonical record lifecycle
+## Runtime and data ownership
 
-Fixed TTL является свойством одной lifecycle canonical DB-записи, а не IOC type
-или source provenance. Успешная canonical transaction атомарно создаёт либо
-продлевает lifecycle с абсолютным UTC `valid_until`; подтверждение после
-deadline архивирует прежнюю lifecycle и создаёт новую с новым внутренним
-dataframe-owned lifecycle ID.
-Все active reads используют half-open predicate `valid_until > asOf`.
+| State or output | Authority and lifetime |
+|---|---|
+| Dataframe SQLite DB | Canonical rows, lifecycle/history, observation ordering, identity, export slots and canonical commit receipts |
+| Service SQLite DB | Durable coordination for ingestion runs, import deliveries, export formation and remote fetch/publish |
+| Private document/import workspaces | Owned source pins, preparation/staging and repeatable rows; disposable scratch is distinct from sealed recovery pins |
+| Mutable `*_generated.csv` | Regenerable projections of canonical state |
+| Immutable profile slices | Consistent export snapshots with manifest/hash evidence and completion marker; remote delivery has its own ledger |
 
-Expiry обслуживается aggregate nearest-deadline scheduler: event hint и
-five-second read-only backstop обновляют один timer из deadline index, а только
-due timer запускает bounded SQLite batches. Последний реальный reconcile
-хранится в constant-cardinality checkpoint; typed history удаляется independent
-hourly scheduler-ом, а mutable CSV сходится через durable projection generation.
-Единый владелец в application сериализует чтение/сборку/установку/подтверждение
-по артефакту для oneshot, ingest, recovery и lifecycle. Поколение и строки
-читаются из одной SQLite snapshot; подтверждается только установленное покрытие,
-а появившееся новое поколение остаётся pending. Решение закреплено в
-[ADR 0035](ADR/0035-generation-owned-mutable-projections.md).
-Timer/job на каждую IOC отсутствует. Expiry не меняет insert-driven `artifact_revision`, поэтому сам
-по себе не формирует immutable export slice; следующий обычный new-row trigger
-читает уже актуальный active snapshot. Lifecycle SQL/history остаются в
-`adapter-store-jdbc`, storage-neutral policy/use cases — в `ioc-application`, а
-clock/config/scheduler/health — в bootstrap. Подробности:
-[dev/canonical-record-lifecycle.md](dev/canonical-record-lifecycle.md).
+The two databases have separate local transactions. Receipts and coordination
+state bridge their failure windows; they do not create one distributed transaction.
+The default storage paths and selectors belong to
+[application.yml](../bootstrap/ioc-app/src/main/resources/application.yml).
+Supported file-ledger/journal alternatives remain part of
+[ingestion](dev/ingestion.md), not another canonical data store.
 
-**Кодировки I/O.** Вход декодируется по `ioc.source.charset` (`auto` = детект Tika/ICU;
-явное имя форсит text/HTML, docx/pdf — по дизайну нет); внутри — Unicode `String`.
-Выход всех CSV-проекций и export-срезов — в `ioc.sink.csv.charset`;
-непредставимые символы заменяются с WARN-сигналом, неизвестное имя кодировки —
-fail-fast. Детали — [processing.md](dev/processing.md).
+### Document processing
 
-**Форматы источников.** Контрактными тестами адаптера закреплены HTML (включая
-legacy `cp1251` при явном charset), PDF, DOCX и XLSX. Другие форматы, которые
-распознаёт установленный набор Tika parsers, обрабатываются best-effort и не
-считаются поддерживаемым release-контрактом, пока не добавлены в corpus/contract
-tests.
-
-**Managed dataframe import.** Выделенные local/SMB inbox принимают
-export-shaped CSV как отдельные occurrences по versioned contracts, а не как
-вторую систему записи. После ownership claim создаётся immutable local snapshot;
-exact-one recognition, streaming tri-state mapping и sealed staging завершаются
-одной cross-artifact dataframe transaction. `as-is` использует объявленные
-source values, `processed` требует явный `processed-route` и применяет обычные
-refang/extract/classify и artifact policies через Router. Только active rows участвуют в matching; отсутствующие в
-delivery rows не меняются. Service ledger + dataframe receipt являются truth,
-а WatchService/SMB `CHANGE_NOTIFY` — только latency hints. Детали:
-[dev/dataframe-import.md](dev/dataframe-import.md) и
-[ADR-0024](ADR/0024-managed-dataframe-import.md).
-
-## Immutable artifact export
-
-Canonical SQLite остаётся системой записи, а export — отдельным bounded context
-**Artifact Emission**. Он не копирует мутабельные `*_generated.csv`, а потоково
-читает один consistent multi-artifact snapshot и формирует неделимый immutable
-срез profile:
-
-```
-artifact_revision + ExportProgress ──▶ cheap change gate
-canonical SQLite (one WAL read tx) ──▶ CSV files ──▶ manifest.json ──▶ _SUCCESS
-                                                staging ──ATOMIC_MOVE──▶ final
+```text
+owned source -> read -> refang -> extract -> attribute
+  -> required named processing plan -> observation selection
+  -> sealed artifact rows -> failure-policy checkpoint
+  -> canonical commit per artifact -> mutable projection
 ```
 
-- `ioc export --profile <name>` запускает тот же `ExportService`, что и daemon
-  scheduler; v1 выполняет только `complete`, `append` отклоняется до IO.
-- `export_run` в service SQLite хранит CAS-сагу
-  `STARTED → STAGED → AVAILABLE → COMPLETED`; `SKIPPED`/`FAILED` terminal.
-  Partial unique index обеспечивает global single-flight.
-- `artifact_revision` увеличивается в транзакции фактической canonical-вставки.
-  Snapshot metadata (`revision`, `changed_at`, `upper_id`) читается в той же
-  read transaction, что и строки. Concurrent commit попадает в следующий срез.
-  Byte-identical candidate с более новой covered revision всё равно становится
-  новым completed slice: новая lifecycle является новой delivery occurrence, а
-  content hash не заменяет revision/business-occurrence identity.
-- При active lifecycle внешний `id` slotted artifact читается из durable
-  `(profile, artifact)` registry: surviving lifecycle сохраняют slot, vanished
-  assignments освобождаются только при eligible export, новые lifecycle
-  получают минимальные positive holes без compaction. Canonical row ID и
-  `_lifecycle_id` в этот внешний slot не превращаются.
-- Writer не материализует rows: JDBC callback-stream идёт прямо в CSV digest.
-  `_SUCCESS` содержит SHA-256 точных bytes manifest; manifest содержит hashes и
-  coverage всех data files. Final становится видимым одним atomic directory move.
-- Startup recovery продвигается только вперёд по ledger + filesystem evidence и
-  никогда не перечитывает mutable canonical snapshot.
-- Daemon поддерживает `interval` и `quiet-period` с обязательным `max-cap`.
-  Export health показывает последний success/failure, возраст среза и revision lag.
-- Slice retention ранжирует завершённые каталоги отдельно по profile и удаляет
-  каталог целиком. Guard проверяется непосредственно перед delete; standalone
-  разрешает удаление, а `PublishLedgerSliceRetentionGuard` pin-ит недоставленные
-  срезы при включённом remote publish.
+Application fixes the stage order. Configuration chooses registered rules,
+representations, selection and mapping. Camel executes bounded local processing
+plans behind an application port; it does not own identity, transactions or retries.
+Attribution takes the source label from the nearest preceding configured section
+marker.
 
-Полный протокол, crash-матрица и rationale: [dev/0012](ADR/0012-streaming-dataframe-emission.md).
+Preparation owns a private workspace. Decoded/refanged text and extraction scratch
+can use disk-backed storage; pure row mapping remains side-effect-free. Sealing
+provides repeatable, closeable row cursors. A policy checkpoint precedes canonical
+writes and ID reservation, even when diagnostic details have been bounded.
+Private preparation I/O is distinct from committing business state.
 
-## Composition root
+An ordinary extraction commits one artifact at a time. A later artifact or
+projection failure cannot roll back an earlier canonical commit. Run/receipt and
+projection evidence drive recovery forward.
+[IocExtractionService](../core/ioc-application/src/main/java/com/iocextractor/application/service/IocExtractionService.java)
+owns the pipeline boundary; [processing](dev/processing.md) and
+[storage](dev/storage.md) describe its mechanisms.
 
-Модуль `bootstrap/ioc-app` — composition root: здесь Spring связывает
-агностичное ядро с конкретными адаптерами. Основной extraction/storage graph
-собирает `AppConfig`; remote sync и control-event wiring вынесены в `SyncConfig`
-и `EventCoordinationConfig`, а startup config boundary — в
-`ConfigPreflightConfiguration`. `IocProperties` задаёт типобезопасную привязку
-дерева конфигурации `ioc.*`.
+Oneshot performs the work synchronously and accumulates canonical data across runs.
+Daemon intake performs short detection/admission and ownership work, prepares
+documents through bounded workers, and promotes the oldest unresolved document.
+Durable admission order and source-key exclusion preserve precedence independently
+of preparation completion order. Full polling is the production correctness path;
+filesystem notifications are optional latency hints.
 
-## Связанные карты
+### Managed dataframe import
 
-- Многомодульная структура и правила зависимостей —
-  [modularization.md](MODULARIZATION.md).
-- Диагностика, failure policy и structured logging —
-  [observability.md](dev/observability.md).
-- Автоматическая защита границ — [boundaries.md](BOUNDARIES.md).
+A dedicated local/SMB source claims one delivery occurrence, pins an immutable
+snapshot, recognizes exactly one versioned contract and seals staging.
+`as-is` applies declared source values and transforms; `processed` uses an explicit
+named route and ordinary IOC preparation.
+
+Accepted branches and the import commit receipt enter one cross-artifact dataframe
+transaction. The service delivery ledger then finalizes projection, reports and
+source disposition. Receipt-based replay handles a crash after canonical commit.
+Only active rows match; missing input rows do not delete or renew canonical rows.
+See [managed import](dev/dataframe-import.md) and
+[ADR 0024](ADR/0024-managed-dataframe-import.md).
+
+### Identity and lifecycle
+
+Keep these identities distinct:
+
+- A canonical row ID and lifecycle ID are internal and non-reusable.
+- A delivery/observation occurrence and its durable ordering are distinct from
+  content identity; equal bytes can be a new delivery.
+- With lifecycle active, immutable export IDs for slotted artifacts are stable,
+  sparse, reusable slots in a `(profile, artifact)` namespace. Mutable projection
+  IDs retain canonical identity; survivors are not compacted during export.
+
+Fixed validity belongs to one canonical lifecycle. Accepted confirmation before
+its deadline renews it; after expiry, a new observation creates a new lifecycle.
+Active reads use `valid_until > asOf`, so equality is expired. Expiry/history
+reconciliation and mutable projection work have durable backstops. Expiry alone
+does not trigger an immutable slice.
+
+Public time columns are mapping/import fields, not lifecycle authority.
+Activation and coordinated rollback have explicit contracts in
+[canonical lifecycle](dev/canonical-record-lifecycle.md) and its
+[operator guide](guides/canonical-record-lifecycle.md).
+
+<a id="классификация-сетевых-масок"></a>
+<a id="артефакты-и-заполнение"></a>
+
+### Classification and artifact mapping
+
+Domain exposes classification contracts; PSL distinguishes registrable domains
+from subdomains. RE2/J is the default pattern engine, with a supported JDK fallback;
+configured patterns stay compatible with both. Input adapter contract tests cover
+HTML, PDF, DOCX and XLSX. Other Tika formats are best-effort; parser coverage does
+not itself prove the same resource behavior for every format.
+
+The shipped mask rules use first-match priority, evaluated in this order:
+
+| Variant | Condition | `url_match` | `host_match` |
+|---|---|---|---|
+| 4 | Query present | `u:hAS,pEX` | `NULL` |
+| 3 | Path or port present | `u:hEX,dEX` | `NULL` |
+| 2 | Exact subdomain | `u:hEX` | `h:dEX` |
+| 1 | Base host/IP (default) | `u:hAS` | `h:dAS` |
+
+`NULL` denotes an absent code. The configured rules own these values and priority;
+the evaluator does not hard-code the four cases.
+
+Providers, transforms, predicates and artifact identity/mutation policies determine
+the configured output. The shipped artifacts are `masks`, `ip_list`,
+`address_blacklist`, `hashes` and `ioc_aggregate`. They have independent schemas
+and identity rules. `masks`, `ip_list` and `hashes` carry IDs;
+`address_blacklist` and `ioc_aggregate` do not.
+Within-run observation selection is distinct from canonical identity matching
+across runs. Accepted field updates and lifecycle renewal follow artifact policy.
+Aggregate names can update under durable observation order; the aggregate is not
+reconstructed by joining the other output tables.
+
+Rule syntax, column mapping, charsets and CSV layout are documented in
+[processing](dev/processing.md), [CSV format](dev/csv-output-format.md) and the
+[configuration reference](guides/configuration.md). Avoid treating one artifact's
+normalization or ID scheme as a global IOC rule.
+
+### Immutable export and remote delivery
+
+Export reads canonical state through a consistent multi-artifact snapshot, rather
+than copying mutable CSV files. One profile's data files, manifest and
+`_SUCCESS` marker become visible together through an atomic directory move.
+Manifest digests identify the exact files.
+
+Formation and recovery serialize per profile through operation leases and the
+service ledger. Different profiles may run concurrently within bounded worker
+and reader budgets. Accepted inserts or public-field updates advance covered
+revisions; a newer revision can require a new slice even when its bytes match
+an older slice.
+Recovery of staged/available work follows retained ledger/filesystem evidence.
+See [export](dev/artifact-export.md) and
+[ADR 0037](ADR/0037-profile-scoped-export-execution.md).
+
+Remote fetch and publish serialize by endpoint through keyed execution.
+Publish discovers completed immutable slices and records durable delivery work;
+retention pins slices still needed for delivery. Events, SMB `CHANGE_NOTIFY`
+and scheduler nudges accelerate detection. Ledgers, complete listing and periodic
+reconciliation remain correctness authorities.
+[sync](dev/sync.md) and [event coordination](dev/event-coordination.md) own the
+detailed protocols.
+
+## Spring composition and startup
+
+Only `bootstrap/ioc-app` produces the runnable Boot application.
+[IocExtractorApplication](../bootstrap/ioc-app/src/main/java/com/iocextractor/IocExtractorApplication.java)
+handles lightweight CLI/config-check paths before the appropriate Spring context.
+`AppConfig`, `SyncConfig`, `EventCoordinationConfig` and configuration preflight
+compose the service; framework-free use cases are constructor-injected objects.
+
+Typed configuration and strict name/semantic checks reject unsupported effective
+settings. Configuration inspection supplies facts; IOC owns validation, diagnostics
+and the startup decision. In daemon mode, a shared recovery-before-intake barrier
+restores durable work and prepares lifecycle/import admission before enabling
+pollers and document dispatch. Export has its own formation recovery.
+[Configuration](dev/configuration.md) and [ingestion](dev/ingestion.md) explain
+the startup boundaries.
+
+The daemon exposes loopback Actuator health/info by default. Health reports intake,
+storage and delivery state; diagnostics and typed ECS logs explain failures.
+Observability does not replace receipts or ledger transitions.
+See [observability](dev/observability.md) and [TESTING.md](TESTING.md).
+
+## Constraints and trade-offs
+
+The supported daemon deployment is single-daemon; process-local guards are not
+a distributed lease/fencing protocol. SQLite permits one writer per database.
+Fair admission cannot preempt a running transaction, and long snapshots can delay
+WAL reclamation. Workspace limits and bounded queues reduce retained work but do
+not establish a whole-service heap/RSS or latency guarantee.
+
+Native SQLite is the supported canonical backend
+([ADR 0042](ADR/0042-native-sqlite-production-storage.md)). Capacity evidence and
+remaining resource limits belong to [native capacity](dev/native-capacity.md);
+operator sizing belongs to [bulk sizing](guides/bulk-resource-sizing.md).
+Parser-level hostile-input budgets and SMB server-family qualification retain
+their explicit support limits.
+
+Untrusted document/CSV input, credentials, transport encryption and protected
+release inputs cross separate trust boundaries. [SECURITY-ENGINEERING.md](SECURITY-ENGINEERING.md)
+and [THREAT-MODEL.md](THREAT-MODEL.md) own the controls and residual risks;
+[KNOWN-ISSUES.md](KNOWN-ISSUES.md) records unresolved obligations.
+
+Update this map when runtime ownership, transaction scope, dependency direction
+or a supported execution path changes. API/type inventories belong in module
+references and Javadoc; historical rationale belongs in append-only ADRs.
