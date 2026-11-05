@@ -1,5 +1,7 @@
 # CSV output format
 
+[Русская версия](ru/csv-output-format.md)
+
 The CSV adapter writes mutable canonical projections and immutable export slices
 using the same byte policy. The policy controls record endings and quoting,
 independently for headers and data. Import parsing has its own contract dialect;
@@ -17,6 +19,10 @@ Bootstrap resolves the policy once for both output paths. The application model
 contains framework-free enums. Commons CSV handles quoted fields in the adapter;
 strict unquoted output validates each complete record before appending it.
 Neither formatter changes canonical values, identities, TTL or provenance.
+Mutable files are replaced per artifact, not as one atomic artifact set. They
+use a sibling temporary file and require atomic replacement; there is no
+non-atomic fallback. Immutable export publishes a verified profile directory
+through its separate staging/manifest/marker protocol.
 
 ## Invariants
 
@@ -44,14 +50,34 @@ Neither formatter changes canonical values, identities, TTL or provenance.
    using the current configuration. CSV layout changes require no database
    schema migration and do not change artifact schema or mapping hashes.
 
+## Observable byte examples
+
+With delimiter `;`, quote `"`, null marker `NULL` and ALL/ALL quoting, a two-column
+header and rows containing a missing value followed by literal text `NULL` are:
+
+```text
+"id";"value"\r\n
+"1";NULL\r\n
+"2";"NULL"\r\n
+```
+
+Each displayed `\r\n` denotes the actual two-character record separator; the
+display line break is not an additional output record. Empty text is different
+from a missing value: ALL writes `""`, while missing remains unquoted `NULL`.
+MINIMAL also quotes literal `NULL` and syntax-bearing text such as `semi;colon`;
+NONE rejects those ambiguous or syntax-bearing data cells. Header names are
+not nullable data: an unquoted header named `NULL` is allowed when otherwise
+representable. Consumers must use the matching null/quote semantics.
+
 ## Failures and recovery
 
 | Failure | Outcome |
 |---|---|
 | Invalid selector or CSV grammar | Configuration fails before runtime infrastructure starts. |
 | Unrepresentable cell in `none` | The output attempt fails with a column position, without the raw cell value. |
-| Mutable projection failure | Temporary output is removed; the previously installed file remains. Canonical data may already be committed and is not rolled back. |
-| Immutable materialization failure | No final slice or `_SUCCESS` is published; partial staging follows normal export failure/recovery handling. |
+| Mutable encoding/formatting/write failure before replacement | Temporary output is removed; the previously installed file remains. Canonical data may already be committed and is not rolled back. |
+| Atomic replacement unsupported by the filesystem | Projection fails; it does not fall back to an in-place or non-atomic write. |
+| Immutable materialization failure | No final slice is published; partial staging, including any marker already written there, follows normal export failure/recovery handling. |
 | Restart after materialization | Existing checksum, manifest and marker evidence controls recovery, independently of the current format. |
 
 Mutable projections retain diagnosed charset replacement only with `all` for
@@ -82,20 +108,25 @@ They do not modify historical files or deploy configuration to an installed
 service automatically. A mutable file receives the new layout on its next
 projection; changing settings alone does not mark canonical generations dirty.
 The immutable export pre-gate includes the new plan hash and therefore forms a
-new slice even when canonical rows did not change.
+new slice on the next eligible export even when canonical rows did not change.
 
 ## Sources of truth
 
-- `IocProperties.Sink.Csv`, `CsvFormatConfiguration` and `IocConfigPreflight`:
+- [Bootstrap reference](../../bootstrap/ioc-app/README.md):
+  `IocProperties.Sink.Csv`, `CsvFormatConfiguration` and `IocConfigPreflight`:
   binding, defaults and admission.
-- `ExportFormat` and `ExportPlan`: policy, wire version and byte fingerprint.
-- `CsvRecordFormat`, `CsvArtifactProjection` and `CsvSliceMaterialization`:
+- [ExportFormat](../../core/ioc-application/src/main/java/com/iocextractor/application/export/ExportFormat.java)
+  and [ExportPlan](../../core/ioc-application/src/main/java/com/iocextractor/application/export/ExportPlan.java):
+  policy, wire version and byte fingerprint.
+- [CSV adapter reference](../../adapters/adapter-csv/README.md):
+  `CsvRecordFormat`, `CsvArtifactProjection` and `CsvSliceMaterialization`:
   shared formatting and filesystem boundaries.
-- `JacksonSliceManifestCodec`: exact v1 compatibility and explicit v2 fields.
+- [Manifest adapter reference](../../adapters/adapter-manifest-json-jackson/README.md):
+  `JacksonSliceManifestCodec`, exact v1 compatibility and explicit v2 fields.
 - `CsvRecordFormatTest`, `CsvArtifactProjectionIT`, `CsvArtifactSliceWriterIT`
   and `JacksonSliceManifestCodecIT`: exact bytes, ambiguity and recovery.
 
-## Update triggers
+## When to update this document
 
 Update this document when changing defaults, null interpretation, accepted
 unquoted values, wire versions, fingerprint inputs or atomic output boundaries.

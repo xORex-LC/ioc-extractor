@@ -40,20 +40,21 @@ failure/recovery semantics и точки расширения, но не пер�
 
 | Документ | О чём |
 |---|---|
-| [dev/processing.md](dev/processing.md) | Чтение, refang, extraction, attribution, classification, mapping и policy-gated commit |
-| [dev/storage.md](dev/storage.md) | Canonical SQLite, lifecycle/history, canonical identities, reusable export slots и CSV-проекции |
+| [dev/processing.md](dev/processing.md), [RU](dev/ru/processing.md) | Extraction, attribution, routing, mapping, winner identity and policy-gated commit |
+| [dev/storage.md](dev/storage.md), [RU](dev/ru/storage.md) | Canonical SQLite, lifecycle/history, canonical identities, reusable export slots и CSV-проекции |
 | [dev/native-capacity.md](dev/native-capacity.md) | Подтверждённые замеры Native, границы проверок и оставшиеся ресурсные ограничения |
-| [dev/ingestion.md](dev/ingestion.md) | Daemon file lifecycle, durable ledgers, retry и recovery |
-| [dev/artifact-export.md](dev/artifact-export.md) | Consistent immutable export slices, manifest/marker и export saga |
+| [dev/ingestion.md](dev/ingestion.md), [RU](dev/ru/ingestion.md) | Daemon admission, private source ownership, ordered promotion, retry и recovery |
+| [dev/artifact-export.md](dev/artifact-export.md), [RU](dev/ru/artifact-export.md) | Consistent immutable export slices, manifest/marker и export saga |
+| [dev/csv-output-format.md](dev/csv-output-format.md), [RU](dev/ru/csv-output-format.md) | CSV bytes, quoting/null semantics, encoding and publication/recovery boundaries |
 | [dev/sync.md](dev/sync.md) | Remote fetch/publish, transport boundary, ledgers и reconcile |
 | [dev/event-coordination.md](dev/event-coordination.md) | Event hints, consumer-owned admission и correctness-via-reconcile |
-| [dev/dataframe-import.md](dev/dataframe-import.md) | Managed local/SMB CSV intake, recognition, staging, promotion и recovery |
-| [dev/configuration.md](dev/configuration.md) | Strict `ioc.*` boundary, precedence, validation и registry preflight |
+| [dev/dataframe-import.md](dev/dataframe-import.md), [RU](dev/ru/dataframe-import.md) | Managed local/SMB CSV intake, recognition, staging, promotion и recovery |
+| [dev/configuration.md](dev/configuration.md), [RU](dev/ru/configuration.md) | Strict `ioc.*` boundary, effective sources, validation, check/apply and runtime-state limits |
 | [dev/configuration-inspection.md](dev/configuration-inspection.md) | Shared Spring Boot name inspection, source coverage and service enforcement boundary |
-| [dev/configuration-failure-reports.md](dev/configuration-failure-reports.md) | Controlled failure categories, schema paths, phase limits and operator rendering |
+| [dev/configuration-failure-reports.md](dev/configuration-failure-reports.md), [RU](dev/ru/configuration-failure-reports.md) | Controlled failure categories, schema paths, phase limits and operator rendering |
 | [dev/observability.md](dev/observability.md) | Diagnostics, failure policy, typed ECS logging, MDC и redaction |
 | [dev/build-quality.md](dev/build-quality.md), [RU](dev/ru/build-quality.md) | Maven quality lifecycle, SpotBugs/CPD/PMD, механика coverage gate и сопровождение областей/отчётов |
-| [dev/canonical-record-lifecycle.md](dev/canonical-record-lifecycle.md) | Fixed canonical validity, expiry/history reconciliation, active reads and recovery |
+| [dev/canonical-record-lifecycle.md](dev/canonical-record-lifecycle.md), [RU](dev/ru/canonical-record-lifecycle.md) | Fixed canonical validity, expiry/history reconciliation, active reads and recovery |
 
 > Генерируемые `DIAGNOSTICS-CATALOG.md` и `LOGGING-CATALOG.md` остаются
 > reference-артефактами в корне; их контракты объясняет `dev/observability.md`.

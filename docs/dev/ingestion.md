@@ -1,5 +1,7 @@
 # Daemon document ingestion
 
+[Русская версия](ru/ingestion.md)
+
 This capability takes stabilized files from a local inbox to canonical SQLite,
 recoverable CSV projection and source disposition. Spring Integration is a driving
 adapter. Extraction, routing, lifecycle rules and storage authority remain behind
@@ -62,10 +64,19 @@ rediscovers it without an AcceptOnce filter. Claimed input never disappears beca
 an executor rejects a hint: the journal remains the recoverable queue. A coalesced
 hint accelerates dispatch; a one-second journal scan is its correctness backstop.
 
-WatchService remains an opt-in latency path for reliable local filesystems.
-Quiet-period rejects enter its retry set, but OS events do not replace full
-listing on network or unreliable filesystems. Producer `*.part` plus atomic rename
-remains the preferred input contract.
+Full polling (`ioc.ingestion.detect.use-watch-service=false`) is the default
+correctness path. The optional WatchService scanner suits reliable local
+filesystems only: quiet-period rejects enter its retry set, but it has no periodic
+full-listing backstop for lost OS events. The dispatcher's journal scan recovers
+already admitted jobs; it cannot discover files missed by that scanner.
+
+The default filter accepts `*.htm`, `*.html` and `*.docx`, excluding `*.tmp`,
+`*.part` and hidden names. The quiet-period filter accepts a file when its
+modification time is old enough;
+it does not require equal size/mtime samples across scans. A producer pause can
+satisfy it before a copy finishes. Use an excluded `*.part` name followed by atomic rename on the inbox
+filesystem, and stop writing before handoff. Private sealing protects the acquired bytes;
+it cannot infer the producer's intended end of document.
 
 ## Identity and ownership
 
@@ -84,8 +95,13 @@ Growth after bounded admission is rejected before processing.
 The ingest ledger follows `ABSENT -> CLAIMED -> SOURCE_ARCHIVED|FAILED`. Terminal
 CAS is monotonic: same outcome is idempotent; opposite outcome conflicts. The run
 saga follows `STARTED -> DB_COMMITTED -> PROJECTION_COMPLETED -> COMPLETED`, with
-precommit failure marked FAILED. Canonical truth is SQLite; projection failure is
-recovered forward. Service-journal and dataframe transactions are independent;
+precommit failure marked FAILED. These are separate state machines: a file-backed
+ingest/admission journal does not replace the JDBC run ledger wired by the daemon
+composition. Canonical truth is SQLite; projection failure is recovered forward.
+Document writes commit per artifact, rather than atomically across every artifact.
+A later failure can follow earlier durable writes; it does not imply a whole-document
+rollback. Managed import has a separate cross-artifact transaction contract. Service-journal
+and dataframe transactions are independent;
 the terminal registration handshake is retried from durable state.
 
 Normal completion and reconciliation can race on the same terminal handshake.
@@ -108,7 +124,8 @@ same ordered job falls back to extraction. Default receipt retention is 30 days.
 A parsing/mapping semantics change outside configuration must advance the explicit
 code-policy epoch in the fingerprint.
 
-Execution attempts and retry-after are durable in service schema v14. A transient
+Execution attempts and retry-after are durable in the selected admission journal
+(service schema v14 for JDBC, fsync-backed records for file storage). A transient
 failure retains the private source and original observation/rank. Retries use
 bounded configured backoff without sleeping on the poller. Once a verified
 content key exists, exhausted failure uses the existing source rejection/dead-letter
@@ -214,6 +231,11 @@ These are smoke timings, not capacity acceptance. There were no terminalization
 CAS conflicts or cleanup errors; the namespace was removed and the private
 process terminated. Raw reports remain local and are not repository artifacts.
 
+This historical smoke does not qualify the current lifecycle harness;
+[TOOL-10](../KNOWN-ISSUES.md) records its archive-name mismatch. Live SMB and
+whole-process capacity still require their own exact-bundle evidence; see
+[native capacity](native-capacity.md).
+
 ## Extension and maintenance
 
 New detection transports still need stable candidates, durable occurrence
@@ -223,8 +245,27 @@ ports; Spring/JDBC remain outside core. Parallel promotion or transaction chunki
 requires an explicit visibility/ordering/recovery decision, rather than executor
 configuration alone.
 
+## Sources of truth
+
+- [Ingest flow configuration](../../adapters/adapter-ingest/src/main/java/com/iocextractor/adapter/in/ingest/IngestFlowConfiguration.java)
+  owns detection wiring; [dispatcher](../../adapters/adapter-ingest/src/main/java/com/iocextractor/adapter/in/ingest/DurableDocumentDispatcher.java)
+  owns bounded preparation, ordered promotion and shutdown.
+- [Admission service](../../core/ioc-application/src/main/java/com/iocextractor/application/ingest/admission/DocumentAdmissionService.java)
+  owns durable occurrence transitions; [ingestion service](../../core/ioc-application/src/main/java/com/iocextractor/application/ingest/IngestionService.java)
+  owns source disposition, receipt replay and the run saga.
+- [Application configuration](../../bootstrap/ioc-app/src/main/resources/application.yml)
+  owns defaults; [application composition](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java)
+  wires journals, storage and lifecycle support.
+- [Dispatcher tests](../../adapters/adapter-ingest/src/test/java/com/iocextractor/adapter/in/ingest/FileSourceMessageHandlerIT.java)
+  cover ordering, pressure, durable retry, blocked pre-hash work and fail-stop cleanup.
+  [Native delivery test](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/NativeDeliveryLifecycleIT.java)
+  connects processing to canonical receipts and publication.
+
+## When to update
+
 Update this document when claim/identity, phase order, admission limits, retry,
-shutdown, startup recovery or terminal semantics change. Module references live in
-[adapter-ingest](../../adapters/adapter-ingest/README.md); related capabilities are
-[artifact export](artifact-export.md), [event coordination](event-coordination.md)
-and [managed import](dataframe-import.md).
+shutdown, startup recovery or terminal semantics change. Apply the same change to
+its translation and affected [daemon runbook](../guides/daemon-operations.md).
+Module references live in [adapter-ingest](../../adapters/adapter-ingest/README.md);
+related capabilities are [artifact export](artifact-export.md),
+[event coordination](event-coordination.md) and [managed import](dataframe-import.md).

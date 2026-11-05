@@ -1,295 +1,254 @@
-# Конфигурация и startup boundary
+# Configuration and startup boundary
 
-Конфигурация `ioc.*` является строгим внешним контрактом приложения. Bootstrap
-bind-ит её в typed model, отклоняет неизвестные и семантически несовместимые
-значения до runtime work и собирает composition graph. Domain/application не
-знают Spring property model и не читают environment напрямую.
+[Русская версия](ru/configuration.md)
 
-## Каналы и precedence
+The `ioc.*` tree is a strict external application contract. Bootstrap binds it to
+`IocProperties`, rejects unknown declarations and invalid combinations, then
+assembles the runtime graph. Domain and application code receive their own
+values and ports; they do not read Spring properties or the environment.
 
-```text
-packaged application.yml
-  < optional ./configs/application.yml
-  < environment / system properties
-  < command line
-```
+The [operator reference](../guides/configuration.md) owns parameter names,
+defaults and application instructions. This document owns validation flow,
+service/library responsibilities and the boundary between checking configuration
+and starting work.
 
-Фактический winner определяет Spring Environment. После refresh и до runners
-`IocConfigurationOverrideReporter` один раз сообщает только
-`ioc.key <- source`; значения никогда не логируются. Это первое объявление
-параметра во внешнем источнике, а не доказательство того, что Binder использовал
-его значение: для списков и null-объявлений результаты могут различаться.
+## Sources and precedence
 
-Общая проверка имён и обход источников выделены в
-[адаптер конфигурации](configuration-inspection.md). Bootstrap сохраняет строгие
-правила написания IOC, собственные преобразования, отказ запуска и выбор
-отображаемых источников. Неподдерживаемые общей библиотекой формы проходят
-локальную проверку совместимости; более широкое распознавание relaxed names в
-библиотеке не расширяет автоматически контракт `ioc.*`.
-
-Наблюдения для существующего alias `smb.encrypt` вычисляются общей библиотекой
-по тому же снимку деклараций. В подсказке сохраняется индекс endpoint, например
-`ioc.sync.endpoints[3].smb.encryption`. Решение вывести предупреждение принимает
-локальная политика IOC, включая прежнюю поддержку нестандартных имён источников
-окружения. Преобразование Boolean, отказ при конфликте связанных полей после
-binding и окно rollback-совместимости остаются в сервисе. Подсказки для уже
-удалённых ключей по-прежнему принадлежат локальному анализатору ошибок.
-
-Breaking rename через operator-owned config следует bounded expand/contract из
-ADR-0027. Явно помеченный compatibility alias входит в typed shape только на
-период rollback overlap, отсутствует в fresh templates и получает value-free
-`CONFIG.*` warning через общий `IocConfigurationMigrationCatalog`. Raw old/new
-presence сохраняется до semantic preflight: одновременное задание двух ключей
-является ошибкой, а composition получает только resolved current value.
-
-`IOC_*` зарезервирован для `ioc.*`. Environment adaptation теряет исходные
-границы слов, поэтому schema-aware matcher восстанавливает только известную
-форму `IocProperties`; неизвестный `IOC_*` является startup failure, а не
-неиспользованной переменной.
-
-Списки при обычной загрузке Boot заменяются целиком из источника с более высоким
-приоритетом. Например, overlay с единственным `ioc.refang.rules[0].from` убирает
-остальные правила и не наследует `to` из defaults; проверка отклоняет такой
-неполный элемент. Чтобы заменить список, задайте все поля всех нужных элементов.
-Наблюдения об объявлениях в нижних источниках не означают, что их значения
-сохранились после binding. Карты имеют отдельные правила объединения.
-
-## Startup validation
+For the normal supported sources, precedence increases from left to right:
 
 ```text
-Environment prepared
-  -> YAML syntax parse / CONFIG.YAML_INVALID
-  -> unknown-key shape preflight (all property sources)
-  -> @ConfigurationProperties binding/conversion/JSR-380
-  -> collect-all semantic config validation
-  -> config-to-registry/catalog validation
-  -> context refresh and concrete graph assembly
-  -> value-free override report
-  -> ApplicationRunner / daemon work
+classpath application.yml < external YAML < environment < JVM system properties < CLI
 ```
 
-Границы разделены намеренно:
+Classpath configuration imports optional `./configs/application.yml`. The
+installed unit adds `./etc/application.yml` relative to its installation prefix.
+Boot also resolves imports, active-profile documents/profile-specific files and
+`SPRING_APPLICATION_JSON`; the simple ordering above is not an exhaustive list
+of Boot sources. JSON overrides ordinary environment/system properties, while
+CLI arguments still win. Keep source-loading policy explicit when comparing a
+checker with a running deployment.
 
-- Spring binder владеет shape, conversion и bean validation;
-- `IocYamlSyntaxCheck` предоставляет side-effect-free синтаксическую проверку
-  candidate-файла до Spring startup, SQLite и transport initialization;
-- `IocSemanticConfigurationCheck` загружает classpath defaults, явный YAML
-  overlay, разрешённые Boot imports и external overrides в минимальный Spring context только с
-  `IocProperties` и config-preflight infrastructure; runtime components не
-  сканируются, а controlled output не содержит property values;
-- `IocYamlConfigurationFailureAnalyzer` переводит ранний SnakeYAML failure в
-  `CONFIG.YAML_INVALID` с line/column без parser text, самой строки и исходного
-  throwable в `FailureAnalysis`;
-- `IocUnknownConfigurationPreflight` проверяет неизвестные keys по reflection
-  shape typed model, включая YAML overlay, CLI, system properties и env;
-- `IocConfigPreflight` собирает межсекционные инварианты: artifact identity,
-  schemas, ids, export/sync references, durations и selectors; projection
-  `ioc.sink.artifacts[].path` обязан называть файл, а не filesystem root;
-- `ConfigRegistryPreflight` проверяет provider/transform/filter/predicate keys
-  по тому же `ConfigRegistryCatalog`, который используется при wiring;
-- `IocConfigurationFailureAnalyzer` переводит startup failures в стабильные
-  `CONFIG.*` сообщения и добавляет известные migration hints.
+Lists are replaced as a whole by the highest-precedence source defining that
+list. An overlay containing only `ioc.refang.rules[0].from` loses the element's
+default `to` and all lower-priority rules; validation rejects the incomplete
+element. Supply every required field of every retained element. Maps combine
+entries across sources, with higher-precedence values winning for the same key.
+Do not use list-element behavior as a model for map overlays.
 
-Validation constructors не должны бросать на operator mistakes: иначе binder
-остановится на первой ошибке и скроет collect-all report.
+`IOC_*` is reserved for IOC settings. `IocEnvironmentPropertyMatcher` resolves
+underscore-separated names against the declared record shape, including list
+indexes. Unknown IOC names fail; ambiguous segmentations are not guessed.
+IOC keeps its own spelling rules and converter fallback on top of the
+[shared declaration inspector](configuration-inspection.md). The library's
+broader name recognition does not expand the service's supported syntax.
+Opaque/nonenumerable custom sources need explicit coverage review; simply
+adding a new `PropertySource` does not prove that all its names were inspected.
 
-Минимальный состав бинов не ограничивает источники конфигурации. Semantic check
-сохраняет обычные Boot imports, активные профили и внешние overrides, включая
-JSON; обязательный отсутствующий import является ошибкой, optional import
-может отсутствовать. Classpath defaults также импортируют
-`./configs/application.yml`, если он существует. Это проверка итоговой
-конфигурации окружения, а не только изолированного candidate-файла.
+After refresh and before runners, `IocConfigurationOverrideReporter` reports
+`ioc.key <- source` once for the first external declaration of each name. It
+does not read values. This is declaration provenance, not proof of the value
+that Binder used: shadowed list elements and null declarations can still be
+observable. Normal startup owns the report; the minimal checker does not scan
+that component.
 
-Команда сама задаёт корневые locations и отклоняет CLI-настройки
-`spring.config.location`, `additional-location`, `import`, `name`, включая
-индексные и relaxed формы. Объявления `spring.main.sources` и их индексные
-варианты отклоняются во всех загруженных каналах до создания дополнительных
-бинов. Checker принудительно отключает lazy initialization, keep-alive,
-регистрацию shutdown hook и startup-info; короткоживущий контекст закрывается
-после проверки. Imports остаются доверенным входом deployment: ограничений
-путей или сетевых адресов этот режим не обещает.
+## Validation flow and ownership
 
-Для другого сервиса доступен
-[пример с закрытым набором входов](../guides/libraries/config-spring-boot-check.md):
-один явный YAML и явные literal overrides, без ambient environment, imports
-и профилей. Правила источников и семантические проверки принадлежат сервису,
-а общая библиотека получает уже подготовленные источники.
+```text
+Boot ConfigData loading (YAML, imports, profiles, effective overrides)
+  -> unknown-name preflight over prepared sources
+  -> typed binding and conversion
+  -> Bean Validation and collect-all IOC semantic validation
+  -> registry references, artifact policies and named-plan admission
+  -> runtime composition and state-dependent checks
+  -> startup recovery / readiness / operational work
+```
 
-Контракт [контролируемых отчётов](configuration-failure-reports.md) сохраняет
-пути объявленных полей и `CONFIG.*`, но исключает exception/default messages,
-rejected values и arguments. Ошибка binding не означает, что semantic и registry
-проверки выполнились; неизвестный failure получает `CONFIG.CHECK_FAILED`.
-Это граница наших отчётов, а не гарантия для всех Spring DEBUG-логов и appenders.
+| Component | Responsibility |
+|---|---|
+| `IocProperties`, `IocProcessingProperties` and selector converters | External shape, type conversion, required values and local constraints |
+| `IocUnknownConfigurationPreflight` | Unknown names in supported YAML, CLI, system-property and environment channels, including shadowed declarations |
+| `IocConfigPreflight` | Cross-section constraints: lifecycle, execution budgets, artifact identity, CSV shape, sync references and import catalog |
+| `ConfigRegistryPreflight` and owning catalogs | Registered providers/transforms/filters/predicates, write policies, named plans and processed-import plan bindings |
+| `AppConfig` and other runtime configuration | Concrete adapters, export plans, storage migrations, durable-policy compatibility, recovery and schedulers |
+| Controlled failure projection/analyzers | Selected categories, safe field locations and corrective guidance; see [failure reports](configuration-failure-reports.md) |
 
-Для packaged systemd deployment unit запускает semantic configuration check
-через `ExecCondition`. При exit code `78` systemd пропускает activation и не
-входит в `Restart=on-failure`, поэтому детерминированная config error не создаёт
-restart storm. `RestartPreventExitStatus=78` остаётся дополнительной защитой для
-main process. `deploy-local` дополнительно запускает тот же checker новым staged
-jar от имени service account, с установленным EnvironmentFile/JVM overrides, до
-остановки активного service и backup/activation boundary. Операторский
-`bin/ioc-config apply` принимает отдельный candidate, проверяет service-readable
-staged copy в том же effective environment, атомарно заменяет live YAML и
-восстанавливает previous config, если startup не достигает `UP`. Прямое
-редактирование live файла остаётся технически возможным, но не является
-поддерживаемым workflow.
+Constructors must not throw for ordinary operator mistakes that belong to
+collect-all validation. Otherwise conversion can stop on the first error and
+hide other violations. Collect-all applies within a reached validation phase;
+a syntax/conversion failure cannot establish that later phases ran.
 
-## Runtime modes и lazy boundary
+Disabled runtime switches do not make arbitrary declarations inert. Unknown
+names and declared registry/plan references are still checked. A `processed`
+import contract needs its named route even while intake is disabled. A malformed
+prepared catalog must not become a deferred first-delivery failure.
 
-`ioc.runtime.mode` выбирает `oneshot` или `daemon`; observability mode выбирает
-профиль вывода, но не заменяет runtime mode. Lightweight root/subcommand help,
-`--version`, health query и syntax errors обслуживаются до обычного Spring
-startup. Semantic checker использует отдельный минимальный Spring context без
-runtime composition.
-`--version` требует embedded build identity; при её отсутствии CLI возвращает
-однострочную metadata error и exit code `1`, не придумывая fallback и не
-показывая stack trace.
+## Configuration-only commands
 
-Оставшийся oneshot graph использует lazy initialization: validation-only path
-не должен открывать service DB или transport. Daemon включает web/actuator и
-eagerly собирает необходимые migrations, recovery и schedulers до operational
-work. Конкретные adapters связываются только в composition root (`AppConfig`,
-`SyncConfig`, `EventCoordinationConfig`, config-preflight configuration).
+`IocExtractorApplication` handles the internal packaging check paths before the
+ordinary CLI and Spring runtime:
 
-### Lifecycle validity and runtime safety
+| Entry point | Scope and result |
+|---|---|
+| `--ioc.validate-yaml=<file>` / `IocYamlSyntaxCheck` | Read and parse one file only; `CONFIG.YAML_VALID` and exit `0` do not establish binding or semantic validity |
+| `--ioc.validate-config=<file>` / `IocSemanticConfigurationCheck` | Syntax check, then a minimal configuration context; `CONFIG.SEMANTIC_VALID` and exit `0` establish the implemented configuration preflights |
+| Installed `ioc-config check [candidate.yml]` | Stage service-readable YAML and invoke the semantic path as the service account; omitted candidate selects the installed YAML |
 
-P5 добавляет явную one-way activation policy поверх operational envelope:
+Checker failures return `78`. Usage/readability failures and incomplete checks
+remain failures; the [report contract](configuration-failure-reports.md)
+distinguishes their codes. A successful check does not open the application
+SQLite stores, initialize transports or start intake/schedulers. It also does
+not qualify filesystem permissions, remote endpoints, existing DB schemas,
+durable lifecycle policy or recovery against actual runtime state. Checks owned
+only by runtime composition, such as export-plan execution support, are not
+silently included in `CONFIG.SEMANTIC_VALID`.
 
-- `ioc.lifecycle.validity.mode` — closed selector `disabled|fixed`; classpath и
-  upgrade template используют `disabled`;
-- `ioc.lifecycle.validity.fixed-ttl` — positive duration (default `12h`),
-  обязательный в `fixed` mode;
-- `ioc.lifecycle.validity.existing-records` — `reject|expire`; только явно
-  выбранный `expire` разрешает destructive archival legacy rows;
-- `ioc.lifecycle.history-retention` и `receipt-retention` — positive сроки
-  хранения history snapshots и complete confirmation receipts, оба default
-  `30d`;
-- `ioc.lifecycle.history-cleanup-interval` — positive cadence independent
-  retention discovery, default `1h`; backlog продолжается bounded follow-up
-  tasks без ожидания следующего часа;
-- `ioc.lifecycle.reconcile.backstop-interval` — positive максимальный idle
-  interval между read-only nearest-deadline/projection correctness checks,
-  default `5s`;
-- `ioc.lifecycle.reconcile.batch-size` — positive bound одной SQLite
-  archive/delete либо retention transaction, default `1000`;
-- `ioc.lifecycle.clock.max-backward-skew` и `max-clamp-duration` — positive
-  system UTC safety limits, defaults `2s` и `30s`.
+### Effective sources and context guard
 
-После начала activation durable DB state не допускает возврат в `disabled` и
-выдаёт stable `LIFECYCLE.POLICY_MISMATCH`. Нулевое или отрицательное
-duration/value отклоняется collect-all preflight и никогда не интерпретируется
-как команда очистки.
+The semantic checker explicitly loads classpath defaults and the candidate.
+Normal allowed Boot imports, profiles and effective external overrides still
+participate; an existing `./configs/application.yml` participates through the
+classpath import. A missing required import fails; a missing optional import
+may be accepted. This checks effective configuration, not an isolated file.
 
-### Managed dataframe import
+The checker rejects CLI controls for `spring.config.location`,
+`spring.config.additional-location`, `spring.config.import` and
+`spring.config.name`, including indexed/relaxed forms. It rejects
+`spring.main.sources` declarations and indexed descendants across loaded
+channels before additional sources can instantiate beans. Its own configuration
+forces non-web, eager validation without keep-alive, shutdown-hook registration
+or startup-info output. The context is closed after the check.
 
-`ioc.dataframe-import` — отдельная strict typed shape для принятого ADR-0024.
-Classpath и production template задают `enabled: false` и пустые `sources`,
-`authority-profiles`, `contracts`. При `enabled: true` daemon собирает полный
-local/SMB intake runtime: ownership claim, private immutable snapshot, exact
-recognition, sealed staging, atomic canonical promotion, recovery, terminal
-report/disposition и retention. Stateful storage обязан быть JDBC; startup
-recovery barrier открывает ordinary ingest и import только совместно.
+Imports are trusted deployment inputs; the minimal bean graph is not a path,
+network or configuration-loader sandbox. Console suppression temporarily changes
+process streams under the checker's monitor; arbitrary logging appenders are
+outside that boundary. Use it as a short-lived command, not a shared embedded
+runner. The [separate library recipe](../guides/libraries/config-spring-boot-check.md)
+demonstrates a different source policy: explicit YAML and literal overrides
+without ambient environment, ConfigData imports or profiles. The reusable
+inspector imposes neither service's policy.
 
-При `enabled: true` bootstrap обязан до runtime собрать весь декларативный
-catalog: source ссылается на существующие contract и authority profile, SMB
-source — на общий `ioc.sync.endpoints`, mappings — на artifact columns,
-versioned record/match keys и зарегистрированные transforms. Authority profile
-задаёт верхнюю границу destructive merge, related routing и machine-only
-formula preservation. Компилятор либо публикует immutable catalog с SHA-256
-behavior fingerprint, либо возвращает все безопасные semantic violations;
-частично разрешённого catalog нет.
+## Installed check, apply and startup
 
-`runtime.detect.poll-interval` остаётся correctness cadence полного перечисления.
-`use-watch-service` для local и `use-change-notifications` для SMB включают
-только latency hints; они не отключают polling/reconcile. SMB source использует
-существующий endpoint из `ioc.sync.endpoints`, включая credentials и transport
-timeouts, даже когда обычный `ioc.sync.enabled=false`. Обычный sync и import
-делят lazy endpoint-keyed session pool, а long-poll `CHANGE_NOTIFY` держит
-отдельные watch sessions.
+The installed `ioc-config` helper runs via systemd with the service account,
+working directory, EnvironmentFile and JVM overrides. Its staged copy retains
+a YAML suffix and service-readable ownership. `check` does not restart the
+service. `apply` requires a separate regular non-symlink candidate, serializes
+other applies, stages and validates the bytes, then atomically replaces live
+YAML and restarts the service with a bounded health wait.
 
-`runtime.dirs.snapshots` содержит private immutable snapshots для обоих
-transport-ов. Local-specific processing/terminal/quarantine roots применяются к
-local source. Для SMB оператор заранее создаёт
-`.ioc-managed-import/{processing,terminal,quarantine,probe}` внутри remote inbox;
-runtime не создаёт эти каталоги и перед listing/claim выполняет positive
-source-capability probe. Один local-filesystem snapshot store обслуживает оба
-transport-а через application port; SMB adapter не владеет local persistence и
-не зависит от ingest adapter. Snapshot byte limit и stability quiet period
-одинаково применяются к обоим transport-ам.
+A failed precheck leaves live YAML and the service unchanged. A failed restart
+or health wait preserves the rejected YAML, restores the previous file and
+attempts a second restart/health check. Restored bytes do not prove that the old
+service is healthy. This is configuration-file recovery: it does not undo
+database migrations, lifecycle activation, admitted work or remote effects.
+State-changing settings need the owning migration/backup procedure before apply.
 
-`ioc.artifact-identity.artifacts[]` содержит декларативные `record-key` и
-`match-keys[]`. Они именуют текущую row-key формулу и альтернативные active-row
-lookup paths. Изменение identity требует отдельного `epoch`/migration решения;
-обычная правка YAML не переписывает populated canonical state.
+The unit's `ExecCondition` repeats semantic checking before main activation.
+Exit `78` skips activation without entering `Restart=on-failure`;
+`RestartPreventExitStatus=78` is additional main-process protection. Local
+deployment checks the staged new JAR with the service environment before
+stopping the active service and entering backup/activation. These mechanisms
+share validation but have different rollback scopes; [packaging](../../packaging/README.md)
+owns those procedures.
 
-На время rollback overlap бинарь 0.3.0 принимает четыре точные built-in формы
-из packaged template v0.2.0, в которых ещё нет `record-key`, `match-keys` и
-`epoch`. Временный `V020ArtifactIdentityCompatibility` переводит только эти
-неизменённые tuples в текущие versioned definitions, после чего постоянный
-bootstrap resolver предоставляет один результат export catalog и storage
-composition. Любой custom либо частично изменённый entry без `record-key`
-отклоняется semantic preflight. Обычный startup сообщает
-`CONFIG.LEGACY_ARTIFACT_IDENTITY` по имени artifact без вывода значений. После
-вывода v0.2.0 из rollback window оператор переносит явные current definitions
-из `application.yml.new` через проверяемый config-candidate workflow, а
-v0.2-only adapter и reporter удаляются. Новые legacy cases не добавляются в
-этот класс как универсальный migration registry.
+There is no general hot reload. The supported operator flow applies YAML via
+the candidate helper; environment-file changes require a restart. Systemd
+EnvironmentFile syntax is not shell syntax and must not be loaded with `source`.
 
-## Неочевидные инварианты
+## Runtime modes and lazy initialization
 
-1. **Unknown keys fail on every channel.** Нельзя добавлять «временно
-   игнорируемый» `ioc.*` knob без typed model и semantics.
-2. **Registry key имеет один catalog.** Preflight и runtime assembly не держат
-   разные списки допустимых provider/transform/predicate names.
-3. **List overlay следует binder semantics.** Index может прийти из более
-   приоритетного source, но элемент bind-ится целиком из source, определившего
-этот index; partial override не гарантирует сохранение остальных полей.
-4. **Секреты не становятся diagnostics/log values.** Failure analysis и
-   override report показывают key/source/reason, но не winning value.
-5. **Legacy compatibility ограничена, наблюдаема и удаляема.** Удалённое
-   свойство остаётся неизвестным key; разрешённый alias или exact legacy shape
-   имеет один изолированный adapter, негативные near-match tests, value-free
-   `CONFIG.*` warning и явное retirement condition.
+`ioc.runtime.mode` selects `oneshot` or `daemon`; observability mode selects
+logging and does not replace runtime mode. Ordinary lightweight help, version,
+syntax errors and the HTTP health client can finish before Spring starts.
+Those paths do not validate application configuration. Explicit daemon-mode
+arguments select the runtime path rather than the ordinary early CLI shortcut.
+Version output requires embedded build identity; missing metadata returns a
+one-line error and exit `1` without an invented version.
 
-## Как расширять
+Oneshot uses lazy runtime composition, while configuration preflights remain
+eager. Daemon forces eager singleton initialization and the actuator web surface.
+Migrations and coordinated recovery precede intake; a configuration-only pass
+does not imply that this recovery barrier has passed. Concrete adapters remain
+in `AppConfig`, `SyncConfig`, `EventCoordinationConfig` and owning bootstrap
+configuration classes.
 
-- Новый knob: добавить typed field, validation/default semantics, packaged и
-  deployment config, binding/preflight tests и затронутый capability guide.
-- Новый selector: использовать typed enum/value object и fail-fast converter,
-  а не строковые `if` по runtime graph.
-- Новый registry-backed key: зарегистрировать component и key в одном catalog,
-  затем добавить preflight/contract test.
-- Новый external channel должен пройти тот же unknown-key и redaction contract;
-  обход `Environment` напрямую не допускается.
+## State-sensitive settings
 
-## Источники истины
+- **Lifecycle:** classpath defaults use `disabled`; the fresh production template
+  uses `fixed/12h` with `existing-records: reject`. Existing installations retain
+  their operator YAML. Destructive legacy-row cutover requires explicit `expire`;
+  once durable activation has begun, returning that DB to `disabled` fails with
+  `LIFECYCLE.POLICY_MISMATCH`. Zero is not a cleanup command. See
+  [lifecycle mechanics](canonical-record-lifecycle.md) and its
+  [operator procedure](../guides/canonical-record-lifecycle.md).
+- **Managed import:** both shipped configurations disable intake. Classpath
+  catalogs are empty; the production template already declares an aggregate
+  authority/processed contract and a matching plan, but no sources. Enabling
+  requires daemon mode, JDBC stores, fixed validity and a complete accepted
+  source/authority/contract catalog. Catalog compilation produces one immutable
+  result and behavior fingerprint, never a partially resolved runtime catalog.
+  Import and ordinary ingest share the startup recovery barrier. SMB sources
+  reuse endpoints even with ordinary sync disabled; polling remains authoritative,
+  and private SMB directories/permissions are operator-provisioned. Snapshots
+  remain local and transport-neutral. See [import mechanics](dataframe-import.md).
+- **Processing and admission:** budget relationships are validated together;
+  preparation workers and the bounded window do not make canonical promotion
+  parallel. Changing a selected processing policy can block unfinished-work
+  recovery; follow the [drain procedure](../guides/ioc-processing-routes.md).
+- **Identity:** configured record/match keys and epoch name durable contracts.
+  Editing YAML does not migrate populated canonical identity. During the supported
+  v0.2.0 rollback overlap, `V020ArtifactIdentityCompatibility` accepts only the
+  exact four legacy built-in tuples. The complete legacy base also resolves the
+  shipped aggregate identity when its sink is present. Modified/custom near
+  matches fail. `CONFIG.LEGACY_ARTIFACT_IDENTITY` is value-free; retire the
+  compatibility adapter after the old binary leaves the supported rollback path.
+- **Renames:** the bounded alias policy follows
+  [ADR 0027](../ADR/0027-rollback-safe-configuration-evolution.md). The temporary
+  typed `smb.encrypt` alias is absent from fresh templates and observed through
+  `IocConfigurationMigrationCatalog`. Post-binding semantic validation rejects
+  simultaneous old/new fields; Boolean conversion and retirement remain IOC
+  policy. Removed `read-timeout` remains unknown and receives
+  `CONFIG.LEGACY_SYNC_TIMEOUT`, rather than a restored tombstone field.
 
-- External defaults/schema: `bootstrap/ioc-app/src/main/resources/application.yml`.
-- Typed model: `IocProperties` и selector/value types.
-- Operator contract: [configuration guide](../guides/configuration.md), полный
-  production template и `ConfigurationDocumentationContractTest`.
-- Strict boundary: `IocEnvironmentPropertyMatcher`,
-  `IocUnknownConfigurationPreflight`, `IocConfigPreflight`,
-  `ConfigRegistryPreflight`, `IocConfigurationFailureAnalyzer`,
-  `IocYamlConfigurationFailureAnalyzer`, `IocYamlSyntaxCheck`.
-- Dataframe import: `DataframeImportConfiguration`,
-  `DataframeImportPropertyMapper`, framework-free
-  `DataframeImportCatalogCompiler`, `DataframeImportRuntimeConfiguration`.
-- Lifecycle: `ConfigPreflightConfiguration`, `IocSemanticConfigurationCheck`,
-  `EarlyCliLauncher`, `DaemonWebEnvironmentPostProcessor`.
-- Contract tests: `IocPropertiesBindingIT`, unknown-key/preflight/analyzer/
-  override reporter tests, `ConfigurationDocumentationContractTest` and
-  application context tests.
+## Extension and verification
 
-## Когда обновлять документ
+For a new setting, update the typed shape, defaults/omission semantics,
+validation, metadata, full production template and paired operator reference.
+Add binding and meaningful rejection/boundary cases. Selectors use typed tokens
+and converters. Register a provider/transform/predicate in the owning catalog
+used by both preflight and composition. New channels must preserve strict-name,
+coverage and controlled-output contracts; do not bypass `Environment`.
 
-Обновить при изменении precedence, supported property channel, unknown-key
-semantics, validation ownership, runtime-mode startup или lazy/eager boundary.
+## Sources of truth
 
-## Связанные документы
+- [Classpath configuration](../../bootstrap/ioc-app/src/main/resources/application.yml),
+  [production template](../../packaging/templates/application.yml),
+  [typed model](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/IocProperties.java)
+  and [processing model](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/IocProcessingProperties.java).
+- [Bootstrap source/reference](../../bootstrap/ioc-app/README.md):
+  `ConfigPreflightConfiguration`, `IocUnknownConfigurationPreflight`,
+  `IocConfigPreflight`, `ConfigRegistryPreflight`, `IocSemanticConfigurationCheck`,
+  `IocConfigurationOverrideReporter`, `DaemonWebEnvironmentPostProcessor` and
+  `DataframeImportConfiguration`.
+- [Installed helper](../../packaging/templates/ioc-config) and
+  [unit](../../packaging/templates/ioc-extractor.service).
+- [Real ConfigData/channel/list tests](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/IocConfigurationContextIT.java),
+  [binding tests](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/IocPropertiesBindingIT.java),
+  [semantic checker tests](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/IocSemanticConfigurationCheckTest.java)
+  and [documentation contract](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/ConfigurationDocumentationContractTest.java).
+  The last checks property/vocabulary coverage and template binding, not prose
+  completeness, correct defaults or target operation.
 
-- [processing.md](processing.md) — rule/mapping registries.
-- [storage.md](storage.md) — storage role selectors и migrations.
-- [observability.md](observability.md) — value-free logging/redaction.
-- [ADR-0016](../ADR/0016-config-preflight-strict-binding.md) — решение strict binding.
-- [ADR-0024](../ADR/0024-managed-dataframe-import.md) — managed import contract и границы authority.
+## When to update this document
+
+Update it when source selection, precedence, list/map behavior, validation
+ownership, checker guarantees, alias rules or runtime/recovery boundaries change.
+
+## Related documents
+
+- [Operator configuration](../guides/configuration.md),
+  [controlled failure reports](configuration-failure-reports.md) and
+  [declaration inspection](configuration-inspection.md).
+- [Processing](processing.md), [storage](storage.md),
+  [observability](observability.md) and
+  [ADR 0016](../ADR/0016-config-preflight-strict-binding.md).

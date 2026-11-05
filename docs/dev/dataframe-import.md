@@ -1,5 +1,7 @@
 # Managed dataframe import
 
+[Русская версия](ru/dataframe-import.md)
+
 Managed dataframe import consumes operator-provided CSV deliveries from dedicated
 local or SMB inboxes. Each stabilized file is one occurrence: it is claimed,
 copied into a private immutable local snapshot, recognized against exactly one
@@ -7,7 +9,9 @@ versioned source contract, staged on disk and promoted into canonical SQLite
 truth by one cross-artifact transaction.
 
 The feature is disabled by default. Enabling it requires service and dataframe
-JDBC storage plus a complete source, authority and contract catalog. Managed
+JDBC storage, fixed lifecycle validity and a complete source, authority and
+contract catalog. Intake runs in daemon mode; installed CLI commands use a
+separate oneshot context. Managed
 import does not restore the retired hand-filled CSV lookup/seed path.
 
 ## Runtime flow
@@ -52,6 +56,19 @@ from that same nondecreasing timestamp; a clock step cannot shorten its configur
 duration. Retry deadlines remain literal absolute UTC. Receipt-only finalization
 can advance coordination after commit even when new canonical publication would
 be rejected by the independent safe-clock policy.
+
+## Recognition and mapping
+
+Recognition tests every source-allowlisted charset/dialect/header signature and
+requires exactly one match. Required headers must be present; optional and
+ignored headers are allowed only when declared. Aliases resolve to canonical
+header names, so a name plus its alias is a duplicate, not two input fields.
+Unexpected, missing or duplicate canonical headers reject recognition. Header
+names are exact and case-sensitive; column order does not select a contract.
+Every data record must have the header's physical field count. Missing optional
+headers and empty cells are therefore different cases, not short-row syntax.
+The parser strictly decodes bytes and checks record separators and resource
+limits; it does not repair an invalid file by replacing characters.
 
 `as-is` mapping runs only transforms declared by the pinned contract and retains
 the `ABSENT`, explicit `NULL` and `VALUE` cell states. `processed` delegates the
@@ -108,6 +125,50 @@ starts a new session; sealed-stage and receipt recovery open none. Direct mappin
 and advisory validation retain row-local behavior. See
 [ADR 0033](../ADR/0033-bounded-semantic-reuse-during-import-staging.md).
 
+### Cell presence, merge and identity
+
+An omitted mapped optional header produces `ABSENT`. An empty cell or exact
+configured null literal produces `NULL`; CSV quoting does not escape that
+import null instruction. Other text is `VALUE`, including whitespace unless
+explicit transforms change it. Declared transforms run in order, then the mapper
+checks null/empty again, formula policy and value validation. Formula rejection
+checks the first non-whitespace character for `=`, `+`, `-` or `@`; it is not a
+spreadsheet sanitizer. `machine-only-preserve` needs explicit source authority.
+
+The effective merge policy is column override, then artifact default, then
+contract default, bounded by source authority. For an existing active record:
+
+| Policy | Incoming VALUE | Incoming NULL |
+|---|---|---|
+| `keep-existing` | retain stored value | retain stored value |
+| `fill-missing` | fill only a stored NULL | retain stored value |
+| `replace-non-null` | set the incoming value | retain stored value |
+| `authoritative` | set the incoming value | clear the stored value |
+| `reject-conflict` | fill NULL or accept equality; otherwise reject the logical row | accept a stored NULL; otherwise reject the logical row |
+
+`ABSENT` never changes a field. New records initialize from supplied values;
+`keep-existing` does not discard values just because no existing record exists.
+Configured ordered mutable fields additionally obey shared observation rank:
+an older late completion cannot overwrite a newer registered value.
+
+Within-delivery reduction uses the primary artifact's final record key.
+`keep-first` retains the first admitted whole row; `last-nonempty` selects the
+last whole row with a nonblank `duplicate-selection-column`, or the first row
+if none has one; `coalesce` combines compatible
+presence/value contributions and rejects conflicting groups. These do not
+override cross-delivery matching. Primary and declared alternative match keys
+resolve only active rows; multiple active matches reject the logical row.
+A merge that would change a matched record's stable primary identity is rejected
+with `IMPORT.STABLE_IDENTITY_CONFLICT`, not silently converted into an insert.
+
+An accepted public mutation confirms validity even with `renew-unchanged: false`.
+That flag controls an otherwise unchanged confirmation, not whether changed
+data can receive a deadline. An accepted nonblank ordered-field candidate also
+requests confirmation, even when its public text already matches. The flag is
+not a blanket TTL freeze. TTL-only confirmation does not advance public revision or require a new
+immutable export. A retry recovered from the same commit receipt does not
+confirm the delivery again.
+
 ## Source ownership
 
 Local and SMB sources implement the same application lifecycle port, but retain
@@ -153,8 +214,8 @@ continues when notifications are disabled, lost, duplicated or reconnecting.
   storage/transport-neutral ports. It has no CSV, JDBC, SMBJ or Spring imports.
 - `adapter-csv` owns strict charset decoding, Commons CSV dialect construction,
   streaming rows and import transforms.
-- `adapter-store-jdbc` owns the v9 delivery foundation, the v11 observation
-  reservation and v12 accepted-row warnings, private sealed workspaces, active-only canonical
+- `adapter-store-jdbc` owns the service v9 delivery foundation and v11 observation
+  reservation, dataframe v12 accepted-row warnings, private sealed workspaces, active-only canonical
   matching/mutation, sparse requested slots and dataframe `import_commit`
   receipt.
 - An accepted processed row can carry a bounded, value-free `warnings` list
@@ -211,7 +272,7 @@ continues when notifications are disabled, lost, duplicated or reconnecting.
    dataframe receipt and periodic reconciliation recover lost process-local
    notifications.
 10. **Terminal evidence is a unit.** The protected source and safe JSON report
-    are published atomically; raw IOC cells, paths and digests do not enter
+    are published atomically; raw IOC cells, producer paths and source-content digests do not enter
     reports, health details or diagnostics.
 11. **Retention removes authority last.** A forward delivery purges the exact
     transport-managed terminal object before local terminal, workspace,
@@ -247,6 +308,13 @@ replacing them.
 
 ## Failures and recovery
 
+The durable path is `DETECTED -> CLAIMING -> CLAIMED -> SNAPSHOT_PINNED ->
+CONTRACT_PINNED -> STAGING -> STAGED -> PROMOTING -> CANONICAL_COMMITTED ->
+FINALIZING -> TERMINAL`. `TERMINAL` has an immutable outcome: `SUCCEEDED`,
+`COMPLETED_WITH_ERRORS` or `REJECTED`. Rejection is an outcome, not a request to
+reopen or reorder the lane. A retrying global head can delay promotion for other
+sources even while their independent readiness/listing remains available.
+
 | Situation | Behavior | Recovery authority |
 |---|---|---|
 | source changes before claim, open producer blocks delete sharing, or claim destination exists | fail closed and schedule a non-blocking retry | candidate evidence plus delivery ledger |
@@ -269,11 +337,21 @@ admission complete.
 ## Operator surfaces
 
 - `ioc import validate` applies the real recognizer/parser/mapping rules without
-  claiming a source or mutating durable state.
+  claiming a source, reducing duplicate groups or promoting canonical rows.
+  It does not perform live canonical matching, merge/slot planning or commit;
+  per-row acceptance is advisory. Full CLI startup can still initialize or
+  migrate configured storage and prepare workspace directories. A validation
+  command is not a filesystem-level dry run.
 - `ioc import status` reports aggregate backlog and safe head retry facts; it
-  cannot skip, reorder or force-complete a delivery.
+  cannot skip, reorder or force-complete a delivery. It reads the local service
+  DB. Its recovery-complete flag belongs to the querying process; use daemon
+  actuator health for the running process's recovery state. The current nullable
+  retry-deadline reader defect [OPS-10](../KNOWN-ISSUES.md) can fail this query
+  and the import health reader on a nonterminal head; it is not commit evidence.
 - `ioc import replay` creates a new occurrence with a causal link to retained
-  terminal evidence.
+  terminal evidence. It uses the active source/catalog, not the old contract's
+  behavior, and its successful CLI return confirms admission rather than final
+  canonical commit. Retained local terminal source bytes must still exist.
 - Actuator health distinguishes failed recovery, safely degraded retry/backlog,
   transient source unavailability, incompatible source capability and normal
   progress. Source details are aggregate and value-free. Metrics remain
@@ -308,6 +386,18 @@ admission complete.
   tests.
 - Runtime configuration: `IocProperties.DataframeImport`,
   `DataframeImportConfiguration` and `DataframeImportRuntimeConfiguration`.
+
+- Exact recognition and presence: [ImportHeaderPlan](../../core/ioc-application/src/main/java/com/iocextractor/application/dataframeimport/mapping/ImportHeaderPlan.java), [DataframeImportRowMapper](../../core/ioc-application/src/main/java/com/iocextractor/application/dataframeimport/mapping/DataframeImportRowMapper.java).
+- Preview boundary: [DataframeImportValidationService](../../core/ioc-application/src/main/java/com/iocextractor/application/dataframeimport/DataframeImportValidationService.java), [runtime composition](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/DataframeImportRuntimeConfiguration.java).
+- Transaction and replay evidence: [JdbcCanonicalImportWriterContractIT](../../adapters/adapter-store-jdbc/src/test/java/com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalImportWriterContractIT.java), [RouterSelectedImportDeliveryIT](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/RouterSelectedImportDeliveryIT.java).
+- Local source/report protection: [LocalManagedImportSourceLifecycleIT](../../adapters/adapter-ingest/src/test/java/com/iocextractor/adapter/in/ingest/LocalManagedImportSourceLifecycleIT.java), [LocalImportTerminalStoreIT](../../adapters/adapter-ingest/src/test/java/com/iocextractor/adapter/in/ingest/LocalImportTerminalStoreIT.java).
+
+## When to update this document
+
+Update when recognition, presence/authority, routing, identity/merge, ordering,
+canonical commit, retained evidence, source ownership or CLI/recovery boundaries
+change. Qualify external SMB behavior on the intended server family; offline
+adapter tests and an unexecuted external suite do not establish live support.
 
 ## Related documents
 

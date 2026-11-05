@@ -1,5 +1,7 @@
 # IOC processing
 
+[Русская версия](ru/processing.md)
+
 Processing reads a document, refangs and extracts indicators, attributes sources,
 classifies representations and prepares canonical artifact rows. It does not own
 file detection, physical database schemas or remote delivery. Documents and
@@ -19,6 +21,37 @@ The stage order is an application contract, not an operator-defined workflow.
 Rules, condition parameters, mapping and failure policy are declarative. Domain,
 application and `ioc-processing` remain framework-free. Tika/RE2/J/PSL/CSV/Camel
 live in adapters and Spring composition lives in bootstrap.
+
+## Extraction, attribution and classification
+
+Refang applies ordered literal replacements, not regular expressions. A later
+rule sees earlier replacements; put specific forms before their shorter prefixes.
+Extraction then searches the refanged text using configured IOC-type pattern
+priority. Once a higher-priority match owns a character span, overlapping later
+matches are dropped rather than emitted as additional indicators. Accepted
+occurrences are processed in source-position order, with absolute UTF-16 offsets.
+This is text search; [structured import cells](#processed-import-composition)
+have a separate whole-cell acceptance rule.
+
+Source attribution uses the nearest preceding configured section marker, not
+the file name or a global feed label. Without a preceding marker the source
+label is absent and a diagnostic counts unattributed occurrences. Matching
+positions refer to the refanged representation. Artifact-specific transforms
+can later change the displayed source label without changing this attribution.
+
+Classification extracts features once per decision and uses the first configured
+rule whose predicates all hold. An empty predicate list is an unconditional
+fallback; if no rule matches, the decision has no match codes. PSL-backed host
+features distinguish a registrable domain from a subdomain. The view's IOC type,
+features and match codes remain one materialized decision. Routing and columns
+consume that decision; they must not implement competing classification rules.
+Network indicators use this policy; file hashes receive a neutral decision
+without network match codes.
+
+Refang does not perform universal lowercasing or hash normalization. Those
+presentation choices belong to the configured artifact mapping: for example,
+`lower-host` preserves path/query/fragment case, while a hash column can use
+`upper`. Changing a shared mapping affects every processed path using it.
 
 ## Preparation and bounded data
 
@@ -100,6 +133,14 @@ MDC restores the parent scope even on exceptions.
 
 ## Observation selection and identity
 
+Keep three identity scopes distinct:
+
+| Scope | Contract |
+|---|---|
+| Original occurrence selection | `ioc.pipeline.deduplicate` uses `Indicator.dedupKey()`: exact type and refanged value, independent of source; this is not the record's equality contract |
+| Prepared document winners | The selected plan's observation mode and artifact write policy act on final mapped artifact keys |
+| Existing canonical data | Durable artifact identity, keep-first/field mutation and lifecycle rules own cross-run effects; input selection does not replace them |
+
 The shipping `original-document` plan uses original values and
 `observation-selection: retained-observations`. KEEP_FIRST passes the original
 observations admitted by `ioc.pipeline.deduplicate` without grouping mapped
@@ -110,8 +151,10 @@ that limitation ([OUT-3](../KNOWN-ISSUES.md)).
 
 `final-key` retains occurrences until mapping and selects KEEP_FIRST winners by
 filled artifact identity. It supports detailed URL -> host/IP collapse.
-LAST_NONEMPTY in either mode examines every relevant occurrence and selects one
-whole row with a nonempty configured selection field. Identity is computed
+LAST_NONEMPTY in either mode examines every relevant occurrence and selects the
+last whole row whose configured selection field is nonblank. If no candidate
+has such a field, document preparation keeps the first candidate for that key;
+it does not merge cells from different occurrences. Identity is computed
 **after** preparation; a configured composite key can preserve distinct rows
 with the same IP and different metadata. There is no hard-coded country or IOC
 uniqueness rule. Empty plans for intentionally skipped artifacts still satisfy
@@ -134,6 +177,14 @@ unchanged. Deferred `id` materializes only at the write boundary. Mapping is
 side-effect-free. Expected data-dependent rejection becomes an element
 diagnostic; programming/storage failures abort the run.
 
+Artifact `accepts` and include/exclude filters inspect the branch's default view.
+Each column then resolves its own view, applies `when-type` or `when-types` and
+all `when` predicates, invokes its provider (or reads the `const` literal), then
+applies transforms in order to a non-null value. A failed gate produces no cell
+value; another column's view does not change that gate. Headers retain declared
+column order. `field-views` cannot rebind ID or source authority, and an ungated
+constant does not need its otherwise unused view to be available.
+
 Classification rules and mask codes come from the operator catalog, including
 classification of derived views. `NetworkAddressParser` accepts supported
 HTTP(S), DNS/IPv4 and optional port/path/query/fragment shapes;
@@ -141,6 +192,13 @@ HTTP(S), DNS/IPv4 and optional port/path/query/fragment shapes;
 `ExactIndicatorParser` requires a complete structured-cell match. Document
 extraction continues to search within text. Fragment remains a feature, so a
 fragment-bearing IPv4 cannot pass a bare-IP predicate.
+
+Processed import refangs each selected VALUE cell and strips surrounding
+whitespace before whole-cell matching. Text around an IOC, multiple IOCs or an
+invalid full network address reject that input; the document extractor's ability
+to find a substring does not make such a cell valid. ABSENT and explicit NULL
+do not enter IOC parsing. `as-is` bypasses this processing but still follows its
+contract's explicit mapping, transforms and validation.
 
 A document owns one processing session; processed import owns one session per
 staging attempt after contract validation. Successful pure classification and
@@ -190,22 +248,45 @@ finalization uses the receipt. See [dataframe import](dataframe-import.md).
 | Parsing/admission | Typed source failure; no canonical mutation |
 | Expected mapping rejection | Element diagnostic; failure policy decides the prepared run |
 | Rejected checkpoint | No ID reservation or canonical write |
+| Storage failure after some document artifacts committed | Earlier artifacts can remain committed; this is not one cross-artifact document transaction |
 | Unexpected exception/storage failure | Run failure; not collect-and-continue |
 | Projection after commit | Canonical truth remains; recovery retries projection |
 | Dry run | Decisions/preparation only, no canonical commit or projection |
+
+`fail-fast` stops on ERROR/FATAL diagnostics; `collect-and-continue` can retain
+valid prepared rows alongside ERRORs but still stops on FATAL. Unexpected thrown
+exceptions are run failures under either policy. A completed run with errors is
+`COMPLETED_WITH_ERRORS` and the extract CLI returns `3`; warnings alone do not
+make extraction fail. The rejecting checkpoint precedes promotion/reservations,
+but later storage or projection failure cannot roll back earlier commits.
+Managed import instead promotes a delivery's accepted cross-artifact mutations
+in one dataframe transaction, under its own row/delivery policy and receipt.
+
+Dry run still reads the source and uses a disposable preparation workspace. It
+is not a no-I/O or complete runtime-isolation promise. Technical Router trace
+events carry plan/view/branch identities without IOC values; separately enabled
+per-item decision TRACE can contain indicator values and attribution details.
 
 RE2-compatible patterns use no lookaround/backreferences. Supported IOC types
 are IPV4, DOMAIN, URL, MD5, SHA1 and SHA256. HTML/legacy charset, PDF, DOCX and
 XLSX have explicit format contracts; other Tika parsers are best effort.
 Source charset and CSV charset are independent. Mutable projection may replace
-unmappable characters with a warning; immutable export uses strict encoding
-because bytes enter the manifest hash.
+unmappable characters with a warning only for ALL/ALL quoting; any MINIMAL/NONE
+layout and all immutable exports use strict encoding. See
+[CSV output format](csv-output-format.md) for exact bytes and failure boundaries.
 
 Add an artifact through mapping/identity configuration when existing registries
 suffice. New value semantics require a small `ioc-processing` component and
 explicit registry/preflight tests; a new external format belongs in an adapter.
 Changing stage order, winner rules, diagnostics, commit scope or session ownership
 requires updating this guide and the corresponding contract tests.
+
+## When to update this document
+
+Update it when extraction/attribution order, views, mapping gates, identity or
+winner rules, diagnostics, commit scope, preparation/session ownership or
+document/import boundaries change. Keep the paired translation and affected
+operator examples aligned.
 
 ## Sources of truth
 
@@ -215,7 +296,9 @@ requires updating this guide and the corresponding contract tests.
 - [GoldenPipelineIT](../../bootstrap/ioc-app/src/test/java/com/iocextractor/GoldenPipelineIT.java), [CustomerRoutingPipelineIT](../../bootstrap/ioc-app/src/test/java/com/iocextractor/CustomerRoutingPipelineIT.java).
 - [RouterSelectedImportDeliveryIT](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/RouterSelectedImportDeliveryIT.java), [NativeDeliveryLifecycleIT](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/NativeDeliveryLifecycleIT.java).
 
-Related: [storage](storage.md), [native capacity](native-capacity.md),
+## Related documents
+
+[Storage](storage.md), [native capacity](native-capacity.md),
 [observability](observability.md), [ADR 0034](../ADR/0034-required-router-processing-plans.md),
 [ADR 0036](../ADR/0036-sealed-document-preparation-workspace.md),
 [ADR 0039](../ADR/0039-streamed-document-source-processing.md),

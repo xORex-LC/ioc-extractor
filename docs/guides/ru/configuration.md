@@ -1,67 +1,153 @@
 # Справочник конфигурации
 
-Это полный операторский справочник конфигурации ioc-extractor. Он описывает
-поддерживаемые параметры, допустимые значения и эксплуатационные компромиссы без
-необходимости знать внутреннюю реализацию приложения.
+[English version](../configuration.md)
 
-Готовая основа production override находится в
-[полном шаблоне application](../../../packaging/templates/application.yml).
+Это операторский справочник поддерживаемых настроек, допустимых значений и
+эксплуатационных компромиссов. Начните с
+[полного production template](../../../packaging/templates/application.yml).
+Таблицы показывают встроенные значения classpath. Отсутствие параметра во
+внешнем файле сохраняет эффективную конфигурацию меньшего приоритета; оно не
+обязательно выбирает пустой список или значение конструктора Java.
+
+Свежий production preset намеренно отличается: режим daemon для работы и
+логирования, `collect-and-continue`, фиксированный срок `12h` с
+`existing-records: reject` и сокращённые интервалы обнаружения и экспорта.
+Обновление сохраняет YAML оператора и записывает изменённые шаблоны как
+`application.yml.new`; сравните и согласуйте их. Не переносите свежую политику
+жизненного цикла в заполненную БД без
+[процедуры активации](canonical-record-lifecycle.md).
+
+<a id="how-configuration-is-applied"></a>
 
 ## Как применяется конфигурация
 
-В приложение встроены безопасные значения по умолчанию. Установленный сервис
-загружает `<prefix>/etc/application.yml` как override, поэтому пропущенные
-параметры сохраняют встроенные значения. Приоритет от низшего к высшему:
+Для обычных источников установки приоритет растёт слева направо:
 
 ```text
-встроенные defaults < внешний YAML < environment < JVM system properties < CLI
+packaged defaults < external YAML < environment < JVM system properties < CLI
 ```
 
-Всё пространство `ioc.*` строгое. Опечатка или удалённый параметр в YAML,
-environment, system property либо командной строке останавливает запуск. Оператор
-не должен ошибочно считать, что настройка безопасности или доставки применена,
-когда приложение молча её проигнорировало.
+Classpath импортирует необязательный `./configs/application.yml`. Установленный
+unit дополнительно загружает `<prefix>/etc/application.yml` из своего рабочего
+каталога. Импорты Boot и документы и файлы активных профилей также участвуют.
+Переданный `SPRING_APPLICATION_JSON` может переопределить обычные переменные
+окружения и свойства JVM; CLI сохраняет высший приоритет. Учитывайте этот вход
+при исследовании настройки, которая выглядит не подчиняющейся YAML.
 
-Не редактируйте установленный YAML на месте. Подготовьте отдельный candidate и
-примените его штатным helper:
+Пространство `ioc.*` строгое, включая объявления, затенённые другим источником.
+Опечатка или удалённый ключ в загруженном YAML, окружении, свойствах JVM или CLI
+останавливает запуск. Префикс `IOC_*` зарезервирован; посторонние переменные
+оператора должны использовать другой префикс. Синтаксически правильный YAML
+может не пройти преобразование, семантические ограничения, допуск реестра или
+плана либо последующие проверки рабочего графа.
+
+Настройки читаются при запуске; общей горячей перезагрузки нет. Подготовьте
+отдельный candidate вместо изменения рабочего YAML. Укажите существующий
+каталог установки в `install_prefix`, затем выполните:
 
 ```bash
-sudo cp <prefix>/etc/application.yml ./application.candidate.yml
-sudo chown "$(id -u):$(id -g)" ./application.candidate.yml
+install_prefix=/srv/ioc-extractor
+sudo cp -- "$install_prefix/etc/application.yml" ./application.candidate.yml
+sudo chown -- "$(id -u):$(id -g)" ./application.candidate.yml
 ${EDITOR:-vi} ./application.candidate.yml
-sudo <prefix>/bin/ioc-config check ./application.candidate.yml
-sudo <prefix>/bin/ioc-config apply ./application.candidate.yml
+sudo "$install_prefix/bin/ioc-config" check ./application.candidate.yml
+sudo "$install_prefix/bin/ioc-config" apply ./application.candidate.yml
 ```
 
-`check` выполняет side-effect-free проверку синтаксиса. `apply` повторно
-проверяет точные staged bytes, атомарно заменяет live-файл, перезапускает сервис
-и ожидает health. Если typed или semantic startup не проходит, предыдущий YAML
-восстанавливается, а отклонённый candidate сохраняется для диагностики.
-Синтаксическая ошибка получает `CONFIG.YAML_INVALID` со строкой и столбцом, но
-без вывода содержимого строки.
+`check [candidate.yml]` подготавливает доступную сервису копию и проверяет
+синтаксис, строгие имена, типизированную привязку, семантику, реестры и планы в
+контексте Spring только с конфигурацией. Без candidate проверяется установленный
+YAML. Проверка работает от учётной записи сервиса, из каталога установки, с
+установленным systemd EnvironmentFile и параметрами JVM. Участвуют defaults
+classpath, candidate, разрешённые импорты, профили и эффективные переопределения.
+Поэтому более приоритетное переопределение может скрыть значение candidate.
+При неожиданном результате исследуйте эффективные источники.
 
-Секреты передавайте через placeholders вида `${SMB_PASSWORD}` и не записывайте
-их непосредственно в YAML.
+Успех выводит `CONFIG.SEMANTIC_VALID` и возвращает `0`. Он не открывает рабочие
+БД, не создаёт транспортные соединения, не запускает приём и не проверяет
+текущую БД и её политику, пути, удалённый доступ и восстановление. Обязательные
+импорты могут выполнять ввод-вывод; ограниченный граф бинов не изолирует ресурсы.
+Используйте установленный помощник для этой короткоживущей проверки. Внутренний
+разбор только YAML подтверждает через `CONFIG.YAML_VALID` лишь синтаксис.
+
+`apply` требует отдельный обычный файл без символьной ссылки. Он берёт
+блокировку применения, подготавливает и повторно проверяет точные байты,
+сохраняет рабочий YAML, атомарно заменяет его, перезапускает сервис и ожидает
+`UP`. Исходный candidate может находиться в любом доступном root месте;
+проверяется подготовленная копия, доступная сервису. Не полагайтесь на
+относительные импорты рядом с исходным candidate: Boot разрешает относительные
+ресурсы от расположения подготовленного файла в установленном `etc`.
+Используйте стабильные для установки пути импортов и согласованный выбор
+профилей. Отдельный check не резервирует окружение и candidate для будущего
+apply; при применении выполняется новая проверка.
+
+Отказ предварительной проверки сохраняет рабочий YAML и работающий сервис.
+Если после замены не проходит перезапуск или health, помощник сохраняет
+`application.yml.rejected-<stamp>`, восстанавливает
+`application.yml.backup-<stamp>` и пытается перезапустить прежнюю конфигурацию.
+Проверьте итог: восстановленный YAML не доказывает здоровье прежнего сервиса.
+Восстановление файла не отменяет миграции БД, активацию жизненного цикла,
+принятую работу и удалённые эффекты. До изменения настроек, затрагивающих
+состояние, выполните соответствующую процедуру резервного копирования и миграции.
+
+Systemd unit повторяет семантическую проверку в `ExecCondition`; ошибка с кодом
+`78` пропускает активацию без цикла перезапусков. Используйте
+`journalctl -u ioc-extractor` и вывод checker для определения неуспешной фазы.
+См. [развёртывание](deployment.md) и [упаковку](../../../packaging/README.md)
+для восстановления приложения и БД.
+
+Секреты передавайте через защищённые переменные с placeholders вроде
+`${SMB_PASSWORD}`, а не буквальные значения YAML. Контролируемый вывод checker
+исключает переданные значения и тексты исключений; имена и пути candidate
+тоже могут быть чувствительными. Обычные DEBUG-логи фреймворка и произвольные
+appenders находятся вне этой гарантии.
 
 ### Синтаксис значений
 
-- Duration задаётся в Spring-формате: `500ms`, `10s`, `5m`, `2h`, `7d`.
-- Boolean: `true` или `false`.
-- Пути могут быть абсолютными или относительными к рабочему каталогу процесса.
-  Установленный сервис использует installation prefix как рабочий каталог.
-- Списки задаются YAML-последовательностью или inline: `[ "*.html", "*.docx" ]`.
-- Environment names используют uppercase underscore form, например
-  `ioc.pipeline.failure-policy` → `IOC_PIPELINE_FAILURE_POLICY`. Для индексированных
-  списков предпочитайте YAML: частичный override элемента может отбросить его
-  соседние поля из источника с меньшим приоритетом.
+- Длительности используют синтаксис Spring: `500ms`, `10s`, `5m`, `2h`, `7d`.
+  Числа без единиц зависят от контекста; задавайте единицы явно. Требования к
+  положительности и границам действуют для каждой настройки отдельно; ноль
+  не является универсальным способом отключения.
+- Логические значения: `true` или `false`.
+- Пути абсолютны либо относительны рабочему каталогу процесса; установленный
+  сервис использует каталог установки. Это не меняет базу относительных
+  импортов Boot: она определяется импортирующим ресурсом конфигурации.
+- Списки задаются YAML-последовательностями или inline: `[ "*.html", "*.docx" ]`.
+  Источник с высшим приоритетом, задающий список, заменяет его целиком, включая
+  поля элементов и хвост менее приоритетных источников. Передавайте полные
+  элементы. Записи словарей объединяются; для общего ключа побеждает более
+  приоритетное значение.
+- Имена окружения IOC используют верхний регистр и подчёркивания, например
+  `ioc.pipeline.failure-policy` → `IOC_PIPELINE_FAILURE_POLICY`. Они проверяются
+  по схеме IOC, а не допускаются по общему предположению о написании.
+  Предпочитайте полные списки YAML индексным переопределениям окружения.
 
-## Runtime и observability
+### Неуспешные проверки
 
-| Параметр | Тип / значения | Встроенный default | Рекомендация |
+| Вывод | Действие |
+|---|---|
+| `CONFIG.YAML_UNREADABLE` / `CONFIG.SEMANTIC_UNREADABLE` | Проверьте путь, тип файла и доступность подготовленного ввода сервису. |
+| `CONFIG.YAML_INVALID` | Исправьте синтаксис YAML по строке и столбцу; текст строки не выводится. |
+| `CONFIG.UNKNOWN_PROPERTY` и применимые `CONFIG.LEGACY_*` | Исправьте или мигрируйте имя во всех объявляющих источниках, включая затенённые. |
+| `CONFIG.BINDING_FAILED` | Используйте документированный тип и допустимые значения селектора для указанного поля. |
+| `CONFIG.VALIDATION_FAILED` | Исправьте ограничения полей и связей между секциями; последующие проверки могли не выполниться. |
+| `CONFIG.REGISTRY` | Проверьте зарегистрированные имена, ссылки артефактов, политики записи и именованные планы обработки. |
+| `CONFIG.SEMANTIC_USAGE` / `CONFIG.SEMANTIC_SOURCE_OVERRIDE` | Используйте поддерживаемый вызов помощника; не расширяйте источники контекста бинами. |
+| `CONFIG.CHECK_FAILED` | Исследуйте незавершённую проверку, включая обязательные импорты; это не принятие конфигурации и не доказанная ошибка значения. |
+
+Ошибки checker возвращают `78`; shell-помощник также может отказать из-за
+подготовки файлов, systemd, перезапуска и health. Сохраните вывод и определите
+неуспешную фазу. Успешная предварительная проверка не заменяет проверку здоровья
+сервиса после apply. [Внутренний контракт отчётов](../../dev/ru/configuration-failure-reports.md)
+уточняет категории, координаты и ограничения раскрытия данных.
+
+## Режим работы и наблюдаемость
+
+| Параметр | Тип / значения | Встроенное значение | Рекомендация |
 |---|---|---|---|
-| `ioc.runtime.mode` | `oneshot`, `daemon` | `oneshot` | `daemon` предназначен для долгоживущего systemd-сервиса. |
-| `ioc.observability.mode` | `oneshot`, `daemon` | `oneshot` | Держите согласованным с runtime mode. `daemon` включает rolling ECS JSON logs. |
-| `ioc.observability.per-item-trace-enabled` | boolean | `false` | Высокообъёмный TRACE для каждого индикатора. Включайте только для ограниченной диагностики. |
+| `ioc.runtime.mode` | `oneshot`, `daemon` | `oneshot` | Режим `daemon` предназначен для долгоживущего systemd-сервиса. |
+| `ioc.observability.mode` | `oneshot`, `daemon` | `oneshot` | Согласуйте с режимом исполнения. `daemon` включает ротацию файлов ECS JSON. |
+| `ioc.observability.per-item-trace-enabled` | логическое | `false` | Многословный TRACE для каждого индикатора; включайте только для ограниченной диагностики. |
 
 ## Хранилища
 
@@ -70,43 +156,55 @@ Dataframe database — канонический источник бизнес-д
 основным файлом; копируйте весь `var/db` при остановленном сервисе либо применяйте
 согласованную SQLite backup procedure.
 
-| Параметр | Тип / значения | Встроенный default | Рекомендация |
+| Параметр | Тип / значения | Встроенное значение | Рекомендация |
 |---|---|---|---|
-| `ioc.storage.service.type` | `jdbc` | `jdbc` | Поддерживается JDBC/SQLite service store. |
-| `ioc.storage.service.url` | JDBC URL | `jdbc:sqlite:./var/db/ioc-service.db` | Не объединяйте с dataframe DB. |
-| `ioc.storage.service.sqlite.tuning` | `low-memory`, `balanced`, `high-throughput` | `low-memory` | `low-memory` для ограниченных/shared hosts, `balanced` при измеренном запасе памяти, `high-throughput` только на dedicated high-memory host после load testing. |
-| `ioc.storage.service.pool.write-max` | положительное целое | `1` | Для single-writer модели SQLite оставляйте `1`. |
-| `ioc.storage.service.pool.read-max` | положительное целое | `2` | Увеличивайте только после измерения конкурентных чтений ledger. |
-| `ioc.storage.dataframe.type` | `jdbc` | `jdbc` | Каноническое JDBC/SQLite storage. |
-| `ioc.storage.dataframe.url` | JDBC URL | `jdbc:sqlite:./var/db/ioc-dataframe.db` | Файл является источником бизнес-данных. |
-| `ioc.storage.dataframe.sqlite.tuning` | `low-memory`, `balanced`, `high-throughput` | `low-memory` | Большие presets полезнее dataframe scans, но учитывайте JVM native memory и systemd limits. |
-| `ioc.storage.dataframe.pool.write-max` | положительное целое | `1` | Для SQLite оставляйте `1`. |
-| `ioc.storage.dataframe.pool.read-max` | положительное целое | `2` | Повышайте только после load testing. |
+| `ioc.storage.service.type` | `jdbc` | `jdbc` | Поддерживается только JDBC/SQLite. |
+| `ioc.storage.service.url` | JDBC URL | `jdbc:sqlite:./var/db/ioc-service.db` | Файл состояния координации; храните отдельно от dataframe DB. |
+| `ioc.storage.service.sqlite.tuning` | `low-memory`, `balanced`, `high-throughput` | `low-memory` | `low-memory` для ограниченных/общих хостов, `balanced` при измеренном запасе; `high-throughput` только на выделенном хосте с большим запасом памяти после нагрузочной проверки. |
+| `ioc.storage.service.pool.write-max` | положительное целое | `1` | Для модели SQLite с одним писателем оставляйте `1`. |
+| `ioc.storage.service.pool.read-max` | положительное целое | `2` | Увеличивайте только после измерений конкурентных чтений. |
+| `ioc.storage.dataframe.type` | `jdbc` | `jdbc` | Поддерживается только JDBC/SQLite. |
+| `ioc.storage.dataframe.url` | JDBC URL | `jdbc:sqlite:./var/db/ioc-dataframe.db` | Файл канонических бизнес-данных; храните отдельно от service DB. |
+| `ioc.storage.dataframe.sqlite.tuning` | `low-memory`, `balanced`, `high-throughput` | `low-memory` | `low-memory` для ограниченных/общих хостов, `balanced` при измеренном запасе; `high-throughput` только на выделенном хосте с большим запасом памяти после нагрузочной проверки. |
+| `ioc.storage.dataframe.pool.write-max` | положительное целое | `1` | Для модели SQLite с одним писателем оставляйте `1`. |
+| `ioc.storage.dataframe.pool.read-max` | положительное целое | `2` | Увеличивайте только после измерений конкурентных чтений. |
 
-## Политика pipeline
+## Политика конвейера
 
-| Параметр | Тип / значения | Встроенный default | Рекомендация |
+| Параметр | Тип / значения | Встроенное значение | Рекомендация |
 |---|---|---|---|
-| `ioc.pipeline.deduplicate` | boolean | `true` | Удаляет повторы внутри одного batch. Межзапусковая дедупликация остаётся в canonical storage. |
-| `ioc.pipeline.failure-policy` | `fail-fast`, `collect-and-continue` | `fail-fast` | Для unattended daemon используйте `collect-and-continue`: валидные строки могут быть записаны при итоговом отчёте об ошибках. |
-| `ioc.pipeline.max-diagnostics-per-run` | положительное целое | `10000` | Ограничивает память и объём вывода. Уменьшайте на малых хостах или для шумных недоверенных inputs. |
+| `ioc.pipeline.deduplicate` | логическое | `true` | Удаляет повторы внутри одного входного пакета. Межзапусковую дедупликацию обеспечивает каноническое хранилище. |
+| `ioc.pipeline.failure-policy` | `fail-fast`, `collect-and-continue` | `fail-fast` | Для автоматического приёма daemon используйте `collect-and-continue`: корректные строки могут записываться при итоговом отчёте об ошибках. |
+| `ioc.pipeline.max-diagnostics-per-run` | положительное целое | `10000` | Ограничивает память и объём вывода. Уменьшайте на малых хостах или при шумном недоверенном вводе. |
 
 ## Планы обработки IOC
 
-Подготовка документа всегда использует приватный дисковый workspace. Физические лимиты не меняют семантическую идентичность canonical receipts. Исходный текст и extracted occurrences не входят в этот бюджет.
+Подготовка документа использует приватное дисковое рабочее пространство, включая
+потоковый текст источника и вхождения. Физические бюджеты не меняют семантическую
+идентичность канонических квитанций. Это ограничения допуска, кеша, строк и
+диска, а не граница общего heap JVM, выделений parser или нативной памяти.
+Область измерений и ограничения приведены в
+[руководстве по ресурсам](../bulk-resource-sizing.md).
 
 | Параметр | По умолчанию | Значение |
 | --- | --- | --- |
 | `ioc.processing.workspace.directory` | `./var/document-preparation` | Приватный каталог сервиса на локальном диске. |
-| `ioc.processing.workspace.memory-bytes` | `67108864` | Общий бюджет admission для кеша и буферов строк всех артефактов. |
-| `ioc.processing.workspace.cache-kib` | `4096` | Размер кеша SQLite на workspace; mmap отключён. |
-| `ioc.processing.workspace.maximum-row-bytes` | `262144` | Максимальный размер закодированной подготовленной строки. |
+| `ioc.processing.workspace.memory-bytes` | `67108864` | Общий бюджет допуска кеша и строк для всех артефактов и принятых подготовок; не лимит heap. |
+| `ioc.processing.workspace.cache-kib` | `4096` | Целевой кеш страниц SQLite на рабочее пространство (не менее 64 KiB); mmap отключён. |
+| `ioc.processing.workspace.maximum-row-bytes` | `262144` | Максимум закодированной подготовленной строки: не более 16777216 байт и не меньше лимита поля. То же число ограничивает символы одной области HTML parser; превышение отклоняет подготовку вместо усечения. |
 | `ioc.processing.workspace.maximum-field-bytes` | `65536` | Максимальный размер поля в UTF-8. |
-| `ioc.processing.workspace.workspace-bytes` | `2147483648` | Квота source snapshot, базы и журнала одного запуска. |
-| `ioc.processing.workspace.total-disk-bytes` | `8589934592` | Общая квота каталога, включая сохранённые pins. |
-| `ioc.processing.workspace.batch-rows` | `128` | Максимум append между commit и проверками квоты (1..4096). |
-| `ioc.processing.workspace.retention` | `24h` | Неактивные просроченные pins удаляются при следующем admission; активные защищены lease. |
+| `ioc.processing.workspace.workspace-bytes` | `2147483648` | Дисковая квота снимка источника, БД и журнала одного запуска. |
+| `ioc.processing.workspace.total-disk-bytes` | `8589934592` | Общая квота каталога, включая удерживаемые данные. |
+| `ioc.processing.workspace.batch-rows` | `128` | Максимум строк группы добавления между commit и проверками квоты (1..4096). |
+| `ioc.processing.workspace.retention` | `24h` | Просроченные неактивные данные удаляются при следующем допуске; активные аренды защищены. |
 
+
+Бюджеты должны быть согласованы: лимит поля не превышает лимит строки, общий
+дисковый бюджет покрывает одно рабочее пространство, а память покрывает
+проверяемый запас кеша и рабочих строк. Срок хранения положителен. Допуск
+источника также должен укладываться в четверть дискового бюджета рабочего
+пространства; см. `ioc.ingestion.execution.max-source-bytes` ниже. Увеличение
+физической квоты не квалифицирует большую нагрузку без измерения всего сервиса.
 
 Дерево `ioc.processing` содержит обязательный `document-plan`. Именованные планы
 проверяются при запуске и исполняются для документа или processed-контракта
@@ -116,11 +214,11 @@ Dataframe database — канонический источник бизнес-д
 сменой политики документа нужно завершить незаконченные поступления и файлы
 в обработке со старой политикой. Неизменная политика может восстановить свою
 работу после перезапуска. Если старый закреплённый контракт импорта недоступен
-и готового stage нет, восстановление блокируется до возврата прежней
-конфигурации. Проверка документа использует полный fingerprint обработки,
+и готового запечатанного рабочего пространства нет, восстановление блокируется до возврата прежней
+конфигурации. Проверка документа использует полный отпечаток обработки,
 поэтому изменение другого объявленного плана тоже может потребовать завершения
 очереди. Во время смены политики допускается только один работающий daemon на
-общую service DB. Уже записанный импорт завершается по квитанции без повтора строк.
+общую БД сервиса. Уже записанный импорт завершается по квитанции без повтора строк.
 
 - `ioc.dataframe-import.contracts[].processed-route.plan` выбирает именованный
   план для одного контракта `processed`; для `as-is` это запрещено.
@@ -144,15 +242,15 @@ Dataframe database — канонический источник бизнес-д
   маршрутизирован либо указан в `ioc.processing.plans[].omitted-artifacts`.
 - `ioc.processing.plans[].observation-selection` принимает `retained-observations`
   либо `final-key` (по умолчанию для нового плана). Поставляемый документный план
-  использует `retained-observations`: `keep-first` сохраняет source-дедупликацию,
-  кратность mapped-коллизий и учёт ID/provenance; `last-nonempty` рассматривает все
-  наблюдения. `final-key` выбирает целую строку по конечному ключу после routing.
+  использует `retained-observations`: `keep-first` сохраняет выбор на уровне источника,
+  кратность коллизий отображения и учёт ID и происхождения; `last-nonempty` рассматривает все
+  наблюдения. `final-key` выбирает целую строку по конечному ключу после маршрутизации.
 - `ioc.processing.plans[].views` задаёт производные значения с одним входом.
   Поля записи: `ioc.processing.plans[].views[].name`,
   `ioc.processing.plans[].views[].operation` и
   `ioc.processing.plans[].views[].input`. Операция `network.host` извлекает
   хост. Операция `network.without-scheme` удаляет только HTTP(S), сохраняя
-  написание хоста, порт, путь, query и fragment. Обе операции проверяют весь
+  написание хоста, порт, путь, запрос и фрагмент. Обе операции проверяют весь
   адрес и сохраняют источник. Результат без протокола имеет тип URL при наличии
   деталей адреса, иначе DOMAIN или IPV4. Аргументы не принимаются.
   Для отдельного восстановленного представления `view.recover` нужны
@@ -204,11 +302,11 @@ Dataframe database — канонический источник бизнес-д
 
 ## Чтение источника
 
-| Параметр | Тип / значения | Встроенный default | Рекомендация |
+| Параметр | Тип / значения | Встроенное значение | Рекомендация |
 |---|---|---|---|
 | `ioc.source.type` | `auto` | `auto` | Автоматическое определение формата документа. |
-| `ioc.source.charset` | `auto` или Java charset | `auto` | Для legacy HTML/text задавайте `windows-1251` только при ошибке detection. DOCX/PDF параметр игнорируют. |
-| `ioc.source.section-markers` | список RE2-compatible regex | встроенные markers российских источников | Совпавший заголовок становится source label следующих IOC. Порядок сохраняется. |
+| `ioc.source.charset` | `auto` или имя кодировки Java | `auto` | Для старого HTML/текста задавайте, например, `windows-1251`, только при ошибке определения кодировки. DOCX/PDF игнорируют эту настройку. |
+| `ioc.source.section-markers` | список совместимых с RE2 выражений | встроенные русские маркеры источников | Совпавший заголовок становится меткой источника последующих индикаторов. Порядок сохраняется. |
 
 ## Refang и detection
 
@@ -216,13 +314,13 @@ Refang rules применяются по порядку: более специф
 короткими префиксами. Detection patterns должны быть RE2-compatible — без
 look-around и back-reference.
 
-| Параметр | Тип / значения | Встроенный default | Рекомендация |
+| Параметр | Тип / значения | Встроенное значение | Рекомендация |
 |---|---|---|---|
-| `ioc.refang.rules` | упорядоченный список | типовые defang replacements | При изменении переопределяйте список полностью. |
-| `ioc.refang.rules[].from` | строка | обязателен в rule | Литеральный заменяемый текст. |
-| `ioc.refang.rules[].to` | строка | обязателен в rule | Литеральная замена. |
-| `ioc.engine` | `re2j`, `jdk` | `re2j` | Предпочитайте linear-time `re2j`; `jdk` — compatibility fallback. |
-| `ioc.patterns` | map с ключами `IPV4`, `DOMAIN`, `URL`, `MD5`, `SHA1`, `SHA256` | встроенные patterns | Порядок map задаёт приоритет extraction. URL/IP должны выигрывать пересекающиеся domain spans. |
+| `ioc.refang.rules` | упорядоченный список | встроенные замены обезвреженных форм | При изменении заменяйте полный список правил. |
+| `ioc.refang.rules[].from` | строка | обязательно для правила | Буквальный текст для замены. |
+| `ioc.refang.rules[].to` | строка | обязательно для правила | Буквальная замена. |
+| `ioc.engine` | `re2j`, `jdk` | `re2j` | Предпочитайте `re2j` с линейным временем сопоставления; `jdk` — вариант совместимости. |
+| `ioc.patterns` | словарь с ключами `IPV4`, `DOMAIN`, `URL`, `MD5`, `SHA1`, `SHA256` | встроенные выражения | Порядок обхода словаря задаёт приоритет извлечения. URL/IP должны предшествовать перекрывающимся доменным фрагментам при обработке. |
 
 ## Классификация сети
 
@@ -230,12 +328,12 @@ look-around и back-reference.
 Доступны `has-query`, `has-path`, `has-port`, `has-path-or-port`, `is-ip`,
 `is-registrable`, `is-subdomain`, `is-onion`.
 
-| Параметр | Тип / значения | Встроенный default | Рекомендация |
+| Параметр | Тип / значения | Встроенное значение | Рекомендация |
 |---|---|---|---|
-| `ioc.classify.rules` | упорядоченный список | четыре production rules | Переопределяйте весь порядок целиком. |
-| `ioc.classify.rules[].when` | список predicates | обязателен, может быть пустым | В одном rule должны выполниться все predicates. |
-| `ioc.classify.rules[].url-match` | непустая строка | обязателен | URL match code целевой reputation system. |
-| `ioc.classify.rules[].host-match` | строка или null | опционален | Для URL-only variants используйте null. |
+| `ioc.classify.rules` | упорядоченный список | четыре производственных правила | Заменяйте весь упорядоченный набор правил. |
+| `ioc.classify.rules[].when` | список зарегистрированных предикатов | обязательно; может быть пустым | Все предикаты одного правила должны совпасть. |
+| `ioc.classify.rules[].url-match` | непустая строка | обязательно | Код сопоставления URL для репутационной системы. |
+| `ioc.classify.rules[].host-match` | строка или null | необязательно | Код сопоставления хоста; null для вариантов только с URL. |
 
 ## CSV и artifacts
 
@@ -243,332 +341,378 @@ look-around и back-reference.
 charset или enabled. Schema/identity changes меняют durable contract и должны
 проверяться на существующей DB и consumers.
 
-| Параметр | Тип / значения | Встроенный default | Рекомендация |
+| Параметр | Тип / значения | Встроенное значение | Рекомендация |
 |---|---|---|---|
-| `ioc.sink.csv.delimiter` | один символ | `;` | Должен отличаться от quote. |
-| `ioc.sink.csv.quote` | один символ | `"` | Должен отличаться от delimiter. |
-| `ioc.sink.csv.null-literal` | непустая строка | `NULL` | Маркер отсутствия значения без кавычек; запрещены разделитель, кавычка, CR и LF. |
-| `ioc.sink.csv.record-separator` | `lf`, `crlf` | `crlf` | Конец записи; комбинации и совместимость: [CSV output format](../../dev/csv-output-format.md). |
-| `ioc.sink.csv.header-quoting` | `all`, `minimal`, `none` | `all` | Кавычки у имён колонок, независимо от значений. |
-| `ioc.sink.csv.value-quoting` | `all`, `minimal`, `none` | `all` | `all` заключает все не-null значения в кавычки, включая пустую строку; `minimal` — только при необходимости; строгий `none` отклоняет значения, требующие кавычек или экранирования. |
-| `ioc.sink.csv.charset` | Java charset | `UTF-8` | При ALL/ALL замена символов в проекциях диагностируется; MINIMAL/NONE и immutable slices требуют точного кодирования. |
-| `ioc.sink.artifacts` | непустой список | masks, ip_list, address_blacklist, hashes, ioc_aggregate | Переопределяйте полные элементы, не отдельные indexes. Перед первой активацией прочитайте [гайд IOC aggregate](ioc-aggregate.md). |
-| `ioc.sink.artifacts[].name` | уникальная строка | обязателен | Stable identity, используемая export и row-key config. |
-| `ioc.sink.artifacts[].enabled` | boolean | обязателен | Disabled artifact не готовится и не проецируется. |
-| `ioc.sink.artifacts[].path` | путь | обязателен | Путь mutable projection. |
-| `ioc.sink.artifacts[].accepts` | список IOC types | обязателен | `IPV4`, `DOMAIN`, `URL`, `MD5`, `SHA1`, `SHA256`. |
-| `ioc.sink.artifacts[].include` | список filters | опционален | Должны совпасть все include predicates; также доступен `is-bare-ip`. |
-| `ioc.sink.artifacts[].exclude` | список filters | опционален | Совпавший predicate исключает строку; доступен `is-bare-ip`. |
-| `ioc.sink.artifacts[].id` | object | опционален | Нужен, если column использует deferred provider `id`. |
-| `ioc.sink.artifacts[].id.strategy` | `ascending`, `descending` | `ascending` в defaults | Направление public ID allocation. |
-| `ioc.sink.artifacts[].id.start` | `auto` или signed 64-bit integer | `auto` | `auto` продолжает durable baseline; failed reservations не переиспользуются. |
-| `ioc.sink.artifacts[].columns` | непустой упорядоченный список | зависит от artifact | Задаёт CSV header order и canonical columns. |
-| `ioc.sink.artifacts[].columns[].name` | непустая строка | обязателен | Уникальное имя output column внутри artifact. |
-| `ioc.sink.artifacts[].columns[].from` | provider | обязателен | `id`, `value`, `source.label`, `match.url`, `match.host`, `address.url`, `address.ip`, `const`. |
-| `ioc.sink.artifacts[].columns[].value` | строка или null | опционален | Literal для `const`. |
-| `ioc.sink.artifacts[].columns[].type` | `TEXT`, `INTEGER`, `REAL`, `BLOB`, `NUMERIC` | inferred/text | SQLite affinity, прежде всего для constant columns. |
-| `ioc.sink.artifacts[].columns[].when-type` | IOC type | опционален | Provider выводится только для выбранного IOC type. |
-| `ioc.sink.artifacts[].columns[].when-types` | непустой список IOC types | опционален | Provider выводится для любого указанного типа; совместно с `when-type` использовать нельзя. Порядок списка не влияет на результат. |
-| `ioc.sink.artifacts[].columns[].when` | список filters | опционален | Должны совпасть все условия. `is-clean-host` выбирает чистый домен; `is-address-with-detail` выбирает адрес со схемой, путём, параметрами запроса или портом. Условия применяются после классификации и сочетаются с фильтром типа. |
-| `ioc.sink.artifacts[].columns[].transform` | упорядоченный список | опционален | Зарегистрированы `lower`, `lower-host`, `upper` и `strip-prefix`; параметризованная форма — `strip-prefix:<text>`. Для deferred `id` запрещён. |
-| `ioc.sink.artifacts[].write-policy` | объект | опционален | Правила выбора повторов и изменения полей для одного артефакта; при отсутствии сохраняется `keep-first`. |
-| `ioc.sink.artifacts[].write-policy.duplicate-selection` | `keep-first`, `last-nonempty` | `keep-first` при отсутствии | `last-nonempty` выбирает одно целое вхождение с непустым значением `selection-column`. |
-| `ioc.sink.artifacts[].write-policy.selection-column` | выходная колонка | опционален | Обязательна для `last-nonempty`; колонка идентичности или ID не подходит. |
-| `ioc.sink.artifacts[].write-policy.fields` | список | опционален | Правила обновления полей вне ключа. |
-| `ioc.sink.artifacts[].write-policy.fields[].name` | выходная колонка | обязателен внутри правила | Колонка идентичности или ID не подходит. |
-| `ioc.sink.artifacts[].write-policy.fields[].update` | `latest-registered` | обязателен внутри правила | Использует долговечный порядок поступлений независимо от завершения воркеров. |
-| `ioc.sink.artifacts[].write-policy.fields[].empty` | `keep-existing` | обязателен внутри правила | Пустой ввод сохраняет значение и его приоритет. |
+| `ioc.sink.csv.delimiter` | один символ | `;` | Должен отличаться от кавычки. |
+| `ioc.sink.csv.quote` | один символ | `"` | Должна отличаться от разделителя. |
+| `ioc.sink.csv.null-literal` | непустая строка | `NULL` | Маркер отсутствующей ячейки без кавычек; не может содержать разделитель, кавычку, CR или LF. |
+| `ioc.sink.csv.record-separator` | `lf`, `crlf` | `crlf` | Явные окончания записей. Сочетания и совместимость описаны в [формате CSV](../../dev/csv-output-format.md). |
+| `ioc.sink.csv.header-quoting` | `all`, `minimal`, `none` | `all` | Политика кавычек для имён колонок независимо от ячеек данных. |
+| `ioc.sink.csv.value-quoting` | `all`, `minimal`, `none` | `all` | `all` заключает ненулевые значения в кавычки; `minimal` — только при необходимости; строгий `none` отклоняет значения, требующие кавычек или экранирования. |
+| `ioc.sink.csv.charset` | имя кодировки Java | `UTF-8` | Проекции ALL/ALL диагностируют замену символов; MINIMAL/NONE и неизменяемые срезы требуют кодирования без потерь. |
+| `ioc.sink.artifacts` | непустой список | masks, ip_list, address_blacklist, hashes, ioc_aggregate | Заменяйте полные элементы списка, а не отдельные индексы. До первого включения прочитайте [руководство по агрегату](ioc-aggregate.md). |
+| `ioc.sink.artifacts[].name` | уникальная строка | обязательно | Стабильная идентичность артефакта для экспорта и конфигурации ключа строки. |
+| `ioc.sink.artifacts[].enabled` | логическое | обязательно | Отключённые артефакты не подготавливаются и не проецируются. |
+| `ioc.sink.artifacts[].path` | путь | обязательно | Файл изменяемой проекции; корень файловой системы недопустим. Существующие каталоги и доступ проверяются при исполнении. |
+| `ioc.sink.artifacts[].accepts` | список типов IOC | обязательно | Значения: `IPV4`, `DOMAIN`, `URL`, `MD5`, `SHA1`, `SHA256`. |
+| `ioc.sink.artifacts[].include` | список имён фильтров | необязательно | Все включающие предикаты должны совпасть. Также доступен `is-bare-ip`. |
+| `ioc.sink.artifacts[].exclude` | список имён фильтров | необязательно | Совпавший предикат исключает строку. Также доступен `is-bare-ip`. |
+| `ioc.sink.artifacts[].id` | объект | необязательно | Обязателен, если колонка использует отложенный поставщик `id`. |
+| `ioc.sink.artifacts[].id.strategy` | `ascending`, `descending` | `ascending` во встроенных настройках | Направление выделения канонических ID и ID изменяемой проекции; слоты неизменяемого экспорта имеют отдельный контракт идентичности. |
+| `ioc.sink.artifacts[].id.start` | `auto` или знаковое 64-битное целое | `auto` | `auto` продолжает после сохранённой границы. Неуспешные резервации не переиспользуются. |
+| `ioc.sink.artifacts[].columns` | непустой упорядоченный список | зависит от артефакта | Задаёт порядок заголовков CSV и колонки канонической таблицы. |
+| `ioc.sink.artifacts[].columns[].name` | непустая строка | обязательно | Имя выходной колонки; уникально внутри артефакта. |
+| `ioc.sink.artifacts[].columns[].from` | имя поставщика | обязательно | `id`, `value`, `source.label`, `match.url`, `match.host`, `address.url`, `address.ip` или `const`. |
+| `ioc.sink.artifacts[].columns[].value` | строка или null | необязательно | Буквальное значение для `const`. |
+| `ioc.sink.artifacts[].columns[].type` | `TEXT`, `INTEGER`, `REAL`, `BLOB`, `NUMERIC` | определяется автоматически/TEXT | Типовая аффинность SQLite, прежде всего для константных колонок. |
+| `ioc.sink.artifacts[].columns[].when-type` | тип IOC | необязательно | Выводит значение поставщика только для выбранного типа IOC. |
+| `ioc.sink.artifacts[].columns[].when-types` | непустой список типов IOC | необязательно | Выводит значение для любого из перечисленных типов; нельзя совмещать с `when-type`. Порядок не влияет на результат. |
+| `ioc.sink.artifacts[].columns[].when` | список имён фильтров | необязательно | Все условия должны совпасть. `is-clean-host` выбирает чистый домен; `is-address-with-detail` — адрес со схемой, путём, запросом или портом. Условия выполняются после классификации и совмещаются с фильтром типа. |
+| `ioc.sink.artifacts[].columns[].transform` | упорядоченный список | необязательно | Зарегистрированы `lower`, `lower-host`, `upper` и `strip-prefix`; параметризованная форма — `strip-prefix:<text>`. Запрещено для отложенного `id`. |
+| `ioc.sink.artifacts[].write-policy` | объект | необязательно | Выбор повторов и изменение полей одного артефакта; отсутствие сохраняет поведение keep-first. |
+| `ioc.sink.artifacts[].write-policy.duplicate-selection` | `keep-first`, `last-nonempty` | `keep-first` при отсутствии | `last-nonempty` выбирает одно целое отображённое вхождение с непустым значением колонки выбора. |
+| `ioc.sink.artifacts[].write-policy.selection-column` | выходная колонка | необязательно | Обязательна для `last-nonempty`; не может быть колонкой идентичности или ID. |
+| `ioc.sink.artifacts[].write-policy.fields` | список | необязательно | Выходные поля вне ключа с упорядоченной политикой обновления. |
+| `ioc.sink.artifacts[].write-policy.fields[].name` | выходная колонка | обязательно внутри правила поля | Не может быть колонкой идентичности или ID. |
+| `ioc.sink.artifacts[].write-policy.fields[].update` | `latest-registered` | обязательно внутри правила поля | Использует сохранённую регистрацию доставки независимо от завершения обработчика. |
+| `ioc.sink.artifacts[].write-policy.fields[].empty` | `keep-existing` | обязательно внутри правила поля | Пустой ввод сохраняет прежнее значение и его происхождение. |
 
-## Canonical artifact identity
+## Каноническая идентичность артефактов
 
-Каждому enabled sink artifact соответствует один identity entry. Key columns
-должны существовать в columns этого artifact. Смена identity на заполненной DB
-защищена как schema drift.
+Каждому включённому артефакту sink соответствует одно определение идентичности.
+Ключевые колонки должны присутствовать в списке колонок артефакта. Смена
+идентичности заполненной БД защищена проверкой расхождения схемы.
 
-| Параметр | Тип / значения | Встроенный default | Рекомендация |
+| Параметр | Тип / значения | Встроенное значение | Рекомендация |
 |---|---|---|---|
-| `ioc.artifact-identity.artifacts` | непустой список | по entry на built-in artifact | Согласуйте names с sink artifacts. |
-| `ioc.artifact-identity.artifacts[].name` | artifact name | обязателен | Ссылка на `ioc.sink.artifacts[].name`. |
-| `ioc.artifact-identity.artifacts[].key-columns` | непустой список | зависит от artifact | Значения, формирующие canonical row key. |
-| `ioc.artifact-identity.artifacts[].key-mode` | `composite` или `first-non-empty` | `composite` | `composite` сохраняет весь настроенный tuple; `first-non-empty` предназначен только для alternative-value колонок. |
-| `ioc.artifact-identity.artifacts[].epoch` | positive integer или omitted | omitted | Явная generation identity schema для контролируемой migration. |
-| `ioc.artifact-identity.artifacts[].record-key` | versioned definition name | зависит от artifact | Имя текущей canonical row-key формулы; само поле не выполняет migration. |
-| `ioc.artifact-identity.artifacts[].match-keys` | список named column sets | зависит от artifact | Versioned alternative keys для active-record matching; множественное совпадение отклоняется как конфликт. |
-| `ioc.artifact-identity.artifacts[].match-keys[].name` | versioned definition name | обязателен | Стабильная ссылка из import contract. |
-| `ioc.artifact-identity.artifacts[].match-keys[].key-columns` | непустой список columns | обязателен | Tuple альтернативного active matching. |
+| `ioc.artifact-identity.artifacts` | непустой список | по записи на встроенный артефакт | Согласуйте имена с артефактами sink. |
+| `ioc.artifact-identity.artifacts[].name` | имя артефакта | обязательно | Ссылается на `ioc.sink.artifacts[].name`. |
+| `ioc.artifact-identity.artifacts[].key-columns` | непустой список | зависит от артефакта | Значения, формирующие канонический ключ строки. |
+| `ioc.artifact-identity.artifacts[].key-mode` | `composite` или `first-non-empty` | `composite` | `composite` сохраняет весь настроенный кортеж; `first-non-empty` используйте только для колонок альтернативных значений. |
+| `ioc.artifact-identity.artifacts[].epoch` | положительное целое или отсутствие | отсутствует | Явное поколение схемы идентичности для контролируемой миграции. |
+| `ioc.artifact-identity.artifacts[].record-key` | имя версионированного определения | зависит от артефакта | Именует текущую формулу канонического ключа; изменение само по себе не мигрирует сохранённую идентичность. |
+| `ioc.artifact-identity.artifacts[].match-keys` | список именованных наборов колонок | зависит от артефакта | Версионированные альтернативные ключи для активных записей; множественное совпадение отклоняется как конфликт. |
+| `ioc.artifact-identity.artifacts[].match-keys[].name` | имя версионированного определения | обязательно | Стабильная ссылка контракта. |
+| `ioc.artifact-identity.artifacts[].match-keys[].key-columns` | непустой список колонок | обязательно | Кортеж альтернативного поиска активных записей. |
 
-На время rollback overlap с v0.2.0 бинарь 0.3.0 принимает без `record-key`,
-`match-keys` и `epoch` только четыре точные built-in identity-записи из packaged
-template v0.2.0. Они преобразуются в поставляемые current definitions, а startup
-пишет `CONFIG.LEGACY_ARTIFACT_IDENTITY`. Custom или изменённая запись без
-`record-key` не проходит semantic validation. Пока присутствует shipping
-aggregate sink, полная legacy base из четырёх записей также разрешается в
-shipped identity `ioc_aggregate`; partial или изменённые legacy definitions этой
-совместимости не получают. После исключения v0.2.0 из rollback targets перенесите
-все явные current definitions из `application.yml.new` через `ioc-config apply`;
-compatibility shape не является шаблоном для новых artifacts. Этот adapter
-относится только к переходу между релизами и удаляется, когда прямой
-upgrade/rollback с v0.2.0 больше не поддерживается.
+В поддерживаемом окне отката к v0.2.0 бинарь 0.3.0 принимает без `record-key`,
+`match-keys` и `epoch` только четыре точных встроенных определения идентичности
+из шаблона v0.2.0. Они преобразуются в поставляемые текущие определения, а
+запуск сообщает `CONFIG.LEGACY_ARTIFACT_IDENTITY`. Пользовательская или
+изменённая запись без `record-key` не проходит семантическую проверку. При
+наличии поставляемого sink агрегата полный старый набор из четырёх записей
+также разрешается в поставляемую идентичность `ioc_aggregate`; неполные и
+изменённые определения этой совместимости не получают. После исключения
+v0.2.0 из целей отката перенесите все явные текущие определения из
+`application.yml.new` через `ioc-config apply`; старая структура не является
+шаблоном для новых артефактов. Этот адаптер относится только к переходу между
+релизами и удаляется, когда прямое обновление и откат с v0.2.0 больше не
+поддерживаются.
 
-## Managed dataframe import
+## Управляемый импорт dataframe
 
-Managed import выключен в обоих поставляемых конфигурациях. При включении intake
-открывается только после общего startup recovery barrier для ordinary ingestion
-и managed import. Оставляйте `enabled: false`, пока source, authority и contract
-catalog не квалифицированы для конкретного deployment.
+Управляемый импорт отключён в обеих поставляемых конфигурациях. При включении
+приём открывается только после общего барьера восстановления обычного ingest
+и управляемого импорта. Сохраняйте `enabled: false`, пока источник, полномочия
+и каталог контрактов не квалифицированы для конкретной установки. Для SMB также
+нужны подготовленное оператором приватное пространство имён и проверки двумя
+учётными записями из [руководства импорта](../dataframe-import.md#submit-an-smb-delivery).
+Дополнительного параметра для создания или аудита этого пространства нет.
 
-Production template использует низколатентный event-first профиль: полный
-listing import каждые `2s`, stability window `2s` и retry delay `2s`; ordinary
-local ingest сканируется каждые `5s` с quiet period `2s`; export объединяет
-изменения в течение `1s`, имеет recovery poll `10s` и max cap `30s`; SMB
-notifications используют debounce `1s`, sync reconciliation — `10s`. Это
-override template, а не built-in defaults из таблицы ниже. Не уменьшайте quiet
-period ниже максимального времени неатомарной producer-side записи файла.
+Production template использует профиль с низкой задержкой и приоритетом
+событий: полное перечисление импорта каждые `2s`, окно стабильности `2s` и
+задержка повтора `2s`; обычный локальный приём сканируется каждые `5s` с
+периодом тишины `2s`; экспорт объединяет изменения в течение `1s`, имеет
+резервный опрос `10s` и максимальную отсрочку `30s`; уведомления SMB
+объединяются за `1s`, согласование синхронизации выполняется каждые `10s`.
+Это переопределения шаблона, а не встроенные значения из таблицы ниже. Период
+тишины не должен быть меньше самого долгого неатомарного копирования у
+производителя файла.
 
-| Параметр | Тип / значения | Встроенный default | Рекомендация |
+| Параметр | Тип / значения | Встроенное значение | Рекомендация |
 |---|---|---|---|
-| `ioc.dataframe-import.enabled` | boolean | `false` | Master runtime/catalog switch; startup fail-closed до завершения recovery. |
-| `ioc.dataframe-import.runtime.dirs.processing` | путь | `./var/import/processing` | Private transport-owned файлы после strict claim; для local source нужен тот же filesystem. |
-| `ioc.dataframe-import.runtime.dirs.snapshots` | путь | `./var/import/snapshots` | Private immutable snapshots; size и digest закрепляются в service ledger. |
-| `ioc.dataframe-import.runtime.dirs.staging` | путь | `./var/import/staging` | Sealed SQLite workspace на delivery; не пересекается с другими managed roots. |
-| `ioc.dataframe-import.runtime.dirs.terminal` | путь | `./var/import/terminal` | Успешные terminal delivery units. |
-| `ioc.dataframe-import.runtime.dirs.quarantine` | путь | `./var/import/quarantine` | Отклонённые или unsafe terminal delivery units. |
-| `ioc.dataframe-import.runtime.detect.use-watch-service` | boolean | `false` | Только optional latency hint; polling остаётся authority. |
-| `ioc.dataframe-import.runtime.detect.use-change-notifications` | boolean | `true` | Только optional SMB latency hint; complete listing остаётся authority при disabled/lost/rejected notifications. |
-| `ioc.dataframe-import.runtime.detect.reconcile-interval` | positive duration | `5s` | Complete-listing backstop для каждого source. |
-| `ioc.dataframe-import.runtime.stability.quiet-period` | non-negative duration | `2s` | Период неизменной metadata до claim. |
-| `ioc.dataframe-import.runtime.retry.delay` | non-negative duration | `5s` | Durable next-attempt delay без sleep detector/poller thread. |
-| `ioc.dataframe-import.runtime.limits.maximum-snapshot-bytes` | positive bytes | `268435456` | Hard snapshot limit, проверяемый при streaming. |
-| `ioc.dataframe-import.runtime.limits.recovery-batch-size` | positive integer | `100` | Bound одного pre-promotion recovery pass. |
-| `ioc.dataframe-import.runtime.retention.successful.max-age` | duration или отсутствует | `30d` | Максимальный возраст успешных protected source/report units. |
-| `ioc.dataframe-import.runtime.retention.successful.max-count` | неотрицательное целое | `0` | Максимум сохранённых успешных units; `0` отключает count-based selection. |
-| `ioc.dataframe-import.runtime.retention.successful.action` | `delete` или `archive` | `delete` | Действие для истёкшей успешной unit. |
-| `ioc.dataframe-import.runtime.retention.successful.archive-dir` | path | отсутствует | Обязательный protected destination при action `archive`. |
-| `ioc.dataframe-import.runtime.retention.unsuccessful.max-age` | duration или отсутствует | `90d` | Максимальный возраст rejected/partial protected source/report units. |
-| `ioc.dataframe-import.runtime.retention.unsuccessful.max-count` | неотрицательное целое | `0` | Максимум сохранённых rejected/partial units; `0` отключает count-based selection. |
-| `ioc.dataframe-import.runtime.retention.unsuccessful.action` | `delete` или `archive` | `delete` | Действие для истёкшей rejected/partial unit. |
-| `ioc.dataframe-import.runtime.retention.unsuccessful.archive-dir` | path | отсутствует | Обязательный protected destination при action `archive`. |
-| `ioc.dataframe-import.runtime.retention.interval` | positive duration | `1h` | Независимый bounded retention cadence. |
-| `ioc.dataframe-import.runtime.retention.batch-size` | positive integer | `100` | Максимум terminal deliveries одного retention pass. |
-| `ioc.dataframe-import.runtime.shutdown-timeout` | positive duration | `30s` | Bound остановки change hints и завершения принятой lane work до durable checkpoint. |
-| `ioc.dataframe-import.sources` | список | пусто | Local/SMB trust boundaries; обязателен при enabled. |
-| `ioc.dataframe-import.sources[].id` | уникальная строка | обязателен | Durable source ID. |
-| `ioc.dataframe-import.sources[].transport` | `local`, `smb` | обязателен | Для SMB нужна общая endpoint definition. |
-| `ioc.dataframe-import.sources[].location` | transport-relative путь | обязателен | Выделенный import location. |
-| `ioc.dataframe-import.sources[].endpoint` | sync endpoint ID | только SMB | Для local не задаётся. |
-| `ioc.dataframe-import.sources[].contracts` | список contract IDs | обязателен | Source allowlist. |
-| `ioc.dataframe-import.sources[].authority` | authority profile ID | обязателен | Mutation ceiling источника. |
-| `ioc.dataframe-import.authority-profiles` | список | пусто | Trust ceilings. |
-| `ioc.dataframe-import.authority-profiles[].id` | уникальная строка | обязателен | Стабильный profile ID. |
-| `ioc.dataframe-import.authority-profiles[].artifacts` | список artifacts | обязателен | Максимальный artifact allowlist. |
-| `ioc.dataframe-import.authority-profiles[].maximum-merge-policy` | merge policy | обязателен | Верхняя граница destructive mutation. |
-| `ioc.dataframe-import.authority-profiles[].allow-related-routing` | boolean | `false` | Разрешает явно описанные related branches. |
-| `ioc.dataframe-import.authority-profiles[].allow-machine-only-formula-preserve` | boolean | `false` | Разрешает exact formula-dangerous text только machine boundary. |
-| `ioc.dataframe-import.contracts` | список | пусто | Versioned recognition/mapping contracts. |
-| `ioc.dataframe-import.contracts[].id` | уникальная строка | обязателен | Contract identity. |
-| `ioc.dataframe-import.contracts[].version` | positive integer | обязателен | Явная behavior generation. |
-| `ioc.dataframe-import.contracts[].charset` | supported charset | обязателен | Обычно `UTF-8`. |
-| `ioc.dataframe-import.contracts[].dialect` | strict CSV dialect | обязателен | Parser boundary. |
-| `ioc.dataframe-import.contracts[].dialect.delimiter` | один символ | обязателен | Field delimiter. |
-| `ioc.dataframe-import.contracts[].dialect.quote` | один символ | обязателен | Отличается от delimiter. |
-| `ioc.dataframe-import.contracts[].dialect.record-separator` | `crlf-or-lf`, `lf`, `crlf` | обязателен | Accepted separator policy. |
-| `ioc.dataframe-import.contracts[].dialect.header-required` | boolean | в V1 только `true` | Headerless input запрещён. |
-| `ioc.dataframe-import.contracts[].dialect.null-literals` | exact strings | пусто | Явные `NULL` literals. |
-| `ioc.dataframe-import.contracts[].recognition` | exact signature | обязателен | Не зависит от filename и column order. |
-| `ioc.dataframe-import.contracts[].recognition.required-columns` | непустой список | обязателен | Все должны присутствовать после alias resolution. |
-| `ioc.dataframe-import.contracts[].recognition.optional-columns` | список | пусто | Допустимые необязательные headers. |
-| `ioc.dataframe-import.contracts[].recognition.ignored-columns` | список | пусто | Разрешённые, но не mapped headers. |
-| `ioc.dataframe-import.contracts[].recognition.aliases` | string map | пусто | External-to-canonical header mapping. |
-| `ioc.dataframe-import.contracts[].mode` | `as-is`, `processed` | обязателен | В `as-is` нет implicit preprocessing. |
-| `ioc.dataframe-import.contracts[].routing` | `target-only`, `related-artifacts` | обязателен | Related routing требует authority. |
-| `ioc.dataframe-import.contracts[].row-failure-policy` | `accept-valid`, `reject-delivery` | обязателен | Row isolation либо reject delivery. |
-| `ioc.dataframe-import.contracts[].duplicate-policy` | `coalesce`, `keep-first`, `last-nonempty` | обязателен | Детерминированная обработка повторов; `last-nonempty` сохраняет последнюю логическую CSV-запись с непустым значением колонки выбора. |
-| `ioc.dataframe-import.contracts[].duplicate-selection-column` | распознанный header | обязателен для `last-nonempty` | Колонка выбирает целую запись-победитель; значения разных повторов не объединяются по ячейкам. |
-| `ioc.dataframe-import.contracts[].renew-unchanged` | boolean | обязателен | Подтверждает ли exact no-op lifecycle validity. |
-| `ioc.dataframe-import.contracts[].formula-policy` | `reject`, `machine-only-preserve` | обязателен | Preserve требует source authority. |
-| `ioc.dataframe-import.contracts[].merge-default` | `keep-existing`, `fill-missing`, `replace-non-null`, `authoritative`, `reject-conflict` | обязателен | Override не превышает source ceiling. |
-| `ioc.dataframe-import.contracts[].artifacts` | список mappings | обязателен | Ровно один primary. |
-| `ioc.dataframe-import.contracts[].artifacts[].name` | artifact name | обязателен | Ссылка на sink/identity artifact. |
-| `ioc.dataframe-import.contracts[].artifacts[].role` | `primary`, `related` | обязателен | Branch role. |
-| `ioc.dataframe-import.contracts[].artifacts[].record-key` | definition ID | обязателен | Текущая active row-key definition. |
-| `ioc.dataframe-import.contracts[].artifacts[].match-keys` | список definition IDs | обязателен | Все имена объявлены у artifact. |
-| `ioc.dataframe-import.contracts[].artifacts[].merge-default` | merge policy | опционален | Artifact override ниже ceiling. |
-| `ioc.dataframe-import.contracts[].artifacts[].source-label-target` | целевая колонка | опционален | Получает настроенную метку managed-источника при processed import; target должен присутствовать в mapping этой ветки. |
-| `ioc.dataframe-import.contracts[].artifacts[].exactly-one-nonempty` | список target-колонок | пусто | Требует ровно один непустой carrier после mapping и отклоняет неоднозначные либо полностью пустые строки IOC aggregate. |
-| `ioc.dataframe-import.contracts[].artifacts[].columns` | список mappings | обязателен | Произвольный SQL/код запрещён. |
-| `ioc.dataframe-import.contracts[].artifacts[].columns[].target` | artifact column | обязателен | Unique target. |
-| `ioc.dataframe-import.contracts[].artifacts[].columns[].source` | recognized header | обязателен | Required/optional canonical header. |
-| `ioc.dataframe-import.contracts[].artifacts[].columns[].transforms` | ordered list | пусто | Только registered transforms. |
-| `ioc.dataframe-import.contracts[].artifacts[].columns[].merge-policy` | merge policy | опционален | Column override ниже ceiling. |
-| `ioc.dataframe-import.contracts[].artifacts[].columns[].validation` | зарегистрированный validator | опционален | Применяет именованную структурную проверку после transforms и до staging; произвольные выражения не принимаются. |
-| `ioc.dataframe-import.contracts[].requested-slot` | object | опционален | Только для artifact с external ID. |
-| `ioc.dataframe-import.contracts[].requested-slot.source-column` | recognized header | обязателен внутри object | Requested external slot. |
-| `ioc.dataframe-import.contracts[].requested-slot.profile` | export profile | обязателен внутри object | Slot scope. |
-| `ioc.dataframe-import.contracts[].requested-slot.existing-record-policy` | `preserve-existing`, `reject-mismatch` | обязателен внутри object | Survivor mismatch behavior. |
+| `ioc.dataframe-import.enabled` | логическое | `false` | Переключатель рабочего приёма; объявленные каталоги и планы проверяются и при отключении. Запуск закрывает приём до завершения восстановления. |
+| `ioc.dataframe-import.runtime.dirs.processing` | путь | `./var/import/processing` | Приватные файлы после строгого захвата транспортом; храните на одной файловой системе с каждым локальным inbox. |
+| `ioc.dataframe-import.runtime.dirs.snapshots` | путь | `./var/import/snapshots` | Приватные неизменяемые снимки байтов; размер и дайджест закреплены в журнале сервиса. |
+| `ioc.dataframe-import.runtime.dirs.staging` | путь | `./var/import/staging` | Запечатанные рабочие SQLite-файлы отдельных доставок; не должны пересекаться с другим управляемым корнем. |
+| `ioc.dataframe-import.runtime.dirs.terminal` | путь | `./var/import/terminal` | Успешные завершённые единицы доставки. |
+| `ioc.dataframe-import.runtime.dirs.quarantine` | путь | `./var/import/quarantine` | Отклонённые или небезопасные завершённые единицы доставки. |
+| `ioc.dataframe-import.runtime.detect.use-watch-service` | логическое | `false` | Необязательная локальная подсказка для задержки; polling остаётся основой корректности. |
+| `ioc.dataframe-import.runtime.detect.use-change-notifications` | логическое | `true` | Необязательная подсказка SMB для задержки; полное перечисление остаётся основой корректности при отключении, потере или отклонении уведомлений. |
+| `ioc.dataframe-import.runtime.detect.reconcile-interval` | положительная длительность | `5s` | Интервал полного перечисления для каждого настроенного источника. |
+| `ioc.dataframe-import.runtime.stability.quiet-period` | неотрицательная длительность | `2s` | Требуемый период неизменности метаданных до захвата. |
+| `ioc.dataframe-import.runtime.retry.delay` | неотрицательная длительность | `5s` | Сохранённая задержка следующей попытки; потоки обнаружения и опроса не спят. |
+| `ioc.dataframe-import.runtime.limits.maximum-snapshot-bytes` | положительное число байтов | `268435456` | Жёсткий лимит снимка одной доставки, проверяемый при потоковом копировании. |
+| `ioc.dataframe-import.runtime.limits.recovery-batch-size` | положительное целое | `100` | Граница одного прохода восстановления до канонической записи. |
+| `ioc.dataframe-import.runtime.retention.successful.max-age` | длительность или отсутствие | `30d` | Максимальный возраст защищённых единиц источник/отчёт успешных доставок. |
+| `ioc.dataframe-import.runtime.retention.successful.max-count` | неотрицательное целое | `0` | Максимум успешных единиц; `0` отключает выбор по количеству. |
+| `ioc.dataframe-import.runtime.retention.successful.action` | `delete` или `archive` | `delete` | Действие для просроченной успешной единицы. |
+| `ioc.dataframe-import.runtime.retention.successful.archive-dir` | путь | нет | Обязательное защищённое место назначения при действии `archive` для успешных единиц. |
+| `ioc.dataframe-import.runtime.retention.unsuccessful.max-age` | длительность или отсутствие | `90d` | Максимальный возраст защищённых единиц источник/отчёт отклонённых и частичных доставок. |
+| `ioc.dataframe-import.runtime.retention.unsuccessful.max-count` | неотрицательное целое | `0` | Максимум отклонённых/частичных единиц; `0` отключает выбор по количеству. |
+| `ioc.dataframe-import.runtime.retention.unsuccessful.action` | `delete` или `archive` | `delete` | Действие для просроченной отклонённой/частичной единицы. |
+| `ioc.dataframe-import.runtime.retention.unsuccessful.archive-dir` | путь | нет | Обязательное защищённое место назначения при действии `archive` для неуспешных единиц. |
+| `ioc.dataframe-import.runtime.retention.interval` | положительная длительность | `1h` | Независимый интервал ограниченной очистки. |
+| `ioc.dataframe-import.runtime.retention.batch-size` | положительное целое | `100` | Максимум завершённых доставок, удаляемых за проход. |
+| `ioc.dataframe-import.runtime.shutdown-timeout` | положительная длительность | `30s` | Граница остановки уведомлений и достижения принятой работой сохраняемой контрольной точки. |
+| `ioc.dataframe-import.sources` | список | пусто | Границы доверия локального/SMB-импорта; обязательны при включении. |
+| `ioc.dataframe-import.sources[].id` | уникальная строка | обязательно | Сохраняемый идентификатор границы доверия источника. |
+| `ioc.dataframe-import.sources[].transport` | `local`, `smb` | обязательно | SMB также требует существующее имя `ioc.sync.endpoints[].name`. |
+| `ioc.dataframe-import.sources[].location` | путь относительно транспорта | обязательно | Отдельное расположение импорта. Для SMB заранее создайте `.ioc-managed-import/{processing,terminal,quarantine,probe}` внутри него; runtime эти каталоги не создаёт. |
+| `ioc.dataframe-import.sources[].endpoint` | идентификатор подключения синхронизации | только SMB | Для локального источника не задаётся. |
+| `ioc.dataframe-import.sources[].contracts` | список идентификаторов контрактов | обязательно | Точный разрешённый набор контрактов источника. |
+| `ioc.dataframe-import.sources[].authority` | идентификатор профиля полномочий | обязательно | Верхняя граница разрешённых изменений для источника. |
+| `ioc.dataframe-import.authority-profiles` | список | пусто | Ограничения полномочий на артефакты, маршруты, формулы и слияние. |
+| `ioc.dataframe-import.authority-profiles[].id` | уникальная строка | обязательно | Стабильный идентификатор профиля полномочий. |
+| `ioc.dataframe-import.authority-profiles[].artifacts` | имя артефакта список | обязательно | Максимальный разрешённый набор артефактов. |
+| `ioc.dataframe-import.authority-profiles[].maximum-merge-policy` | политика слияния | обязательно | Верхняя граница разрушительных изменений. |
+| `ioc.dataframe-import.authority-profiles[].allow-related-routing` | логическое | `false` | Разрешает явно объявленные связанные ветви. |
+| `ioc.dataframe-import.authority-profiles[].allow-machine-only-formula-preserve` | логическое | `false` | Разрешает опасный точный текст только для машинного потребителя. |
+| `ioc.dataframe-import.contracts` | список | пусто | Явно версионированные контракты распознавания и отображения. |
+| `ioc.dataframe-import.contracts[].id` | уникальная строка | обязательно | Стабильная идентичность контракта. |
+| `ioc.dataframe-import.contracts[].version` | положительное целое | обязательно | Явное поколение поведения. |
+| `ioc.dataframe-import.contracts[].charset` | поддерживаемая кодировка | обязательно | Кодировка строгого декодирования, обычно `UTF-8`. |
+| `ioc.dataframe-import.contracts[].dialect` | строгий диалект CSV | обязательно | Односимвольные разделитель и кавычка, окончания записей, обязательный заголовок и маркеры null. |
+| `ioc.dataframe-import.contracts[].dialect.delimiter` | один символ | обязательно | Разделитель полей CSV. |
+| `ioc.dataframe-import.contracts[].dialect.quote` | один символ | обязательно | Должна отличаться от разделителя. |
+| `ioc.dataframe-import.contracts[].dialect.record-separator` | `crlf-or-lf`, `lf`, `crlf` | обязательно | Точная политика допустимых окончаний записей. |
+| `ioc.dataframe-import.contracts[].dialect.header-required` | логическое | должно быть `true` в V1 | Импорт без заголовка отклоняется. |
+| `ioc.dataframe-import.contracts[].dialect.null-literals` | точный список строк | пусто | Значения явного `NULL`; пустая ячейка CSV также означает null. |
+| `ioc.dataframe-import.contracts[].recognition` | точная сигнатура заголовка | обязательно | Обязательные, необязательные и игнорируемые канонические заголовки и alias; имя файла и порядок колонок не определяют идентичность. |
+| `ioc.dataframe-import.contracts[].recognition.required-columns` | непустой список | обязательно | Каждая колонка должна встретиться ровно один раз после разрешения alias. |
+| `ioc.dataframe-import.contracts[].recognition.optional-columns` | список | пусто | Разрешённые отображаемые заголовки, которые могут отсутствовать. |
+| `ioc.dataframe-import.contracts[].recognition.ignored-columns` | список | пусто | Разрешённые, но намеренно не отображаемые заголовки. |
+| `ioc.dataframe-import.contracts[].recognition.aliases` | словарь строк | пусто | Отображение внешнего заголовка в один объявленный канонический. |
+| `ioc.dataframe-import.contracts[].mode` | `as-is`, `processed` | обязательно | В `as-is` нет неявной предварительной обработки. |
+| `ioc.dataframe-import.contracts[].routing` | `target-only`, `related-artifacts` | обязательно | Связанное отображение также требует полномочий источника. |
+| `ioc.dataframe-import.contracts[].row-failure-policy` | `accept-valid`, `reject-delivery` | обязательно | Выбирает изоляцию строки либо отклонение всей доставки. |
+| `ioc.dataframe-import.contracts[].duplicate-policy` | `coalesce`, `keep-first`, `last-nonempty` | обязательно | Детерминированная обработка повторов внутри доставки; `last-nonempty` сохраняет последнюю логическую запись CSV с непустым значением выбора. |
+| `ioc.dataframe-import.contracts[].duplicate-selection-column` | распознанный заголовок | обязательно для `last-nonempty` | Колонка используется только для выбора целой записи; ячейки разных повторов не объединяются. |
+| `ioc.dataframe-import.contracts[].renew-unchanged` | логическое | обязательно | Подтверждает ли принятое точное отсутствие изменений срок действия записи. |
+| `ioc.dataframe-import.contracts[].formula-policy` | `reject`, `machine-only-preserve` | обязательно | Сохранение требует явных полномочий источника. |
+| `ioc.dataframe-import.contracts[].merge-default` | `keep-existing`, `fill-missing`, `replace-non-null`, `authoritative`, `reject-conflict` | обязательно | Переопределения колонки и артефакта не могут превышать полномочия источника. |
+| `ioc.dataframe-import.contracts[].artifacts` | список отображений | обязательно | Ровно одна ветвь `primary`; связанные ветви требуют соответствующей маршрутизации. |
+| `ioc.dataframe-import.contracts[].artifacts[].name` | имя артефакта | обязательно | Ссылка на настроенный артефакт sink/identity. |
+| `ioc.dataframe-import.contracts[].artifacts[].role` | `primary`, `related` | обязательно | Ровно одно основное отображение на контракт. |
+| `ioc.dataframe-import.contracts[].artifacts[].record-key` | идентификатор определения идентичности | обязательно | Должен совпадать с активным объявленным ключом записи артефакта. |
+| `ioc.dataframe-import.contracts[].artifacts[].match-keys` | список идентификаторов определений идентичности | обязательно | Каждое имя должно существовать для этого артефакта. |
+| `ioc.dataframe-import.contracts[].artifacts[].merge-default` | политика слияния | необязательно | Переопределение артефакта в пределах полномочий источника. |
+| `ioc.dataframe-import.contracts[].artifacts[].source-label-target` | целевая колонка | необязательно | Получает настроенную метку источника управляемого processed-импорта; цель должна отображаться этой ветвью. |
+| `ioc.dataframe-import.contracts[].artifacts[].exactly-one-nonempty` | список целевых колонок | пусто | Требует ровно один заполненный носитель после отображения; отклоняет неоднозначные и полностью пустые строки агрегата IOC. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns` | список отображений | обязательно | Цель, источник и упорядоченные зарегистрированные преобразования; произвольный код и SQL не допускаются. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns[].target` | колонка артефакта | обязательно | Уникальная цель внутри ветви артефакта. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns[].source` | распознанный заголовок | обязательно | Обязательный или необязательный канонический входной заголовок. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns[].transforms` | упорядоченный список преобразований | пусто | Только зарегистрированные спецификации преобразований. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns[].merge-policy` | политика слияния | необязательно | Переопределение колонки в пределах полномочий источника. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns[].validation` | зарегистрированный валидатор | необязательно | После преобразований: `bare-ip`, `url-address`, `clean-domain`, `network-address`, `hash`, `md5`, `sha1`, `sha256` или `canonical-integer`. Проверяет значения без переписывания ячеек; NULL/ABSENT пропускают проверку значения. |
+| `ioc.dataframe-import.contracts[].requested-slot` | необязательное отображение | отсутствует | Только для артефакта с внешним ID и содержащим его профилем экспорта стабильных слотов. |
+| `ioc.dataframe-import.contracts[].requested-slot.source-column` | распознанный заголовок | обязательно при наличии | Положительный запрошенный внешний слот, никогда не каноническая идентичность. |
+| `ioc.dataframe-import.contracts[].requested-slot.profile` | профиль экспорта | обязательно при наличии | Задаёт область внешнего слота. |
+| `ioc.dataframe-import.contracts[].requested-slot.existing-record-policy` | `preserve-existing`, `reject-mismatch` | обязательно при наличии | Обрабатывает существующую запись, стабильный слот которой отличается от запроса. |
 
-## Immutable export
+## Неизменяемый экспорт
 
-| Параметр | Тип / значения | Встроенный default | Рекомендация |
+| Параметр | Тип / значения | Встроенное значение | Рекомендация |
 |---|---|---|---|
-| `ioc.export.enabled` | boolean | `true` | Управляет manual и daemon export. |
-| `ioc.export.root` | путь | `./var/export` | Immutable slices, staging и export ledgers. |
-| `ioc.export.trigger.type` | `interval`, `quiet-period` | `interval` | `quiet-period` coalesces changes; periodic check остаётся recovery backstop. |
-| `ioc.export.trigger.interval` | positive duration | `5m` | Scheduler/reconcile cadence. |
-| `ioc.export.trigger.quiet-period` | positive duration | `5m` | Задержка после последнего canonical change. |
-| `ioc.export.trigger.max-cap` | positive duration | `1h` | Максимальная отсрочка при непрерывном ingestion. |
-| `ioc.export.profiles` | непустой список | reputation-lists, address-blacklist | Упорядоченные неделимые наборы artifacts. |
-| `ioc.export.profiles[].name` | уникальная строка | обязателен | Используется CLI и sync targets. |
-| `ioc.export.profiles[].output-mode` | `complete`, `append` | `complete` | В этом release выполняется только `complete`; `append` зарезервирован и отклоняется. |
-| `ioc.export.profiles[].artifacts` | непустой список | зависит от profile | Ссылки на enabled sink artifacts. |
-| `ioc.export.retention.max-age` | duration или null | `7d` | Удаляет unpinned slices старше лимита. |
-| `ioc.export.retention.max-count` | неотрицательное целое | `3` | Максимум новых unpinned slices; `0` отключает count limit. |
+| `ioc.export.enabled` | логическое | `true` | Управляет доступностью ручного и daemon-экспорта. |
+| `ioc.export.root` | путь | `./var/export` | Неизменяемые срезы и временная подготовка экспорта; сохраняемая координация находится в service DB. |
+| `ioc.export.trigger.type` | `interval`, `quiet-period` | `interval` | `quiet-period` объединяет изменения; периодические проверки обеспечивают восстановление. |
+| `ioc.export.trigger.interval` | положительная длительность | `5m` | Интервал проверок планировщика и согласования. |
+| `ioc.export.trigger.quiet-period` | положительная длительность | `5m` | Задержка экспорта после последнего канонического изменения. |
+| `ioc.export.trigger.max-cap` | положительная длительность | `1h` | Максимальная отсрочка при непрерывном приёме. |
+| `ioc.export.profiles` | непустой список | reputation-lists, address-blacklist, ioc-aggregate | Упорядоченные неделимые наборы артефактов. |
+| `ioc.export.profiles[].name` | уникальная строка | обязательно | Используется CLI и целями синхронизации. |
+| `ioc.export.profiles[].output-mode` | `complete`, `append` | `complete` | В текущем выпуске исполним только `complete`; `append` зарезервирован и отклоняется. |
+| `ioc.export.profiles[].artifacts` | непустой список | зависит от профиля | Ссылки на имена включённых артефактов sink. |
+| `ioc.export.retention.max-age` | длительность или null | `7d` | Удаляет незакреплённые срезы старше лимита. |
+| `ioc.export.retention.max-count` | неотрицательное целое | `3` | Сохраняет не более указанного числа новейших незакреплённых срезов; `0` отключает ограничение количества. |
 
-## Remote synchronization
+## Удалённая синхронизация
 
-По умолчанию sync выключен. Credentials хранятся в environment file. Права,
-topology, failure behavior и подбор значений описаны в
-[гайде remote storage](remote-storage-sync.md).
+Удалённая синхронизация по умолчанию отключена. Учётные данные хранятся в файле
+окружения. Права, топология, поведение при отказах и подбор значений описаны в
+[руководстве удалённого хранения](remote-storage-sync.md).
 
-| Параметр | Тип / значения | Встроенный default | Рекомендация |
+| Параметр | Тип / значения | Встроенное значение | Рекомендация |
 |---|---|---|---|
-| `ioc.sync.enabled` | boolean | `false` | Master switch sync graph. |
-| `ioc.sync.retry.max-attempts` | integer ≥ 1 | `3` | Общее число попыток recoverable remote operation. |
-| `ioc.sync.retry.backoff` | positive duration | `1s` | Начальная retry delay. |
-| `ioc.sync.retry.multiplier` | decimal ≥ 1.0 | `2.0` | Exponential growth factor. |
-| `ioc.sync.retry.max-backoff` | duration ≥ backoff | `30s` | Ограничение retry delay. |
-| `ioc.sync.retry.jitter` | boolean | `true` | Оставляйте включённым при возможных одновременных retries. |
-| `ioc.sync.endpoints` | список | пустой | Именованные connections для fetch/publish. |
-| `ioc.sync.endpoints[].name` | уникальная строка | обязателен | Stable reference источников и targets. |
-| `ioc.sync.endpoints[].transport` | `smb` | обязателен | Сейчас поддерживается SMB. |
-| `ioc.sync.endpoints[].smb` | object | обязателен для SMB | Connection settings. |
-| `ioc.sync.endpoints[].smb.host` | hostname или IP | обязателен | Без префикса `smb://` и без порта в строке. |
-| `ioc.sync.endpoints[].smb.port` | integer `1..65535` | `445` | TCP port для обычных и `CHANGE_NOTIFY` SMB sessions. Переопределяйте только для сервера или явного port-forward не на стандартном TCP/445. |
-| `ioc.sync.endpoints[].smb.share` | share name | обязателен | Имя верхнеуровневой шары без пути. |
-| `ioc.sync.endpoints[].smb.domain` | string или null | опционален | AD/NTLM domain; пропустите для local/workgroup account. |
-| `ioc.sync.endpoints[].smb.username` | string | обязателен | Предпочтительно `${SMB_USER}`. |
-| `ioc.sync.endpoints[].smb.password` | string | обязателен | Используйте `${SMB_PASSWORD}`, не commit plaintext. |
-| `ioc.sync.endpoints[].smb.encryption` | `required`, `preferred`, `disabled` | `required` | `required` допускает только SMB3 и отклоняет session без фактического encryption; `preferred` явно разрешает незашифрованный fallback. Используйте этот ключ во всех новых конфигурациях. |
-| `ioc.sync.endpoints[].smb.encrypt` | deprecated boolean alias | отсутствует | Временный rollback bridge: `true` преобразуется в `required`, `false` — в `disabled`, startup выдаёт value-free warning. Не задавайте вместе с `encryption`; мигрируйте после вывода старого rollback release. |
-| `ioc.sync.endpoints[].smb.connect-timeout` | positive duration | `10s` | TCP connection establishment timeout. |
-| `ioc.sync.endpoints[].smb.request-timeout` | positive duration | `30s` | Timeout одного SMB request. |
-| `ioc.sync.endpoints[].smb.idle-timeout` | positive duration | `5m` | Закрытие неиспользуемого cached client. |
-| `ioc.sync.fetch.enabled` | boolean | `false` | Remote detection и download. |
-| `ioc.sync.fetch.interval` | positive duration | `1m` | Correctness polling cadence, не отключаемый push notifications. |
-| `ioc.sync.fetch.sources` | список | пустой | Наблюдаемые remote directories. |
-| `ioc.sync.fetch.sources[].name` | уникальная строка | обязателен | Fetch identity и ledger scope. |
-| `ioc.sync.fetch.sources[].endpoint` | endpoint name | обязателен | Ссылка на endpoint. |
-| `ioc.sync.fetch.sources[].remote-path` | share-relative path | обязателен | Каталог source documents. |
-| `ioc.sync.fetch.sources[].include` | glob list | пустой | Разрешённые имена; пустой список не ограничивает include. |
-| `ioc.sync.fetch.sources[].exclude` | glob list | пустой | Исключённые имена; exclusions имеют приоритет. |
-| `ioc.sync.fetch.sources[].change-notify` | object | опционален | SMB2 push accelerator; polling остаётся backstop. |
-| `ioc.sync.fetch.sources[].change-notify.enabled` | boolean | `false` | Включайте после проверки совместимости сервера. |
-| `ioc.sync.fetch.sources[].change-notify.debounce` | positive duration | `3s` | Объединяет burst сигналов перед re-detection. |
-| `ioc.sync.publish.enabled` | boolean | `false` | Delivery завершённых immutable slices. |
-| `ioc.sync.publish.interval` | positive duration | `5m` | Publish-ledger reconciliation cadence. |
-| `ioc.sync.publish.targets` | список | пустой | Delivery destinations. |
-| `ioc.sync.publish.targets[].name` | уникальная строка | обязателен | Publish ledger identity. |
-| `ioc.sync.publish.targets[].endpoint` | endpoint name | обязателен | Ссылка на endpoint. |
-| `ioc.sync.publish.targets[].remote-path` | share-relative path | обязателен | Родительский каталог immutable slices. |
-| `ioc.sync.publish.targets[].export-profile` | export profile name | обязателен | Ссылка на `ioc.export.profiles[].name`. |
+| `ioc.sync.enabled` | логическое | `false` | Общий выключатель графа обычной синхронизации. |
+| `ioc.sync.retry.max-attempts` | целое ≥ 1 | `3` | Всего попыток для восстанавливаемых удалённых операций. |
+| `ioc.sync.retry.backoff` | положительная длительность | `1s` | Начальная задержка повтора. |
+| `ioc.sync.retry.multiplier` | число ≥ 1.0 | `2.0` | Коэффициент экспоненциального роста задержки. |
+| `ioc.sync.retry.max-backoff` | длительность ≥ начальной задержки | `30s` | Ограничивает задержку повторной попытки. |
+| `ioc.sync.retry.jitter` | логическое | `true` | Сохраняйте включённым при возможных одновременных повторах нескольких экземпляров. |
+| `ioc.sync.endpoints` | список | пусто | Именованные транспортные подключения, общие для получения и публикации. |
+| `ioc.sync.endpoints[].name` | уникальная строка | обязательно | Стабильная ссылка источников и целей. |
+| `ioc.sync.endpoints[].transport` | `smb` | обязательно | Сейчас поддерживается только SMB. |
+| `ioc.sync.endpoints[].smb` | объект | обязательно для SMB | Параметры соединения. |
+| `ioc.sync.endpoints[].smb.host` | имя хоста или IP | обязательно | Сервер SMB; без `smb://` и без добавления порта. |
+| `ioc.sync.endpoints[].smb.port` | целое `1..65535` | `445` | TCP-порт обычных сеансов SMB и `CHANGE_NOTIFY`. Меняйте только для сервера или явного перенаправления вне стандартного TCP/445. |
+| `ioc.sync.endpoints[].smb.share` | имя ресурса | обязательно | Имя ресурса верхнего уровня без пути. |
+| `ioc.sync.endpoints[].smb.domain` | строка или null | необязательно | Домен AD/NTLM; не задавайте для локальных учётных записей и рабочих групп. |
+| `ioc.sync.endpoints[].smb.username` | строка | обязательно | Предпочитайте `${SMB_USER}`. |
+| `ioc.sync.endpoints[].smb.password` | строка | обязательно | Используйте `${SMB_PASSWORD}`; не коммитьте открытый пароль. |
+| `ioc.sync.endpoints[].smb.encryption` | `required`, `preferred`, `disabled` | `required` | `required` допускает только SMB3 и отклоняет сеанс без действующего шифрования; `preferred` явно допускает нешифрованный вариант. Для свежей конфигурации используйте этот ключ. |
+| `ioc.sync.endpoints[].smb.encrypt` | устаревший логический alias | отсутствует | Временный мост отката: `true` соответствует `required`, `false` — `disabled`; запуск предупреждает без значения. Не задавайте вместе с `encryption`; мигрируйте после исключения старого релиза отката. |
+| `ioc.sync.endpoints[].smb.connect-timeout` | положительная длительность | `10s` | Тайм-аут установки TCP-соединения. |
+| `ioc.sync.endpoints[].smb.request-timeout` | положительная длительность | `30s` | Тайм-аут одного запроса SMB. |
+| `ioc.sync.endpoints[].smb.idle-timeout` | положительная длительность | `5m` | Закрывает неиспользуемый кешированный клиент после этого периода. |
+| `ioc.sync.fetch.enabled` | логическое | `false` | Включает обнаружение и скачивание удалённых источников. |
+| `ioc.sync.fetch.interval` | положительная длительность | `1m` | Интервал опроса для корректности; push-уведомления его не отключают. |
+| `ioc.sync.fetch.sources` | список | пусто | Наблюдаемые удалённые каталоги. |
+| `ioc.sync.fetch.sources[].name` | уникальная строка | обязательно | Идентичность источника получения и область журнала. |
+| `ioc.sync.fetch.sources[].endpoint` | имя подключения | обязательно | Ссылка на настроенное подключение. |
+| `ioc.sync.fetch.sources[].remote-path` | путь относительно ресурса | обязательно | Каталог исходных документов относительно ресурса. |
+| `ioc.sync.fetch.sources[].include` | список glob | пусто | Разрешённые имена удалённых файлов. Пустой список не ограничивает включение. |
+| `ioc.sync.fetch.sources[].exclude` | список glob | пусто | Исключённые имена; исключение имеет приоритет. |
+| `ioc.sync.fetch.sources[].change-notify` | объект | необязательно | Ускоритель SMB2; polling остаётся резервным механизмом корректности. |
+| `ioc.sync.fetch.sources[].change-notify.enabled` | логическое | `false` | Включайте после проверки совместимости сервера. |
+| `ioc.sync.fetch.sources[].change-notify.debounce` | положительная длительность | `3s` | Объединяет серию сигналов до повторного обнаружения. |
+| `ioc.sync.publish.enabled` | логическое | `false` | Включает доставку завершённых неизменяемых срезов. |
+| `ioc.sync.publish.interval` | положительная длительность | `5m` | Интервал согласования журнала публикаций. |
+| `ioc.sync.publish.targets` | список | пусто | Места назначения доставки. |
+| `ioc.sync.publish.targets[].name` | уникальная строка | обязательно | Идентичность журнала публикации. |
+| `ioc.sync.publish.targets[].endpoint` | имя подключения | обязательно | Ссылка на настроенное подключение. |
+| `ioc.sync.publish.targets[].remote-path` | путь относительно ресурса | обязательно | Родительский каталог неизменяемых срезов относительно ресурса. |
+| `ioc.sync.publish.targets[].export-profile` | имя профиля экспорта | обязательно | Ссылка на `ioc.export.profiles[].name`. |
 
-## Daemon ingestion
+## Приём daemon
 
-Четыре ingestion directories должны различаться. Размещайте их на одной локальной
-filesystem, чтобы claims использовали atomic move. Concurrency `1` — поддерживаемая
-база для SQLite и детерминированной обработки.
+Четыре каталога приёма должны различаться. Размещайте их на одной локальной
+файловой системе, чтобы захват использовал атомарное перемещение. Параллелизм
+`1` — поддерживаемая основа для SQLite и детерминированной обработки файлов.
 
-| Параметр | Тип / значения | Встроенный default | Рекомендация |
+| Параметр | Тип / значения | Встроенное значение | Рекомендация |
 |---|---|---|---|
-| `ioc.ingestion.dirs.inbox` | путь | `./var/inbox` | Сюда оператор помещает завершённые или ещё копирующиеся files. |
-| `ioc.ingestion.dirs.processing` | путь | `./var/processing` | Claimed work, принадлежащий daemon. |
-| `ioc.ingestion.dirs.done` | путь | `./var/done` | Успешно завершённые inputs. |
-| `ioc.ingestion.dirs.failed` | путь | `./var/failed` | Claimed inputs с terminal failure, сохраняемые для анализа и reviewed recovery. |
-| `ioc.ingestion.patterns.include` | непустой glob list | HTML, HTM, DOCX | PDF и другие supported formats добавляются явно. |
-| `ioc.ingestion.patterns.exclude` | glob list | temp/partial/hidden | Exclusions имеют приоритет. |
-| `ioc.ingestion.detect.use-watch-service` | boolean | `false` | Для production correctness baseline оставляйте polling. `true` — optional optimization для локальной filesystem: matching-файлы, отклонённые во время `quiet-period`, будут проверены повторно, но доставка событий ОС не гарантирует полный rescan. Не включайте на network/unreliable filesystem. |
-| `ioc.ingestion.detect.reconcile-interval` | positive duration | `30s` | Период полного directory scan в default polling-режиме; с WatchService — период опроса event/retry queue. Меньше — ниже latency, больше scanning или wakeups. |
-| `ioc.ingestion.detect.max-messages-per-poll` | positive integer | `50` | Ограничивает claims одного detection cycle. |
-| `ioc.ingestion.stability.quiet-period` | positive duration | `10s` | Увеличьте для медленного копирования; слишком мало — риск incomplete file. |
-| `ioc.ingestion.retry.max-attempts` | positive integer | `3` | После исчерпания попыток ошибка с подтверждённым ключом приводит к отклонению. До вычисления ключа сохраняется заблокированный claimed-файл для расследования. |
-| `ioc.ingestion.retry.backoff` | positive duration | `5s` | Задержка local ingestion retry. |
-| `ioc.ingestion.ledger.type` | `file`, `jdbc` | `file` | `jdbc` для durable run-ledger integration; следуйте deployment baseline. |
-| `ioc.ingestion.ledger.path` | путь | `./var/ledger` | Filesystem ledger при type `file`. |
-| `ioc.ingestion.concurrency` | integer, только `1` | `1` | Детектор и приём последовательны; параллельная подготовка задаётся отдельно, canonical запись остаётся последовательной. Startup отклоняет любое другое значение, а не молча игнорирует его. |
+| `ioc.ingestion.dirs.inbox` | путь | `./var/inbox` | Оператор помещает сюда завершённые или ещё копируемые исходные файлы. |
+| `ioc.ingestion.dirs.processing` | путь | `./var/processing` | Захваченная работа, принадлежащая daemon. |
+| `ioc.ingestion.dirs.done` | путь | `./var/done` | Успешно обработанные входные файлы. |
+| `ioc.ingestion.dirs.failed` | путь | `./var/failed` | Захваченные файлы с окончательным отказом, сохранённые для исследования и проверенного восстановления. |
+| `ioc.ingestion.patterns.include` | непустой список glob | HTML, HTM, DOCX | PDF и другие поддерживаемые форматы добавляйте явно. |
+| `ioc.ingestion.patterns.exclude` | список glob | временные, неполные и скрытые файлы | Исключение имеет приоритет перед включением. |
+| `ioc.ingestion.detect.use-watch-service` | логическое | `false` | Сохраняйте polling как производственную основу корректности. `true` — оптимизация локальной файловой системы: файлы, отклонённые на `quiet-period`, проверяются повторно, но доставка событий ОС не гарантирует полного сканирования. Не включайте на сетевых или ненадёжных файловых системах. |
+| `ioc.ingestion.detect.reconcile-interval` | положительная длительность | `30s` | При обычном polling — интервал полного сканирования; с WatchService — опрос очереди событий и повторов. Уменьшение снижает задержку и увеличивает число сканирований или пробуждений. |
+| `ioc.ingestion.detect.max-messages-per-poll` | положительное целое | `50` | Ограничивает захват работы за цикл обнаружения. |
+| `ioc.ingestion.stability.quiet-period` | положительная длительность | `10s` | Увеличивайте для медленного копирования; слишком малое значение создаёт риск чтения неполного файла. |
+| `ioc.ingestion.retry.max-attempts` | положительное целое | `3` | Отказы с проверенным ключом отклоняются после исчерпания попыток; ошибки до хеширования сохраняют заблокированное владение для исследования. |
+| `ioc.ingestion.retry.backoff` | положительная длительность | `5s` | Задержка между локальными попытками. |
+| `ioc.ingestion.ledger.type` | `file`, `jdbc` | `file` | Используйте `jdbc` при необходимости интеграции с сохраняемым журналом запусков; следуйте базовой схеме развёртывания. |
+| `ioc.ingestion.ledger.path` | путь | `./var/ledger` | Каталог файлового журнала при типе `file`. |
+| `ioc.ingestion.concurrency` | целое, строго `1` | `1` | Один путь обнаружения/захвата. Ограниченная параллельная подготовка задаётся отдельно ниже; каноническая запись последовательна. |
 
-Ограничения `ioc.ingestion.execution`: `ioc.ingestion.execution.preparation-workers` (1–2 потока подготовки), `ioc.ingestion.execution.window` (ожидающие, выполняемые и готовые подготовки), `ioc.ingestion.execution.max-pending-documents`, `ioc.ingestion.execution.max-pending-source-bytes` и `ioc.ingestion.execution.max-source-bytes`. При насыщении входной файл остаётся в inbox для следующего полного сканирования. По умолчанию: 2 потока, 4 подготовки, 64 документа, 4 GiB суммарных исходников и 512 MiB на исходник. Canonical запись последовательна в durable порядке приёма.
+Допуск исполнения документов ограничивает подготовку в очереди, в работе и
+в готовом состоянии:
 
-Лимит размера действует во время копирования исходника. Health `dataProcessingCapacity` показывает насыщение, заблокированные файлы и состояние writer/readers. При исчерпании попыток до вычисления ключа сохраните claimed-файл, журнал и БД для расследования; не возвращайте файл во входной каталог вручную. Перед обновлением до service schema v14 остановите сервис и сохраните обе БД вместе с принадлежащими сервису файлами. Откат требует восстановления этой копии.
-
-## Безопасность runtime canonical lifecycle
-
-Эти параметры выбирают record validity, ограничивают cleanup/convergence и
-защищают от отката системных часов. Classpath и upgrade preset остаются
-`disabled`; переход существующей БД в `fixed` является one-way операцией. Ноль
-нельзя использовать как команду очистки: durations и batch size ниже должны
-быть положительными.
-
-| Параметр | Тип / значения | Встроенный default | Рекомендация |
-|---|---|---|---|
-| `ioc.lifecycle.validity.mode` | `disabled`, `fixed` | `disabled` | `disabled` сохраняет compatibility до activation. `fixed` включает durable validity; затем отключить её для той же БД нельзя. |
-| `ioc.lifecycle.validity.fixed-ttl` | positive duration | `12h` | Validity после каждого успешного canonical confirmation. В режиме `fixed` значение обязательно и положительно; `0` отклоняется. |
-| `ioc.lifecycle.validity.existing-records` | `reject`, `expire` | `reject` | Для compatibility-start оставьте `reject`. `expire` задавайте только перед activation restart: все legacy rows архивируются и удаляются, active projections могут стать пустыми. |
-| `ioc.lifecycle.history-retention` | positive duration | `30d` | Срок хранения закрытой full-row lifecycle history; cleanup выполняется независимо и bounded batches. |
-| `ioc.lifecycle.history-cleanup-interval` | positive duration | `1h` | Частота independent history/receipt cleanup discovery. Каждая transaction bounded; существующий backlog продолжается немедленными bounded follow-up tasks. |
-| `ioc.lifecycle.receipt-retention` | positive duration | `30d` | Срок хранения complete prepared-row receipts. Отсутствующий, устаревший или policy-mismatched receipt приводит к обычному ETL, а не к отказу. |
-| `ioc.lifecycle.reconcile.backstop-interval` | positive duration | `5s` | Read-only nearest-deadline и projection correctness backstop для потерянных hints и restart. Пустой deadline refresh не создаёт reconcile cycle. Для V1 expiry-latency оставляйте не больше `5s`. |
-| `ioc.lifecycle.reconcile.batch-size` | positive integer | `1000` | Максимум rows одной expiry или history-retention transaction; меньшее значение сокращает удержание writer, но требует больше cycles. |
-| `ioc.lifecycle.clock.max-backward-skew` | positive duration | `2s` | Максимальный откат system UTC, который можно clamp-ить к durable high-water с состоянием `DEGRADED`. |
-| `ioc.lifecycle.clock.max-clamp-duration` | positive duration | `30s` | Максимальная непрерывная длительность clamp до unsafe lifecycle time и health `DOWN`. |
-
-## Maintenance retention
-
-Leaf-file retention применяется к `done`, `failed` и другим configured dirs.
-Immutable export slices используют отдельную retention policy.
-
-| Параметр | Тип / значения | Встроенный default | Рекомендация |
-|---|---|---|---|
-| `ioc.maintenance.retention.enabled` | boolean | `false` | Включайте после определения backup и investigation requirements. |
-| `ioc.maintenance.retention.interval` | positive duration | `1h` | Sweep cadence. |
-| `ioc.maintenance.retention.initial-delay` | non-negative duration | `5m` | Задержка после daemon startup. |
-| `ioc.maintenance.retention.targets` | список | примеры done/failed | Policies для recursively found leaf files. |
-| `ioc.maintenance.retention.targets[].name` | уникальная строка | обязателен | Operator-facing identity policy. |
-| `ioc.maintenance.retention.targets[].dir` | путь | обязателен | Никогда не указывайте DB или export root. |
-| `ioc.maintenance.retention.targets[].max-age` | duration или null | зависит от target | Entry eligible по age либо count limit. |
-| `ioc.maintenance.retention.targets[].max-count` | non-negative integer | `0` | `0` отключает count retention. |
-| `ioc.maintenance.retention.targets[].action` | `delete`, `archive` | `delete` | Archive восстановим, но требует дополнительное storage. |
-| `ioc.maintenance.retention.targets[].archive-dir` | путь или null | omitted | Обязателен для `archive`, вне swept directory. |
-
-## Поддерживаемые platform settings
-
-Эти Spring settings входят в эксплуатационный контракт. Другие Spring Boot
-properties не становятся поддерживаемыми только потому, что framework их знает.
-
-| Параметр | Встроенный default | Рекомендация |
+| Параметр | Встроенное значение | Ограничение / смысл |
 |---|---|---|
-| `spring.profiles.active` | из observability mode | Installed daemon использует `daemon`. |
-| `spring.config.additional-location` | задаёт launcher | Сохраняйте `optional:file:./etc/application.yml`. |
-| `spring.main.web-application-type` | `none`, launcher задаёт `servlet` для daemon | Launcher-owned; не переопределяйте в installed YAML. |
+| `ioc.ingestion.execution.preparation-workers` | `2` | 1–2 потока подготовки; каноническая запись остаётся последовательной в сохранённом порядке допуска. |
+| `ioc.ingestion.execution.window` | `4` | Число потоков ≤ окно ≤ лимит незавершённых документов. |
+| `ioc.ingestion.execution.max-pending-documents` | `64` | Не более `256`; при насыщении вход остаётся в inbox до следующего полного перечисления. |
+| `ioc.ingestion.execution.max-pending-source-bytes` | `4294967296` | Положительный общий бюджет байтов незавершённых источников; не меньше лимита одного источника. |
+| `ioc.ingestion.execution.max-source-bytes` | `536870912` | Положительный лимит источника; не больше `ioc.processing.workspace.workspace-bytes / 4`. |
+
+
+Подготовка и закрепление захвата проверяют допущенный размер при копировании.
+Health `dataProcessingCapacity` показывает насыщение, заблокированное владение
+и состояние писателя и читателей. После исчерпания попыток до хеширования
+работа остаётся во владении сервиса: сохраните её токен, журнал и БД для
+исследования вместо возврата во входной каталог. Перед обновлением до схемы
+сервиса v14 остановите сервис и сохраните обе БД и принадлежащие ему файлы;
+откат требует восстановления этой копии.
+
+## Безопасность исполнения жизненного цикла
+
+Эти параметры выбирают срок действия записей, ограничивают очистку и
+согласование и защищают от отката системных часов. Classpath и сохранённые
+настройки обновления остаются в `disabled`; переключение существующей БД в
+`fixed` — односторонняя операция. Ноль не является командой очистки:
+длительности и размер пакета ниже должны быть положительными.
+
+| Параметр | Тип / значения | Встроенное значение | Рекомендация |
+|---|---|---|---|
+| `ioc.lifecycle.validity.mode` | `disabled`, `fixed` | `disabled` | `disabled` сохраняет совместимость до активации. `fixed` включает сохраняемую политику срока действия, которую нельзя отключить для той же БД. |
+| `ioc.lifecycle.validity.fixed-ttl` | положительная длительность | `12h` | Срок после успешного канонического подтверждения. Обязателен и положителен в режиме `fixed`; `0` отклоняется. |
+| `ioc.lifecycle.validity.existing-records` | `reject`, `expire` | `reject` | Для совместимого запуска сохраняйте `reject`. Явно выбирайте `expire` только для перезапуска активации: старые строки архивируются и удаляются, активные проекции могут стать пустыми. |
+| `ioc.lifecycle.history-retention` | положительная длительность | `30d` | Хранение полной истории закрытых жизненных циклов; очистка независима и ограничена пакетами. |
+| `ioc.lifecycle.history-cleanup-interval` | положительная длительность | `1h` | Интервал независимого обнаружения очистки истории/квитанций. Транзакции ограничены; накопившаяся очередь продолжается сразу ограниченными задачами. |
+| `ioc.lifecycle.receipt-retention` | положительная длительность | `30d` | Хранение полных квитанций подготовленных строк. Отсутствующие, устаревшие или несовместимые квитанции вызывают обычный ETL, а не отказ. |
+| `ioc.lifecycle.reconcile.backstop-interval` | положительная длительность | `5s` | Резервная проверка ближайшего срока и проекции только чтением при потере событий и перезапуске. Пустая проверка срока не создаёт цикл согласования. Для контракта задержки V1 держите не более `5s`. |
+| `ioc.lifecycle.reconcile.batch-size` | положительное целое | `1000` | Максимум строк одной транзакции истечения или очистки истории; меньшее значение сокращает удержание писателя, но требует больше циклов. |
+| `ioc.lifecycle.clock.max-backward-skew` | положительная длительность | `2s` | Максимальный откат системного UTC, допускающий удержание по сохранённой верхней границе с состоянием `DEGRADED`. |
+| `ioc.lifecycle.clock.max-clamp-duration` | положительная длительность | `30s` | Максимальная непрерывная длительность удержания до признания времени небезопасным и состояния health `DOWN`. |
+
+## Обслуживание и хранение
+
+Очистка отдельных файлов применяется к настроенным каталогам, например `done`
+и `failed`. Неизменяемые срезы имеют собственные ограничения возраста и
+количества, но их планировщик daemon использует общий интервал и начальную
+задержку обслуживания и работает даже при отключённой очистке отдельных файлов.
+Завершённые единицы импорта и история жизненного цикла имеют отдельные механизмы
+хранения; не очищайте их каталоги как набор отдельных файлов.
+
+| Параметр | Тип / значения | Встроенное значение | Рекомендация |
+|---|---|---|---|
+| `ioc.maintenance.retention.enabled` | логическое | `false` | Включает только очистку отдельных файлов. Заранее определите требования резервного копирования и исследования; очистка неизменяемых срезов независима. |
+| `ioc.maintenance.retention.interval` | положительная длительность | `1h` | Общий интервал daemon для очистки неизменяемых срезов и включённой очистки отдельных файлов. |
+| `ioc.maintenance.retention.initial-delay` | неотрицательная длительность | `5m` | Задержка после запуска daemon. |
+| `ioc.maintenance.retention.targets` | список | примеры done и failed | Политики для рекурсивно обнаруженных конечных файлов. |
+| `ioc.maintenance.retention.targets[].name` | уникальная строка | обязательно | Понятная оператору идентичность политики. |
+| `ioc.maintenance.retention.targets[].dir` | путь | обязательно | Каталог очистки. Не указывайте БД или корень экспорта. |
+| `ioc.maintenance.retention.targets[].max-age` | длительность или null | зависит от цели | Файл выбирается при превышении возраста либо ограничения количества. |
+| `ioc.maintenance.retention.targets[].max-count` | неотрицательное целое | `0` | `0` отключает ограничение количества. |
+| `ioc.maintenance.retention.targets[].action` | `delete`, `archive` | `delete` | Архивирование обратимо, но требует дополнительного диска. |
+| `ioc.maintenance.retention.targets[].archive-dir` | путь или null | отсутствует | Обязателен для `archive`; вне очищаемого каталога. |
+
+## Поддерживаемые настройки платформы
+
+Эти настройки Spring входят в эксплуатационный контракт упаковки. Остальные
+свойства Spring Boot не становятся поддерживаемыми автоматически лишь потому,
+что фреймворк их распознаёт.
+
+| Параметр | Встроенное значение | Рекомендация |
+|---|---|---|
+| `spring.profiles.active` | из режима наблюдаемости | Установленный daemon использует `daemon`. |
+| `spring.config.additional-location` | задаёт launcher | Сохраняйте установленное расположение `optional:file:./etc/application.yml`. |
+| `spring.main.web-application-type` | `none`; daemon задаёт `servlet` | Рабочая настройка bootstrap; не переопределяйте в установленном YAML. |
 | `logging.level.root` | `INFO` | `DEBUG`/`TRACE` только для ограниченной диагностики. |
-| `logging.level.com.iocextractor` | `INFO` | Детализация application logs. |
-| `logging.file.path` | `var/logs` | Rolling ECS JSON directory в daemon mode. |
-| `server.address` | `127.0.0.1` | Оставляйте loopback без authentication/exposure policy. |
-| `server.port` | `8081` | Actuator port для health checks. `deploy-local.sh --port` и `install.sh --server-port` рендерят более приоритетный CLI override. |
-| `server.tomcat.threads.max` | `8` | Достаточно для loopback actuator-only surface. |
-| `server.tomcat.threads.min-spare` | `1` | Минимум idle request threads. |
-| `server.tomcat.accept-count` | `10` | Небольшая очередь connections. |
-| `management.endpoints.web.exposure.include` | `health,info` | Не включайте shutdown и broad actuator exposure. |
-| `management.endpoint.health.show-details` | `always` | Безопасно только при loopback-only endpoint. |
+| `logging.level.com.iocextractor` | `INFO` | Детализация логов приложения. |
+| `logging.file.path` | `var/logs` | Каталог файлов ECS JSON с ротацией в daemon. |
+| `server.address` | `127.0.0.1` | Сохраняйте loopback, пока не добавлены аутентификация и политика внешнего доступа. |
+| `server.port` | `8081` | Порт actuator для health. `deploy-local.sh --port` и `install.sh --server-port` задают более приоритетное CLI-переопределение. |
+| `server.tomcat.threads.max` | `8` | Достаточно для локального интерфейса только actuator. |
+| `server.tomcat.threads.min-spare` | `1` | Минимум простаивающих потоков запросов. |
+| `server.tomcat.accept-count` | `10` | Небольшая очередь ожидающих соединений. |
+| `management.endpoints.web.exposure.include` | `health,info` | Не включайте shutdown и широкий доступ к actuator. |
+| `management.endpoint.health.show-details` | `always` | Допустимо только при доступе через loopback. |
 
-## Environment-файл
+## Файл окружения
 
-`<prefix>/etc/ioc-extractor.env` читают systemd и установленный `ioc` launcher.
+`<prefix>/etc/ioc-extractor.env` загружает systemd для daemon, `ioc-config` и
+установленной обёртки `ioc`. Используйте синтаксис systemd EnvironmentFile, а
+не shell-скрипт; не загружайте файл через `source`. Installer задаёт права
+`0640`, чтение для root и группы сервиса.
 
 | Переменная | Назначение |
 |---|---|
-| `JAVA_HOME` | Опциональный JDK override для launcher. |
-| `JAVA_OPTS` | JVM memory, GC и diagnostic options; не помещайте сюда application CLI arguments. |
-| `SMB_USER` | Username для `${SMB_USER}`. |
-| `SMB_PASSWORD` | Password для `${SMB_PASSWORD}`; installer задаёт `0640`, чтение только root и service group. |
+| `JAVA_OPTS` | Параметры JVM для daemon и checker конфигурации; не помещайте секреты и аргументы CLI приложения. Установленная oneshot-обёртка `ioc` использует собственные фиксированные параметры JVM. |
+| `SMB_USER` | Имя пользователя для `${SMB_USER}`. |
+| `SMB_PASSWORD` | Пароль для `${SMB_PASSWORD}`. |
 
-После изменения YAML/environment выполните `systemctl restart ioc-extractor`,
-проверьте `ioc health` и `journalctl -u ioc-extractor`.
+Исполняемый Java выбирается при упаковке и установке сервиса; добавление
+`JAVA_HOME` в этот файл не меняет подготовленный путь. Согласуйте параметры
+памяти с лимитами cgroup в unit. Изменение окружения требует перезапуска;
+затем проверьте `ioc health` и `journalctl -u ioc-extractor`.
+YAML применяйте через описанный выше процедуру с отдельным candidate. Параметры клиента
+health описаны в [эксплуатации daemon](daemon-operations.md).
+
+## Источники и сопровождение
+
+Значения по умолчанию и структура определены
+[загрузочным YAML](../../../bootstrap/ioc-app/src/main/resources/application.yml),
+[production template](../../../packaging/templates/application.yml) и
+[типизированными свойствами](../../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/IocProperties.java).
+[Контракт документации](../../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/ConfigurationDocumentationContractTest.java)
+проверяет покрытие имён и допустимых значений и привязку шаблона. Текст,
+значения по умолчанию, рекомендации и поведение целевой установки требуют
+проверки. Обновляйте обе версии справочника при изменении настройки;
+[механика конфигурации](../../dev/ru/configuration.md) ссылается на проверки
+валидации и эффективных источников.
