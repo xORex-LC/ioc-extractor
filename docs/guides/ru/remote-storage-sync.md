@@ -1,579 +1,435 @@
-# Гайд: работа с удалённым хранилищем (SMB sync)
+# Синхронизация с удалённым хранилищем (SMB)
 
-Практическое руководство для администраторов и разработчиков: как устроена
-синхронизация с удалённым хранилищем, как её настраивать, как она переживает
-сбои и как правильно подготовить SMB-шару на Linux и Windows.
+[English version](../remote-storage-sync.md)
 
-Документ намеренно написан «сверху»: он объясняет поведение системы и
-конфигурацию, не привязываясь к внутренней реализации. Архитектурные детали —
-в [../../sync.md](../../dev/sync.md).
+Руководство описывает настройку и эксплуатацию обычного SMB fetch/publish:
+передачу файлов производителем, восстановление и доступ на сервере. Внутренние
+механизмы принадлежат [sync](../../dev/ru/sync.md) и
+[событийной координации](../../dev/ru/event-coordination.md). У managed CSV import
+своё [руководство](dataframe-import.md) и приватное пространство владения;
+общий endpoint не даёт обычному fetch права изменять файлы как import.
 
-> English version: [../remote-storage-sync.md](../remote-storage-sync.md).
-
-## Содержание
-
-1. [Как работает sync](#1-как-работает-sync)
-2. [Справочник конфигурации и подбор значений](#2-справочник-конфигурации-и-подбор-значений)
-3. [Права, сбои, восстановление](#3-права-сбои-восстановление)
-4. [Настройка SMB-шары на Linux и Windows](#4-настройка-smb-шары-на-linux-и-windows)
-5. [Чек-листы](#5-чек-листы)
-
----
-
-## 1. Как работает sync
-
-### 1.1 Общая картина
-
-Sync — это два независимых потока данных между приложением и удалённой SMB-шарой:
+## Как устроена синхронизация
 
 ```text
-                 FETCH (забор исходников)
-удалённая шара ────────────────────────▶ ./var/inbox ──▶ штатный ingest ──▶ SQLite
-
-                 PUBLISH (доставка результатов)
-SQLite ──▶ export slice (./var/export) ────────────────▶ удалённая шара
+remote source -> fetch -> local inbox -> ingestion -> canonical SQLite
+canonical SQLite -> immutable export slice -> publish -> remote target
 ```
 
-- **Fetch** периодически смотрит в удалённый каталог, находит новые файлы
-  и скачивает их в локальный inbox. Дальше файл подхватывает обычный
-  демон-инжест — sync сам ничего не парсит и не извлекает IOC.
-- **Publish** доставляет на шару готовые **immutable export slices** —
-  каталоги с CSV-артефактами, manifest'ом и маркером `_SUCCESS`, которые
-  формирует подсистема export. Publish не собирает данные сам — он только
-  копирует уже проверенные срезы.
+Fetch скачивает целые исходные файлы и не меняет удалённые оригиналы. Ingest
+отдельно их разбирает. Publish передаёт уже завершённые локальные срезы, не
+извлекает IOC и не формирует export. Daemon планирует оба потока. Oneshot CLI
+выполняет выбранный fetch/publish cycle с включённой JDBC-backed sync configuration.
 
-Оба потока работают только в daemon-режиме по расписанию; в oneshot-режиме
-те же операции доступны вручную через CLI (`ioc sync fetch|publish|all`).
+### Идентичность, повторы и текущие ограничения
 
-### 1.2 Три принципа, которые объясняют всё поведение
+Fetch распознаёт `(path, size, modifiedAt)`, не содержимое. Повторная загрузка
+тех же или других байтов считается новой только при смене tuple. Polling не
+восстановит файл, удалённый до listing: согласуйте срок хранения завершённых
+файлов производителем и допустимую длительность outages.
 
-**1. Durable-идемпотентность через журналы (ledgers).** Каждый скачанный файл и
-каждая доставленная пара «срез × цель» записывается в локальную базу. Поэтому:
+Для нескольких sources/writers важны два текущих дефекта:
 
-- завершённый fetch намеренно не скачивается повторно;
-- один и тот же срез не доставляется на одну цель дважды;
-- после рестарта или сбоя система не начинает с нуля — она продолжает
-  с того места, где остановилась, сверяясь с журналом.
+- `OPS-11`: у fetch key нет endpoint/source namespace. Одинаковые tuples на двух
+  шарах могут полностью подавить второе скачивание.
+- `OPS-12`: выбор имени и atomic landing разделены. Одновременные writers одного
+  inbox filename могут заменить уже полученный источник, хотя оба fetch на Linux
+  будут записаны как успешные.
 
-В узком crash window fetch является at-least-once transfer: локальный файл
-становится видимым до закрытия durable fetch record. Сбой процесса между этими
-шагами может привести к повторной загрузке под collision-safe local name.
-Canonical ingest deduplication защищает business rows, но transport не обещает
-distributed exactly-once delivery.
+См. [известные проблемы](../../KNOWN-ISSUES.md). Используйте непересекающиеся remote
+paths и уникальные final filenames производителей: это снижает конкретные коллизии,
+но не заменяет исправление и не даёт общего cross-process fencing. Согласуйте
+ручной fetch с daemon и другими writers. Очистка ledger rows не является обычной
+процедурой повторной подачи.
 
-Для fetch «тот же файл» — это тройка **путь + размер + время модификации**.
-Если файл на шаре изменился (дописали, перезалили) — это уже *новый* объект,
-и он будет скачан заново. Это сознательно: перезалитый отчёт с тем же именем —
-это новые данные.
+Даже без этих дефектов fetch — at-least-once: crash после landing до ledger update
+может скачать файл ещё раз. Canonical deduplication не делает повторное наблюдение
+операцией без последствий при любой lifecycle policy.
 
-**2. Опрос — источник корректности, события — ускоритель.** Периодический
-опрос (polling) по расписанию гарантированно найдёт всё, что появилось на шаре,
-даже если все «быстрые» механизмы отказали. Push-уведомления (SMB CHANGE_NOTIFY,
-см. 1.4) лишь сокращают задержку — их потеря ни на что не влияет, кроме скорости
-реакции.
+### Передача файла производителем и push
 
-**3. Атомарность на каждой границе.** Файл никогда не виден «наполовину»:
+Удалённый производитель обязан записать файл под исключённым временным именем,
+закрыть его и переименовать в свободное final name в той же filesystem/share.
+У fetch нет remote quiet-period и проверки метаданных до/после скачивания. Запись
+сразу под конечным именем может передать частичный контент; увеличение debounce
+этого не предотвращает. Размер/mtime позже могут измениться, но полное повторное
+скачивание не отменит частичные данные, уже прошедшие ingest.
 
-- fetch скачивает в скрытый staging-файл и только потом атомарно переименовывает
-  его в финальное имя в inbox;
-- publish копирует срез во временный удалённый каталог и последним шагом пишет
-  маркер `_SUCCESS` — потребитель, который ждёт маркер, никогда не увидит
-  недокопированный срез.
+`CHANGE_NOTIFY` опционален. Сигнал означает «получить список этого источника»,
+не содержит authoritative content или delivery identity. Debounce объединяет
+push triggers; scheduled/startup checks не ждут завершения записи производителем.
+Polling остаётся включённым. Выбирайте `fetch.interval` по допустимой задержке
+после потерянного сигнала, recovery и стоимости listing; универсального безопасного
+интервала нет.
 
-### 1.3 Fetch по шагам
+Watch владеет отдельной долгоживущей SMB session/directory handle. Обычный transport
+использует cached endpoint session, при соответствующей конфигурации общую с
+другими операциями. Каждый watch source добавляет спрос на ресурсы даже при одном
+endpoint. Watch обновляет lease примерно каждые 30 минут независимо от обычных
+request/idle timeouts и ускоряет detection после восстановления. Reconnect идёт,
+пока жив daemon. Запрошенная, но неподдерживаемая push capability проваливает
+startup; последующий сетевой сбой обрабатывают reconnect и polling, а не считают
+доказательством квалификации сервера.
 
-1. По таймеру (`fetch.interval`) или по push-сигналу система запрашивает
-   список файлов удалённого каталога.
-2. Список фильтруется по `include`/`exclude` маскам.
-3. Отбрасывается всё, что уже скачано (по журналу) или скачивается прямо сейчас.
-4. Оставшееся скачивается: staging-файл → атомарное переименование в inbox →
-   запись в журнал.
-5. Если имя в inbox занято другим файлом — новому добавляется суффикс,
-   ничего не перезаписывается.
+### Публикация и получатели
 
-Fetch **никогда не изменяет удалённую шару**: не удаляет, не переносит,
-не переименовывает файлы источника. Права на запись ему не нужны.
+Publish обнаруживает completed slices и ведёт пару на slice/target. Локальный
+catalog проверяет marker, manifest, membership, file hashes/sizes. SMB adapter
+загружает non-marker files в соседний приватный `.tmp-…`, последним там пишет
+`_SUCCESS`, проверяет размеры и переименовывает в final slice. Получатель должен
+игнорировать временные каталоги.
 
-### 1.4 Push-ускорение: SMB CHANGE_NOTIFY
+Получатель принимает только final directory с `_SUCCESS`, соответствующим хешу
+manifest, затем проверяет ожидаемые файлы, размеры и хеши. Одного marker недостаточно
+для сквозной проверки байтов. Marker recovery может завершить прежнюю доставку без
+скачивания каждого remote CSV. Несовпавший существующий marker проваливает проверку;
+незавершённый final directory без marker может быть заменён. Изолируйте publish
+output от посторонних данных и внешних writers.
 
-Для источника можно включить `change-notify`. Тогда приложение держит
-постоянное соединение с шарой и просит сервер сообщать об изменениях каталога.
-Работает это как **дверной звонок**: любое уведомление (файл создан, изменён,
-переименован, удалён — не важно) означает одно — «проверь каталог сейчас».
-Система выжидает короткую паузу (`debounce`, чтобы серия уведомлений от одного
-файла слилась в одну проверку) и запускает обычный цикл обнаружения из 1.3.
+Delivery ledger содержит `PENDING`, `IN_PROGRESS`, `FAILED`, `SUCCEEDED`,
+`ABANDONED`; последние два терминальны. Прерванная in-progress попытка становится
+retryable после recovery threshold, а не обязательно сразу при restart. Публичного
+abandon/requeue CLI нет. Потерянный ответ может означать, что срез уже удалённо
+доставлен, хотя локальный ledger ещё не завершён.
 
-Что важно знать администратору:
+Local retention ждёт terminal state для всех текущих targets профиля. Отсутствующая
+или failed pair может закреплять slice сверх age/count limits; `ABANDONED` снимает
+pin без доказательства доставки. Удаление target меняет обязательство. Delivery-aware
+retention veto действует только при включённом daemon sync/publish и JDBC service
+storage. Выключение `ioc.sync.enabled` или `ioc.sync.publish.enabled` убирает veto;
+сохраните unresolved slices до изменения. Отключение publish не является паузой
+с сохранением этих pins. Обычный publish не удаляет старые committed remote slices;
+согласуйте remote retention с получателями отдельно.
 
-- это **опция задержки, не корректности**: при обрыве watch-соединения система
-  переподключается с нарастающей паузой, а опрос по таймеру продолжает работать;
-- watch использует отдельную долгоживущую SMB-сессию с открытым handle'ом
-  каталога. Обычные операции fetch/publish/list/upload/download используют
-  штатную transport-сессию. Поэтому две сессии на файловом сервере под одной
-  учёткой — это нормально: у watch-сессии обычно один открытый handle, а у
-  обычной сессии может быть ноль открытий, и она просто остаётся в кэше до
-  `idle-timeout`;
-- watch-сессия планово пересоздаётся примерно каждые 30 минут (защита от
-  «молча умерших» соединений через firewall/NAT); после каждого переоткрытия
-  каталог проверяется принудительно, так что окно между сессиями не теряется.
-  Этот 30-минутный lease watch-сессии не связан с `request-timeout` и
-  `idle-timeout`;
-- при включённом и стабильном push интервал опроса можно сделать редким
-  (10–15 минут, или около часа, если такая задержка после потерянного push
-  допустима) — это и есть главная экономия трафика и нагрузки;
-- если push включён для endpoint'а, который его не поддерживает, приложение
-  **не стартует** (fail-fast): раз оператор явно попросил capability, молча
-  деградировать в polling нельзя.
+## Конфигурация
 
-### 1.5 Publish по шагам
+Sync, fetch и publish по умолчанию выключены, списки endpoint/source/target пусты.
+Включайте только настроенные потоки.
 
-1. Подсистема export по своему расписанию формирует локальные срезы
-   (`./var/export/<profile>/<slice>/…` + manifest + `_SUCCESS`).
-2. Publish узнаёт о готовом срезе сразу (по внутреннему событию) и — как
-   страховка — периодически сверяет каталог срезов с журналом доставки
-   (`publish.interval`).
-3. Для каждой пары «срез × цель» ведётся запись: `PENDING → IN_PROGRESS →
-   SUCCEEDED` (или `FAILED`, который будет повторён на следующем цикле).
-4. Копирование: временный удалённый каталог → побайтовая выкладка файлов →
-   маркер `_SUCCESS` последним.
-5. После сбоя посреди доставки повторная попытка безопасна: сначала проверяется,
-   не появился ли на шаре валидный `_SUCCESS` от прошлой попытки.
-
-Локальный срез не удаляется retention'ом, пока он не доставлен на **все**
-настроенные цели.
-
----
-
-## 2. Справочник конфигурации и подбор значений
-
-Всё живёт под `ioc.sync.*`. Функция выключена по умолчанию
-(`ioc.sync.enabled: false`). Пример полной конфигурации — в конце
-`application.yml` (профиль `smb-example`) и в [../../sync.md](../../dev/sync.md).
-
-### 2.1 Общий каркас
+Полный пример `ioc.sync` объединяется со встроенными defaults. Он использует
+существующий export profile `reputation-lists`; для формирования срезов нужны
+его настройка и `ioc.export.enabled`. Для расписания нужен daemon
+mode; включённым sync use cases нужен JDBC service store. ConfigData lists целиком заменяют нижележащие списки:
+передавайте полные entries endpoint/source/target, не частичный list patch.
 
 ```yaml
 ioc:
   sync:
     enabled: true
-    retry: { max-attempts: 3, backoff: 1s, multiplier: 2.0, max-backoff: 30s, jitter: true }
-    endpoints: [ ... ]     # "куда подключаемся" — соединения
-    fetch:                 # "что забираем" — источники
+    retry:
+      max-attempts: 3
+      backoff: 1s
+      multiplier: 2.0
+      max-backoff: 30s
+      jitter: true
+    endpoints:
+      - name: intel-share
+        transport: smb
+        smb:
+          host: files.example.org
+          port: 445
+          share: intel
+          domain: CORP
+          username: ${SMB_USER}
+          password: ${SMB_PASSWORD}
+          encryption: required
+          connect-timeout: 10s
+          request-timeout: 30s
+          idle-timeout: 5m
+    fetch:
       enabled: true
       interval: 1m
-      sources: [ ... ]
-    publish:               # "что доставляем" — цели
+      sources:
+        - name: incoming-intel
+          endpoint: intel-share
+          remote-path: /incoming
+          include: [ "*.htm", "*.html", "*.docx" ]
+          exclude: [ "*.tmp", "*.part", ".*" ]
+          change-notify:
+            enabled: false
+            debounce: 3s
+    publish:
       enabled: true
       interval: 5m
-      targets: [ ... ]
+      targets:
+        - name: reputation-delivery
+          endpoint: intel-share
+          remote-path: /out/reputation
+          export-profile: reputation-lists
 ```
 
-Мысленная модель: **endpoint** — это соединение (сервер + шара + учётка +
-таймауты). **Source** и **target** — это каталоги на этом соединении и правила
-работы с ними. Один endpoint могут делить несколько источников и целей.
+Выберите реальные host/share/domain и пути; для подходящей локальной учётной записи
+оставьте `domain` пустым. `remote-path` — путь внутри share, не UNC. Listing
+нерекурсивный. Include/exclude сопоставляют имена; пустой include принимает все
+regular files, поэтому задавайте форматы явно. Логические имена/ссылки должны быть
+корректны и уникальны; strict preflight отвергает неизвестные keys/transports/profiles
+до I/O. Полный контракт — в [справочнике конфигурации](configuration.md).
 
-### 2.2 `retry.*` — повторы неудачных операций
+### Повторы и расписание
 
-| Параметр | Дефолт | Что делает |
+| Настройка | Default | Значение |
 |---|---|---|
-| `max-attempts` | 3 | Сколько раз повторить неудачную операцию (скачивание, выкладку) внутри одного цикла |
-| `backoff` | 1s | Пауза перед первым повтором |
-| `multiplier` | 2.0 | Каждый следующий повтор ждёт в N раз дольше |
-| `max-backoff` | 30s | Потолок паузы |
-| `jitter` | true | Случайное «размазывание» пауз, чтобы повторы разных операций не били в сервер синхронно |
+| `retry.max-attempts` | `3` | Всего вызовов, включая первый, для ошибок с разрешённым немедленным повтором |
+| `retry.backoff` / `multiplier` / `max-backoff` | `1s` / `2.0` / `30s` | Растущая, ограниченная сверху задержка немедленных повторов |
+| `retry.jitter` | `true` | Случайное распределение задержек уменьшает одновременные bursts |
+| `fetch.interval` | `1m` | Периодический listing/recovery backstop независимо от push |
+| `change-notify.enabled` / `debounce` | `false` / `3s` | Опциональное ускорение сигналами и задержка объединения |
+| `publish.interval` | `5m` | Discovery/retry backstop завершённых локальных slices |
 
-**Как подбирать.** Дефолты подходят почти всем. Увеличивать `max-attempts`
-имеет смысл только на заведомо нестабильной сети (WAN, перегруженный VPN) — и
-помнить, что неудача не фатальна: следующий плановый цикл всё равно повторит
-работу. `jitter` не отключайте: при массовых повторах он защищает сервер от
-синхронных всплесков. Эти же `backoff/multiplier/max-backoff/jitter` управляют
-паузами переподключения watch-сессии CHANGE_NOTIFY, но `max-attempts` на watch
-не действует — он переподключается бесконечно, пока демон жив.
+Только `TRANSIENT` допускает немедленный micro-retry. `UNREACHABLE` и
+`RESOURCE_EXHAUSTED` откладывают работу до следующего цикла. Authentication,
+permission, missing objects и security-policy failures не исправляются немедленными
+повторами. Следующие циклы могут встретить прежние ошибки: исправляйте причину,
+а не только число попыток. Watch reconnect использует эту группу backoff, но не
+ограничивает срок жизни числом `max-attempts`. Событие не гарантирует мгновенный
+publish: admission, backlog и активная транзакция могут его задержать.
 
-### 2.3 `endpoints[].smb.*` — соединение
+### Политика подключения endpoint
 
-```yaml
-endpoints:
-  - name: intel-share          # логическое имя, на него ссылаются sources/targets
-    transport: smb
-    smb:
-      host: files.example.org
-      port: 445
-      share: intel
-      domain: CORP             # пусто, если локальная учётка или Samba без домена
-      username: ${SMB_USER}
-      password: ${SMB_PASSWORD}
-      encryption: required
-      connect-timeout: 10s
-      request-timeout: 30s
-      idle-timeout: 5m
-```
-
-| Параметр | Дефолт | Что делает и как подбирать |
+| Настройка | Default | Область |
 |---|---|---|
-| `host` | — | Имя или IP файлового сервера без scheme и порта в строке |
-| `port` | `445` | TCP port всех SMB sessions этого endpoint. Другое значение задавайте только для явно настроенного нестандартного listener или port-forward |
-| `share` | — | Имя шары (без слэшей): `intel`, а не `\\host\intel` |
-| `domain` | — | AD-домен учётки. Для Samba c локальными пользователями оставьте пустым |
-| `username` / `password` | — | **Только через переменные окружения** (`${SMB_USER}`). Секреты не попадают в логи и health |
-| `encryption` | `required` | `required` допускает только SMB3 и до share I/O fail-closed проверяет effective session encryption. `preferred` запрашивает encryption, но явно разрешает незашифрованный SMB2/3 fallback. `disabled` не запрашивает client-preferred encryption и допустим только для осознанно доверенной legacy-сети |
-| `connect-timeout` | 10s | Сколько ждать TCP-подключения. LAN: 5s достаточно. WAN/VPN: 10–15s. Учтите: DNS-резолв в этот бюджет не входит |
-| `request-timeout` | 30s | Потолок **одного обычного SMB-запроса**: чтение блока, запись, получение списка каталога, открытие/закрытие handle'ов. Увеличивайте, если сервер медленный или в каталоге тысячи файлов и листинг не укладывается. Это не интервал опроса, не расписание fetch/publish и не ограничение idle-ожидания `CHANGE_NOTIFY` push-уведомлений |
-| `idle-timeout` | 5m | Сколько держать простаивающее **обычное transport-соединение** перед закрытием. Это соединение используется операциями fetch/publish/list/download/upload; оно отдельно от активной watch-сессии `CHANGE_NOTIFY`. Меньше — чаще повторные подключения (лишние handshake/auth). Больше — дольше живёт сокет, который stateful firewall может молча выкинуть. Практическое правило: **чуть меньше**, чем idle-timeout вашего firewall/NAT (частая заводская настройка — 5–30 минут) |
+| `port` | `445` | TCP для обычных и выделенных watch connections |
+| `encryption` | `required` | Только SMB3 плюс проверка effective session encryption до share I/O |
+| `connect-timeout` | `10s` | TCP connection, не весь cycle и не DNS deadline |
+| `request-timeout` | `30s` | Один обычный SMB request, не idle watch wait |
+| `idle-timeout` | `5m` | Время жизни неиспользуемого cached regular client независимо от watch lease |
 
-Имена endpoint'ов должны быть уникальны; ссылка на несуществующий endpoint или
-неподдерживаемый `transport` отклоняется ещё на старте, до первой сетевой операции.
+`preferred` и `disabled` явно допускают более слабую границу; это не исправление
+сервера, который должен обеспечивать обязательное encryption. Неподдерживаемый
+`read-timeout` даёт migration hint. Legacy `encrypt` — временный rollback alias;
+не задавайте его вместе с `encryption`. Новая конфигурация использует только
+последний ключ. Выбирайте timeouts по измеренной сетевой/серверной задержке и
+требованиям recovery; idle lifetime ниже известного firewall timeout не доказывает
+немедленного обнаружения любой оборванной session.
 
-### 2.4 `fetch.*` — источники
+## Эксплуатация, сбои и health
 
-```yaml
-fetch:
-  enabled: true
-  interval: 1m
-  sources:
-    - name: incoming-intel
-      endpoint: intel-share
-      remote-path: /incoming
-      include: [ "*.htm", "*.html", "*.docx" ]
-      exclude: [ "*.tmp", "*.part", ".*" ]
-      change-notify:
-        enabled: false
-        debounce: 3s
-```
+### Права и credentials
 
-| Параметр | Дефолт | Что делает и как подбирать |
+| Место | Учётная запись обычного sync | Другие identities |
 |---|---|---|
-| `interval` | 1m | Автоматический период опроса всех источников. Это и «частота обнаружения» (без push), и плановый «страховочный цикл» (с push). Без push: выбирайте по допустимой задержке появления данных — 1–5 минут типично. С включённым и стабильным push делайте опрос редким: 10–15 минут консервативно, около 1 часа допустимо, если потерянный push может ждать планового backstop-цикла. При этом оператор в любой момент может запустить `ioc sync fetch` / `ioc sync all` и тем самым выполнить тот же fetch-цикл немедленно |
-| `remote-path` | — | Каталог внутри шары (прямые слэши: `/incoming`). Листинг **не рекурсивный** — вложенные каталоги не сканируются |
-| `include` | — | Маски имён, которые забираем. Перечисляйте только реально нужные форматы — это первый фильтр от мусора |
-| `exclude` | — | Маски, которые игнорируем **поверх** include. Всегда держите здесь временные имена производителя: `*.tmp`, `*.part`, скрытые `.*` — это защита от скачивания недописанных файлов |
-| `change-notify.enabled` | false | Push-уведомления для этого источника (см. 1.4). Включайте по одному источнику, убедившись по health, что watch стабилен |
-| `change-notify.debounce` | 3s | Пауза «тишины» после сигнала перед проверкой каталога. Больше — лучше склейка шторма уведомлений, но каждый одиночный файл получает эту задержку. 2–5s для обычных файлов; 5–10s, если производитель пишет большие файлы медленно и не использует rename-конвенцию |
+| Source directory | Read/list/traverse, notification access для push; без write/delete | Producer пишет и переименовывает завершённые файлы |
+| Publish target | Create/write/read/stat/list, rename и delete в собственном namespace | Consumers читают/list, не меняют |
 
-**Договорённость с поставщиком данных (важно).** Попросите тех, кто кладёт
-файлы на шару, писать их сначала во временное имя (`отчёт.docx.part`), а по
-завершении **переименовывать** в финальное. Переименование в SMB атомарно —
-система никогда не увидит недописанный файл. Если производитель так не умеет,
-компенсируйте: расширяйте `exclude`, увеличивайте `debounce`, и помните, что
-даже скачанный частично файл не потерян — дописанная версия имеет другой
-размер/время и будет скачана снова как новый объект.
+Администратор создаёт share, настраивает parent traversal и filesystem ACL.
+Обычный sync не создаёт share и не делает полный negative ACL audit при startup.
+Notification support/permissions требуют проверки target. Не совмещайте обычный
+source directory с managed-import ownership paths.
 
-### 2.5 `publish.*` — цели
+Передавайте credentials через environment placeholders. В systemd deployment
+используется EnvironmentFile `etc/ioc-extractor.env`, mode `0640`; это не shell
+script. Ротируйте credentials по account policy, обновляйте файл и перезапускайте
+сервис; горячей ротации нет. Credentials остаются в памяти для reconnect, хотя
+временные character arrays очищаются. Не передавайте пароли в CLI arguments,
+committed YAML и диагностике.
 
-```yaml
-publish:
-  enabled: true
-  interval: 5m
-  targets:
-    - name: reputation-delivery
-      endpoint: intel-share
-      remote-path: /out/reputation
-      export-profile: reputation-lists
-```
+### Интерпретация сбоев
 
-| Параметр | Дефолт | Что делает и как подбирать |
-|---|---|---|
-| `interval` | 5m | Автоматический период сверки «что готово локально» × «что доставлено». Готовый срез уезжает сразу по событию; интервал — плановая страховка на случай потерянного события или рестарта. 5m — разумный дефолт; при стабильной событийной доставке его можно поднять, например до 1 часа, если такая worst-case задержка автоматической доставки допустима. При этом оператор в любой момент может запустить `ioc sync publish` / `ioc sync all`, чтобы немедленно выполнить reconcile и publish |
-| `remote-path` | — | Каталог, куда выкладываются срезы. Внутри появятся подкаталоги-срезы и временные каталоги на время копирования |
-| `export-profile` | — | Какой export-профиль доставлять (см. `ioc.export.profiles`). Профиль должен существовать — проверяется на старте |
+| Ситуация | Поведение / действие оператора |
+|---|---|
+| Недоступна сеть или исчерпаны server resources | Следующие cycles/reconnect могут восстановиться; исследуйте длительный backlog и ёмкость сервера |
+| Authentication, permission или encryption policy failure | Исправьте account/ACL/policy; повторы их не чинят |
+| Source меняется во время download | Стабильный remote snapshot не обещан; обеспечьте producer handoff вместо надежды на deduplication |
+| Crash во время fetch | Незавершённый staging скрыт; уже полученный файл может скачаться снова при потере ledger closure |
+| Crash/потерянный ответ publish | Сохраните local slice/ledger; совпавший remote marker позволяет завершить recovery |
+| Marker mismatch или missing/corrupt local slice | Сохраните evidence и исследуйте binding/content; не удаляйте marker ради перезаписи |
+| Daemon долго выключен | Reconcile обрабатывает доступные sources и retained slices; удалённые inputs или вручную удалённые pins не восстановить |
 
-### 2.6 Связанные настройки за пределами `sync`
+`sync` health показывает наблюдения source/target, detection timing, watch state,
+endpoint lanes и `publishPending`/`publishInProgress`/`publishFailed`. Нетронутый
+опциональный source/target может иметь `UNKNOWN`: это не успешный probe.
+У reconnect watch есть grace window до degradation. Временный source outcome может
+иметь `DEGRADED`, а durable `FAILED` publish pair даёт sync `DOWN` до разрешения.
+Aggregate status и наблюдение отдельной операции — разные представления.
 
-- `ioc.export.*` — расписание и состав срезов, которые доставляет publish
-  (trigger/quiet-period, профили, retention локальных срезов).
-- `ioc.ingestion.dirs.inbox` — куда fetch кладёт скачанное и откуда демон
-  забирает файлы в обработку (`./var/inbox` по умолчанию).
+`smbTransport` показывает application-owned connections/sessions/tree connections,
+`pooledSessions`, `activeWatchSessions`, `plannedSteadySessions`, failures и
+resource exhaustion. Planned demand — не configured server limit и не доступный
+headroom. Суммарное usage, quotas и других клиентов проверяйте серверным monitoring.
+Не измеряйте предел открытием соединений до отказа.
 
----
+Логи/restart/backup описаны в [daemon operations](daemon-operations.md).
+Application `event.action` различает `sync_fetch_start`/`sync_fetch_complete` и
+`sync_publish_start`/`sync_publish_complete`; читайте также diagnostic/severity и
+durable outcomes. Пустые cycles обычно DEBUG. Сохраняйте owned recovery state и
+pinned slices, не удаляя их ради уменьшения очереди.
 
-## 3. Права, сбои, восстановление
+### Ручной CLI
 
-### 3.1 Минимальные права (least privilege)
-
-Приложению нужны **разные** права на разных каталогах — заводите одну сервисную
-учётку, но раздавайте права точечно:
-
-| Каталог | Роль | Права сервисной учётки | Права других |
-|---|---|---|---|
-| Источник (`/incoming`) | fetch читает | **Чтение + листинг** (read, list). Запись НЕ нужна — fetch ничего не удаляет и не переносит | Производитель данных: запись + переименование |
-| Цель (`/out/...`) | publish пишет | **Полный набор на содержимое**: создание файлов и каталогов, запись, переименование, удаление (нужны для временного каталога и повторных попыток) | Потребители: только чтение |
-
-Для CHANGE_NOTIFY отдельных прав не нужно — достаточно тех же прав на чтение
-и листинг каталога-источника.
-
-Чего приложение **не делает** (и не просите): не создаёт шары, не меняет ACL,
-не удаляет файлы источника, не чистит целевой каталог за пределами своих
-временных каталогов. Провижининг хранилища — задача администратора.
-
-### 3.2 Секреты
-
-- Логин/пароль передаются только через переменные окружения
-  (`${SMB_USER}` / `${SMB_PASSWORD}`).
-- В systemd-развёртывании они лежат в `etc/ioc-extractor.env` c правами `0640`.
-- Пароль не попадает в логи, health-выдачу и имена потоков. Временные копии
-  `char[]` очищаются после использования, но endpoint credential остаётся в
-  памяти процесса, пока client factory может выполнять connect/reconnect.
-- Ротация пароля = обновить env-файл и перезапустить сервис. Горячей ротации нет.
-
-### 3.3 Как система переживает сбои
-
-| Ситуация | Что происходит | Что делать |
-|---|---|---|
-| Шара недоступна (сеть, ребут сервера) | Операции падают, помечаются как временные (`DEGRADED`), повторяются с нарастающей паузой; следующий плановый цикл пробует снова. Watch-сессия push переподключается бесконечно | Ничего: после восстановления сети всё продолжится само. Смотреть health, если DEGRADED держится долго |
-| Неверный пароль / нет прав | Ошибка классифицируется как постоянная — health уходит в `DOWN`, повторы её не «лечат» | Чинить учётку/ACL. Это единственный класс ошибок, требующий вмешательства всегда |
-| Сервер исчерпал session/share/resource quota | Raw NTSTATUS классифицируется как `RESOURCE_EXHAUSTED`, немедленный retry не раскручивается, `smbTransport` становится `DEGRADED` | Проверить `plannedSteadySessions`, application-owned sessions и серверные current/limit; освободить или увеличить capacity |
-| Рестарт демона посреди скачивания | Недокачанный staging-файл не виден инжесту; журнал не отметил файл как скачанный → после старта файл скачается заново | Ничего |
-| Рестарт посреди доставки среза | Запись в журнале остаётся незавершённой → попадает в повтор. Повтор сначала проверяет удалённый `_SUCCESS`: если прошлая попытка успела докопировать — запись просто закрывается без повторной выкладки | Ничего |
-| Файл на шаре изменили во время скачивания | Скачается «как есть»; изменённая версия — это новая тройка (путь, размер, время) → будет скачана следом отдельно. Дедупликация ниже по конвейеру уберёт повторы данных | Просить производителя использовать rename-конвенцию (см. 2.4) |
-| Push-уведомления потерялись (переполнение на сервере, обрыв) | Переполнение сервер честно сообщает — каталог проверяется немедленно. Обрыв → переподключение + принудительная проверка каталога после него. Всё, что «проскочило», добирает плановый опрос | Ничего |
-| Демон был выключен неделю | Никакой «очереди событий» не копится. Первый же цикл опроса заберёт все новые файлы, publish доставит все недоставленные срезы | Ничего |
-
-### 3.4 Мониторинг: на что смотреть
-
-Health-контрибьютор `sync` (daemon actuator, loopback `:8081`, и команда
-`ioc health`) показывает:
-
-- статус по каждому источнику/цели/endpoint'у: `UP / DEGRADED / DOWN / UNKNOWN`;
-- состояние push-watch по источнику: `ACTIVE / RECONNECTING / DISABLED`,
-  счётчики сигналов, переподключений и re-arm'ов, длительность последней
-  проверки каталога;
-- очередь доставки: `publishPending / publishInProgress / publishFailed`.
-
-Отдельный health-контрибьютор `smbTransport` показывает по logical endpoint:
-
-- `plannedSteadySessions`: расчётная потребность приложения — одна cached
-  transport session на используемый endpoint плюс одна session на каждый
-  включённый `CHANGE_NOTIFY` source;
-- `ownedConnections / ownedSessions / activeTreeConnections`, а также split
-  `pooledSessions / activeWatchSessions`;
-- `openFailures / operationFailures / resourceExhaustions` и время последнего
-  capacity-отказа.
-
-Это только ресурсы данного процесса. Полный current usage и configured limit
-клиентский SMB-протокол не сообщает; их нужно получать на сервере. Поэтому
-`plannedSteadySessions` не является свободным остатком или доказательством
-достаточного capacity.
-
-Правила чтения:
-
-- `UNKNOWN` — итоговой операции ещё не было. Это нормально сразу после startup
-  для optional source/target: приложение не выполняет authentication или remote
-  write probe только ради изменения health;
-- `DEGRADED` — временная проблема (сеть, перегрузка): система сама повторяет.
-  Реагируйте, только если статус держится дольше ваших SLA.
-  Короткое `RECONNECTING` у watch — это норма после настоящего обрыва; в
-  `DEGRADED` оно превращается только если переподключение не удаётся дольше
-  grace-окна (60 секунд). Плановые re-arm'ы watch обычно быстро возвращают
-  состояние в `ACTIVE` и увеличивают счётчик re-arm'ов, а не оставляют watch
-  постоянно в `RECONNECTING`;
-- `DOWN` — постоянная проблема (аутентификация, права, ошибка доставки в
-  журнале): требует вмешательства;
-- `publishFailed > 0` — смотреть логи конкретной пары срез×цель.
-
-В логах (ECS JSON) ищите по `event.action`: `sync_fetch_start|complete`,
-`sync_publish_start|complete`. Пустые циклы пишутся на DEBUG, реальная работа —
-на INFO, деградация — WARN, постоянные ошибки — ERROR.
-
-### 3.5 Ручное вмешательство (CLI)
+Примеры используют prefix установщика `/opt/ioc-extractor`; подставьте свой
+(`deploy-local.sh` по умолчанию использует `/srv/ioc-extractor`). Launcher требует
+sudo и загружает configured service environment. Согласуйте **изменяющие** команды
+с daemon: отдельный процесс не разделяет его endpoint exclusion.
 
 ```bash
-ioc sync fetch   [--source NAME] [--endpoint NAME] [--dry-run]
-ioc sync publish [--profile NAME] [--target NAME] [--endpoint NAME] [--dry-run]
-ioc sync all     [--source NAME] [--profile NAME] [--target NAME] [--endpoint NAME] [--dry-run]
-ioc health [--component sync] [--json] [--url URL | --host HOST --port PORT]
+sudo /opt/ioc-extractor/bin/ioc sync --help
+sudo /opt/ioc-extractor/bin/ioc sync fetch --source incoming-intel --endpoint intel-share --dry-run
+sudo /opt/ioc-extractor/bin/ioc sync publish --profile reputation-lists --target reputation-delivery --endpoint intel-share --dry-run
+sudo /opt/ioc-extractor/bin/ioc sync all --source incoming-intel --profile reputation-lists --target reputation-delivery --endpoint intel-share --dry-run
+sudo /opt/ioc-extractor/bin/ioc health --component sync --json
+sudo /opt/ioc-extractor/bin/ioc health --component smbTransport --json
 ```
 
-`--dry-run` может читать remote metadata, но не изменяет шару, inbox и ledgers.
-Он проверяет selection и read access; publish write/delete permissions нужно
-отдельно проверять end-to-end на выделенном target. Ненулевое число ошибок даёт
-exit code 1 (пригодно для скриптов).
+Убирайте `--dry-run` только для намеренного изменения. Fetch dry-run читает remote
+metadata без download; publish dry-run читает local slices/ledger, не проверяя
+подключением права записи на target. Полный CLI может инициализировать/мигрировать
+service DB даже в dry-run. Для репетиции без изменения рабочего storage нужна
+изолированная конфигурация, а не только этот флаг.
 
----
+`sync all` сначала проверяет обе selection, затем fetch и publish **существующих**
+slices. Он не запускает и не ждёт ingest/export нового документа. Ненулевой failure
+count даёт sync exit `1`, нулевой — `0`; setup, listing и selection exceptions
+тоже могут завершить команду ошибкой. Пустая работа с `0` не доказывает delivery
+или ACL. Для health только `UP` даёт `0`, разобранный non-UP, включая
+`DEGRADED`/`UNKNOWN`, — `1`, request/parse failure — `2`.
 
-## 4. Настройка SMB-шары на Linux и Windows
+## Подготовка SMB-сервера
 
-Общие требования к серверу любой ОС:
+Это шаблоны **нового выделенного дерева** для администратора. Заранее создайте
+названные accounts/groups producer/consumers. Для административных запросов
+используйте отдельную monitoring identity; приложению не нужны server admin rights.
+Существующие деревья требуют ACL migration с сохранением нужного доступа,
+а не слепого выполнения примеров.
 
-- **Secure default `encryption: required` требует SMB3**. SMB2 доступен только
-  после явного выбора `preferred` или `disabled` и принятия незашифрованного
-  fallback оператором.
-  SMB1 должен быть выключен;
-- настроенный TCP-порт endpoint (по умолчанию 445) открыт от хоста
-  приложения к серверу;
-- отдельная сервисная учётка для приложения, без интерактивного входа;
-- структура каталогов: отдельно входящий (`incoming`) и исходящий
-  (`out/...`) каталоги — у них разные права (см. 3.1).
+### Linux / Samba
 
-### 4.1 Linux (Samba)
-
-Установка и учётка:
+На Debian/Ubuntu-подобном host с установленной Samba создайте service account и
+выделенное дерево. Accounts/groups `producer` и `consumers` должны существовать.
+Producer должен создавать group-readable files, в том числе при записи вне Samba.
 
 ```bash
-apt install samba                    # Debian/Ubuntu (dnf install samba — RHEL)
-groupadd iocsync
-useradd -M -s /usr/sbin/nologin -G iocsync svc-ioc
-smbpasswd -a svc-ioc                 # пароль SMB-учётки (он же пойдёт в SMB_PASSWORD)
+sudo groupadd iocsync
+sudo useradd -M -s /usr/sbin/nologin -G iocsync svc-ioc
+sudo smbpasswd -a svc-ioc
+sudo install -d -o root -g root -m 0755 /srv/intel /srv/intel/out
+sudo install -d -o producer -g iocsync -m 2750 /srv/intel/incoming
+sudo install -d -o svc-ioc -g consumers -m 2750 /srv/intel/out/reputation
 ```
 
-Каталоги и права (владелец — производитель данных, группа — для доступа):
-
-```bash
-mkdir -p /srv/intel/incoming /srv/intel/out/reputation
-# incoming: производитель пишет, svc-ioc только читает
-chown producer:iocsync /srv/intel/incoming
-chmod 2750 /srv/intel/incoming
-# out: svc-ioc пишет, потребители читают
-chown svc-ioc:consumers /srv/intel/out/reputation
-chmod 2770 /srv/intel/out/reputation
-```
-
-`/etc/samba/smb.conf`:
+Группа output получает чтение/traverse, не group write. Ниже минимальный dedicated
+server config; согласуйте с существующей server policy. Comments вынесены в
+отдельные строки, чтобы не стать частью parameter values.
 
 ```ini
 [global]
-    server min protocol = SMB3_00        # secure default приложения требует SMB3
-    smb encrypt = required               # fail closed для всех клиентов сервера
-    # Уведомления об изменениях (нужны для change-notify):
-    change notify = yes                  # значение по умолчанию, но зафиксируйте явно
-    kernel change notify = yes           # inotify-подложка: ловит и локальные записи
-                                         # (rsync, scp, cron на самом сервере)
+    server min protocol = SMB3_00
+    server smb encrypt = required
+    change notify = yes
+    kernel change notify = yes
 
 [intel]
     path = /srv/intel
     browseable = no
-    read only = yes                      # база — только чтение...
-    write list = producer, svc-ioc       # ...писать могут только эти учётки
+    read only = yes
+    write list = producer, svc-ioc
     valid users = producer, svc-ioc, @consumers
     create mask = 0640
-    directory mask = 0750
+    force create mode = 0640
+    directory mask = 2750
+    force directory mode = 2750
 ```
 
-> Тонкость про уведомления: `kernel change notify` отвечает за изменения,
-> сделанные **в обход Samba** (локальный процесс на сервере, NFS, rsync).
-> Если производитель кладёт файлы именно так — без этого параметра
-> push-уведомления до клиента не дойдут, и система будет жить на одном
-> опросе (это не поломка, просто медленнее).
+Share write permission не обходит filesystem rights. Parents должны разрешать
+traversal; setgid и creation modes сохраняют чтение нужными consumer/source groups.
+Отдельно проверьте ACL/umask локальных producers. Notifications для локальной записи
+зависят от server/filesystem backend; проверьте их, а не предполагайте push для
+любого producer path. Polling по-прежнему обнаруживает retained files.
+Семантика параметров — в [справочнике Samba](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html);
+сверяйтесь и с документацией установленной версии.
 
-SELinux (RHEL/CentOS/Fedora):
-
-```bash
-semanage fcontext -a -t samba_share_t "/srv/intel(/.*)?"
-restorecon -Rv /srv/intel
-```
-
-Firewall: `firewall-cmd --add-service=samba --permanent` (или открыть 445/tcp).
-
-Проверка share-level capacity на Samba-сервере (с административными правами):
+Проверьте конфигурацию до reload. Запросы ниже показывают config и текущую share
+activity; JSON доступен не в каждой установленной версии.
 
 ```bash
-testparm -s --section-name='intel' --parameter-name='max connections'
+sudo testparm -s
+sudo testparm -s --section-name='intel' --parameter-name='max connections'
 sudo smbstatus --shares --json
 ```
 
-`max connections = 0` означает отсутствие настроенного Samba share limit.
-`smbstatus` показывает текущие подключения; это operator monitoring, запускать
-его от имени сервисной учётки приложения не требуется.
+Samba `max connections = 0` означает отсутствие настроенного share limit;
+current share connections — не sessions per connection. Ограничьте firewall
+TCP 445 адресами application hosts или выбранным портом. Для SELinux настройте
+labels выделенного дерева по поддерживаемой Samba policy дистрибутива и проверьте
+доступ; отключение enforcement не является prerequisite.
 
-Проверка с хоста приложения:
+### Windows Server
 
-```bash
-smbclient //files.example.org/intel -U svc-ioc -c 'ls incoming\'   # листинг — должен работать
-smbclient //files.example.org/intel -U svc-ioc -c 'put test.txt incoming\test.txt'
-                                                                   # а вот это должно быть ЗАПРЕЩЕНО
-```
-
-### 4.2 Windows Server
-
-Шара и права (PowerShell, от администратора):
+Создайте service/producer accounts и consumers group по local/AD policy.
+Запретите interactive logon service identity и настройте rotation credentials.
+В свежем примере нужны administrator PowerShell и отсутствующий `D:\intel`.
+Service/producer/consumers получают в root только traversal/read; SYSTEM и
+Administrators сохраняют наследуемый full access ниже.
 
 ```powershell
-# Сервисная учётка (или доменная в AD — тогда укажите domain в конфиге)
-New-LocalUser svc-ioc -Password (Read-Host -AsSecureString) -PasswordNeverExpires
-
-New-Item -ItemType Directory D:\intel\incoming, D:\intel\out\reputation
-
-# Шара: доступ на уровне шары даём широкий (Change), реальные ограничения — в NTFS
-New-SmbShare -Name intel -Path D:\intel -ChangeAccess svc-ioc, producer -ReadAccess consumers
-# Шифрование SMB3 для этой шары:
-Set-SmbShare -Name intel -EncryptData $true
+New-Item -ItemType Directory -Path D:\intel
+icacls D:\intel /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "svc-ioc:RX" "producer:RX" "consumers:RX"
+icacls D:\intel /inheritance:r
+New-Item -ItemType Directory -Path D:\intel\incoming, D:\intel\out\reputation
+icacls D:\intel\incoming /grant:r "svc-ioc:(OI)(CI)RX" "producer:(OI)(CI)M"
+icacls D:\intel\out /grant:r "svc-ioc:(OI)(CI)RX" "consumers:(OI)(CI)RX"
+icacls D:\intel\out\reputation /grant:r "svc-ioc:(OI)(CI)M" "consumers:(OI)(CI)RX"
+New-SmbShare -Name intel -Path D:\intel -ChangeAccess svc-ioc,producer -ReadAccess consumers -EncryptData $true
 ```
 
-NTFS ACL — точечно, как в матрице прав (3.1):
+Проверяйте exit code каждой native command и effective ACL до открытия share;
+остановитесь при неудачном шаге. `/grant:r` заменяет explicit grants названных
+identities, не все inherited permissions. Пример снимает inherited broad grants
+только у **свежего** root и не очищает произвольные существующие descendants.
+[Справочник icacls](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/icacls)
+и [New-SmbShare](https://learn.microsoft.com/en-us/powershell/module/smbshare/new-smbshare)
+отдельно описывают filesystem и share permissions. Group memberships и inherited
+rights всё равно требуют effective-access test. Выключите SMB1 и ограничьте
+firewall SMB-In адресами application hosts по server policy.
 
 ```powershell
-# incoming: svc-ioc только читает и листит
-icacls D:\intel\incoming /grant "svc-ioc:(OI)(CI)RX"
-icacls D:\intel\incoming /grant "producer:(OI)(CI)M"
-# out: svc-ioc полноценно управляет содержимым (создание/запись/переименование/удаление)
-icacls D:\intel\out /grant "svc-ioc:(OI)(CI)M"
-icacls D:\intel\out /grant "consumers:(OI)(CI)RX"
-```
-
-Гигиена сервера:
-
-```powershell
-# SMB1 — выключить, подпись — включить
-Set-SmbServerConfiguration -EnableSMB1Protocol $false
-Set-SmbServerConfiguration -RequireSecuritySignature $true
-
-# Server sessions-per-connection и share current/configured limits
-Get-SmbServerConfiguration | Select-Object MaxSessionPerConnection
-Get-SmbShare -Name intel | Select-Object Name, ConcurrentUserLimit, CurrentUsers
+Get-SmbShare -Name intel | Select-Object Name, EncryptData, ConcurrentUserLimit, CurrentUsers
+Get-SmbServerConfiguration | Select-Object MaxSessionPerConnection, EnableSMB1Protocol
 (Get-SmbSession | Measure-Object).Count
 ```
 
-`MaxSessionPerConnection`, share `ConcurrentUserLimit` и общее число
-`Get-SmbSession` — разные величины. Команды требуют server-side прав; для
-удалённого мониторинга используйте отдельную read-only/CIM identity, а не
-расширяйте права SMB service account приложения.
+Share users, sessions и `MaxSessionPerConnection` — разные величины. Сопоставьте
+спрос приложения с реальными server limits через administrative monitoring identity.
+Для NAS нужны те же функциональные, encryption, ACL и notification checks;
+не предполагайте автоматически Windows behavior.
 
-- Сервисной учётке запретите интерактивный вход (secpol: «Deny log on locally»).
-- CHANGE_NOTIFY на Windows работает из коробки, отдельной настройки не требует.
-- Firewall: разрешить 445/tcp с хоста приложения (правило «File and Printer
-  Sharing (SMB-In)» ограничьте адресом хоста).
+## Квалификация и чек-листы
 
-### 4.3 NAS и специфичные хранилища
+На выделенных test source/target проверьте реальной application identity:
+read/list source успешны, source create/overwrite/rename/delete запрещены,
+target create/write/read/rename/delete успешны. Отдельной producer identity
+проверьте запрет изменения publish output, consumer identity — запрет создания
+и замены его файлов. Producer permissions проверяются отдельно от service.
 
-На NAS-прошивках (NetApp, EMC, QNAP, TrueNAS и т.п.) SMB-уведомления
-поддерживаются неровно: где-то не работают для вложенных изменений, где-то
-отключены по умолчанию. Правило простое: **включайте `change-notify` только
-после проверки на стенде** — создайте файл в каталоге и убедитесь по health
-(счётчик сигналов у watch растёт), что уведомления доходят. Если нет — оставьте
-polling с комфортным интервалом; функционально вы ничего не теряете.
+Read probe с host, имеющего актуальный Samba client, может явно запросить encryption
+с интерактивным вводом пароля, без него в command line:
 
----
+```bash
+smbclient //files.example.org/intel -U svc-ioc --client-protection=encrypt -c 'cd incoming; ls'
+```
 
-## 5. Чек-листы
+См. [справочник smbclient](https://www.samba.org/samba/docs/current/man-html/smbclient.1.html).
+Probe не доказывает application negotiation, negative permissions, publication
+или crash recovery. Нужны isolated end-to-end slice и независимая проверка хешей
+получателем. Не квалифицируйте изменением производственного source directory.
 
-### Перед первым запуском
+До включения запишите точные binary/config/server identity, подтвердите complete
+producer handoff, непересекающиеся names/paths, environment credentials, required
+encryption и source/target ACLs. Проверьте диск, DB/ledger backup и ёмкость pinned
+slices. Dry-run подтверждает только selection/read; ноль pending slices — не publish test.
 
-- [ ] Шара доступна с хоста приложения: `smbclient //host/share -U svc-ioc -c 'ls'`
-- [ ] У сервисной учётки: чтение на источнике, полные права на содержимое цели,
-      и **нет** ничего лишнего (проверьте, что запись в источник запрещена)
-- [ ] Сервер поддерживает SMB3 encryption; в приложении оставлен `encryption: required`
-- [ ] Секреты в env (`SMB_USER`/`SMB_PASSWORD`), не в yaml
-- [ ] `exclude` содержит `*.tmp`, `*.part`, `.*`; с производителем данных
-      согласована rename-конвенция
-- [ ] `idle-timeout` меньше idle-таймаута firewall между хостом и сервером
-- [ ] `ioc sync all --dry-run` отрабатывает без ошибок
+После включения проверьте попадание synthetic source в canonical storage и
+completed slice в final remote path с совпавшими manifest/files. Сверьте durable
+ledger outcome, source/target health и capacity signals. Для push проверьте ACTIVE,
+реальные signals, reconnect и сохранённый polling. Явно запишите неподдержанные
+capabilities. Opt-in external suites и evidence подчиняются
+[TESTING](../../TESTING.md); offline skip не является live SMB qualification.
 
-### После включения
-
-- [ ] `ioc health` / actuator: источники и цели `UP`
-- [ ] Тестовый файл, положенный в источник, появился в `var/inbox` и прошёл ingest
-- [ ] Тестовый срез доставлен: на шаре каталог среза с `_SUCCESS`, в health
-      `publishFailed = 0`
-- [ ] Если включали `change-notify`: watch `ACTIVE`, счётчик сигналов растёт при
-      создании файла; после этого можно поднять `fetch.interval`
-
-### Симптом → диагноз
-
-| Симптом | Вероятная причина | Проверка |
-|---|---|---|
-| `DOWN` сразу после старта | Учётка/пароль/права | `smbclient` той же учёткой |
-| `DEGRADED` волнами | Нестабильная сеть, firewall режет idle-соединения | `idle-timeout` vs firewall; логи WARN |
-| `smbTransport=DEGRADED`, растёт `resourceExhaustions` | Исчерпан server/share/session quota или ресурсы SMB-сервера | Сопоставить `plannedSteadySessions` с `Get-Smb*` либо `testparm`/`smbstatus`; не открывать пробные сессии до отказа |
-| Файлы появляются с задержкой = interval, хотя push включён | Уведомления не доходят (NAS, запись в обход Samba) | health: сигналы watch не растут при создании файла; см. 4.1/4.3 |
-| Приложение не стартует с включённым change-notify | Endpoint не поддерживает push | Это fail-fast по построению: выключите `change-notify.enabled` или исправьте endpoint |
-| Скачиваются недописанные файлы | Производитель пишет напрямую в финальное имя | Rename-конвенция; расширить `exclude`; увеличить `debounce` |
-| Срез не уезжает, retention не чистит | Есть недоставленная цель (`FAILED`/`PENDING`) | health `publishTargets`, логи пары срез×цель |
+| Симптом | Первые проверки |
+|---|---|
+| Тихий пропуск второго source | `OPS-11`: path/size/mtime разных endpoints и durable fetch identity |
+| Два fetched outcomes, один inbox file | `OPS-12`: одинаковое final name, concurrent writers; сохраните logs/ledger до retry |
+| Постоянный DOWN | Component details, failed pairs, credentials/ACL/encryption, local slice integrity |
+| Resource exhaustion / smbTransport DEGRADED | Planned/owned demand и server quotas/current usage; избегайте reconnect storm |
+| Push включён, latency соответствует polling | Watch state/signals, capability и producer write path |
+| Частичные данные source | Producer писал сразу в final name; debounce не completion barrier |
+| Slices закреплены сверх retention limits | Отсутствующие/nonterminal delivery obligations; не удаляйте вручную |

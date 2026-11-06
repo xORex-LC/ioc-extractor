@@ -24,7 +24,7 @@
 | [ioc-aggregate.md](ioc-aggregate.md) | [ru/ioc-aggregate.md](ru/ioc-aggregate.md) | IOC aggregate contract, empty-start activation, ordered names, health и coordinated rollback |
 | [dataframe-import.md](dataframe-import.md) | [ru/dataframe-import.md](ru/dataframe-import.md) | Настройка и эксплуатация contract-driven local/SMB CSV import, preview, status, replay и recovery |
 | [ioc-processing-routes.md](ioc-processing-routes.md) | [ru/ioc-processing-routes.md](ru/ioc-processing-routes.md) | Именованные планы документа и processed import, выбор ветвей, проверка результата и восстановление |
-| [remote-storage-sync.md](remote-storage-sync.md) | [ru/remote-storage-sync.md](ru/remote-storage-sync.md) | Работа с удалённым хранилищем: как устроены fetch/publish и push-уведомления, справочник конфигурации с подбором значений, права/сбои/восстановление/мониторинг, настройка SMB-шары на Linux (Samba) и Windows Server, чек-листы |
+| [remote-storage-sync.md](remote-storage-sync.md) | [ru/remote-storage-sync.md](ru/remote-storage-sync.md) | SMB fetch/publish: handoff, identity/landing limits, конфигурация, CLI, recovery и серверные права |
 | [library-publication.md](library-publication.md) | — | Публикация и проверка independently consumable Maven libraries |
 | [libraries/diagnostics.md](libraries/diagnostics.md) | [ru/libraries/diagnostics.md](ru/libraries/diagnostics.md) | Подключение общей diagnostics-библиотеки: коды сервиса, результаты, policy, bounded counts и обработка delivery failures |
 | [libraries/logging-slf4j.md](libraries/logging-slf4j.md) | [ru/libraries/logging-slf4j.md](ru/libraries/logging-slf4j.md) | Общий SLF4J API: каталог сервиса, typed fields, MDC, ECS helpers и явное маскирование |

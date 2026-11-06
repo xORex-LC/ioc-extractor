@@ -76,7 +76,10 @@ any additional destinations under application configuration ownership.
 The example appends across restarts and enables the plain guide's DEBUG omission
 record for the `collector` namespace. Add rotation and retention appropriate to
 the service. The IOC daemon already has a separate RollingFileAppender policy;
-this recipe does not replace it.
+this recipe does not replace it. Here the destination comes from
+`logging.file.name`; IOC's rolling configuration uses `logging.file.path`.
+Runtime mode and the active logging profile are separate configuration decisions;
+verify the configuration actually loaded and the bytes written to its destination.
 
 ## Add the application encoder
 
@@ -147,7 +150,9 @@ The service owns the entire reserved-field policy. Do not write `event.dataset`
 from a producer or MDC. Do not redeclare `service.*`, `log.*`, `process.*`,
 `ecs.*`, message or timestamp. Reject scalar/object prefix conflicts when
 reviewing the service catalog. These checks cannot intercept arbitrary raw
-SLF4J or third-party MDC writes.
+SLF4J or third-party MDC writes. The guards in this example encoder are local to
+this recipe; they are not guards installed by the reusable JAR or a claim that
+every application-owned encoder rejects the same inputs.
 
 With a Throwable, omit explicit `error.*` fields and let Boot encode the complete
 error object. Without a Throwable, `EcsFields.ERROR_TYPE` supports type-only
@@ -175,6 +180,9 @@ Also check the omission record's absent outcome/duration, the failure record's
 error type/stack trace and the type-only error's absent stack trace. Parse with
 duplicate-key detection enabled. Require nonempty output and no internal WARN
 or ERROR statuses for supported input. Appender acceptance alone is insufficient.
+Keep the distinction between a missing record and a record whose business outcome
+is failure: an encoder rejection is an observation failure. It cannot prove that
+the business operation rolled back or authorize repeating a committed mutation.
 
 The repository's `LoggingBootRecipeIT` compiles this exact Java block and the
 plain guide examples, loads these exact YAML/XML blocks through Boot, and runs

@@ -2,7 +2,7 @@
 
 [Русская версия](../ru/libraries/logging-slf4j.md) · [Library catalog](README.md)
 
-Use this library for typed scalar fields, scoped MDC restoration and a shared
+Use `ioc-platform-logging-slf4j` for typed scalar fields, scoped MDC restoration and a shared
 small ECS vocabulary. It requires Java 21 and SLF4J API. Each service owns its
 custom field catalog, actions, disclosure policy and logging provider.
 
@@ -36,7 +36,7 @@ Run `make test-module MODULE=platform/platform-logging-slf4j`. The
 public Javadoc supplies member contracts. Packaging/publication qualification is
 separate from these in-checkout consumer examples.
 
-The [publication tooling](../library-publication.md) also compiles these exact
+The [publication tooling](../library-publication.md#consumption) also compiles these exact
 classes against a packaged JAR outside the checkout, using an empty Maven cache.
 The application-selected provider cannot supply a missing SLF4J API dependency
 on the library's behalf. Released artifacts passed these checks independently
@@ -264,15 +264,20 @@ Disabled emission skips collision preparation and provider delivery. Enabled
 emission temporarily hides only non-null event fields' exact same-key MDC values,
 including LONG/BOOLEAN fields, and attempts restoration after success or failure.
 Prefix conflicts such as `collector` versus `collector.items` remain service work.
+Exact-key collision hiding does not remove child keys, suppress a whole object,
+or establish a global reserved-field policy. Empty/unset MDC and a null local
+field must be tested separately from a non-null local override.
 
 Library type-mismatch errors omit the supplied value, but keys appear in some
 errors and may themselves be sensitive. Custom `toString()` and provider failures
 can throw their own exceptions. The library is not a safe error renderer.
 
-A builder belongs to one thread and one record's construction. Calling `log`
+A builder belongs to one thread and one record's construction. Calling `log()`
 twice attempts two emissions. An empty default message and a null optional cause
 are valid. Successful return does not imply durable storage or successful JSON
-rendering. For service-internal wiring, see the
+rendering. Distinguish four observations: field construction/validation, the
+provider call, appender/encoder acceptance and persisted/consumed bytes. A log
+record is not a transaction receipt or proof that the operation committed. For service-internal wiring, see the
 [observability capability](../../dev/observability.md).
 
 

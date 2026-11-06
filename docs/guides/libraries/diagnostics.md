@@ -278,6 +278,13 @@ The map's values sum to total; explicit zero entries are valid and participate
 in record equality. `suppressedBySeverity()` on a batch omits zero entries.
 Counts use checked long arithmetic and exclude synthetic markers.
 
+A retention limit does not bound bytes, processing time or total delivery calls.
+Choose it for useful incident detail; independently bound input/context sizes and
+OPERATION cardinality. Suppression must not become permission to accept invalid
+rows: apply code-sensitive validation before compaction and enforce its decision
+at the service's transaction checkpoint. Log level filtering is not a replacement
+for that policy.
+
 ## Isolate failures when reporting diagnostics
 
 Save this as `DiagnosticDeliveryExample.java` alongside the first example:

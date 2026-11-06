@@ -23,4 +23,4 @@
 | [canonical-record-lifecycle.md](canonical-record-lifecycle.md) | Fresh-install TTL, двухэтапная activation, health, retention и rollback boundary |
 | [ioc-aggregate.md](ioc-aggregate.md) | Контракт IOC aggregate, empty-start activation, ordered names, health и coordinated rollback |
 | [dataframe-import.md](dataframe-import.md) | Настройка и эксплуатация contract-driven local/SMB CSV import, preview, status, replay и recovery |
-| [remote-storage-sync.md](remote-storage-sync.md) | Работа с удалённым хранилищем (SMB sync): устройство fetch/publish, конфигурация и подбор значений, права/сбои/восстановление, настройка SMB-шары на Linux и Windows |
+| [remote-storage-sync.md](remote-storage-sync.md) | SMB fetch/publish: handoff, identity/landing limits, конфигурация, CLI, recovery и серверные права |

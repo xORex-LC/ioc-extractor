@@ -1,59 +1,62 @@
-# Event-driven координация
+# Event-driven coordination
 
-Событийная координация в проекте — это low-latency control-plane поверх
-durable ledgers и periodic reconcile. Она связывает capability, не превращая
-core в in-process message broker.
+[Русская версия](ru/event-coordination.md)
 
-## Когда использовать событие
+Control events reduce latency between capabilities over durable ledgers and
+periodic reconciliation. They do not turn the core into an in-process broker.
+This document owns service composition; reusable event and executor APIs keep
+precise contracts in their module references and Javadoc.
 
-Событие уместно, только если одновременно выполняются условия:
+## When an event fits
 
-1. durable факт в одном capability должен ускорить работу другого;
-2. получатель может повторно прочитать authoritative state;
-3. потерянный или повторный event не нарушает корректность, потому что есть
-   reconcile/poll backstop;
-4. publisher не нуждается в синхронном ответе consumer-а.
+Use an event when all of the following hold:
 
-Если потеря сообщения означает потерю данных/работы, нужен durable ledger,
-outbox или иной delivery protocol — не текущий in-process event.
+1. A durable fact in one capability should accelerate another.
+2. The consumer can reread authoritative state.
+3. Lost or repeated hints are safe because a non-event backstop exists.
+4. The publisher does not need a synchronous business response.
 
-## Архитектурная граница
+If losing a message loses work that cannot be rediscovered, introduce a durable
+ledger, outbox or delivery protocol. The current control-event mechanism does
+not supply that guarantee.
 
-`platform-events` содержит только framework-free event model, metadata,
-publish-only `ControlEventPublisher` и observer доставки. В нём нет:
+## Architecture boundary
 
-- Spring event types;
-- очереди, subscriber registry или routing framework;
-- serialization/wire format;
-- retries, ordering, durable delivery, outbox или DLQ;
-- keyed execution.
+`platform-events` owns framework-free event values/metadata, publish-only
+`ControlEventPublisher` and delivery observation. It contains no Spring events,
+queue, subscriber registry, routing framework, wire serialization, retries,
+ordering, durable delivery, outbox, DLQ or keyed execution.
 
-Контракт JDK-модуля и ограничения recording publisher описаны в
-[справочнике модуля](../../platform/platform-events/README.md), пример отдельного
-события — в [руководстве](../guides/libraries/events.md). Метаданные сохраняют
-переданные значения без нормализации. Успешный возврат publisher не подтверждает
-доставку всем обработчикам; ошибка может возникнуть после частичной доставки.
-`published` описывает нормальный возврат вызова публикации, `publishFailed` — его
-ошибку, а не отсутствие уже выполненных обработчиков.
+The [module reference](../../platform/platform-events/README.md) owns the JDK
+contract and recording-publisher limits; the [consumer guide](../guides/libraries/events.md)
+shows a standalone event. Metadata preserves supplied values without normalization.
+A successful publisher return does not acknowledge every handler. Publication can
+fail after partial delivery: `published` records normal return and `publishFailed`
+records failure, not absence of completed handlers.
 
-[Spring-адаптер](../../adapters/adapter-events-spring/README.md) мостит publisher
-в Spring application events. `EventCoordinationConfig` явно создаёт его в
-bootstrap и передаёт IOC-наблюдатель. Адаптер не меняет multicaster/error handler
-или executor. Он пропускает исходный `Error`, в том числе непосредственно
-обёрнутый Spring в `UndeclaredThrowableException`. При сбое observer первичной
-остаётся ошибка публикации, отдельная ошибка observer добавляется как suppressed,
-если это разрешено самим исключением. Runtime-сбой последнего WARN не выходит в
-producer и не меняет результат доставки; Error из observation/logging выходит.
-См. [ADR 0047](../ADR/0047-explicit-spring-control-event-adapter.md).
-Изолированные JDK/Spring consumers проверяют эти границы на упакованных JAR,
-без IOC bootstrap, с отдельным Maven cache и проверкой обоих собственных
-артефактов. Сценарии зависимостей и маршрутизации описаны в
-[руководстве публикации](../guides/library-publication.md#events-packaging-preparation).
-Listener должен лишь валидировать/наблюдать hint и передать работу в
-consumer-owned executor или scheduler. Тяжёлый use case не выполняется в потоке
-publisher-а.
+The [Spring bridge](../../adapters/adapter-events-spring/README.md) delegates to
+Spring application events. Bootstrap `EventCoordinationConfig` explicitly creates
+it with the IOC observer. It does not replace the multicaster, error handler or
+executor. Dispatch therefore inherits the supplied Spring configuration; the
+bridge does not promise asynchronous or durable delivery.
 
-## Модель корректности
+Original `Error` propagates, including one directly wrapped by Spring in
+`UndeclaredThrowableException`. On observer failure, publication failure stays
+primary and a distinct observer failure is suppressed when the throwable allows
+it. Runtime failure in the final WARN does not change the producer's delivery
+outcome; observation/logging `Error` still escapes. See
+[ADR 0047](../ADR/0047-explicit-spring-control-event-adapter.md).
+Isolated JDK/Spring consumers test packaged JAR boundaries without IOC bootstrap,
+with a separate Maven cache and both owned artifacts checked; packaging details
+belong to the [publication guide](../guides/library-publication.md#events-packaging-preparation).
+
+Listeners validate/observe the hint and admit work to a consumer-owned executor
+or scheduler. Heavy use cases do not run on the publisher thread. Post-commit
+RuntimeException handling belongs to each producer: several producers deliberately
+retain the committed result and rely on the backstop. This does not make every
+possible exception harmless; a propagating `Error` can follow a durable commit.
+
+## Correctness model
 
 ```text
 durable state transition
@@ -63,128 +66,142 @@ durable state transition
 work -> durable idempotency ledger / authoritative state
 ```
 
-- Event metadata обеспечивает correlation/causation и версию контракта, но не
-  является wire protocol.
-- Идемпотентность реализуется ledger/identity consumer-а, а не event id.
-- Fast-path и backstop одного consumer-а должны сходиться в один admission path.
-- Для remote sync таким path является endpoint-keyed serial executor.
-- Для ingest→export это `DaemonExportScheduler.nudge()`, который coalesce-ит
-  hints и применяет собственную cadence policy.
-- Bounded admission может shed-нуть hint; reconcile обязан восстановить работу.
-- Managed import local WatchService и SMB `CHANGE_NOTIFY` только ставят
-  source-scoped detection hint в тот же bounded admission path; они не являются
-  delivery identity, ordering или ownership evidence.
+- Metadata provides correlation/causation and contract version, not a wire protocol.
+- Consumer ledger/identity provides idempotency; an event id does not.
+- A consumer's fast path and backstop converge at one admission path.
+- Remote sync uses endpoint-keyed execution; ingest-to-export uses
+  `DaemonExportScheduler.nudge()` and its own cadence/coalescing policy.
+- Bounded admission may shed a hint; reconciliation must rediscover eligible work.
+- Local WatchService and SMB `CHANGE_NOTIFY` for managed import feed source-scoped
+  detection admission. Signals are not delivery identity, order or ownership evidence.
 
-## Контракт keyed execution
+A backstop depends on durable state and retained inputs. It cannot recover an
+unlisted remote file deleted before the next scan or repair a wrong idempotency
+key. Current fetch namespace/collision defects are `OPS-11`/`OPS-12` in
+[known issues](../KNOWN-ISSUES.md); the event architecture does not resolve them.
 
-Точный API описан в [platform-concurrency](../../platform/platform-concurrency/README.md).
-Async executor сериализует принятые задачи одного ключа в порядке admission,
-но не объединяет повторные hints. Ограничение очереди действует на ключ,
-без глобального ограничения числа ключей. Bootstrap передаёт выделенный pool
-с явным отказом через exception и передаёт executor-у владение его shutdown.
-`close()` запускает drain без ожидания; bounded join принадлежит lifecycle owner.
+## Keyed execution contract
 
-Health `running` означает занятую lane, включая ожидание worker thread;
-`oldestAge` включает ожидание текущей задачи в очереди. Синхронный guard,
-используемый ingestion и file ledger, работает в caller thread без гарантии
-FIFO; вложенные вызовы одного ключа учитываются как одно выполнение.
-Snapshot служит наблюдению, а не основанием для admission или durable recovery.
+The exact API belongs to [platform-concurrency](../../platform/platform-concurrency/README.md).
+Async execution serializes accepted tasks of one key in admission order; it does
+not coalesce duplicate hints. Queue bounds apply per key, with no global bound on
+key count. Bootstrap supplies a dedicated worker pool with explicit rejection and
+transfers its shutdown ownership to the executor. `close()` starts drain without
+joining; bounded waiting belongs to the lifecycle owner.
 
-## Реализованные потоки
+Health `running` means an occupied lane, including waiting for a worker thread;
+`oldestAge` includes the running task's prior queue wait. The synchronous guard
+used by ingestion/file ledger runs on the caller thread with no FIFO guarantee;
+nested same-key calls count as one execution. Snapshots observe activity, not
+admission or durable recovery authority.
 
-### Remote detection → fetch
+Keys are local to one executor instance. Two JVMs do not share exclusion, and
+different endpoint keys do not protect a shared inbox filename. A manual CLI
+operation must be coordinated with the daemon rather than assumed to acquire
+its in-memory lane.
 
-Periodic/startup/SMB doorbell запускают один detection path. Обнаруженная
-bounded batch публикуется как `RemoteChangeBatchDetected`; listener ставит
-fetch по endpoint. Durable `remote_fetch_ledger` и следующий detection
-переживают потерю/повтор события.
+## Implemented flows
 
-### Export completion → publish
+### Remote detection to fetch
 
-Обычное завершение export и recovery публикуют `SliceCompleted` только после
-того, как slice стал durable completed. Listener ускоряет публикацию конкретного
-среза; catalog×`publish_ledger` reconcile остаётся backstop.
+Periodic/startup/SMB doorbells enter one single-flight detection path per source.
+Bounded batches are published as `RemoteChangeBatchDetected`; the listener admits
+fetch by endpoint. `remote_fetch_ledger` and subsequent listing recover lost or
+repeated hints for eligible retained objects. In-flight claims are process-local
+and released when execution or admission fails.
 
-### Ingestion completion → export
+### Export completion to publish
 
-После завершения любой canonical operation с public mutations публикуется
-artifact-level `CanonicalArtifactsChanged(operationId, affectedArtifacts)`.
-Ordinary ingest и managed import публикуют один post-commit fact; import делает
-это только после успешной общей dataframe transaction. Listener вызывает только
-`DaemonExportScheduler.nudge()`; scheduler сам читает актуальные revisions и
-решает, нужен ли export. Periodic export poll закрывает restart,
-duplicate-only/no-op operation и потерянный hint.
+Normal export completion and recovery publish `SliceCompleted` after durable
+completion. The listener accelerates that slice's publication;
+catalog/`publish_ledger` reconciliation remains the backstop. A completed local
+slice does not itself prove a remote delivery.
 
-### Canonical lifecycle → deadline/projection convergence
+### Canonical change to export
 
-После lifecycle-aware canonical commit `CanonicalDeadlineScheduleChanged`
-ускоряет пересчёт ближайшего aggregate deadline, а
-`MutableArtifactProjectionRequired` ускоряет полную mutable CSV projection.
-Expiry cycle публикует projection hint не более одного раза на затронутый
-artifact. Оба event-а lossy: scheduler всегда перечитывает durable deadline или
-projection generation, а `5s` periodic backstop закрывает потерю, duplicate и
-restart.
+Completed document ingestion and committed managed import report public mutations
+through `CanonicalArtifactsChanged(operationId, affectedArtifacts)`. Import emits
+its fact only after the cross-artifact dataframe transaction. The listener calls
+`DaemonExportScheduler.nudge()`; the scheduler rereads current revisions and
+applies quiet/max-cap cadence. Public-field mutation can advance revision without
+creating a new canonical lifecycle. Periodic export polling covers restart,
+duplicate/no-op operations and lost hints; an event never forces a slice on its own.
 
-Lifecycle не публикует immutable-export hint. Expiry/renewal не двигают
-insert-driven `artifact_revision`; следовательно, событие не может обойти
-принятое правило «экспорт только после новых business rows».
+### Lifecycle to deadline and projection
 
-## Инварианты
+After lifecycle-aware confirmation, `CanonicalDeadlineScheduleChanged` nudges the
+aggregate deadline schedule and `MutableArtifactProjectionRequired` nudges mutable
+CSV convergence. Expiry emits at most one projection hint per affected artifact.
+Both are lossy: the scheduler rereads indexed deadlines/projection generations,
+with a `5s` backstop for lost hints and restart.
 
-1. Событие публикуется после commit факта, не до него.
-2. Payload содержит identity/claim check, а не тяжёлое mutable состояние.
-3. Event type и version стабильны; metadata создаётся единообразно.
-4. Publisher не зависит от конкретного consumer-а.
-5. Consumer idempotent относительно повторов и конкурентных triggers.
-6. Любой event path имеет проверяемый non-event backstop.
-7. Failure emit/dispatch наблюдаем, но не откатывает уже committed producer
-   state.
+Expiry and TTL-only renewal do not advance public-data revision and do not force
+immutable export. Insertion, reappearance and supported public-field mutations
+can advance it. The deadline/projection hint cannot bypass the export plan/revision
+gates. See [artifact export](artifact-export.md).
 
-Эти рамки дополнительно закреплены ArchUnit: platform events остаётся
-framework-free/non-serializable, а keyed concurrency живёт отдельно.
+### Managed-import detection
 
-## Как добавить новый flow
+Local filesystem and SMB signals accelerate the source detector; listing,
+capability gates and the delivery ledger own recognition and ordered admission.
+A signal contains no accepted CSV rows and cannot grant transport ownership.
+Import receipt recovery is separate from document/fetch idempotency.
 
-1. Зафиксировать durable факт и владельца события.
-2. Доказать наличие idempotency key и reconcile/backstop.
-3. Объявить application-owned `ControlEvent` со стабильными type/version.
-4. Публиковать после authoritative transition через `ControlEventPublisher`.
-5. В bootstrap listener передать hint в consumer-owned bounded admission.
-6. Добавить observer/health evidence для publish, dispatch, shed и work outcome.
-7. Протестировать lost event, duplicate event, restart и concurrent trigger.
+## Invariants
 
-Новый flow не требует изменения `platform-events`, если базового publish
-contract достаточно.
+1. Publish a control fact after its authoritative transition, not before commit.
+2. Carry identity or a claim check, not large mutable business state.
+3. Keep event type/version stable and create metadata consistently.
+4. The publisher does not depend on a specific consumer.
+5. Consumers handle duplicates and concurrent triggers through their own authority.
+6. Every event path has a testable non-event backstop and retention assumptions.
+7. Observe emission/dispatch failure without claiming rollback of committed state.
 
-## Когда понадобится брокер/outbox
+ArchUnit protects framework-free/non-serializable platform events and the separate
+keyed-concurrency boundary. Those rules do not prove every operational flow or
+external target has been qualified.
 
-Триггером является межпроцессная доставка или требование at-least-once самого
-события, которое больше нельзя восстановить reconcile-ом. Тогда durable outbox,
-broker, redelivery и DLQ реализуются внешним adapter за существующей границей.
-Это отдельное архитектурное решение: текущие события не имеют wire schema и не
-должны неявно получить её.
+## Adding a flow
 
-## Источники истины
+1. Identify the durable fact and its owner.
+2. Establish idempotency identity, retained state and a reconciliation backstop.
+3. Declare an application-owned `ControlEvent` with stable type/version.
+4. Publish through `ControlEventPublisher` after the authoritative transition.
+5. Hand off from a bootstrap listener to bounded consumer-owned admission.
+6. Observe publish, dispatch, shed and work outcomes separately.
+7. Test lost/duplicate hints, restart and concurrent triggers, including a failure
+   after commit. Assert bounded worker cleanup.
 
-- Event contracts: `platform/platform-events/`.
-- Admission primitives: `platform/platform-concurrency/`.
-- Application events: packages `application.sync`, `application.export`,
-  `application.ingest` и `application.artifact.lifecycle`.
-- Spring bridge: `adapters/adapter-events-spring`; composition/listeners/schedulers: `bootstrap/ioc-app`.
-- Boundary tests: `ArchitectureTest` и [BOUNDARIES.md](../BOUNDARIES.md).
+A flow fitting the existing publish contract does not require changing the library.
 
-## Когда обновлять документ
+## When a broker or outbox is needed
 
-Обновите его при изменении delivery guarantee, event ownership, metadata
-contract, admission/backstop doctrine или появлении внешней delivery
-инфраструктуры. Новый event record, следующий тем же правилам, достаточно
-описать в package/module README.
+Cross-process delivery or at-least-once delivery of an event that reconciliation
+cannot reconstruct triggers a separate design. Durable outbox, broker, redelivery
+and DLQ belong in adapters behind an explicit delivery protocol. Current events
+have no wire schema; do not acquire one implicitly.
 
-## Связанные документы
+## Sources of truth
 
-- [sync.md](sync.md) — fetch/publish consumers.
-- [artifact-export.md](artifact-export.md) — completion/recovery producer.
-- [ingestion.md](ingestion.md) — canonical-change producer.
-- [observability.md](observability.md) — event observation.
-- [ADR-0013](../ADR/0013-event-driven-coordination.md) и
+- [Publisher composition](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/EventCoordinationConfig.java)
+  and [Spring publisher](../../adapters/adapter-events-spring/src/main/java/com/iocextractor/adapter/out/events/spring/SpringControlEventPublisher.java).
+- [Detection coordinator](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/RemoteFetchDetectionCoordinator.java),
+  [fetch listener](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/RemoteChangeFetchListener.java)
+  and [publish listener](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/SliceCompletedPublishListener.java).
+- [Import post-commit decorator](../../core/ioc-application/src/main/java/com/iocextractor/application/dataframeimport/EventPublishingCanonicalImportWriter.java)
+  and [canonical confirmation decorator](../../core/ioc-application/src/main/java/com/iocextractor/application/artifact/lifecycle/EventPublishingCanonicalArtifactWriter.java).
+- Boundary tests and [BOUNDARIES.md](../BOUNDARIES.md) cover dependency constraints.
+
+## When to update
+
+Update this document and its translation when delivery guarantees, event ownership,
+metadata, admission/backstop doctrine or external delivery infrastructure changes.
+A new event following unchanged rules can be documented in its package/module reference.
+
+## Related documents
+
+- [Sync](sync.md) — fetch/publish consumers.
+- [Ingestion](ingestion.md) — canonical-change producer.
+- [Observability](observability.md) — event observation.
+- [ADR-0013](../ADR/0013-event-driven-coordination.md) and
   [ADR-0014](../ADR/0014-event-driven-ingest-to-delivery.md).

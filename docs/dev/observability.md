@@ -1,127 +1,114 @@
-# Diagnostics и operational observability
+# Diagnostics and operational observability
 
-Observability состоит из двух связанных, но разных моделей. `Diagnostic`
-является результатом обработки данных и может влиять на completion/failure
-policy. Operational `LogEvent` описывает исполнение, IO, lifecycle, retry и
-координацию. Exception остаётся механизмом переноса сбоя между границами и не
-заменяет ни одну из этих моделей.
+[Русская версия](ru/observability.md)
 
-## Потоки
+Diagnostics describe processing outcomes and can affect completion/failure policy.
+Operational logs describe execution, I/O, lifecycle, retry and coordination.
+Exceptions carry failures across boundaries; they replace neither model.
+This capability explains their IOC composition. Reusable API guarantees and
+standalone examples belong to the linked library guides.
+
+## Runtime flow
 
 ```text
-processing Result/Envelope
-  -> bounded diagnostics
-  -> DiagnosticSink delta
-  -> FailurePolicy
-  -> ExtractionResult + DiagnosticSummary
+stage outcome -> DiagnosticBatch (retained detail + exact counts)
+  -> run accumulation + delivery of newly retained occurrences
+  -> failure-policy checkpoint -> continuation or rejection
+  -> ExtractionResult + DiagnosticSummary when processing completes
 
-runtime action
-  -> typed LogEvent / MDC scope
-  -> SLF4J
-  -> console or daemon ECS JSON
+stage exception -> owning diagnostic boundary -> diagnostic delivery + failure
 
-Diagnostic -> LoggingDiagnosticSink -> ordinary typed LogEvent
+runtime action -> typed LogEvent / MDC scope -> SLF4J -> appender / encoder
+Diagnostic -> LoggingDiagnosticSink -> ordinary typed operational record
 ```
 
-`platform-diagnostics-api` владеет общей моделью, result/policy, bounded collectors
-и sinks; `platform-diagnostics` — IOC-каталогом, metadata, exception и renderer;
-`platform-observability` — IOC-каталогом, обёртками и ETL logging observer;
-`platform-logging-slf4j` — общими typed events, нормализацией, MDC и очисткой URL;
-`platform-diagnostics-logging` — bridge. Domain не зависит ни от одного из них:
-он возвращает pure decision outcomes, а application создаёт diagnostics/TRACE.
+The runner processes an append-only stage delta, not the whole prior sample again.
+A diagnostic occurrence belongs either in the outcome or in `DiagnosticException`,
+not both. Logical delivery at this boundary is not durable log delivery or a
+promise that every observed occurrence is retained and emitted.
 
-Граница общей библиотеки и IOC-части принята в
-[ADR 0044](../ADR/0044-reusable-diagnostics-contract.md). Контракты для внешнего
-потребителя и исполняемые примеры — в
-[руководстве по diagnostics](../guides/libraries/diagnostics.md).
+## Ownership boundaries
 
-## Общие инструменты логирования
+| Owner | Responsibility |
+|---|---|
+| `platform-diagnostics-api` | Framework-free values, result/policy, bounded accumulation and synchronous sinks |
+| `platform-diagnostics` | IOC codes, metadata, exception and renderer |
+| `platform-logging-slf4j` | Reusable typed scalar events, normalization, restoring MDC and explicit masks |
+| `platform-observability` | IOC fields/actions, facades and ETL logging observer |
+| `platform-diagnostics-logging` | Diagnostic-to-log bridge and IOC context redaction |
+| `bootstrap/ioc-app` | Composition, decision TRACE, health/metrics, encoder and logging destinations |
 
-`platform-logging-slf4j` реализует отдельный API для будущих сервисов:
-`LogFieldSpec`, typed `LogEvent`, restoring `MdcScope`, пять ECS scalar fields,
-стандартный `EventOutcome` и явные helpers маскирования. Единственная main-зависимость
-— SLF4J API; backend и настройки encoder выбирает сервис. Код библиотеки не
-зависит от IOC-каталогов, ETL или diagnostics.
+Domain returns pure decisions without depending on these modules; application
+creates diagnostics and decision observations. Generic libraries select no IOC
+catalog, failure checkpoint, logging provider or service recovery policy.
+[ADR 0044](../ADR/0044-reusable-diagnostics-contract.md) and
+[ADR 0045](../ADR/0045-reusable-slf4j-logging-contract.md) record this boundary.
+Module structure belongs to [diagnostics](../../platform/platform-diagnostics-api/README.md)
+and [logging](../../platform/platform-logging-slf4j/README.md) references;
+consumer contracts belong to the [diagnostics guide](../guides/libraries/diagnostics.md)
+and [logging guide](../guides/libraries/logging-slf4j.md).
 
-IOC использует обёртки из `platform-observability`, которые делегируют механику
-общему API. `LogField` хранит shared descriptor, `EventAction` остаётся локальным,
-а `EventOutcome` связывается с общей ECS vocabulary. Каталоги IOC, ETL observer,
-diagnostics bridge, fingerprint/severity policy и Boot encoder остаются в сервисе. Контракт, ограничения
-и примеры, компилируемые тестом непосредственно из Markdown, описаны в
-[руководстве потребителя](../guides/libraries/logging-slf4j.md). Состав модуля — в
-[README](../../platform/platform-logging-slf4j/README.md).
+## Diagnostic identity and presentation
 
-Принятая граница API и владения описана в
-[ADR 0045](../ADR/0045-reusable-slf4j-logging-contract.md).
-[Рецепт Boot ECS](../guides/libraries/logging-slf4j-boot.md) содержит исполняемые YAML/XML
-и пример encoder для другого сервиса. `LoggingBootRecipeIT` компилирует текст
-руководства и запускает отдельную JVM без IOC-классов; проверяются фактические
-байты, типы, отсутствие duplicate keys и внутренние статусы appender.
-Поддержан только синхронный FileAppender с изменяемым LoggingEvent. Проверки
-async-передачи в общей библиотеке не распространяют эту гарантию на backend.
+`DiagnosticCode` supplies stable ID, default severity and independent impact.
+IOC's `IocDiagnosticCode` adds category, message key and default template.
+A generic code renders as its literal ID with no IOC category; the bridge hides
+an ambient category too. The current code inventory is generated in
+[DIAGNOSTICS-CATALOG.md](../DIAGNOSTICS-CATALOG.md).
 
-Общие scalar/ECS/MDC/masking/provider тесты остаются в библиотеке. IOC-каталог,
-привязка facade, ETL correlation и cleanup callback — в observability; реальные
-producer-ветки и Boot JSON — в bootstrap. Callback сохраняет исходный сбой,
-даже если provider при очистке повторно выбрасывает тот же объект исключения.
+Producers supply code and structured context. `DiagnosticRenderer` owns message
+presentation; it does not change the underlying diagnostic or Throwable.
+Code equality and metadata must be stable. Occurrences are counted independently;
+equal diagnostics do not become one occurrence through value equality.
 
-Ключ поля определяет его идентичность в одной записи, включая вызовы с null.
-Несовместимый тип отклоняется до level filtering. Event-local значения временно
-скрывают одноимённые строки MDC и восстанавливают их после попытки записи.
-Контекст между потоками автоматически не переносится. Маскирование применяется
-только по явному вызову producer; текст сообщений и Throwable не очищаются.
+Impact (`ELEMENT`, `RUN`, `OPERATION`) belongs to code metadata, not severity.
+It determines budget treatment, not permission to skip a row, commit or retry.
+Saga diagnostics report a final fact after retries/state transition; durable
+ledger state remains the recovery authority.
 
-## Изменение запросов к журналам
+## Budgets, policy and completion
 
-После миграции L3-2 имя control event у `LoggingControlEventObserver` находится
-в `ioc.event.type`, в JSON — `/ioc/event/type`. Запросы по прежнему `event.type`
-для этих событий нужно перевести на новый путь; старое поле не дублируется.
+Stage collectors retain a bounded sample plus rejecting signals; the run keeps
+at most its configured ELEMENT/RUN budget, replacing weaker samples when needed.
+Both retain every OPERATION occurrence outside that budget. Exact counts survive
+compaction, but memory, context size and total delivery calls are not globally
+bounded by the sample limit. See the library guide for exact stage/run algorithms.
 
-`LegacyLedgerImporter` при повторе уже импортированного файла и
-`SqliteUserVersionSchemaMigrator` при актуальной схеме пишут
-`ioc.operation.disposition=skipped`. Запросы `event.type=skipped` следует заменить
-на этот путь. На этих двух DEBUG-записях больше нет `event.outcome=unknown`:
-исход операции здесь не утверждается. Actions `ledger_import`/`schema_migrate`,
-сообщения и остальные поля сохранены. Из локального каталога удалён STRING
-`event.type`: поддержка ECS-массивов не добавлялась.
+At run budget 2, WARN A, ERROR B, FATAL C leave `[C, B]`: replacement preserves the
+sample position, not encounter order. Built-in policy can select C instead of the
+earliest rejecting B. A custom rule needing every code must see observations
+before compaction. Match stage/run budget assumptions when composing a pipeline.
 
-При сбое WatchService в `LocalImportChangeSignalSource` Throwable передаётся
-encoder без отдельного `error.type`, чтобы Boot не отбросил конфликтующую запись.
-Encoder формирует `error.type` и stack trace. Type-only события без Throwable
-по-прежнему поддерживаются. Регрессии выполняют реальные producer-ветки через
-`IocEcsStructuredLogEncoder` и `OutputStreamAppender`, проверяя записанные JSON
-строки и отсутствие внутренних предупреждений/ошибок encoder/appender.
+`PIPELINE.DIAGNOSTICS_SUPPRESSED` is a synthetic display marker. Merge real batches
+and their summaries, never the marker as a new occurrence. The runner emits stage
+deltas through the retained-delivery callback and emits the suppression summary
+at the appropriate terminal boundary. Preparation can defer that final marker to
+continuation/cancellation. Repeated snapshot reads do not deliver anything.
 
-## Diagnostic contract
+| Observed severity | `fail-fast` | `collect-and-continue` |
+|---|---|---|
+| TRACE / DEBUG / INFO / WARN | Continue | Continue |
+| ERROR | Stop | Continue |
+| FATAL | Stop | Stop |
 
-- Общий `DiagnosticCode` задаёт ID, default severity и impact. Локальный
-  `IocDiagnosticCode` добавляет category, message key и default template.
-  Общий код без IOC metadata отображается как буквальный ID, без category,
-  в том числе без унаследованной category из MDC. Полный актуальный список генерируется в
-  [DIAGNOSTICS-CATALOG.md](../DIAGNOSTICS-CATALOG.md).
-- `impact` (`ELEMENT`, `RUN`, `OPERATION`) принадлежит code metadata и не
-  выводится из severity.
-- Producer передаёт code + structured context, но не форматирует итоговую
-  строку. `DiagnosticRenderer` владеет presentation/redaction.
-- Pipeline доставляет только delta новой стадии. Одна occurrence либо appended
-  в outcome, либо переносится `DiagnosticException`, но не обоими каналами.
-- `fail-fast` останавливается на ERROR/FATAL; `collect-and-continue` пропускает
-  ERROR и останавливается на FATAL. Budget ограничивает high-cardinality
-  occurrences и явно добавляет `PIPELINE.DIAGNOSTICS_SUPPRESSED`.
-- Saga diagnostics фиксируют final fact после retries/state transition и не
-  заменяют durable ledger status.
+Policy evaluation alone neither throws a product exception nor cancels work;
+the orchestrator enforces the decision before the relevant durable effects.
+A stopped run need not return a completed result. For a returned result,
+`CompletionStatus` uses the full `DiagnosticSummary`, including suppressed counts:
+ERROR/FATAL produces `COMPLETED_WITH_ERRORS`, otherwise WARN produces
+`COMPLETED_WITH_WARNINGS`, otherwise `COMPLETED`. The extraction CLI returns `3`
+for a completed-with-errors result; command failure is a separate outcome.
 
-Ограниченный run sample заменяет элементы на месте и не обещает
-хронологического порядка причин. Например, при бюджете 2 вход WARN A,
-ERROR B, FATAL C оставляет `[C, B]`; policy над этим списком выбирает C.
-Сохраняется сигнал остановки и точный severity summary, а не первая причина
-сбоя исходного потока. Политика, которой нужны все коды, должна исполняться до
-compaction. OPERATION occurrences не ограничены бюджетом; immutable batch
-копирует контейнеры, но не context values или Throwable.
+Collecting errors therefore does not mean success, and logging fewer records
+does not change policy or completion. Document writes commit per artifact; a
+later artifact/projection failure does not roll back earlier writes. See
+[processing](processing.md) for checkpoint and partial-effect boundaries.
 
-Default mapping severity в operational `log.level` является стабильным:
+## Delivery and observer failure
 
-| Severity | Log level |
+Default severity-to-log-level mapping is stable:
+
+| Diagnostic severity | Log level |
 |---|---|
 | `FATAL`, `ERROR` | `ERROR` |
 | `WARN` | `WARN` |
@@ -129,39 +116,73 @@ Default mapping severity в operational `log.level` является стаби�
 | `DEBUG` | `DEBUG` |
 | `TRACE` | `TRACE` |
 
-Durable occurrence report/quarantine пока отсутствует; authoritative seam —
-OBS-4 в `KNOWN-ISSUES.md`. Best-effort logging не выдаётся за durable report.
+Bootstrap wraps `LoggingDiagnosticSink` in `ResilientDiagnosticSink`. It calls
+logging once and reports a runtime delivery failure through the fallback callback;
+there is no durable queue, timeout or automatic retry. Runtime fallback failure
+is contained; `Error` propagates. The log record's absence is not a processing
+success and does not establish that a committed operation was rolled back.
 
-## Logging contract
+Raw batch delivery callbacks may fail after partial mutation; replaying the whole
+batch can double-count or redeliver its accepted prefix. Supplied pipeline
+observers/scopes and bare log builders are not all made resilient by this wrapper.
+Provider or cleanup failure can still propagate at those call sites. Decision
+TRACE and managed-import observation have their own RuntimeException containment;
+it does not promise recovery from an arbitrary fatal `Error`.
 
-- ECS standard fields используются без переименования; project fields живут
-  только в `ioc.*`. Полный typed catalog генерируется в
-  [LOGGING-CATALOG.md](../LOGGING-CATALOG.md).
-- `event.action` является стабильным machine-readable contract; `message` —
-  человеческий текст.
-- MDC несёт только ambient `STRING` correlation (`ioc.run.id`, source, mode,
-  stage). Event-local strings/numbers/booleans идут через SLF4J key/value pairs
-  и проверяются `LogField` schema.
-- Run id создаёт driving boundary. Daemon использует тот же id, что durable
-  `ingest_run`; pipeline не генерирует скрытый fallback.
-- Daemon пишет nested ECS JSON rolling file и console; oneshot остаётся
-  console-first. Formatter и retention являются bootstrap concerns.
-- Logging/diagnostic sink failure observational: non-throwing decorator не
-  должен ломать business operation.
+Durable diagnostic occurrence reports/quarantine remain the OBS-4 seam in
+[KNOWN-ISSUES.md](../KNOWN-ISSUES.md). A file appender or collecting sink is not
+that report model and owns no business transaction.
 
-Один lifecycle может иметь несколько записей с одинаковым `event.action`: start
-использует `event.outcome=unknown`, а terminal record — `success` или `failure`
-и `event.duration`. Например, daemon recovery использует `ingest_recover`; его
-typed log не заменяет `INGEST.RECOVERY_FAILED` или более точный
-`INGEST.STATE_TRANSITION_CONFLICT`. Diagnostic occurrence доставляется ровно
-одной владеющей границей, даже если исключение проходит через lifecycle
-observer.
+## Typed logging and correlation
+
+IOC's `LogField`, `EventAction`, `EventOutcome` and `LogEvent` bind local catalogs
+to the reusable API. `event.action` is a stable machine-readable operation;
+`message` is human-readable text. The generated [LOGGING-CATALOG.md](../LOGGING-CATALOG.md)
+owns the field/action inventory. Project fields stay in `ioc.*`; ECS fields retain
+their meanings. A run ID is not an APM `trace.id` or `transaction.id`.
+
+The driving boundary creates run identity; daemon ingestion uses its durable
+`ingest_run` identity. Pipeline run/stage scopes restore ambient MDC; terminal
+diagnostics retain the run without a false final-stage value. MDC carries STRING
+context, while event-local STRING/LONG/BOOLEAN values use typed SLF4J pairs.
+Field validation occurs even if the selected logging level is disabled.
+
+A field key identifies one type within an event, including null declarations.
+On enabled emission, non-null local values temporarily hide exact same-key MDC
+strings and restore them afterwards. Null omits a local value without hiding
+ambient MDC; use an explicit hide scope when omission must suppress that copy.
+Parent/child path conflicts and reserved metadata remain the service's schema
+responsibility. There is no global field registry.
+
+MDC scopes belong to one thread and close in LIFO order. Create/populate a worker's
+scope inside that worker from explicit command metadata; context does not transfer
+automatically. Acquire the scope before populating it so cleanup is available if
+population fails. Provider failure can prevent complete restoration.
+
+One action can describe multiple lifecycle records: start can carry
+`event.outcome=unknown`, terminal success/failure can carry `event.duration`.
+For example, `ingest_recover` observation does not replace
+`INGEST.RECOVERY_FAILED` or `INGEST.STATE_TRANSITION_CONFLICT` diagnostics.
+Control-event publish/dispatch and keyed admission remain operational signals;
+they do not require an artificial processing category `EVENTS`.
+
+## Logging modes and destinations
+
+The shipped configuration maps `ioc.observability.mode` to active Spring profiles;
+`ioc.runtime.mode` separately selects the application lifecycle. Installed daemon
+configuration sets the intended combination. Selecting runtime mode alone is not
+proof that a particular appender/profile was loaded.
+
+The `daemon` logging profile writes nested ECS JSON through the rolling appender
+under `logging.file.path` and also writes console output. Other profiles use the
+console path. The console and file need not have the same format. Rotation and
+retention belong to [logback-spring.xml](../../bootstrap/ioc-app/src/main/resources/logback-spring.xml),
+not a second policy inventory here. Observe actual destination bytes and encoder
+status, not merely a successful logger call.
 
 ## ECS wire representation
 
-`LogField` и ECS vocabulary используют логические dotted paths, но daemon-файл
-материализует их как nested JSON objects. Например, логический набор
-`ecs.version`, `event.action`, `event.outcome` выглядит так:
+Logical dotted fields materialize as nested JSON objects in the daemon file:
 
 ```json
 {
@@ -174,7 +195,7 @@ observer.
 }
 ```
 
-До Spring Boot 3.5 те же поля сериализовались как flat dotted keys:
+The older flat representation used paths such as:
 
 ```json
 {
@@ -184,10 +205,7 @@ observer.
 }
 ```
 
-Поэтому физический путь в consumer queries изменился, хотя логическое имя поля
-сохранилось:
-
-| Логическое поле | Старый flat query | Текущий nested query |
+| Logical field | Old flat query | Current nested query |
 |---|---|---|
 | `ecs.version` | `jq '.["ecs.version"]'` | `jq '.ecs.version'` |
 | `service.name` | `jq '.["service.name"]'` | `jq '.service.name'` |
@@ -195,137 +213,132 @@ observer.
 | `event.outcome` | `jq '.["event.outcome"]'` | `jq '.event.outcome'` |
 | `ioc.run.id` | `jq '.["ioc.run.id"]'` | `jq '.ioc.run.id'` |
 
-`event.outcome` существовал до миграции и не является новым полем; изменился
-его physical path. Аналогично typed scalar migration меняет JSON type отдельных
-значений, но не их логическое имя. Ingest pipelines, jq-скрипты и dashboards
-должны учитывать обе оси совместимости: shape и scalar type.
+`event.outcome` is not a newly introduced field: its physical path changed.
+Typed migration also changes scalar types without renaming logical keys. Queries,
+collectors and dashboards must account for both shape and type compatibility.
 
-`IocEcsStructuredLogEncoder` не владеет JSON schema: он добавляет статический
-`event.dataset` в общий key/value stream, после чего делегирует nested rendering
-стандартному Spring Boot formatter-у. Это предотвращает duplicate top-level
-`event`. Представительный regression contract находится в
-`LogbackConfigurationIT`.
+`IocEcsStructuredLogEncoder` contributes configured `event.dataset` as a key/value
+pair before delegating nested rendering to Boot, then restores the source event.
+This avoids a competing static JSON-add member. Unlike the strict standalone
+[Boot recipe](../guides/libraries/logging-slf4j-boot.md), the IOC encoder delegates
+non-mutable events and events already carrying a dataset pair to the standard
+encoder; it does not install all the recipe's rejection guards. Catalog ownership
+and supported producers matter. Raw SLF4J/MDC writes can still introduce conflicts.
+With a Throwable, let Boot own `error.*`; a type-only record can supply `error.type`.
+A conflicting encoder input can drop a record and report an appender error without
+throwing to the producer. The representative service contract is
+`LogbackConfigurationIT`; the consumer recipe has its own qualification scope.
 
-## Sensitive data
+## Query migration
 
-1. INFO не перечисляет raw IOC.
-2. Raw item допускается только в явно разрешённом DEBUG/TRACE contract; per-item
-   structured TRACE требует одновременно config gate и logger TRACE.
-3. URL query и credentials санитизируются независимо от log level.
-4. INFO/WARN/ERROR/FATAL diagnostic renderer заменяет raw indicator/value/item
-   short identity и не выводит входной документ целиком.
-5. Transport host/share/username/password не входят в operational fields.
-6. Managed import reports, health и INFO logs не содержат raw CSV cells,
-   producer filename/path, snapshot digest или contract-sensitive payload;
-   используются delivery/sequence, aggregate counts и stable safe codes.
+Control-event type from `LoggingControlEventObserver` lives in `ioc.event.type`,
+physically `/ioc/event/type`; migrate former `event.type` queries. The old key is
+not duplicated and no ECS type/category array support was added.
 
-## Корректность и correlation
+Skipped `LegacyLedgerImporter` and up-to-date `SqliteUserVersionSchemaMigrator`
+records use `ioc.operation.disposition=skipped`. Replace former
+`event.type=skipped` queries. Those two DEBUG records omit
+`event.outcome=unknown`, since they do not assert that outcome. Actions
+`ledger_import`/`schema_migrate` remain stable.
 
-`PipelineRunner` открывает run scope, затем stage scopes и закрывает их через
-`MdcScope`; terminal diagnostics остаются в run scope без ложной последней
-стадии. Event-local field при collision временно скрывает одноимённый MDC value,
-чтобы ECS JSON не получил duplicate key и scalar type не превратился в string.
+`LocalImportChangeSignalSource` passes its failure Throwable without an explicit
+`error.type`, allowing Boot to form one error object with stack trace. Type-only
+errors still work. `LoggingMigrationIT` executes the real producer branches and
+checks actual JSON lines and encoder/appender statuses.
 
-Control-event publish/dispatch, keyed executor admission и scheduler outcomes
-являются operational events/health signals. Для них не создаётся искусственная
-diagnostic category `EVENTS`, потому что они не являются processing outcome.
+## Disclosure and redaction
 
-Canonical lifecycle имеет отдельную stable category `LIFECYCLE` для failure
-границ admission, unsafe clock, reconciliation, mutable projection и history
-retention. Успешные операции публикуют aggregate ECS actions
-`lifecycle_admission`, `lifecycle_reconcile`, `lifecycle_projection` и
-`lifecycle_retention`; per-record IOC/source values в них отсутствуют.
-Успешный reconcile пишется на INFO только при `expired > 0`, а projection —
-только при выполненной или всё ещё pending работе. Пустые five-second checks
-остаются silent; failures всегда сохраняют diagnostic и ERROR.
+INFO does not enumerate raw IOC. Raw DEBUG/TRACE values require an explicitly
+permitted producer contract; per-item decision TRACE additionally requires both
+`ioc.observability.per-item-trace-enabled` and the logger's TRACE level.
 
-Daemon Actuator `lifecycle` health является read-only view durable state. Он
-показывает admission/activation, safe-clock state/skew/clamp age, due/history
-counts, nearest deadline, backlog age, pending projection count и последний
-reconcile checkpoint. Recoverable clamp или convergence lag даёт `DEGRADED`; unsafe
-clock либо failed admission даёт `DOWN`. Health не запускает reconcile, не
-двигает clock high-water и не возвращает IOC, row key или source identity.
+IOC's `RedactingDiagnosticContextFormatter` fingerprints the registered raw
+`indicator`/`value`/`item` context values at INFO/WARN/ERROR/FATAL. At DEBUG/TRACE
+it applies the lexical URL-component sanitizer. Embedded copies of those known
+raw values in other context entries are handled too. The helper removes recognized
+URL user-info/query content, not arbitrary secrets, paths or fragments. It is
+not a URL parser or an automatic scrubber for every logging channel.
 
-Daemon Actuator `dataframeImport` показывает phase recovery/runtime,
-aggregate backlog и безопасный head retry state. `DEGRADED` означает bounded
-retry/backlog с сохранённой correctness; contradictory durable evidence либо
-failed startup recovery даёт `DOWN`. Read path использует indexed bounded
-aggregates и не запускает import work.
+The formatter transforms rendered context only. Original diagnostics, free-form
+messages and Throwable are not automatically rewritten. `LoggingDiagnosticSink`
+passes the original cause to the backend, which can include exception messages,
+causes and suppressed exceptions in its stack trace. Producers own disclosure of
+all those channels; do not infer full redaction from a sanitized human message.
+Generic codes render as literal IDs, not as templates exposing context.
 
-Daemon Actuator `smbTransport` является read-only projection framework-free
-adapter snapshot. Он показывает configured `plannedSteadySessions`, активные
-application-owned connection/session/tree-connect leases, pooled/watch split,
-open/operation failures и resource-exhaustion state. Непогашенный capacity
-failure даёт `DEGRADED`; успешное открытие или operation того же internal owner
-возвращает `UP`. Ни health, ни метрики не выполняют probe и не утверждают, что
-знают server/share limit.
+Operational fields exclude transport host/share/username/password. Managed-import
+reports, health and INFO records exclude raw CSV cells, producer filename/path,
+snapshot digest and contract-sensitive payload. They use safe delivery/sequence,
+counts and codes. Masks/hides affect only selected copies; inspect complete output
+and fallback failure logging when qualifying disclosure.
 
-Micrometer экспортирует `ioc.smb.connections.active`,
-`ioc.smb.sessions.active`, `ioc.smb.tree.connections.active`,
-`ioc.smb.session.opens`, `ioc.smb.operation.failures` и
-`ioc.smb.resource.exhaustions`. Допустимые labels ограничены logical `endpoint`,
-`role` и, только для opens, `outcome`; host/share/path/username/source не
-экспортируются.
+## Runtime observations
 
-Managed dataframe import использует framework-free `DataframeImportObserver` в
-application и logging adapter в bootstrap. События `import_start`,
-`import_claim`, `import_stage`, `import_promote` и `import_complete` создаются
-только после соответствующего durable checkpoint; `import_retry` — после
-сохранения retry schedule. Startup recovery и непустой retention публикуются
-агрегатно, пустые периодические проверки остаются silent. Отказы change signal
-и keyed executor фиксируются как operational failure, но reconcile остаётся
-источником корректности. Observer обёрнут non-throwing decorator и не участвует
-в решениях state machine.
+| Contributor | Meaning / owning capability |
+|---|---|
+| `ingestionLifecycle` | Recovery barrier and running intake; [ingestion](ingestion.md) |
+| `dataProcessingCapacity` | Pending bytes/age/phases, blocked dispatch and writer/workspace pressure; ingestion |
+| `lifecycle` | Admission/activation, safe clock and convergence; [record lifecycle](canonical-record-lifecycle.md) |
+| `dataframeImport` | Recovery phase, backlog and safe head state; [managed import](dataframe-import.md) |
+| `sync` | Source/target/watch observations and durable publication backlog; [sync](sync.md) |
+| `smbTransport` | Application-owned resource leases, planned demand and capacity failures; sync |
 
-INFO/WARN/ERROR события импорта содержат только delivery/sequence/source,
-state/outcome, contract id/version, агрегатные счётчики, artifact names и stable
-error type/code. Завершающее событие содержит `ioc.import.disposition` со
-значением `terminal` или `quarantine`; при безопасно классифицированной ошибке
-парсинга дополнительно передаётся value-free `ioc.import.failure_reason`.
-Candidate token, filename/path, snapshot/stage/report locator, digest, raw
-row/IOC и exception message не передаются в logging adapter.
-Diagnostic occurrence для retry/rejection/runtime failure создаёт одна владеющая
-граница после durable решения; сам typed operational event diagnostic не
-дублирует.
+Health reads do not perform work or prove every source/transaction succeeded.
+Clock/convergence or bounded retry can be DEGRADED; unsafe clock, failed recovery,
+blocked dispatch or durable failed delivery can require DOWN under their owners'
+policies. `dataframeImport` reading can fail for a pending head with a null retry
+deadline (`OPS-10`); an observation failure is not a rollback signal. See known issues.
 
-## Как расширять
+SMB metrics are `ioc.smb.connections.active`, `ioc.smb.sessions.active`,
+`ioc.smb.tree.connections.active`, `ioc.smb.session.opens`,
+`ioc.smb.operation.failures` and `ioc.smb.resource.exhaustions`. Labels are bounded
+logical `endpoint`, `role` and, for opens only, `outcome`. They exclude remote
+host/share/path/username/source. Established application usage and planned demand
+are not server-wide limits/headroom; capacity degradation clears on confirmed
+success for the same internal owner, without making that owner a metric label.
 
-- Новый diagnostic code добавлять вместе с production producer; catalog
-  reference-ratchet не допускает orphan constants.
-- Новый log field/action добавлять в typed enum/catalog и проверять JSON scalar
-  type, collision и redaction.
-- Новый diagnostic output реализует `DiagnosticSink` adapter; durable report
-  требует отдельной occurrence identity/storage модели, а не file appender.
-- APM может добавить настоящие ECS `trace.id`/`transaction.id`; обычный run id
-  не подменяет tracing semantics.
+Lifecycle actions `lifecycle_admission`, `lifecycle_reconcile`,
+`lifecycle_projection`, `lifecycle_retention` use aggregate data, not per-record IOC.
+Successful empty five-second checks remain silent; failed work retains diagnostics
+and ERROR. Reconcile logs INFO when records expire; projection logs actual/pending work.
 
-## Источники истины
+Managed import observes `import_start`, `import_claim`, `import_stage`,
+`import_promote`, `import_complete` after their durable checkpoints and
+`import_retry` after retry scheduling. Recovery/nonempty retention are aggregate;
+empty checks stay silent. Logging uses delivery/sequence/source, state/outcome,
+contract id/version, counts, artifact names and safe error type/code. Terminal
+records expose `ioc.import.disposition` (`terminal`/`quarantine`) and, for a safely
+classified parse failure, value-free `ioc.import.failure_reason`. Candidate tokens,
+locators, filenames/paths, digests, raw rows and exception messages do not enter
+that adapter. The owning failure boundary emits the diagnostic once; the typed
+operational event does not duplicate it.
 
-- Общая модель/policy/bounded/sinks: `platform-diagnostics-api`, включая
-  [исполняемые примеры руководства](../guides/libraries/diagnostics.md).
-- IOC catalog/exception/rendering: `platform-diagnostics` и generated catalog tests.
-- Pipeline delivery: `PipelineRunnerTest`, failure-policy/budget tests.
-- Logging schema: `EventAction`, `LogField`, `LogEvent` и
-  [LOGGING-CATALOG.md](../LOGGING-CATALOG.md).
-- Bridge/redaction: `platform-diagnostics-logging`,
-  `SensitiveLogValueSanitizer` and regression tests.
-- ECS runtime: `logback-spring.xml`, `IocEcsStructuredLogEncoder`, representative
-  JSON contract tests.
-- Decision TRACE: `LoggingPipelineDecisionTracer` tests.
+## Extension, sources and maintenance
 
-## Когда обновлять документ
+Add a diagnostic code with a real producer; catalog reference ratchets reject
+orphan constants. Add a log field/action with actual JSON type, collision and
+redaction checks. New outputs implement `DiagnosticSink`; durable reporting needs
+an explicit occurrence identity/store. APM must supply real tracing semantics.
 
-Обновить при изменении diagnostic delivery/policy/budget, completion mapping,
-typed logging schema, correlation ownership, redaction или daemon wire format.
-Версии библиотек и полный перечень fields/actions сюда не копируются.
+- [Runner](../../platform/platform-etl/src/main/java/com/iocextractor/platform/etl/PipelineRunner.java)
+  owns stage deltas, budgets and policy enforcement.
+- [Composition](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java)
+  owns renderer/sink/tracer wiring;
+  [bridge](../../platform/platform-diagnostics-logging/src/main/java/com/iocextractor/observability/diagnostics/LoggingDiagnosticSink.java)
+  owns category and severity mapping.
+- [IOC encoder](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/IocEcsStructuredLogEncoder.java),
+  service JSON tests and standalone recipe tests own their different backend paths.
+- [Defaults](../../bootstrap/ioc-app/src/main/resources/application.yml) and the
+  generated catalogs own exact configuration/vocabulary inventories.
 
-## Связанные документы
+Update this document, its translation and affected guides when delivery, budgets,
+completion mapping, correlation, disclosure or wire format changes. Keep library
+versions and release evidence in their guides/permanent records.
 
-- [processing.md](processing.md) — diagnostics до/после commit.
-- [event-coordination.md](event-coordination.md) — operational event signals.
-- [SECURITY-ENGINEERING.md](../SECURITY-ENGINEERING.md) — logging security control.
-- [ADR-0017](../ADR/0017-diagnostics-first-class-outcome.md) и
-  [ADR-0018](../ADR/0018-typed-ecs-structured-logging.md) — diagnostic и typed
-  logging semantics;
-- [ADR-0019](../ADR/0019-spring-boot-4-nested-ecs.md) — Spring Boot baseline и
-  physical nested ECS representation.
+## Related documents
+
+- [Event coordination](event-coordination.md) — operational hints and backstops.
+- [Security engineering](../SECURITY-ENGINEERING.md) — logging security policy.
+- [ADR-0017](../ADR/0017-diagnostics-first-class-outcome.md) — diagnostic outcomes.
+- [ADR-0018](../ADR/0018-typed-ecs-structured-logging.md) — typed logging.
+- [ADR-0019](../ADR/0019-spring-boot-4-nested-ecs.md) — nested ECS representation.
