@@ -1,5 +1,7 @@
 # Native SQLite capacity and verification boundaries
 
+[Русская версия](ru/native-capacity.md)
+
 This guide records confirmed costs of the retained Native processing/storage
 model and the limits of that evidence. It explains how to assess a workload
 without confusing stage benchmarks, whole-service latency and JVM/cgroup memory.
@@ -32,6 +34,78 @@ measurement identities and failed-screen dispositions. They are historical
 observations of the named binaries, not fresh load evidence for every later
 cleanup commit. Raw benchmark files are not versioned repository artifacts.
 Supported operational smoke/load commands remain in [developer tools](../../tools/dev/README.md).
+
+## Current execution and admission limits
+
+The canonical backend is Native SQLite, selected by `ioc.storage.dataframe.type=jdbc`.
+`native` is not a configuration value or a second storage selector. Document
+preparation uses a separate private workspace; managed CSV import has its own
+snapshot/staging limits. Their budgets do not reserve space for public databases,
+immutable exports, ingestion archives or backups.
+
+Daemon detection remains serial. Preparation workers and the dispatch window
+bound concurrent preparation/ready references; the oldest unresolved document
+alone may promote. The effective window is also capped by the shared workspace
+factory's capacity. Increasing detector concurrency is not a supported way to
+increase throughput. See [ingestion](ingestion.md#admission-and-pressure).
+
+Workspace `memory-bytes` is an admission reservation estimate. The current
+estimate per lease is `cache-kib * 1024 + maximum-row-bytes * 64 + 65536`;
+the factory admits at most `min(128, memory-bytes / leaseBytes)` workspaces.
+The shipped 64-MiB budget, 4096-KiB cache and 256-KiB row limit admit three
+leases, so a configured window of four is effectively at most three. This is
+neither a JVM heap cap nor a measurement of parser objects, SQLite/native memory
+or RSS. Larger row/cache limits consume more of that admission budget.
+
+Disk admission reserves a full `workspace-bytes` allowance for each live pin
+and counts retained inactive pins against `total-disk-bytes`. Source copying
+has a separate one-quarter-of-workspace bound. Row/field limits, SQLite page
+ceilings and repeated filesystem checks reject oversized work; quota failures
+can occur while the host still has free disk. These checks are not a filesystem
+quota or a preallocation guarantee. UTF-8 field/row expansion, source text and
+candidate occurrences matter even when reduction produces few final keys.
+
+The document path streams decoded/refanged text and ordered occurrences through
+disk-backed cursors. HTML prunes completed subtrees and DOCX uses SAX, but an
+oversized HTML repair region still fails before promotion. Bootstrap also uses
+the numeric `maximum-row-bytes` value as the HTML parser's region-character
+budget; raising it affects parser admission as well as encoded rows. Do not
+generalize HTML/DOCX bounds to every auto-detected Tika format. The String-returning
+reader convenience API still materializes its text; the production document
+path uses the writer overload. See [processing](processing.md#preparation-and-bounded-data).
+
+Sealed workspace close releases the lease but can retain replay files. Unsealed
+new work and explicitly discarded work are cleaned on close. Expired inactive
+pins are pruned when a new workspace opens; `retention=24h` is not an independent
+cleanup timer or a promise that idle disk usage falls after 24 hours. Live leases
+are excluded from pruning. Recovery ownership must be respected when investigating
+pressure; editing private pins is not a supported capacity remedy.
+
+Canonical writer admission is nonpreemptive. Operation priority/aging affects
+the next admitted operation, never an active artifact transaction. Wait/hold
+counters are process-local telemetry for the admitted operation, not SQL lock
+timings, percentiles or deadlines. Completed-operation counts include failed
+admitted calls and do not count only successful commits. `busy_timeout` does not
+bound the Java admission wait. Document writes commit per artifact; managed import commits its accepted
+cross-artifact mutations together. Preserve those atomicity boundaries when
+interpreting control latency and partial failures.
+
+Export snapshot readers have bounded admission and can pin WAL history. Closing
+them releases that ownership; a tuning preset's `journal_size_limit` controls
+retained size after eligible reset/checkpoint, not the maximum live WAL size.
+Cache/mmap settings also do not cap total application memory. Keep filesystem
+headroom for overlapping readers, writers and cleanup; see the
+[SQLite PRAGMA reference](https://www.sqlite.org/pragma.html#pragma_journal_size_limit).
+
+Daemon `dataProcessingCapacity` health exposes dispatch counts/oldest age,
+writer wait/hold totals and maxima in nanoseconds, queued writers, snapshot
+readers and cached workspace pressure. `preparationPressure.lastCheckedDiskBytes`
+is the last quota observation, not a new scan or reserved-disk total; `walBytes`
+is the configured dataframe WAL file's size, not both databases' total footprint.
+The contributor is DOWN for stopped/blocked dispatch or inspection failure.
+Queue growth, quota pressure or long control delay alone need not change UP.
+Use the [sizing guide](../guides/bulk-resource-sizing.md#observe-the-run) to assess
+them over a declared interval. Health is not a per-document completion receipt.
 
 ## Original incident and confirmed fixes
 
@@ -183,8 +257,16 @@ A normally packaged live Native smoke on 2026-10-13 separately passed an actual
 SMB cycle (1,000 IOC in ten DOCX plus fixed additional/recovery inputs), with
 14.91 s to durable completion and 18.02 s including independent readback.
 Its exact identity and checks are in [ingestion](ingestion.md#verification-boundaries).
-That smoke predates this source cleanup; offline checks do not create new live
-transport evidence.
+That smoke belongs to its named binary; offline checks do not create new live
+transport evidence for later source.
+
+The current `make lifecycle-smoke` / `make lifecycle-load` harness has an open
+terminal-filename mismatch (`TOOL-10` in [known issues](../KNOWN-ISSUES.md)):
+it waits for the original `.html` suffix, whereas the archived sealed source can
+end in `.html.sealed`. A timeout at that wait does not exercise later expiry,
+retention or non-reuse assertions. Preserve the failed result; those commands
+need repair and requalification before their results support a current capacity
+claim. The older successful Native smoke remains historical evidence.
 
 Known costs remain one SQLite writer, nonpreemptive large atomic promotions,
 full projection/export work, per-occurrence mapping, allocations and file-cache
@@ -194,10 +276,30 @@ requires storage sizing against arrival rate, not one batch alone. The old
 million-input shape. [Bulk sizing](../guides/bulk-resource-sizing.md) describes
 operator settings; changing them does not relax durability or safety checks.
 
-Update this guide only with a named binary/configuration/corpus, precise timing
-and resource scope, independent output/recovery checks and preserved failure
+Update historical measurements only with a named binary/configuration/corpus,
+precise timing and resource scope, independent output/recovery checks and preserved failure
 dispositions. Define actual production arrival rate, populated-base size and
 control-delay requirements before claiming sustainable capacity or a p95/p99 SLO.
+
+## Sources of truth
+
+- [Workspace limits](../../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/DocumentPreparationLimits.java),
+  [factory](../../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcDocumentPreparationWorkspaceFactory.java)
+  and [workspace contracts](../../adapters/adapter-store-jdbc/src/test/java/com/iocextractor/adapter/out/store/jdbc/JdbcDocumentPreparationWorkspaceIT.java).
+- [Dispatcher](../../adapters/adapter-ingest/src/main/java/com/iocextractor/adapter/in/ingest/DurableDocumentDispatcher.java),
+  [writer admission](../../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcWriterAdmission.java),
+  [snapshot reader](../../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcSnapshotSliceReader.java)
+  and [capacity health](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/DataProcessingCapacityHealthIndicator.java).
+- [Classpath defaults](../../bootstrap/ioc-app/src/main/resources/application.yml),
+  [production template](../../packaging/templates/application.yml) and
+  [workspace configuration model](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/IocProcessingProperties.java).
+
+## When to update
+
+Update both languages when admission, retention, writer/reader ownership,
+telemetry or the supported verification commands change. Keep historical
+tables, binary identities and failed-screen dispositions attached to their
+original workloads; add separately identified evidence for a new profile.
 
 Related: [storage](storage.md), [processing](processing.md),
 [ingestion](ingestion.md), [testing policy](../TESTING.md),

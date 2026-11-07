@@ -18,6 +18,11 @@ The guard provides exclusion without a FIFO promise. The executor preserves
 admission order within a key. Equal keys do not deduplicate or coalesce tasks.
 Neither tool provides distributed locking, persistence, retries or crash recovery.
 
+Per-key exclusion does not protect mutable state shared across different keys.
+Keep that state thread-safe or coordinate the complete operation under the same
+key and coordinator instance. The synchronous guard and asynchronous executor
+have separate coordination state, even when given equal keys.
+
 ## Dependency and version
 
 The published release is available from Maven Central and GitHub Packages:
@@ -177,6 +182,11 @@ The two-argument constructor uses a silent observer and UTC system clock.
 Overloads accept a `KeyedSerialExecutorObserver` and an explicit `Clock` for
 telemetry. All instances coordinate only their own accepted work.
 
+The queue retains the supplied `Runnable`; it does not copy captured objects or
+freeze their values at submission. Prefer immutable inputs or stable references
+to durable work, and protect data that producers may still mutate. Thread-local
+state, MDC and tracing context are not captured or transferred to workers.
+
 ### Worker ownership and shutdown
 
 Supply a dedicated asynchronous `ExecutorService` whose `execute` either
@@ -200,6 +210,10 @@ bounded task operations, interruption policy and durable recovery path.
 
 Check every `submit` result. Acceptance records in-memory admission, not task
 success or durable delivery. A process crash can lose the entire queue.
+`WorkAdmission` is not a completion or cancellation handle. If a caller must
+await one business outcome, supply that service-owned completion mechanism in
+the task and bound its wait; waiting inside the same lane for later queued work
+prevents that work from starting.
 
 | Outcome | Executor behavior | Service responsibility |
 |---|---|---|

@@ -13,7 +13,7 @@ language: "ru"
 Контракт: [R030-DOC](../goals/R030-DOC-documentation.md).
 Исходная точка — `2c76d8b095a2162c7038c64de896b244517cf4c7`, ветка
 `docs/quality`, чистое дерево. Исходный census — 2026-11-01;
-текущий inventory обновлён 2026-11-06 в `DOC-02G` (Asia/Irkutsk).
+текущий inventory обновлён 2026-11-07 в `DOC-01B.5` (Asia/Irkutsk).
 
 ## Что покрывает срез
 
@@ -27,7 +27,7 @@ language: "ru"
 корню репозитория; несколько значений разделены `;`. Владельцы указаны по
 ответственности, без назначения новых персональных обязательств.
 
-Срез содержит 329 исходных Markdown-файлов и тридцать пять новых: эту заметку,
+Срез содержит 329 исходных Markdown-файлов и сорок семь новых: эту заметку,
 [evidence.md](evidence.md), [архитектурный аудит](architecture-audit.md),
 [аудит конвенций](conventions-audit.md), [аудит тестирования](testing-quality-audit.md),
 [аудит общих релизных правил](release-process-audit.md),
@@ -37,25 +37,32 @@ language: "ru"
 [аудит managed import](dataframe-import-audit.md),
 [аудит ingestion/daemon](ingestion-daemon-audit.md),
 [аудит sync/координации](sync-coordination-audit.md),
-[аудит observability](observability-audit.md), семь RU-переводов root maps
-(`BOUNDARIES`, `PRINCIPLES`, `ARCHITECTURE`, `MODULARIZATION`, `CONVENTIONS`, `TESTING`, `RELEASE-PROCESS`)
+[аудит observability](observability-audit.md),
+[аудит ресурсных ограничений](capacity-audit.md),
+[аудит библиотеки конфигурации](configuration-library-audit.md),
+[аудит библиотек координации/событий](coordination-libraries-audit.md),
+[аудит развёртывания](deployment-audit.md),
+[аудит единого IOC feed](aggregate-audit.md),
+[аудит разработки/публикации библиотек](library-publication-audit.md),
+[аудит реестра известных проблем](known-issues-audit.md), восемь RU-переводов root docs
+(`BOUNDARIES`, `PRINCIPLES`, `ARCHITECTURE`, `MODULARIZATION`, `CONVENTIONS`, `TESTING`, `RELEASE-PROCESS`, `KNOWN-ISSUES`)
 и RU-переводы capability template/build-quality/configuration/configuration-failure-reports/processing/csv-output-format
-и operator guide ioc-processing-routes, а также storage/canonical-record-lifecycle/artifact-export/dataframe-import/ingestion/sync/event-coordination/observability.
-Всего 364 строки и 64 набора источников. Сам inventory и карта источников — TSV,
+и operator guides ioc-processing-routes/bulk-resource-sizing, а также storage/canonical-record-lifecycle/artifact-export/dataframe-import/ingestion/sync/event-coordination/observability/native-capacity/configuration-inspection и operator guide library-publication.
+Всего 376 строк и 65 наборов источников. Сам inventory и карта источников — TSV,
 поэтому они не увеличивают Markdown denominator.
 
-| Роль | Исходных файлов | После DOC-02G |
+| Роль | Исходных файлов | После DOC-01B.5 |
 |---|---:|---:|
 | README вне worknotes | 127 | 127 |
-| Root maps/rules, без README и generated catalogs | 10 | 17 |
-| Capability docs, включая шаблон | 16 | 30 |
+| Root maps/rules, без README и generated catalogs | 10 | 18 |
+| Capability docs, включая шаблон | 16 | 32 |
 | ADR, без README | 49 | 49 |
-| Руководства, без README и переходных страниц | 35 | 36 |
+| Руководства, без README и переходных страниц | 35 | 38 |
 | Переходные страницы старых guide paths | 6 | 6 |
 | Generated catalogs | 2 | 2 |
 | Release records/template, без README | 16 | 16 |
-| Worknotes, включая их README | 68 | 81 |
-| **Всего** | **329** | **364** |
+| Worknotes, включая их README | 68 | 88 |
+| **Всего** | **329** | **376** |
 
 ## Как читать реестр
 
@@ -94,7 +101,7 @@ Javadoc всего публичного Java API в этом срезе не и�
 | `DOC-F04` | M | Ряд README содержит русскую или смешанную прозу; механическая кириллица также встречается в разрешённой навигации и примерах | `DOC-04`: проверить prose, перевести README на месте, сверить package/module map и зависимости |
 | `DOC-F05` | M | `docs/guides/ru/README.md`, `docs/guides/ru/libraries/README.md` и `.github/release-notes/ru/README.md` являются русскими README | `DOC-04`: сохранить русский навигационный контент в подходящей странице, а прежние README paths — как английские точки входа; guides не удалять |
 | `DOC-F06` | M | Перенос русского ADR в `ru/` меняет базу его относительных ссылок; побайтовое сохранение запрещает исправлять оригинал внутри файла | `DOC-03`: сначала план разрешения ссылок и проверка будущих targets, затем перенос с hash equality и явно помеченный исторический EN-перевод. Массовый перенос сейчас не выполнен |
-| `DOC-F07` | M | После DOC-02G отсутствуют 56 обязательных RU-пар: 3 root docs, 2 capability docs, 49 ADR и 2 guides; существующая пара сама по себе не доказывает semantic parity | `DOC-01B/02/03`: проверить смысл, создать пары и навигацию; список отсутствующих paths берётся из TSV |
+| `DOC-F07` | M | После DOC-01B.5 отсутствует 51 обязательная RU-пара: 2 root docs и 49 ADR; все capability/guide docs имеют пары и содержательный review state, открытые source findings сохраняются | `DOC-01B/03`: проверить оставшиеся root docs/ADR, создать пары и навигацию; список отсутствующих paths берётся из TSV |
 | `DOC-F08` | L | Часть исторического execution bundle написана на английском, хотя целевой контракт задаёт русские worknotes | `DOC-05`: отдельно определить обращение с исторической прозой; новые execution notes пишутся по-русски. Исторические замеры и результаты не переписывать под текущий HEAD |
 | `DOC-F09` | L | EN/RU `remote-storage-sync.md` отличаются в двух YAML-блоках переведёнными комментариями; значения и остальные блоки совпадают | Устранено в `DOC-02F`: общий executable YAML и точные EN/RU literal blocks; исходный finding был языковым drift, source defects отдельно записаны OPS-11/12 |
 
@@ -164,6 +171,63 @@ boundaries, profile/destination и различия strict recipe/IOC encoder.
 сохранены; 22/12 Java files совпадают с original published sources. F и его
 OPS-11/12 сохранены; global security/deployment/collector/load не квалифицированы.
 
+Находки `DOC-CAP01..11` отражены в [DOC-02H](capacity-audit.md).
+Две EN/RU-пары native-capacity/bulk-resource-sizing согласованы по defaults,
+workspace admission/retention, source/import budgets, writer/WAL и health counters.
+34 unit/contract + 157 IT, 22 example/interface checks, parity/inventory/links
+прошли. Исторические таблицы и binary identities сохранены; нового load/SLO или
+live systemd/SMB evidence нет. OUT-4 и TOOL-10 остаются открытыми.
+
+Находки `DOC-LC01..09` отражены в [DOC-02I](configuration-library-audit.md).
+Три EN/RU-пары configuration-inspection/config-spring-boot/check согласованы по
+coverage/source selection, snapshot/resource ownership, method outcomes и
+migration policy. 90 unit/contract + 85 IT, 228 offline publication contracts,
+14 boundary cases и cold Central consumer с default/BOM graphs прошли.
+10 Java sources равны original published sources; H сохранён. TOOL-8/6/9 не закрыты.
+
+Находки `DOC-CL01..08` отражены в [DOC-02J](coordination-libraries-audit.md).
+Три EN/RU-пары concurrency/events/events-spring согласованы по coordination,
+payload ownership, completion и Spring routing/telemetry boundaries.
+85 unit/contract + 4 IT, 6 published-JAR boundary cases, 228 offline publication
+contracts и три cold Central consumers прошли; 23 Java sources совпали.
+Default/BOM graphs, 12 runtime package/version advisory pairs и metadata
+проверены без изменения зависимостей. H/I сохранены; full gates и TOOL-6/7/8/9
+не закрыты.
+
+Находки `DOC-DPL01..10` отражены в [DOC-02K](deployment-audit.md).
+Deployment EN/RU согласован по host/native dependencies, no-start, effective
+config, health gates, upgrade/rollback и диагностике. 50 unit/contract + 15 IT,
+14 Bash blocks, 13 CLI JVM, native SQLite probe и packaging contracts прошли.
+OPS-13 воспроизведён на source segment с stubbed privileges/systemd; SRC-3 открыт
+после runtime screen: 171 external coordinates, 11 advisories / 7 coordinates.
+Это открытые operational/security findings, а не новая host/security qualification.
+
+Находки `DOC-AGG01..10` отражены в [DOC-02L](aggregate-audit.md).
+IOC aggregate EN/RU описывает объединение типов/источников в один feed без
+корреляции carriers, config/route/identity/export/import, name order и lifecycle.
+78 unit/contract + 61 IT, 21 CLI JVM, literal YAML/HTML/CSV и actual private local
+managed daemon прошли. OPS-14 воспроизведён: whitespace CSV name обходит ordered
+update, прежнее имя заменяется пробелами; source fix открыт. Previous K/SRC-3
+не закрыты, dependency evidence повторно использует те же packaged bytes.
+
+
+Находки `DOC-PUB01..08` отражены в [DOC-02M](library-publication-audit.md).
+Development и publication полностью сверены с POM/tool/workflows и policy;
+создан RU publication. Уточнены shared reactor/TOOL-9, dirty/SNAPSHOT packaging,
+protected remote validate, workflow inputs/core recovery, signed-check trust,
+consumer settings и отказы. 228 offline contracts, 23 unit tests, actual local
+bundle/consumer, 18 CLI checks шести original bundles, 67 source comparisons,
+16 dry-runs, shell/XML/Maven settings/parity/inventory/links прошли.
+Новой публикации/full gate нет; TOOL-6/7/8/9 остаются открытыми.
+
+Реестр известных проблем рассмотрен в [DOC-01B.5](known-issues-audit.md).
+Все 84 ID сохранены; EN/RU разделяют open/partial/qualification, deferred options
+и архив. OPS-1 закрыт в исходном verification scope; остальные source findings
+не закрыты. 938 различных unit/contract tests, 12 IT, новые OPS-11/12/13 probes,
+read-only Actions/OSV screen и parity/anchors/inventory/links проверены.
+[Решения по всем ID](known-issues-review.tsv) связывают записи со 110 live sources;
+KNOWN-ISSUES получил отдельный source set, а не execution ownership.
+
 ### Границы известных открытых обязательств
 
 `R030-SEC` и `R030-REL` остаются открытыми. Зелёные links не закрывают
@@ -183,12 +247,13 @@ TOOL-4/5/6/7/8/9 сохраняют свои triggers и критерии зак
 |---|---|---|
 | `DOC-INV-01` | `verified` | Все исходные Markdown paths учтены ровно один раз; источник, владелец, перевод, review state, hashes и очередь определены; ссылки реестра проверены |
 | `DOC-01A` | `verified` | Исправлены карта boundary/build gates и раздел library publication; EN/RU parity для BOUNDARIES проверена; architecture/convention/publication tests и links прошли |
-| `DOC-01B` | `in-progress` | Архитектурный комплект, CONVENTIONS, TESTING и RELEASE-PROCESS завершены; KNOWN-ISSUES остаётся, security docs отложены пользователем для отдельного комплекта |
+| `DOC-01B` | `in-progress` | Архитектурный комплект, CONVENTIONS, TESTING, RELEASE-PROCESS и KNOWN-ISSUES EN/RU проверены; security docs отложены пользователем для отдельного комплекта |
 | `DOC-01B.1` | `verified` | PRINCIPLES/ARCHITECTURE/MODULARIZATION: точность и полнота, три RU-перевода, навигация, 61 focused test и parity review; [аудит и проверки](architecture-audit.md) |
 | `DOC-01B.2` | `verified` | CONVENTIONS и capability template EN/RU: содержательный Javadoc, единый стиль и распределение документации; literal Java compile/doclint, 1 convention test, parity, inventory и links прошли; [аудит и проверки](conventions-audit.md) |
 | `DOC-01B.3` | `verified` | TESTING/build-quality EN/RU: policy/mechanism coverage, полезные тесты, текущие области и admission; 147 synthetic scenarios, 4 lifecycle tests, tools contracts, 12 dry-runs, parity/inventory/links прошли; [аудит и проверки](testing-quality-audit.md) |
 | `DOC-01B.4` | `verified` | Общий RELEASE-PROCESS EN/RU, release-notes README/template, policy/evidence ownership; 6 contract tests, 228 offline publication tests, packaging/tools, examples/parity/inventory/links прошли; [аудит и проверки](release-process-audit.md) |
-| `DOC-02` | `in-progress` | build-quality проверен в связанном `DOC-01B.3`, конфигурационный комплект — в `DOC-02A`, обработка/маршрутизация/CSV — в `DOC-02B`, storage/lifecycle/export — в `DOC-02C`, managed import — в `DOC-02D`, ingestion/daemon — в `DOC-02E`, sync/координация — в `DOC-02F`, observability/libraries — в `DOC-02G`; остальные capability docs/guides ожидают сверки границ, failure/recovery/defaults, переводов и runnable examples |
+| `DOC-01B.5` | `verified-docs-open-findings` | KNOWN-ISSUES EN/RU: 84 IDs, owner/impact/completion и archive; 938 distinct unit/contract + 12 IT, OPS-11/12/13 reproduced, dated OSV/Actions review, parity/inventory/links. Только OPS-1 закрыт по исходному scope; [аудит](known-issues-audit.md), [реестр решений](known-issues-review.tsv) |
+| `DOC-02` | `verified-docs-open-findings` | Все 32 capability и 38 guide paths содержательно проверены в DOC-01B.2/3 и DOC-02A–M, EN/RU-пары присутствуют. В DOC-02M завершены development/publication; source defects и operational/security qualification имеют отдельные открытые обязательства. README, ADR и исторические records не считаются полностью проверенными по ссылкам из этих документов |
 | `DOC-02A` | `verified` | Configuration/configuration-failure-reports и operator reference EN/RU: факты, полнота, defaults, check/apply/recovery scope; 93 unit + 100 IT, повтор 7 documentation contracts, 12 command JVM, bash example, parity/inventory/links прошли; [аудит](configuration-audit.md) |
 | `DOC-02B` | `verified` | Processing, routing guide и CSV format EN/RU: факты, полнота, выбор и commit boundaries; 234 unit + 103 IT, шесть example JVM и три CLI paths, parity/inventory/links прошли; [аудит](processing-csv-audit.md) |
 | `DOC-02C` | `verified` | Storage/lifecycle dev+guide/export EN/RU: 171 unit + 104 IT, CLI/examples, parity/inventory/links; TOOL-10 открыт после реального smoke timeout, load не квалифицирован; [аудит](storage-lifecycle-export-audit.md) |
@@ -196,6 +261,12 @@ TOOL-4/5/6/7/8/9 сохраняют свои triggers и критерии зак
 | `DOC-02E` | `verified` | Ingestion и daemon runbook EN/RU: 79 unit + 66 IT, 1 documentation contract, 14 CLI JVM, 5 bash blocks, parity/inventory/links. Partial commit, blocked work, health и backup scope исправлены; live/systemd/restore не заявлены; [аудит](ingestion-daemon-audit.md) |
 | `DOC-02F` | `verified-docs-open-defects` | Sync, event coordination и SMB guide EN/RU: 195 unit + 31 IT / 3 external skips, 13 checks, 12 CLI JVM, parity/inventory/links. OPS-11/12 воспроизведены; server/Windows runtime не квалифицированы; [аудит](sync-coordination-audit.md) |
 | `DOC-02G` | `verified` | Observability и diagnostics/logging/Boot guides EN/RU: 294 unit + 14 IT, 12 checks, 228 contracts, 10 jq queries; три cold Central consumers 0.3.0-rc.1 и published-source equality, parity/inventory/links. Source/producer-wide security и deployment не заявлены; [аудит](observability-audit.md) |
+| `DOC-02H` | `verified` | Native capacity/bulk sizing EN/RU: 34 unit/contract + 157 IT, 22 example/interface checks и parity/inventory/links. Workspace/writer/WAL/health и defaults уточнены, исторические таблицы сохранены; новый load/SLO не квалифицирован, OUT-4/TOOL-10 открыты; [аудит](capacity-audit.md) |
+| `DOC-02I` | `verified` | Configuration inspection/library/check EN/RU: 90 unit/contract + 85 IT, 228 publication contracts, 14 boundary cases и cold Central consumer default/BOM. Published source equality, parity/inventory/links проверены; TOOL-8/6/9 открыты; [аудит](configuration-library-audit.md) |
+| `DOC-02J` | `verified` | Concurrency/events/events-spring EN/RU: 85 unit/contract + 4 IT, 6 boundary cases, 228 publication contracts, три cold Central consumers; 23 published Java sources совпали. Dependency graphs/advisories, parity/inventory/links проверены; full gates и TOOL-6/7/8/9 открыты; [аудит](coordination-libraries-audit.md) |
+| `DOC-02K` | `verified-docs-open-findings` | Deployment EN/RU: 50 unit/contract + 15 IT, 14 Bash blocks, 13 CLI JVM, native probe, packaging/parity/inventory/links. OPS-13 воспроизведён, SRC-3 advisory disposition открыт; actual host activation/restore/security gate не заявлены; [аудит](deployment-audit.md) |
+| `DOC-02L` | `verified-docs-open-defect` | IOC aggregate EN/RU: 78 unit/contract + 61 IT, 21 CLI JVM и actual private managed intake; literals/parity/inventory/links. OPS-14 воспроизведён, workaround указан; live installation/SMB/security gate не заявлены; [аудит](aggregate-audit.md) |
+| `DOC-02M` | `verified` | Development/publication EN/RU: 228 offline contracts, 23 unit tests, actual local bundle/consumer, 18 original-bundle CLI checks, 67 source comparisons, shell/XML/Maven settings/parity/inventory/links. TOOL-6/7/8/9 открыты; [аудит](library-publication-audit.md) |
 | `DOC-03` | `planned` | ADR: original hashes сохранены, migration link plan выполнен, historical EN labels/status/number и semantic parity проверены |
 | `DOC-04` | `in-progress` | Release-notes README проверен в связанном DOC-01B.4; остальные README ожидают language/reference/semantic review, с сохранением русской навигации |
 | `DOC-05` | `in-progress` | Правила и шаблон release notes проверены в DOC-01B.4; содержательная сверка остальных matrix/ledgers/records и исторических measurements остаётся |

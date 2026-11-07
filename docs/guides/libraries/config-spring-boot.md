@@ -205,6 +205,11 @@ describe the same candidate.
 | Boot's attached `configurationProperties` aggregate | AGGREGATE / EXCLUDED to avoid duplicate observations |
 | Nonenumerable source | OTHER / INCOMPLETE |
 
+Aggregate exclusion uses that exact source name, including for an ordinary source
+with the same name. Reserve it for Boot's aggregate and pass the concrete sources
+as well. Environment qualification also relies on the documented source convention;
+neither classification authenticates the origin or contents of an arbitrary source.
+
 Enumeration failures propagate with the original exception identity. They are
 operational failures, not unknown-name findings; no partial result is returned.
 The result retains neither source objects nor arbitrary source labels, but raw
@@ -224,6 +229,9 @@ rendering policy to names, results and exceptions.
 declarations. UNKNOWN/AMBIGUOUS findings do not reduce coverage. A known name can
 still have an invalid duration, missing required value or semantic conflict.
 Neither completeness nor a resolved migration observation authorizes startup.
+An empty source sequence or no declarations in the selected namespace can still
+be complete. Check required values after binding and confirm that the intended
+candidate/sources were loaded; a complete empty report does not establish either.
 
 Declarations are not final Binder provenance. A higher-priority source defining
 a list replaces the whole list, including its elements. A partial override of
@@ -270,6 +278,12 @@ must not mutate them during traversal. Result lists/candidate sets are copied;
 snapshot records are observations, not a certificate for hand-constructed data.
 No context, file, worker or transaction is created or closed by the inspectors.
 The recipe closes its short-lived context and returns a detached immutable model.
+
+Inspection is synchronous. It copies/sorts enumerated names and retains all
+matching declarations; it has no sampling budget, timeout or input-size limit.
+Sources can execute arbitrary work while enumerating names. Bound inputs and
+own source resources separately; name-only inspection is not an I/O sandbox.
+Source ordinals are local to one snapshot and must not become persistent identities.
 
 - Null required arguments/metadata/lists cause `NullPointerException`.
 - Invalid namespace/root or migration templates/catalogs cause

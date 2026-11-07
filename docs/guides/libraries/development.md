@@ -27,6 +27,12 @@ version to `release-X.Y.Z`. Use the existing process until
 global `-Drevision` is not an independent-library version mechanism. Existing
 `0.3.0-rc.1` artifacts and tags retain their identities.
 
+Today the service reactor still builds these modules from local source at the
+shared version. A green reactor build therefore does not prove that it consumed
+the published library bytes. Standalone consumers qualify the distribution
+separately; service selection of independently versioned released dependencies
+still requires the TOOL-9 implementation and acceptance checks.
+
 ## Find the existing tool first
 
 Start with the catalog, then read the relevant guide, module README and public
@@ -86,6 +92,20 @@ local reactor builds provide development feedback; service releases pin qualifie
 immutable dependencies. Running tests, committing a feature or updating these
 documents does not itself authorize publication or a service release.
 
+For example, check a concurrency change locally with a fresh output directory:
+
+```sh
+make test-module MODULE=platform/platform-concurrency
+make library-bundle LIBRARY_COMPONENT=concurrency LIBRARY_BUNDLE=.dev/concurrency-change
+make library-consumer LIBRARY_COMPONENT=concurrency LIBRARY_BUNDLE=.dev/concurrency-change
+```
+
+Select the owning module/component for another library. The bundle command is a
+packaging build, not the complete final quality gate. It records a dirty tree
+when present; such a bundle can support local development checks but cannot be
+signed as a release. Never reuse a bundle directory for changed bytes. For the
+events adapter, pass the same-version core bundle as documented in publication.
+
 ## Release and upgrade
 
 Publish the required library version, qualify it separately from Central and
@@ -99,6 +119,13 @@ After activation, for example, a diagnostics API addition could be developed as
 a different version. These are illustrative versions, not current release
 instructions. Other services may remain on an older supported diagnostics
 version until they choose to upgrade.
+
+A SNAPSHOT is a development coordinate, not an immutable release baseline.
+Retain the exact artifact/source identity when reproducing a problem; compare
+public behavior and packaged dependencies, not only the version string. A
+security update still needs compatibility review and the applicable release
+security gate. Local consumers and documentation checks do not close advisory
+dispositions or prove support for another Java/framework baseline.
 
 For compatible fixes, increment PATCH; for compatible API additions, MINOR.
 During `0.x`, incompatible supported-contract changes increment MINOR and need

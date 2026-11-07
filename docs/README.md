@@ -26,7 +26,7 @@
 | [TESTING.md](TESTING.md), [RU](ru/TESTING.md) | Содержательные тесты, coverage floors/ratchets, lifecycle, taxonomy, evidence и flake policy |
 | [DIAGNOSTICS-CATALOG.md](DIAGNOSTICS-CATALOG.md) | Генерируемая карта диагностических кодов из `DiagnosticCatalogs` |
 | [LOGGING-CATALOG.md](LOGGING-CATALOG.md) | Генерируемая карта log actions и полей из `EventAction` / `LogField` |
-| [KNOWN-ISSUES.md](KNOWN-ISSUES.md) | Единый реестр технического долга, заложенных seam'ов и статуса этапов (ID, статус, эфф., приоритет) |
+| [KNOWN-ISSUES.md](KNOWN-ISSUES.md) · [RU](ru/KNOWN-ISSUES.md) | Действующие дефекты, недостающая квалификация, отложенные улучшения и архив со стабильными ID |
 
 ## Способности (dev/): как это работает внутри
 
@@ -42,7 +42,7 @@ failure/recovery semantics и точки расширения, но не пер�
 |---|---|
 | [dev/processing.md](dev/processing.md), [RU](dev/ru/processing.md) | Extraction, attribution, routing, mapping, winner identity and policy-gated commit |
 | [dev/storage.md](dev/storage.md), [RU](dev/ru/storage.md) | Canonical SQLite, lifecycle/history, canonical identities, reusable export slots и CSV-проекции |
-| [dev/native-capacity.md](dev/native-capacity.md) | Подтверждённые замеры Native, границы проверок и оставшиеся ресурсные ограничения |
+| [dev/native-capacity.md](dev/native-capacity.md), [RU](dev/ru/native-capacity.md) | Допуск workspace, writer/WAL/health, исторические замеры Native и границы ресурсных проверок |
 | [dev/ingestion.md](dev/ingestion.md), [RU](dev/ru/ingestion.md) | Daemon admission, private source ownership, ordered promotion, retry и recovery |
 | [dev/artifact-export.md](dev/artifact-export.md), [RU](dev/ru/artifact-export.md) | Consistent immutable export slices, manifest/marker и export saga |
 | [dev/csv-output-format.md](dev/csv-output-format.md), [RU](dev/ru/csv-output-format.md) | CSV bytes, quoting/null semantics, encoding and publication/recovery boundaries |
@@ -50,7 +50,7 @@ failure/recovery semantics и точки расширения, но не пер�
 | [dev/event-coordination.md](dev/event-coordination.md), [RU](dev/ru/event-coordination.md) | Control hints, post-commit boundaries, consumer admission и state-driven recovery |
 | [dev/dataframe-import.md](dev/dataframe-import.md), [RU](dev/ru/dataframe-import.md) | Managed local/SMB CSV intake, recognition, staging, promotion и recovery |
 | [dev/configuration.md](dev/configuration.md), [RU](dev/ru/configuration.md) | Strict `ioc.*` boundary, effective sources, validation, check/apply and runtime-state limits |
-| [dev/configuration-inspection.md](dev/configuration-inspection.md) | Shared Spring Boot name inspection, source coverage and service enforcement boundary |
+| [dev/configuration-inspection.md](dev/configuration-inspection.md), [RU](dev/ru/configuration-inspection.md) | Shared Spring Boot name inspection, source coverage, ownership и граница решений сервиса |
 | [dev/configuration-failure-reports.md](dev/configuration-failure-reports.md), [RU](dev/ru/configuration-failure-reports.md) | Controlled failure categories, schema paths, phase limits and operator rendering |
 | [dev/observability.md](dev/observability.md), [RU](dev/ru/observability.md) | Diagnostic retention/delivery, policy/completion, typed logs/MDC, backend bytes и disclosure boundaries |
 | [dev/build-quality.md](dev/build-quality.md), [RU](dev/ru/build-quality.md) | Maven quality lifecycle, SpotBugs/CPD/PMD, механика coverage gate и сопровождение областей/отчётов |

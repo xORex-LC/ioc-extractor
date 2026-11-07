@@ -1,330 +1,468 @@
-# Технический долг
+# Known issues and technical debt
 
-Единый реестр технического долга и заложенных seam'ов проекта — одно место
-правды. Раньше эти пункты были размазаны по `Открытые вопросы` дев-нот
-([dev/](dev/)), `roadmap.md` и ревью; здесь они сведены и приоритизированы.
+[Русская версия](ru/KNOWN-ISSUES.md)
 
-**Как вести:** у каждого пункта стабильный ID. Основные разделы содержат только
-актуальный backlog; при закрытии строка со статусом `закрыт` и ссылкой на
-коммит/этап переносится в архив в конце файла, но не удаляется. Новый долг →
-строка в нужную секцию.
+This registry separates current defects and missing qualification from deliberate
+extension options and completed work. IDs are stable and never reused. Capability
+docs own mechanisms, ADRs own decisions, and release records own candidate-specific
+results; this document owns the remaining problem, impact and completion condition.
 
-**Статус:** `открыт` · `частично` · `seam` (сознательно отложенный задел,
-интерфейс/инвариант уже заложен) · `закрыт` · `descoped` (осознанно won't-do).
-**Эффорт:** `S` (≤ полдня) · `M` (день-два) · `L` (итерация).
+Last reviewed **2026-11-07** against the `0.3.0-SNAPSHOT` source and retained
+qualification evidence. A source review, passing focused test or historical load
+result does not establish a fresh full release gate or qualify another deployment.
 
----
+## How to use the registry
 
-## 1. Демон / ингест (`ING`)
+| State | Meaning |
+|---|---|
+| `open` | A demonstrated defect or accepted implementation task remains |
+| `partial` | Part is implemented; the stated remainder is still open |
+| `qualification` | Implementation exists, but the named target/acceptance evidence is missing |
+| `deferred` | Deliberate extension or improvement; activate only on its stated trigger |
+| `closed` | The original scope has implementation and supporting evidence; later limits stay separate |
+| `out-of-scope` | The proposal was explicitly excluded from the current product scope |
 
-| ID | Долг | Статус | Эфф. | Источник |
-|---|---|---|---|---|
-| ING-2 | **Tail-режим для источников** (растущие append-фиды: offset/rotation/checkpoint). **Descoped:** вне домена document-ingest — источники дискретны (Word/HTML, скрейпинг даёт целые документы). При появлении стриминг-источника — новый режим/`SourceReader` тогда. | descoped | L | dev/0001 #1, dev/0006 |
-| ING-7 | **Инкрементальная запись локальных датафреймов** — `CsvArtifactProjection` всё ещё полностью перечитывает артефакт из БД и переписывает мутабельный `*_generated.csv` (atomic temp→move) на каждый write. Immutable export из 0012 уже cadence-driven и не зависит от этой проекции, но локальный always-fresh путь остаётся O(N). Остаётся: дельта/кэш либо отказ от per-write projection. | seam | M | review, dev/0012 |
-| ING-8 | **Web driving-adapter** — HTTP как третья точка входа рядом с CLI/file-poll: ops (ING-3) → REST-ингест/запросы → TAXII/STIX-сервер (синергия с EXP-1) + BFF под фронтенд. Эндпоинты живут в отдельном `adapter-web`. **Требование:** REST-эндпоинты, дёргающие use-cases, обязаны открывать `MdcScope` (run-id), как CLI/демон, иначе прогоны теряют корреляцию в логах. **Связка с актуатором:** при выносе web за loopback `management.endpoint.health.show-details` нужно закрыть auth / перевести в `when-authorized` (сейчас `always` безопасен только из-за loopback-бинда). | seam | L | review |
-| ING-11 | **Retry × run-ledger: нет resume-протокола.** CAP-5 сохраняет attempts/backoff в durable admission, но полный resume-протокол run-ledger ещё отсутствует; новая попытка `DurableDocumentDispatcher` создаёт новый run; `processClaimed` безусловно `startIngest` на каждой попытке; `markFailed` — только при `!dbCommitted` → сбой проекции (диск/права) даёт N `DB_COMMITTED`-ранов одного source; `IngestRunRecoveryService` не синхронизирован с file-ledger (`CLAIMED`) → после рестарта лишняя полная экстракция. Данные целы, платим CPU/diagnostics/проекции + id-gaps; самовосстанавливается. Нужен resume-протокол: после `DB_COMMITTED` повторять только projection/archive (не extraction/commit) + синхронизация run-ledger ↔ file-ledger; требует мини-дизайна (меняется сага ING-4a). **План: 0.3.0.** | открыт | M | стенд-тест 2026-07-14 (pre-retarget RC 0.1.1) |
-| ING-13 | **Failed claim превращает файл в вечный poison.** В candidate-линии 0.2.0 реализована полумера: rejection возвращает `REJECTED/ALREADY_REJECTED`, повторный poll durable `FAILED` завершается без повторного generic/typed лога. Полный дефект остаётся: `markFailed` синтезирует `Path.of("unknown")`, файл остаётся в inbox и не получает явной физической судьбы. Нужен pre-claim dead-letter/quarantine (с реальными path/detectedAt и идемпотентным terminal-фильтром). Поддерживаемой clear/requeue-команды пока нет: source/logs сохраняются для разбора, а recovery выполняется только по reviewed procedure без ручного удаления ledger/SQLite state. **Полный фикс — 0.3.0.** | открыт | M | стенд-тест 2026-07-14 (pre-retarget RC 0.1.1), полумера 2026-07-15 |
+Owners below identify responsibilities, not new assignments or delivery dates.
+Legacy effort estimates are not a current schedule. Do not close an item solely
+because an unrelated gate passes or an interface exists. On closure, keep its ID
+and move the outcome and evidence to the archive. Link to an item with its lowercase
+ID anchor, for example `KNOWN-ISSUES.md#ops-11`.
 
-**ING-15 — ограничение больших документов и отказ рабочего потока (частично, L).**
-Исторический прогон CAP-6 на 1 млн IOC в HTML при `-Xmx512m` падал с
-`OutOfMemoryError` на чтении Tika до канонической записи; рабочий поток
-завершался при остававшейся активной JVM. CAP-7A заменил полные source buffers
-дисковым workspace и потоковыми cursor: HTML удаляет завершённые поддеревья,
-DOCX использует SAX. В квалификации 2026-10-09 полный сервис успешно проходит
-чтение, refang, извлечение и атрибуцию миллионных HTML и DOCX без прежнего
-source OOM. Оба документа затем отклоняются из-за квоты приватного SQLite
-reducer до канонической записи измеряемого документа; это не исчерпание диска
-хоста и не успешный полный цикл. На 100k все пять выходных артефактов проходят
-проверки содержимого при RSS около 368/374 MiB, однако время локального цикла
-и длительность удержания writer превышают принятые бюджеты.
+Address possible lost/skipped input and inconsistent activation first
+([OPS-11](#ops-11), [OPS-12](#ops-12), [OPS-13](#ops-13), [OPS-14](#ops-14)),
+alongside the security disposition in [SRC-3](#src-3). Then address retry/status
+failures and outstanding resource/deployment qualification. New enrichment,
+formats and tooling options do not replace this operational work.
 
-Фатальный `Error` теперь останавливает dispatcher видимо для health,
-освобождает готовые preparations и сохраняет durable admissions для startup
-recovery. Физические и timed-тесты preparation/promotion/cleanup проверяют
-освобождение и обработку оставшихся документов после restart; это не симуляция
-реального исчерпания heap. Окно ordered dispatch ограничено доступными workspace
-leases. Source-контракт квалифицирован, полная ресурсная приёмка остаётся
-открытой: миллионные failure-window RSS не доказывают память завершённого цикла.
-Владельцы: ingestion/source, private reducer и canonical storage; оставшиеся
-архитектурные треки — CAP-7D/C. Бюджеты не увеличены, стенд не обновлялся.
-Исторические и последующие полные замеры: [Native capacity](dev/native-capacity.md); устройство чтения описано в
-[processing](dev/processing.md) и [ADR 0039](ADR/0039-streamed-document-source-processing.md).
-Позднее Native прошёл полный миллионный DOCX и серию из 100 DOCX на явно
-расширенном профиле (heap 2 GiB, workspace 8 GiB, общий cgroup 6 GiB). Это
-отдельные завершённые измерения; они не отменяют отказ старого профиля и не
-квалифицируют прежние resource defaults для любого миллионного документа.
+## Ingestion and canonical-write defects
 
+<a id="1-демон--ингест-ing"></a>
+<a id="ing-11"></a>
+### ING-11 — Resume after a partial ingest run
 
-**ING-16 — расхождение UTC и high-water: координация исправлена, причина открыта (M).**
-Квалификация 2026-10-09/11 выявила `SQLITE_CONSTRAINT_CHECK` в import retry и
-`Invalid document admission version or timestamps` после успешного document
-commit/projection. Служебные progress timestamps теперь не убывают относительно
-сохранённого `updated_at`: это применяется к document admission, import retry,
-terminalization и audit. Terminal retention отсчитывается от того же времени;
-retry-after остаётся абсолютным UTC deadline. Регрессии проверяют reopen,
-длительность retention и завершение регистрации при обратном шаге часов.
-Canonical safe-clock остаётся независимой защитой и по-прежнему отклоняет UTC
-вне допустимого skew/clamp. Исторический C5 отказ control при `PT2.061S` сохранён;
-повторная квалификация сохранила три отказа при `PT2.073S`–`PT2.363S`. Причина
-расхождения raw UTC и durable high-water по журналам не установлена; они не
-доказывают перевод часов хоста. Исправление ledger
-не разрешает новую canonical публикацию при небезопасном времени и не закрывает
-нагрузочную приёмку. Владельцы: service ledger / [managed import](dev/dataframe-import.md),
-[ingestion](dev/ingestion.md), эксплуатация часов хоста.
+**Partial · owner: ingestion/run-ledger.** Retries retain the document admission,
+observation/rank and backoff, but preparation can create another ingest run.
+After canonical commit, projection/archive failure can leave an earlier run
+`DB_COMMITTED` while source work is still claimed. Fixed-lifecycle receipts may
+avoid parsing and replay accepted rows; without a reusable receipt the retry
+extracts again. This is not a complete resume protocol across admission, source
+ledger and run-ledger; repeated work and abandoned partial runs remain possible.
 
-**ING-17 — конкурентная терминализация document admission (закрыт, M).**
-Нагрузочная квалификация 2026-10-13 зарегистрировала
-`INGEST.RECOVERY_FAILED: Document admission changed concurrently` в Native и
-Staged. Обычное завершение документа и reconciliation могут одновременно вызвать
-`DocumentAdmissionService.complete` / `finalizeRegistration`; CAS проверяет
-полное равенство подготовленного состояния, включая timestamp, и отклоняет
-эквивалентное завершение другим участником. Очередь в наблюдаемых случаях
-продолжает двигаться, но возникает лишняя ошибка recovery; исключение после
-архивации также предшествует `runLedger.markCompleted`. Потеря канонических
-данных не установлена. Строго последовательный прогон 1 млн IOC / 100 DOCX
-не завершил все ingest-run и был сохранён как ERROR по часовому таймауту.
-Узкий фикс принимает одинаковые terminal-факты после проигранного CAS,
-проверяет registration даже при finalized retry и сохраняет отказ при
-несовместимых outcome / source / registration. Семь новых регрессий включают
-принудительную перестановку обоих terminal writes и гонку completion/recovery;
-три падают на исходной версии. На исправленной версии прошли все 24 проверки
-admission/registration. Полный повтор 1 млн IOC / 100 DOCX при workers/window
-1/1 завершился за 909,48 с до успешной SMB-публикации: все admissions/runs
-завершены, 2 167 020 строк и receipt/CSV/provenance проверены, ошибок CAS — 0.
-При доведении Native обязательные release gates возобновлены. Дополнительные
-регрессии отклоняют подмену candidate/claim paths, evidence, execution state,
-created-at и устаревшей версии при эквивалентном terminal outcome. Новый малый
-прогон через реальный SMB на обычном Maven JAR проверил 1 000 IOC / 10 DOCX,
-все пять артефактов и receipts: конфликтов терминализации — 0. Подробные границы
-автоматизированной и live-проверки описаны в [ingestion](dev/ingestion.md).
-Закрыт дефект terminal CAS; исторические неуспешные нагрузочные окна не
-переклассифицированы и не становятся ресурсной приёмкой.
-Владельцы: [ingestion](dev/ingestion.md), document admission / reconciliation.
+Close with a designed checkpoint/resume contract that resumes only outstanding
+projection/archive/finalization after a proven commit, coordinates all three
+ledgers, and tests failures/restarts with lifecycle enabled/disabled and receipts
+present/expired. Do not equate receipt replay with projection-only resume.
+See [ingestion](dev/ingestion.md#receipts-and-retry) and
+[IngestionService](../core/ioc-application/src/main/java/com/iocextractor/application/ingest/IngestionService.java).
 
-## 2. Обогащение вывода (`OUT`)
+<a id="ing-13"></a>
+### ING-13 — Physical fate of failures before a trustworthy content key
 
-| ID | Долг | Статус | Эфф. | Источник |
-|---|---|---|---|---|
-| OUT-1 | **Meta-колонки всегда `NULL`** (`score`, `time_last_seen`, `time_first_seen`, `threat_type`, `description`) — провайдеры обогащения не реализованы. Самый заметный пробел по ценности данных. | открыт | M | dev/0002 |
-| OUT-2 | **CSV formula injection — латентный configuration-dependent риск.** `source.label` формируется из нормализованного marker-match недоверенного документа и попадает в CSV; `QuoteMode.ALL_NON_NULL` защищает структуру CSV, но не гарантирует безопасность при открытии в spreadsheet. Для shipped default profile disposition — `not_applicable`: matches начинаются с `БИБ`/`Письмо`, остальные output values ограничены indicator/value/const contract. Универсальной neutralization в коде нет. **Триггер:** marker-regex или новая free-text колонка, допускающие spreadsheet-dangerous prefix после нормализации. Будущий фикс должен выбрать validation/rejection либо отдельную spreadsheet-oriented encoding policy и не менять молча семантику machine-consumed reputation lists. | seam | S | security review; `SEC-OUT-1`; [THREAT-MODEL](THREAT-MODEL.md) |
-| OUT-3 | **Legacy-коллизии при активном lifecycle.** Совместимый KEEP_FIRST preparer сохраняет все принятые mapped rows. Идентичные IOC при `ioc.pipeline.deduplicate=false` и разные retained IOC с одним конечным mapped key приводят к `SINK.WRITE_FAILED`: lifecycle writer отклоняет повторный ключ до резервирования ID и commit. Без lifecycle строки учитываются в provenance, canonical uniqueness сохраняется. Исправление требует явного контракта учёта повторов в lifecycle confirmation либо ограничения конфигурации; предварительное схлопывание в legacy preparer изменит резервирование и occurrences. Оптимизация O3 сохраняет это прежнее поведение. | открыт | M | `GoldenPipelineIT.originalRouteMappedCollisionsPreserveReservationAndProvenanceInBothWritePaths`; [processing](dev/processing.md) |
-| OUT-4 | **Ресурсный бюджет selected processing не принят.** Квалификация 2026-10-03 сохраняет все occurrences и обнаруживает около 4.04× caller allocations против совместимого пути на документе 100k/20 ключей; объединённые серии 50%/0% повторов дают около 1.255×/1.294× sampled heap, превышая историческую границу 1.25×. Build gates и выигрыш против исходного selected-path не закрывают performance acceptance. Нужны согласованные workload/resource limits и дальнейшее измеренное сокращение transient работы с сохранением diagnostics, ID/provenance и import participants. Дополнительная квалификация массового URL→host/IP проверила одинаковую host-policy до/после: distinct URL быстро исчерпывают semantic admission, mapping остаётся occurrence-proportional; большой документ выделяет около 3.67 GB caller allocations. Ресурсная приёмка и concurrent application SLO остаются открыты. | открыт | M | [processing](dev/processing.md); [historical measurements](dev/native-capacity.md); владелец: processing/application |
+**Partial · owner: document admission/source lifecycle.** Retry exhaustion and
+terminal-log suppression exist. Pre-reservation failure can still leave input in
+the inbox; ledger-only rejection can persist `unknown` paths. A reserved pre-hash
+failure instead retains its owned token, blocks later promotion and makes capacity
+health DOWN. There is no supported general clear/requeue command. These are
+different failure windows, not one endlessly repeated poll log.
 
-## 3. Экстракция / корпус (`EXT`)
+Investigate the original file/token and use coordinated recovery/restore; do not
+clear SQLite rows or delete private evidence by hand. Close with explicit,
+idempotent quarantine/disposition for each pre-claim/pre-hash window, real source
+evidence and a supported recovery interface. See [daemon operations](guides/daemon-operations.md)
+and [ingestion](dev/ingestion.md#receipts-and-retry).
 
-| ID | Долг | Статус | Эфф. | Источник |
-|---|---|---|---|---|
-| EXT-1 | **Новые типы индикаторов: IPv6, email** — паттернов и типов нет. | открыт | M | dev/0004 |
-| EXT-2 | **`.onion` v3** — точные base32-границы (56 символов) при ужесточении паттерна. | частично | S | dev/0004 |
-| EXT-3 | **Полноценный тест-корпус** + уточнение «не-PSL провайдеров» (ожидания на вариант 2 классификации). | открыт | M | dev/0004 |
+<a id="2-обогащение-вывода-out"></a>
+<a id="out-3"></a>
+### OUT-3 — Legacy mapped-key collisions with fixed lifecycle
 
-## 4. Наблюдаемость (`OBS`)
+**Open · owner: processing/canonical writer.** Legacy KEEP_FIRST preparation retains
+accepted mapped rows. With lifecycle active, duplicate final keys can produce
+`SINK.WRITE_FAILED` before ID reservation/commit: for example with pipeline dedup
+disabled, or distinct retained IOC values mapping to one key. Without lifecycle,
+canonical uniqueness/provenance use the existing keep-first path.
 
-| ID | Долг | Статус | Эфф. | Источник |
-|---|---|---|---|---|
-| OBS-4 | **Durable diagnostic occurrences/report/quarantine.** Текущий `DiagnosticSink` best-effort и synchronous. При реальной потребности в audit/reprocess ввести `DiagnosticOccurrence` (run/source/stage/sequence/stable id), durable `ReportDiagnosticSink`/`QuarantineStore` и явно решить, является ли write частью processing outcome. Не извлекать durable identity из MDC; не превращать diagnostics в control events/broker без триггера. | seam | L | ADR/0017 реш. 7–8 |
-| OBS-5 | **Generated Elasticsearch component template и lifecycle mapping-миграции.** При первом supported Elasticsearch/data-stream consumer генерировать project mappings из `LogField` metadata (`STRING→keyword`, `LONG→long`, `BOOLEAN→boolean`), устанавливать template до первого index и публиковать rollover/reindex runbook для несовместимых legacy mappings. Producer fix OBS-D3 не может изменить уже созданный `keyword` field. До реального ES consumer installer/client не вводить. | seam | M | ADR/0018 реш. 9 |
-| OBS-6 | **Изоляция ошибки типа поля журнала от рабочей задачи.** Сейчас `LogEvent.field` выбрасывает `IllegalArgumentException` при несовпадении типа, ещё до проверки включённого уровня логирования. Исключение выходит в вызывающий код; без обработки оно может прервать операцию. Решение от 2026-09-13: сохранить текущий строгий контракт, корректность значений и обработку исключения оставить разработчику сервиса. Доработку отложить: определить поведение для некорректного поля/записи, позволяющее продолжить задачу и заметить ошибку журналирования без рекурсивного логирования и раскрытия значения. Не является условием первого извлечения библиотеки. | открыт | M | [LogEvent](../platform/platform-observability/src/main/java/com/iocextractor/observability/logging/LogEvent.java), [проверка типов](../platform/platform-logging-slf4j/src/main/java/com/iocextractor/platform/logging/LogValueNormalizer.java) |
-| OBS-7 | **Потеря исходной ошибки публикации при сбое наблюдателя.** Если `ControlEventObserver.publishFailed` сам выбрасывает исключение, резервный WARN в `SpringControlEventPublisher` содержит только ошибку наблюдателя. Воспроизведено 2026-10-17. При исправлении сохранить ошибку публикации основной, отдельную ошибку наблюдателя — вторичной, с защитой от самоподавления. Требуется до выделения Spring-адаптера событий; производственный инцидент не установлен. Исправлено в E2 (2026-10-24): fallback сохраняет primary publication failure, distinct observer failure — suppressed; проверены тот же объект и отключённое suppression. | закрыт | S | [SpringControlEventPublisher](../adapters/adapter-events-spring/src/main/java/com/iocextractor/adapter/out/events/spring/SpringControlEventPublisher.java) |
-| OBS-8 | **Сбой резервного логирования выходит в отправителя события.** Искусственный SLF4J-провайдер с исключением из `warn` воспроизводит выход `RuntimeException` наружу; после успешной доставки он также ошибочно запускает `publishFailed`. Это не свидетельство штатного сбоя Logback. Разделить доставку и наблюдение успеха, ограничить резервное логирование без рекурсивной попытки; `Error` не подавлять. Требуется до выделения Spring-адаптера событий. Исправлено в E2 (2026-10-24): разделены публикация и success observation; проверены бросающий WARN после успеха/ошибки, отсутствие повторного вызова и propagation Error. | закрыт | S | [SpringControlEventPublisher](../adapters/adapter-events-spring/src/main/java/com/iocextractor/adapter/out/events/spring/SpringControlEventPublisher.java) |
-| OBS-9 | **Нестандартные значения и форма ECS `event.type`.** `LoggingControlEventObserver` пишет туда имя внутреннего события, а `LegacyLedgerImporter` и `SqliteUserVersionSchemaMigrator` — `skipped`. ECS 8.11 определяет массив классификаций с ограниченным словарём; текущий STRING-каталог массив отвергает. Подтверждено на encoder 2026-10-19. Решение L3-0: на L3-2 перенести внутреннее имя в существующий `ioc.event.type`; для двух информационных skipped-записей ввести локальное STRING-поле `ioc.operation.disposition=skipped`, убрать `event.type` и outcome `unknown`. Явно описать изменение запросов и wire-контракта; проверить реальные ветки всех трёх producers и итоговый JSON. Общий профиль v1 исключает `event.type/category`. Исправлено в L3-2 (2026-10-19): реальные ветки observer, повторного импорта и актуальной схемы проверены через production encoder и байтовый appender в `LoggingMigrationIT`. Каталог регенерирован, миграция запросов описана в capability doc и release notes. | закрыт | S | [LogField](../platform/platform-observability/src/main/java/com/iocextractor/observability/LogField.java), [LoggingControlEventObserver](../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/LoggingControlEventObserver.java), [ECS 8.11](https://raw.githubusercontent.com/elastic/ecs/v8.11.0/schemas/event.yml) |
-| OBS-10 | **Потеря JSON-записи при явном `error.type` вместе с Throwable.** В ветке сбоя `LocalImportChangeSignalSource` присутствуют и поле, и `.log(failure)`. Boot 4.0.8 отдельно формирует объект `error` из исключения и отклоняет конфликт: `The name 'error' has already been written`. Синтетический вызов через настоящий Logback OutputStreamAppender 2026-10-19 вернулся без исключения, записал 0 байт и оставил внутренний error status; производственный инцидент не установлен. Решение L3-0: на L3-2 убрать явный `error.type` из этой ветки, сохранить Throwable и оставить encoder владельцем `error.*`; сохранить type-only вариант без Throwable. Регрессия должна проверить записанные байты, полный JSON и отсутствие encoder error status. Исправлено в L3-2 (2026-10-19): явное поле удалено из Throwable-ветки. `LoggingMigrationIT` закрывает активный WatchService, дожидается завершения worker и проверяет полный JSON, stack trace и отсутствие внутренних encoder/appender ошибок. Отдельный реальный startup-recovery producer сохраняет type-only запись без Throwable. | закрыт | S | [LocalImportChangeSignalSource](../adapters/adapter-ingest/src/main/java/com/iocextractor/adapter/in/ingest/LocalImportChangeSignalSource.java), [IocEcsStructuredLogEncoder](../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/IocEcsStructuredLogEncoder.java) |
+Close by defining lifecycle confirmation of duplicates or a validated configuration
+restriction. Collapsing rows early must not silently change reservation,
+occurrences or provenance. The regression
+`GoldenPipelineIT.originalRouteMappedCollisionsPreserveReservationAndProvenanceInBothWritePaths`
+pins the current limitation. See [processing](dev/processing.md).
 
-## 5. Код-смелл (`CODE`)
+<a id="ops-14"></a>
+### OPS-14 — Whitespace-only imported ordered field bypasses its guard
 
-| ID | Долг | Статус | Эфф. | Источник |
-|---|---|---|---|---|
-| CODE-1 | **Длинный composition contract extraction.** Шесть convenience-конструкторов удалены: `IocExtractionService` имеет production и explicit test constructor, `ExtractionResult` больше не маскирует completion defaults. Остался длинный dependency list в `IocExtractionServiceFactory`/production constructor; сворачивать только в осмысленный immutable dependency bundle, не в parameter-object ради счётчика. | частично | S | `2c18bbd`, review ADR-0017 |
-| CODE-5 | **Единый nullness-контракт и build gate.** Сейчас Eclipse JDT в `automatic`-режиме выбирает разные транзитивные аннотации по classpath модуля (Spring, JSR-305, JSpecify), тогда как Maven/CI nullness не проверяет. Если проект принимает строгую null-safety, сделать это отдельным срезом: выбрать JSpecify как прямой контракт, вводить `@NullMarked` постепенно с явными `@Nullable` на границах и подключить один воспроизводимый анализатор к Maven/CI. До этого `tools/eclipse-jdt.prefs` подавляет только шумный `nullUncheckedConversion`, не скрывая диагностики реального и потенциального null-доступа. Не blocker 0.2.0. | seam | M | IDE warnings review 2026-07-20 |
+**Open · owner: managed import/canonical field mutation.** In
+`JdbcCanonicalImportWriter`, a blank VALUE is not an ordered candidate, but generic
+merge can still write it. The packaged local-daemon reproduction with
+`ioc-aggregate-v1` replaced `Feed-A` with three spaces while keeping four carrier
+rows; field-origin rank did not advance. The intended keep-existing behavior and
+ordered-field authority are therefore bypassed in this branch.
 
-## 6. Архитектура / модульность (`ARCH`)
+For an absent name, supply an empty CSV cell/NULL, not padding; preview is not a
+merge-outcome guarantee. Close by applying one blank policy before generic mutation
+and testing nonblank/blank/NULL, both registration orders, new/active lifecycles
+and real aggregate import. See [aggregate operations](guides/ioc-aggregate.md)
+and [import writer](../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalImportWriter.java).
 
-| ID | Долг | Статус | Эфф. | Источник |
-|---|---|---|---|---|
-| ARCH-1 | **Гранулярность platform-модулей** — `platform-errors` (13 строк), `platform-diagnostics-logging` (крошечный): кандидаты на слияние. | открыт | M | dev/0009 |
-| ARCH-2 | **Размещение regex SPI** — `PatternEngine` в `ioc-domain` (extract) vs отдельный `platform-regex-api`. | seam | M | dev/0009 |
-| ARCH-3 | **Spring Modulith / canvas** — после стабилизации reactor-структуры. | seam | M | dev/0009 |
-| ARCH-4 | **Подавление обёрнутого Spring фатального сбоя обработчика события.** В Spring 7.0.9 `ApplicationListenerMethodAdapter` оборачивает `Error` из `@EventListener` в `UndeclaredThrowableException`; прежний `SpringControlEventPublisher` поглощал её как обычный `RuntimeException`. Воспроизведено с `AssertionError` 2026-10-17, без реального исчерпания ресурсов или производственного инцидента. До выделения адаптера распознавать эту обёртку с `Error` и пропускать исходный `Error` наружу; проверить на реальном Spring context. Настройка обработчиков и асинхронных исполнителей остаётся у сервиса. Исправлено в E2 (2026-10-24): исходный Error выходит из реального аннотированного Spring listener; прямой Error также сохранён. | закрыт | S | [SpringControlEventPublisher](../adapters/adapter-events-spring/src/main/java/com/iocextractor/adapter/out/events/spring/SpringControlEventPublisher.java) |
+## Sync, status and deployment defects
 
-## 7. Экспорт / упаковка / ops (`EXP` / `OPS`)
+<a id="7-экспорт--упаковка--ops-exp--ops"></a>
+<a id="ops-10"></a>
+### OPS-10 — Import status fails on a NULL retry deadline
 
-| ID | Долг | Статус | Эфф. | Источник |
-|---|---|---|---|---|
-| EXP-1 | **STIX/OpenIOC export sink** — модель уже несёт `stixType()` под это, ждёт sink-адаптер. | открыт | L | roadmap |
-| EXP-2 | **`.deb`-пакет** с maintainer-скриптами (сейчас shell-установщик). | открыт | M | packaging |
-| OPS-1 | **Мульти-источник — верификация:** несколько файлов разом + новый файл на работающем демоне (watch-service + reconcile). | открыт | S | review |
-| OPS-2 | **Логротация средствами ОС** (сейчас только rolling-appender Logback). | открыт | S | packaging |
-| EXP-3 | **Активные delivery-коннекторы** — пуш правил фильтрации в security-appliances (firewall EDL/blocklist, proxy ACL/ICAP, DNS RPZ-зоны, DHCP и т.п.) поверх export-контракта 0012. Каждый appliance = свой driven-адаптер за единым delivery-портом (правило «один адаптер = одна интеграция»), родственно `publish`-половине 0011 (та доставляет файлы/срезы, эти — активный push в API/протокол). Усиливает выбор `complete`-дефолта (appliances тянут полный список/зону). Контракт fan-out (consumer-owned `DeliveryLedger` retention-view + AND-композит guard'ов + шаблон канала) зафиксирован: [ADR/0014](ADR/0014-event-driven-ingest-to-delivery.md) «Детальный дизайн» → Р3. | seam | L | dev/0011, обсуждение 0012, ADR/0014 Р3 |
-| EXP-4 | **DuckDB как read/analytics/Parquet-движок** (на радаре, не сейчас) — embedded OLAP за `SqlDialect`/read-портом; `ATTACH` SQLite-truth напрямую (`sqlite_scanner`), нативный `COPY TO` CSV/Parquet на шаге «материализовать срез» export-саги (§3a/§4a 0012). Truth остаётся SQLite (OLTP, write-path не трогаем), DuckDB только на read/export-стороне → неразрушающая инкрементальная миграция. **Активировать при появлении columnar-потребителя** (data-lake / TI-platform / отчётность); текущему firewall/proxy-потребителю не нужен. | seam | M | обсуждение 0012 (tooling) |
-| EXP-5 | **Append/update export modes** — модель и manifest vocabulary допускают расширение, но v1 намеренно исполняет только `complete`; `append` получает `EXPORT.UNSUPPORTED_MODE` до IO. Активировать только вместе с отдельным durable watermark и consumer contract. | seam | L | dev/0012 F4 |
-| OPS-3 | **Capability preflight/health для SMB boundary.** Generic sync всё ещё требует reachability+auth/read для fetch и write→rename→delete для publish. Для managed import ADR-0025 реализует более строгий blocking per-source gate: заранее созданный `.ioc-managed-import/{processing,terminal,quarantine,probe}`, positive create/read/no-replace-rename/exact-delete probe до intake и source-scoped `DEGRADED|DOWN`. Приложение не создаёт share/dirs, не меняет ACL и не обещает их полный аудит; producer-denial остаётся operator-run negative test отдельной identity и частью внешней H5 qualification. | seam | M | обсуждение 0011; ADR/0025; DATA-IMPORT-01 H2/H5 |
-| OPS-4 | **State-driven sync / event coordination hardening.** Базовая часть закрыта ADR 0013: `RemoteSourceMonitor` отделён от `RemoteFetchService`, publish fast-path идёт через `SliceCompleted`, periodic reconcile остаётся correctness backstop, fetch/publish work сериализуется in-memory keyed executor по endpoint, actuator показывает queue/degradation state. SMB `CHANGE_NOTIFY` реализован как optional latency accelerator, не correctness path. Открытые seam'ы: durable outbox/broker adapter при межпроцессной доставке, полноценная high/low-water hysteresis policy вместо текущего bounded admission + shed-to-reconcile. | seam | M | dev/0013, docs/sync.md |
-| OPS-5 | **Sync fetch read-model cleanup и targeted discovery.** `remote_fetch_ledger` хранит historical identities `(path,size,mtime)` и не чистится по SMB delete-events; нужен age-retention/reaper с операторскими лимитами. Если `fetchDetection.detectDurationMs`/каталоги с тысячами файлов покажут, что full listing доминирует, добавить targeted stat path поверх notify payload или transport capability, не меняя polling/reconcile correctness. | seam | M | docs/sync.md, CHANGE_NOTIFY review |
-| OPS-6 | **Intra-endpoint parallel fetch (bounded).** Кросс-endpoint параллельность уже есть на всех стадиях (detection-пул по источникам, keyed executor с воркерами = числу endpoint'ов, publish submit-all-then-await): N хостов обрабатываются за `max`, не `sum`. **Внутри одного endpoint'а** работа намеренно последовательная двумя слоями — single-flight ключ executor'а + endpoint-lock вокруг одного cached SMB-клиента в `SmbFileTransport` (`withClient` держит лок на всю операцию) — поэтому батч из K файлов с одной шары качается последовательно. Seam: ограниченная параллельность скачиваний внутри endpoint'а = пул SMB-клиентов/сессий на endpoint (lifecycle, idle-reaper) + under-key concurrency в keyed executor (admission/health-модель); ledger/in-flight идемпотентность уже parallel-safe и переделки не требует. **Триггер активации — только по метрикам:** health `fetchDetection.detectDurationMs` + длительности fetch в ECS-логах показывают, что узкое место — последовательный прогон крупных батчей с *одной* шары (а не сеть/сервер), и время батча нарушает SLA. До сигнала — YAGNI; bounded pressure на один файловый сервер — осознанный инвариант текущего дизайна. | seam | L | CHANGE_NOTIFY review (обсуждение multi-endpoint параллельности) |
-| OPS-8 | **Managed-import SMB server-family breadth.** Live ownership/materialization/disposition/notification contract квалифицирован на Samba только для P8 baseline. После ADR-0025 каждый заявленный family обязан теми же distinct producer/service identities пройти capability gate, producer-denial, server-side no-replace rename/share modes, stable file ID, disconnect recovery, exact terminal purge и `CHANGE_NOTIFY`. При закрытии `R030-DATA` 2026-09-01 недоступный H5 fixture явно отложен как target-deployment qualification: это не pass, support claim не расширяется, а managed import остаётся выключенным до проверки конкретного source. Polling заменяет только потерянные notifications, но не ownership или retention checks. Пункт перенумерован с ошибочно повторно использованного active `OPS-7` 2026-08-26; исторический закрытый `OPS-7` остаётся ingest→export fast-path. | qualification | M | DATA-IMPORT-01 P8/P9; ADR/0025 H5 |
-| OPS-9 | **Managed-import SMB remote terminal retention.** Закрыто ADR-0025 H1/H3: forward cleanup сначала выполняет exact regular-file purge remote `terminal`/`quarantine`, idempotently принимает отсутствие, fail-closed отклоняет противоречие и только затем очищает local terminal/workspace/snapshot, receipt и ledger через CAS-delete. Replay явно detached от remote disposition/purge; recursive/path-driven delete запрещён. Live two-identity/server-family подтверждение остаётся отдельно в `OPS-8`, а не переоткрывает реализованный retention contract. | закрыто | M | ADR/0025; DATA-IMPORT-01 H1/H3 |
-| OPS-10 | **Managed-import status не читает голову без retry deadline.** `JdbcImportStatusReader` вызывает SQLite JDBC `getObject("next_attempt_at_ms", Long.class)` для SQL NULL. Воспроизведено 2026-11-05 реальными oneshot CLI: после успешного replay в `SNAPSHOT_PINNED` с пустым deadline `import status` падает с `Bad value for type Long`. `DataframeImportHealthIndicator` использует тот же reader, поэтому агрегатная health-проверка также уязвима к этому отказу; он не доказывает неудачный canonical commit. **Владелец:** JDBC import status / bootstrap health. **Закрытие:** корректный nullable read, regression tests для пустой очереди, NULL/ненулевого deadline и реального health/CLI на nonterminal head; focused и полные gates. Не исправлять состояние SQL вручную и не маскировать ошибку timestamp-заглушкой. | открыт | M | [Reader](../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcImportStatusReader.java); [import guide](guides/dataframe-import.md); DOC-02D 2026-11-05 |
-| OPS-11 | **Fetch identity не разделяет endpoint/source: возможен тихий пропуск документа.** `RemoteObjectIdentity`, process-local in-flight registry и JDBC primary key используют только `(path,size,mtime)`. В DOC-02F реальный `RemoteFetchService` с `JdbcRemoteFetchLedger`: endpoint one скачан, endpoint two с тем же tuple и другим содержимым получает skipped без GET. Poll/reconcile не исправляет ошибочную identity. До фикса использовать непересекающиеся remote paths/имена; это ограничение, не cross-process гарантия. Закрытие: явный namespace-контракт, совместимая миграция ledger/in-flight и regression для двух endpoint, одинаковых tuples и restart. | открыт | M | [Identity](../core/ioc-application/src/main/java/com/iocextractor/application/sync/RemoteObjectIdentity.java); [JDBC ledger](../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcRemoteFetchLedger.java); DOC-02F isolated reproduction 2026-11-06 |
-| OPS-12 | **Fetch landing имеет check-then-move race: возможна потеря входного файла.** `finalPathFor` проверяет отсутствие имени до скачивания, затем `Files.move(ATOMIC_MOVE)` не обеспечивает no-replace при появившейся цели. В DOC-02F на Linux два endpoint с разными tuples, одним leaf и синхронизированными GET дали два успешных результата и две записи FETCHED, но один inbox-файл: один move заменил другой. До фикса нужны непересекающиеся конечные имена и согласование всех inbox writers; отдельный CLI не разделяет daemon lane. Закрытие: атомарное владение/no-replace landing без проверки-с-гонкой, детерминированный regression для endpoint/внешнего writer и сохранение crash-window/idempotency contract. | открыт | M | [Fetch service](../core/ioc-application/src/main/java/com/iocextractor/application/sync/RemoteFetchService.java); DOC-02F isolated concurrent reproduction 2026-11-06 |
+**Open · owner: JDBC status/bootstrap health.** `JdbcImportStatusReader` reads SQL
+NULL with `getObject("next_attempt_at_ms", Long.class)`, which the selected SQLite
+driver rejects. A real CLI reproduction after replay into `SNAPSHOT_PINNED` failed
+with `Bad value for type Long`. `DataframeImportHealthIndicator` shares this reader;
+this status failure does not establish that canonical commit failed.
 
-## 8. Source parsing / dependency surface (`SRC`)
+Close with a nullable read and regressions for empty queue, NULL/non-NULL head
+and actual CLI/health on nonterminal work. Do not patch database timestamps to
+hide the error. See [reader](../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcImportStatusReader.java)
+and [import operations](guides/dataframe-import.md).
 
-| ID | Долг / seam | Статус | Эфф. | Источник |
-|---|---|---|---|---|
-| SRC-1 | **Минимизировать Tika parser set для опубликованного supported-format baseline.** [ARCHITECTURE.md](ARCHITECTURE.md#артефакты-и-заполнение) и contract tests закрепляют HTML/PDF/DOCX/XLSX; `tika-parsers-standard-package` всё ещё приносит parser modules и transitives за пределами этого контракта. Сравнить umbrella package с явным набором HTML/Microsoft/PDF modules по размеру boot jar, dependency/CVE surface и качеству extraction. Сужать graph только если выигрыш оправдывает потерю best-effort форматов. Это optimization/packaging seam, не дефект корректности и не blocker 0.2.0. | seam | M | Tika 3.3.1 migration review; [dev/processing](dev/processing.md) |
-| SRC-2 | **Bounded resource policy для document parsing.** `SourceReader` обрабатывает потенциально недоверенные документы, а `BodyContentHandler(-1)` намеренно не ограничивает размер извлечённого текста. Нужен единый operator-facing contract: max input bytes, decompression ratio/depth, spool threshold и wall-clock budget/cancellation; настройки Tika `AutoDetectParserConfig` должны дополнять, а не подменять внешние file/time limits. Exhaustion обязан завершаться типизированной диагностикой и согласованным failure-policy outcome без частичного durable write. Это security/operational hardening seam; текущая миграция на Tika 3.3.1 его не создаёт и не делает release blocker. | seam | M | Tika 3.3.1 migration review; ADR/0017; [dev/processing](dev/processing.md) |
+<a id="ops-11"></a>
+### OPS-11 — Fetch identity omits source/endpoint namespace
 
-## 9. Developer tooling / build (`TOOL`)
+**Open · owner: fetch identity/ledger.** `RemoteObjectIdentity`, process-local
+in-flight tracking and the JDBC primary key use only `(path,size,mtime)`.
+Two endpoints with the same tuple but different content reproduced a silent skip
+of the second endpoint without GET. Polling/reconcile cannot repair a wrong identity.
 
-| ID | Долг / seam | Статус | Эфф. | Источник |
-|---|---|---|---|---|
-| TOOL-1 | **Affected-test accelerator поверх принятой test taxonomy.** `TEST-LIFECYCLE-01` уже закрепил Surefire/Failsafe ownership, минимальные JUnit tags и быстрые/module/integration targets. Оставшийся долг — безопасный `test-affected`, который учитывает staged/unstaged/untracked paths, upstream и downstream reactor closure, а при root/shared/unknown change откатывается к полному test gate. Это только inner-loop accelerator; `verify` остаётся merge/release gate. **Триггер:** измеримый рост стоимости полного локального цикла и отдельный review dependency-closure алгоритма. | seam | M | tools facade review 2026-07-22; `TEST-LIFECYCLE-01` 2026-09-02 |
-| TOOL-2 | **Детерминированный Java formatting contract.** Выбрать formatter по пробному repo-wide diff, добавить mutating `fmt` и read-only `fmt-check` через единый parent Maven plugin; после чистого baseline включить check в `verify`. Не смешивать с SAST: SpotBugs/FindSecBugs уже отслеживается как `SEC-VER-1` и требует отдельного non-blocking baseline/noise triage. **Триггер:** отдельный post-0.2.0 hygiene slice; массовый mechanical diff не включать в release stabilization. | seam | M | tools facade review 2026-07-22; [SECURITY-ENGINEERING](SECURITY-ENGINEERING.md) |
-| TOOL-3 | **Воспроизводимый manual load-smoke.** Замкнуть deterministic fixture → isolated oneshot → стабильный отчёт времени, input/unique/committed rows и diagnostics; daemon mode и thresholds добавлять только после baseline measurements. Не включать в обычный CI/pre-push и не смешивать с malformed/fuzz/parser-bomb корпусом (`SEC-VER-3`, `SRC-2`). **Триггер:** необходимость сравнивать производительность релизов или расследовать эксплуатационную деградацию. | seam | M | tools facade review 2026-07-22; `GenerateIocFixture` |
-| TOOL-4 | **Централизованный external-test harness.** Сейчас provisioned suites являются bring-your-own-fixture тестами: вызывающая сторона задаёт endpoint/selectors и credentials, обычный `verify` видит только ожидаемые skips, а target fingerprint, полнота исполнения и cleanup evidence квалифицируются отдельно. Нужен единый capability-driven control plane для SMB и будущих feed/Prometheus/Elasticsearch интеграций без объединения их assertions в mega-E2E suite. **Триггер:** до добавления следующего семейства внешних интеграций либо до превращения external evidence в регулярный/обязательный CI status. | seam | L | `R030-TEST` / [TEST-EXTERNAL-05](worknote/0.3.0/evidence/test-quality-ledger.md), design review 2026-09-05 |
-| TOOL-5 | **Поэтапное расширение PIT за пределы `core/ioc-domain`.** Текущий воспроизводимый pilot осознанно ограничен чистой domain-логикой; для остальных production-модулей нет admission matrix, измеренных baseline и adoption decisions. Нужно оценивать модули по risk/signal/noise/cost, начиная с чистых `ioc-application`/platform scopes; integration-heavy adapters и bootstrap не включать по умолчанию. Repository-wide score и PIT на каждый PR не вводить без отдельного reviewed policy; differential mutation analysis оценить отдельно после стабилизации baseline и plugin/licensing model. **Триггер:** post-0.3.0 test-quality slice или доказанный assertion-quality gap в critical модуле. | seam | L | [R030-TEST mutation pilot](worknote/0.3.0/goals/R030-TEST-test-quality.md#mutation-pilot); [pilot evidence](worknote/0.3.0/evidence/test-quality-ledger.md#diagnostic-pilots), 2026-09-06 |
-| TOOL-6 | **Автоматическая проверка совместимости опубликованных библиотек.** Тесты и отдельные consumer-проекты проверяют текущую сборку, но не сравнивают весь публичный API с предыдущим выпуском. Удаление метода, который consumer не использует, может пройти CI и сломать другой сервис после обновления зависимости. Добавить проверку совместимости исходного кода и бинарной совместимости для `ioc-platform-concurrency` и `ioc-platform-diagnostics-api` с явно выбранными опубликованными версиями; кандидат — [japicmp](https://github.com/siom79/japicmp). Изменения поведения по-прежнему проверяются тестами и review. **Триггер:** до следующего выпуска этих библиотек, особенно при изменении опубликованного API. | открыт | M | [ADR 0028](ADR/0028-pilot-library-publication.md), [ADR 0044](ADR/0044-reusable-diagnostics-contract.md); обсуждение 2026-10-19 |
-| TOOL-7 | **Одиночный отказ создания временного GPG-ключа в publication-тесте.** Во время E4 (2026-10-25) существующий signing fixture для logging завершил `--quick-generate-key` с кодом 2; stderr тогда терялся, причина не установлена. Отдельная диагностическая генерация прошла. Fixture теперь сохраняет stderr в ошибке, не раскрывая stdin или экспортированный ключ; исходный отказ сохранён отдельно и не отменяется последующим успешным прогоном. Автоматический retry не добавлен. **Владелец:** publication tooling. **Закрытие:** при воспроизведении сохранить stderr/версию GnuPG и условия, установить и устранить причину, проверить полный набор без retries; один зелёный повтор не закрывает этот долг. | открыт | S | [Publication tests](../tools/tests/library-publication-test.py), [E4 checkpoint](../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md#packaged-consumers-and-retained-evidence) |
-| TOOL-8 | **Защищённый Central consumer config-библиотеки ещё не переквалифицирован в CI.** `ioc-config-spring-boot:0.3.0-rc.1` опубликован в обоих репозиториях. В исходном запуске `40088095516` GitHub consumer прошёл, Central consumer завершился ошибкой маршрутизации, скрытой pipeline через `tee`. Исправленный локальный Central consumer прошёл; routing/pipefail исправлены и включены через PR 19. **Владелец:** publication tooling. **Закрытие:** protected recovery с исходной валидацией `40087127800`, прежними тегом, deployment `90e22519-418d-4b74-ac5a-cadcc3d2c559` и подписанными байтами, без пересборки/повторной подписи; фактические логи, хеши и origin отдельных CI consumers подтверждены. Локальный успех не закрывает этот пункт. | открыт | M | [Запись выпуска](../.github/release-notes/ioc-config-spring-boot-0.3.0-rc.1.md), [consumer](../tools/fixtures/configuration-consumer/README.md) |
-| TOOL-9 | **Техническая активация независимых версий библиотек.** [ADR 0048](ADR/0048-independent-library-versions-and-reuse.md) принимает отдельные версии concurrency, diagnostics, logging и configuration, а также общую версию семейства events core/adapter. Текущие POM, `${project.version}` dependencies и admission по `release-X.Y.Z` ещё сохраняют lockstep; глобальный `-Drevision` не обеспечивает независимость. **Владелец:** Maven/publication tooling. **Закрытие:** выполнены [критерии активации](RELEASE-PROCESS.md#activation-of-independent-versions): отдельные источники версий, проверенные product/library-only сценарии, immutable source/tag/recovery identity, exact-version events family и отсутствие подмены выпущенной зависимости локальным кодом реактора. **Триггер:** до первого выпуска библиотеки с версией, независимой от продукта. Этот пункт не закрывается одной правкой политики. | открыт | M | ADR 0048; согласование 2026-11-01 |
-| TOOL-10 | **Lifecycle smoke/load не распознаёт текущее Native terminal filename.** Общий `tools/dev/lifecycle-smoke.sh` ждёт `*-initial.html` / `*-reappearance.html`, тогда как Native архивирует запечатанную копию с окончанием `.html.sealed`. Реальный smoke на 1000 входных строк 2026-11-04 застрял на первом ожидании при уже существующем done-файле; последующие expiry/retention/non-reuse assertions не выполнены. `make lifecycle-load` использует тот же harness и также требует переквалификации. **Владелец:** developer lifecycle tooling. **Закрытие:** ожидание привязано к текущему контракту terminal delivery без ложного совпадения; regression fixture и полный isolated smoke проходят без retries, load отдельно подтверждён с его порогами. Focused JUnit не заменяет этот результат. | открыт | M | [Harness](../tools/dev/lifecycle-smoke.sh); [lifecycle guide](guides/canonical-record-lifecycle.md); DOC-02C 2026-11-04 |
+Use non-overlapping remote paths/names until fixed; this is a constraint, not
+cross-process fencing. Close with an explicit namespace contract, compatible
+ledger/in-flight migration, and two-endpoint equal-tuple/restart regressions.
+See [identity](../core/ioc-application/src/main/java/com/iocextractor/application/sync/RemoteObjectIdentity.java)
+and [JDBC ledger](../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcRemoteFetchLedger.java).
 
-### Критерии закрытия `TOOL-4`
+<a id="ops-12"></a>
+### OPS-12 — Fetch landing can overwrite a concurrent input
 
-- Репозиторий содержит единый registry suites с lifecycle, required
-  capabilities, expected test count, timeout, owner, cadence и gate policy.
-- Provisioner или адаптер уже существующего стенда выдаёт secret-free environment
-  descriptor с run ID, provider family/version и доступными capabilities;
-  credentials поступают через централизованный secret boundary и не попадают в
-  CLI, Maven properties, логи или retained reports.
-- До тестов выполняются readiness и capability preflight. Эмулятор или один
-  provider family не считаются доказательством поддержки другого family.
-- Каждый запуск получает изолированный namespace/lease; failure-safe cleanup,
-  cleanup verification и bounded janitor закрывают остатки после аварии runner-а.
-- Result verifier доказывает `expected == executed`, запрещает тихий skip в
-  provisioned run и различает product failure, environment blocked, missing
-  capability, cleanup failure и inconclusive result.
-- Evidence bundle связывает Git commit, suite/runner revision, redacted target
-  fingerprint, provider/image revision, test counts, JUnit/Failsafe reports,
-  diagnostics и cleanup outcome.
-- Стабильный Make/CI facade запускает отдельные suites и provider matrix;
-  deterministic offline `verify` остаётся независимым. Закрытие подтверждается
-  миграцией SMB suite и хотя бы одной второй интеграционной семьи на общий
-  контракт, а не только реализацией абстракций.
+**Open · owner: fetch/local landing.** `finalPathFor` checks absence before download;
+`Files.move(ATOMIC_MOVE)` does not guarantee no-replace if a target appears later.
+On Linux, two synchronized endpoint downloads with different identities produced
+two FETCHED records but one inbox file. This is a demonstrated lost-input window.
 
-### Критерии закрытия `TOOL-5`
+Use distinct final names and coordinate all inbox writers; a separate CLI does
+not share the daemon lane. Close with atomic ownership/no-replace landing,
+deterministic endpoint/external-writer regressions and preserved crash-window
+idempotency. See [fetch service](../core/ioc-application/src/main/java/com/iocextractor/application/sync/RemoteFetchService.java)
+and [remote operations](guides/remote-storage-sync.md).
 
-- Для 21 production-analysis модуля зафиксирована admission matrix:
-  `adopt`, `defer` или `reject` с конкретными critical rules, test consumers и
-  причиной решения; `ioc-application-tck` не попадает в production
-  mutation denominator.
-- Каждый admitted scope имеет явные production packages и test consumers,
-  воспроизводимый Maven/Make command, stable HTML/XML artifacts и
-  worktree/commit fingerprint; scopes не пересекаются и не оставляют тихих
-  gaps в принятом mutation universe.
-- Для каждого pilot измерены runtime, peak memory, mutation/test-strength
-  signal, `NO_COVERAGE` и survived-mutant noise; actionable survivors связаны с
-  test-hardening item, остальные имеют reviewed disposition.
-- По каждому admitted scope принята cadence/gate policy. Числовой
-  ratchet или required PR status вводится только после нескольких
-  стабильных прогонов и отдельного reviewed decision; ordinary `make verify`
-  не заменяется diagnostic pilot.
-- Для differential PR analysis зафиксировано отдельное `adopt` или
-  `reject` решение после проверки incremental correctness, baseline/cache
-  behavior и plugin/licensing model.
+<a id="ops-13"></a>
+### OPS-13 — Failed deployment preflight leaves new host files
 
-### Критерии закрытия `TOOL-6`
+**Open · owner: local activation/packaging.** `deploy-local-root.sh` refreshes the
+systemd unit and `bin/ioc{,-config}` before semantic preflight. Explicit `die` exits
+bypass the ERR restoration trap. The running process, `current` and databases
+remain old, but a later restart/CLI can combine new host files with the old JAR.
+The reproduction used the actual source segment with stubbed privileges/systemd.
 
-- Для каждой опубликованной библиотеки явно закреплены версия сравнения,
-  проверяемые public/protected типы и члены и воспроизводимая команда проверки.
-  Отчёт показывает изменения API, совместимость исходного кода и бинарную
-  совместимость.
-- Проверка включена в CI и подготовку выпуска. Неожиданная несовместимость
-  завершает проверку ошибкой; отсутствие версии сравнения или сбой её получения
-  не превращается в успешный пропуск. Получение старого артефакта не добавляет
-  обязательную сеть в детерминированный offline `make verify`.
-- Регрессии подтверждают отказ при удалении публичного метода
-  или несовместимом изменении его сигнатуры и успешный результат для совместимого
-  внутреннего изменения. Сравнение обнаруживает удаление и тогда, когда текущий
-  consumer этот метод не вызывает.
-- Намеренное несовместимое изменение проходит явный review и следует принятой
-  политике версий: в 0.x нужны новая minor-версия и заметки о миграции. Версии
-  библиотек остаются согласованы с продуктом; версия сравнения не обновляется
-  автоматически ради зелёной проверки. Тесты поведения и consumer-проверки
-  сохраняются как отдельные проверки контракта.
+Before restart compare the unit with `backups/<failed-release-id>-unit.service`,
+restore matching unit/helpers from the rollback point and reload systemd. Close
+with one failure path or staging before preflight, plus rejection/restart tests
+checking unit/helpers/current/databases. See [activation script](../packaging/deploy-local-root.sh)
+and [deployment](guides/deployment.md).
 
----
+## Resource, security and target qualification
 
-## Рекомендованный порядок
+<a id="8-source-parsing--dependency-surface-src"></a>
+<a id="src-3"></a>
+### SRC-3 — Runtime advisory matches need security disposition
 
-1. **0.3.0 — ingest lifecycle hardening:** `ING-11` (с мини-дизайном
-   resume-протокола), полный `ING-13`; заодно `OPS-1` (мульти-источник) —
-   верификация на том же стенде.
-2. **Ценность данных:** `OUT-1` (обогащение meta-колонок).
-3. **Фича по выбору:** `EXT-1` (IPv6/email, почти весь config-driven) или `EXP-1`
-   (STIX-экспорт — модель готова).
-4. **Source parsing после релиза:** `SRC-2` активировать при расширении контура
-   недоверенных входов или по resource-инциденту; `SRC-1` — только после
-   измеримого выигрыша dependency surface.
+**Open · owner: dependency/security review and affected adapters.** The retained
+application JAR contains Jackson core/databind 2.21.5 and 3.1.5, Junrar 7.6.0,
+Guava 33.3.1-jre and jsoup 1.23.1. The 2026-11-07 OSV refresh of its 171 external
+coordinates returned 11 advisory IDs across these seven coordinates. This is an
+affected-version screen, not proof that every vulnerable API is reachable in IOC.
+Examples: [Guava](https://github.com/advisories/GHSA-xxph-c9ww-hj94),
+[jsoup](https://github.com/advisories/GHSA-65r4-943x-97jj),
+[Jackson](https://github.com/advisories/GHSA-cxp5-3px4-pw24).
 
-## Архив закрытых долгов
+Close with owner-reviewed reachability/disposition for each match or compatible
+updates, regression/consumer checks and a fresh release security gate. Deployment
+health is not a security result; an indefinite suppression is not disposition.
+See [security policy](SECURITY-ENGINEERING.md) and [deployment dependencies](guides/deployment.md).
 
-Архив не участвует в первичном аудите backlog, но сохраняет стабильные ID,
-содержание решения и implementation evidence.
+<a id="src-2"></a>
+### SRC-2 — Parser budgets do not cover every supported input path
 
-### Демон / ингест (`ING`)
+**Partial · owner: source parsing/bootstrap security.** The old unbounded-buffer
+description is obsolete: production document processing uses disk-backed cursors,
+streaming HTML/DOCX, bounded workspaces and daemon source admission. HTML repair
+regions are bounded too. However, there is no uniform operator contract for
+parser decompression ratio/depth and wall-clock cancellation across all Tika
+formats and oneshot/daemon paths. The String-returning convenience API still
+materializes text; managed CSV import limits are a separate contract.
 
-| ID | Закрытый долг | Статус | Эфф. | Источник |
-|---|---|---|---|---|
-| ING-1 | **Retention reaper** — единый декларативный reaper (`ioc.maintenance.retention`) чистит `done` + `failed` по возрасту/количеству (delete/archive); пул-политика `RetentionPolicy`, порт `RetentionStore`, `DaemonMaintenanceScheduler`. Partition-specific retention удалён вместе с partition-staging. | закрыт | M | dev/0001 #6, storage collapse |
-| ING-3 | **Health-транспорт демона** — actuator/health по HTTP, web включается только в daemon (`DaemonWebEnvironmentPostProcessor` по `ioc.runtime.mode`), loopback-bind, expose `health,info`. Первый камень под web driving-adapter (ING-8). | закрыт | M | dev/0001 |
-| ING-4 | **Durability ledger + сторадж** — реализован служебный JDBC storage (`ioc.ingestion.ledger.type: file \| jdbc`, service SQLite datasource, `user_version`-миграции, JDBC `IngestionLedger`, legacy ledger import, DB health) **и business dataframe truth**: `ioc.storage.dataframe.type: jdbc` (default), per-artifact identity (`identity_hash`/`epoch`), JDBC canonical repositories с `<artifact>_sources`, schema-aware id baseline, CSV (`*_generated.csv`) как проекция из БД для oneshot и daemon. Partition-staging удалён; daemon пишет сразу в canonical store. | закрыт | M | [dev/ingestion](dev/ingestion.md), storage collapse |
-| ING-4a | **Durable run-ledger + saga (crash-window).** Service schema содержит `ingest_run`; daemon пишет checkpoints `STARTED → DB_COMMITTED → PROJECTION_COMPLETED → COMPLETED` для per-file write→project. Если процесс падает после commit БД, startup recovery повторяет CSV-проекцию из БД и закрывает run. Сбой до DB commit помечается `FAILED`, потому что автоматический replay без повторного расчёта unsafe. | закрыт | M | [dev/ingestion](dev/ingestion.md), storage collapse |
-| ING-5 | **Триггер прежнего merge-pass** — удалён вместе с partition-staging; daemon больше не ждёт отдельный scheduled pass после ingest. | закрыт | M | dev/0001, storage collapse |
-| ING-6 | **Partition-wrapper boundary** — исторический guardrail снят после удаления промежуточного staging; source-key теперь доходит в JDBC sink как adapter/application concern. | закрыт | S | dev/0001, storage collapse |
-| ING-9 | **Коллизия имён при архивации вложенных targets** — `FileSystemRetentionStore.archive` раньше сплющивал вложенное дерево до имени файла. Фикс: `RetentionEntry` несёт корень цели (`baseDir`), архив зеркалит относительный подпуть под archive-dir; после удаления partition-target это остаётся защитой для будущих вложенных targets. | закрыт | S | review (ревью ING-1) |
-| ING-10 | **Startup recovery отделён от ingestion intake.** Flow имеет `autoStartup=false`; coordinator с `ApplicationRunner.HIGHEST_PRECEDENCE` последовательно восстанавливает run/source ledgers и только затем запускает poller. Ingest/recovery/reject сериализуются по `SourceKey` через общий guard, recovery перечитывает durable state после admission, а file/JDBC ledgers используют монотонные expected-state transitions. Guard сохраняет primary work failure при secondary release failure. Health читает single-writer lifecycle snapshot и показывает aggregate contention без source identities; `concurrency` fail-closed закреплён на `1`. Latch-tests, concurrent adapter TCK, restart/watched-inbox E2E и release-invariant regressions закрывают исходную гонку, `SB04-116` и `I4-SB-01`. Гарантия process-local; multi-daemon требует lease/fencing. | закрыт | M | checkpoints `f4f011e`, `c3a03e2`, `a44d10f`, `7ce5f8f`; [ING-10 worknote](worknote/0.3.0/ing-10-ingestion-lifecycle-hardening.md), 2026-08-02 |
-| ING-12 | **Hashing включён в bounded/diagnostic boundary.** `FileSourceMessageHandler` повторяет content SHA-256 в пределах общего retry/backoff; после exhaustion использует fingerprint `path+size+mtime` только как terminal failure identity, записывает durable rejection и один раз эмитит `INGEST.SOURCE_UNREADABLE`. Generic stacktrace на каждом poll устранён; физическая судьба pre-claim файла остаётся ING-13. | закрыт | S | стенд-тест 2026-07-14 (RC 0.1.1), реализация 2026-07-15 |
-| ING-14 | **Потеря WatchService-файла на quiet-period устранена.** `IngestFileListFilter` реализует discard-aware контракт Spring Integration: matching-файл, временно отклонённый stability-проверкой, возвращается в retry-set, а постоянные exclude/reject туда не попадают. Реальный `FileReadingMessageSource` закреплён regression-тестом. Shipped default и production correctness-path переключены на полный polling scan (`use-watch-service=false`); WatchService остаётся явно opt-in только для надёжной локальной filesystem и не заявлен как полноценный rescan/backstop. | закрыт | M | стенд-тест 2026-07-23 (`58ab1e7`), pre-release remediation 0.2.0 |
+Close by defining input/parser/time budgets, cancellation and typed failure
+outcomes for the claimed paths, then testing malicious/oversized formats without
+partial canonical writes. Do not generalize HTML/DOCX bounds to every auto-detected
+format. See [processing](dev/processing.md#preparation-and-bounded-data),
+[capacity](dev/native-capacity.md) and [threat model](THREAT-MODEL.md).
 
-### Наблюдаемость (`OBS`)
+<a id="ing-15"></a>
+### ING-15 — Large-document end-to-end resource acceptance
 
-| ID | Закрытый долг | Статус | Эфф. | Источник |
-|---|---|---|---|---|
-| OBS-D1 | **Диагностика как first-class outcome.** Закрыто по ADR-0017: impact и generated catalog; exactly-once runner delivery; configurable fail-fast/collect и bounded summary; completion outcome; side-effect-free row preparation до policy checkpoint; pure domain decisions + gated TRACE; SOURCE/EXTRACTION/CLASSIFY/SINK/PIPELINE/INGEST/SYNC producers. Ratchet allowlist пуст. | закрыт | M | `354c5c6..32b4202`, `d34b733`, ADR/0017 |
-| OBS-D3 | **Typed ECS fields** — ambient correlation остаётся в MDC, event-local fields идут через typed SLF4J key/value; `LogField` задаёт JSON type schema. Первичная реализация использовала Boot 3.4 `StructuredLogEncoder`; последующие Boot upgrades сохранили контракт. | закрыт | M | ADR/0018; `a8867f9`, `e4e0ea5` |
-| OBS-1 | **Таблица `Severity → log.level`** — закрыто: `observability.md` публикует FATAL/ERROR→error, WARN→warn, INFO→info, DEBUG→debug, TRACE→trace; `LoggingDiagnosticSinkTest` пинит все шесть значений. | закрыт | S | `5ba28b1` |
-| OBS-2 | **`SINK.CHARSET_UNMAPPABLE` — полноценная диагностика непредставимых символов на выходе.** Закрыто: `ArtifactProjectionResult` входит в completion contract oneshot/daemon/recovery; mutable `CsvArtifactProjection` возвращает одну OPERATION/WARN occurrence с точным счётом logical data values/rows/header values и без raw data. `CountingCharsetWriter` удалён. Immutable slice writers сохраняют `CodingErrorAction.REPORT`. | закрыт | M | `79e85e8`, `3dda716`, ADR/0017 |
-| OBS-3 | **Таксономия логов и generated catalog.** Закрыто: `EventAction`/`LogField` несут metadata, `LOGGING-CATALOG.md` генерируется и doc-sync тестируется; stale actions удалены, CSV projection эмитит `artifact_project`, а `CatalogReferenceRatchetTest` не даёт добавить неиспользуемую action без осознанного решения. | закрыт | S | `752d186`, `8277ab7`, `2681c4d` |
+**Partial · owner: source/ingestion/private reducer/canonical storage.** Streaming
+removed the historical million-IOC source OOM for HTML/DOCX; fatal dispatcher
+failure is visible and recoverable. On the old 512-MiB profile, million-IOC runs
+then exhausted the private SQLite quota before canonical commit; 100k runs
+exceeded time/writer budgets. Later million-DOCX/100-document Native runs completed
+on an explicitly expanded profile (2-GiB heap, 8-GiB workspace, 6-GiB cgroup).
 
-### Надёжность конфига (`CFG`)
+Those are separate measured profiles, not universal acceptance of old defaults
+or all document shapes. Close with agreed complete-cycle resource/SLO envelopes
+and their workload/concurrency qualification. Historical failures stay failures.
+See [capacity measurements](dev/native-capacity.md) and [sizing](guides/bulk-resource-sizing.md).
 
-| ID | Закрытый долг | Статус | Эфф. | Источник |
-|---|---|---|---|---|
-| CFG-1 | **Тихий `catch (NumberFormatException ignored)`** на `id.start` — закрыто: `id.start` стал sealed value contract (`auto` \| explicit long) с binding converters, parser и runtime без silent fallback. | закрыт | S | ADR/0016, `3d45cdd`, `e01e2fa` |
-| CFG-2 | **Нет кросс-проверки имён артефактов** `artifact-identity.artifacts` ↔ `sink.artifacts` — закрыто: startup preflight проверяет identity↔sink, key-columns⊆columns, дубликаты, id policy и registry-backed keys до обработки файла/записи. | закрыт | S | ADR/0016, `b0e5157`, `9bb9e63`, `8575527` |
-| CFG-3 | **«stage 11» протекло в рантайм-ошибку** — закрыто удалением старого aggregation/storage кода при β-collapse; новая config-error convention запрещает внутреннюю нумерацию/implementation jargon в operator-facing сообщениях. | закрыт | S | storage collapse, ADR/0016 |
-| CFG-4 | **Strict configuration binding после миграций.** Закрыто: tombstone-поля `Lookup`/`smb.readTimeout` удалены из `IocProperties`; unknown `ioc.*` keys отбиваются reflection-shape preflight, legacy migration hints живут в `IocConfigurationFailureAnalyzer` с `CONFIG.*`. Переоткрывался 2026-07-10: env-канал молча пропускал `IOC_*` опечатки. Финально закрыт schema-aware env matcher'ом и value-free reporter'ом выигравших overrides. | закрыт | S | ADR/0016, `ec14c8d`, `e01e2fa`, `5851ec1`, `2c224c2` |
-| CFG-5 | **Раскрытие ввода в отчётах проверки конфигурации.** Закрыто 2026-10-21: YAML report сохраняет только координаты; semantic checker использует структурированные binding/validation paths и фиксированные категории без exception/parser/default messages, rejected values и arguments. Registry rejection узнаётся по типу; environment name передаётся типизированно. Owned Boot analyses не сохраняют исходный cause для DEBUG reporter. Регрессии покрывают YAML alias, IOC selector, conversion/map key, field/global validator, registry и unknown failures; коды и migration hints сохранены. Гарантия относится к контролируемым отчётам, произвольные framework DEBUG-логи остаются вне неё. | закрыт | M | [Контракт отчётов](dev/configuration-failure-reports.md), `IocSemanticConfigurationCheckTest`, `IocYamlSyntaxCheckTest`, `IocYamlConfigurationFailureAnalyzerTest`, `IocConfigurationFailureAnalyzerTest` |
+<a id="ing-16"></a>
+### ING-16 — UTC versus durable high-water discrepancy
 
-### Код (`CODE`) и delivery (`EXP` / `OPS`)
+**Partial · owner: service coordination/canonical clock/operations.** Admission,
+import retry, terminalization and retention progress now clamp timestamps to the
+stored `updatedAt`; backward UTC no longer breaks those transitions. Canonical
+safe-clock checks remain independent and still reject unsafe skew. The cause of
+the historical raw-UTC/high-water discrepancy is not established; logs do not
+prove a host-clock adjustment. The original 2.061-s failure and later
+2.073–2.363-s rejections remain historical failures.
 
-| ID | Закрытый долг | Статус | Эфф. | Источник |
-|---|---|---|---|---|
-| CODE-2 | **Дублирование «bare IP» в legacy CSV lookup** — закрыто удалением `adapter-lookup-csv`; runtime использует доменный `NetworkAddressClassifier`/provider predicates и canonical row-key дедуп. | закрыт | S | review |
-| CODE-3 | **Повторная feature-extraction.** Закрыто materialized `ClassificationDecision`: dedup идёт до classification, `MatchPolicy` вызывается один раз только для NETWORK, providers/filter/TRACE читают один outcome. Counting и large-batch tests пинят контракт. | закрыт | M | `4038173`, `5b44f11`, `ae7f268` |
-| CODE-4 | **Хрупкий `DiagnosticCatalogTest`** — закрыто: хардкод размера удалён; registration discovery и generated catalog doc-sync проверяют полноту и свежесть контракта без привязки к числу кодов. | закрыт | S | `adc795b` |
-| EXP-6 | **Publish-ledger retention guard** — закрыто в 0011: `PublishLedgerSliceRetentionGuard` pin-ит missing/`PENDING`/`IN_PROGRESS`/`FAILED`, а `SUCCEEDED`/`ABANDONED` разрешают slice delete; publish phase предшествует retention. | закрыт | M | dev/0011, dev/0012 F2 |
-| OPS-7 | **Ingest→export event fast-path (ADR 0014 Р2).** Закрыто: `CanonicalArtifactsChanged` из `IngestionService` (после `markCompleted`, per-run, claim-check без значения revision) + `nudge()` на `DaemonExportScheduler`: чек через `quiet-period` на его же single-thread executor'е, coalesce повторных nudge, follow-up-чек пока есть pending-работа, startup-nudge после recovery. Cadence остаётся единственным носителем quiet/max-cap-политики; periodic poll — обязательный backstop (после Р2 его можно делать редким). Выигрыш материализуется при `trigger.type: quiet-period`; при `interval` nudge — no-op. Детальный дизайн: [ADR/0014](ADR/0014-event-driven-ingest-to-delivery.md) «Детальный дизайн» → Р2. | закрыт | M | ADR/0014 Р2; commits `d28c74e`, `e265b0d`, `294b67c`, `aefb593` |
+Close the remaining investigation with clock/progress evidence and disposition,
+and qualify any accepted clock policy under load. Do not relax canonical safety
+merely because coordination was repaired. See [ingestion](dev/ingestion.md#receipts-and-retry)
+and [lifecycle](dev/canonical-record-lifecycle.md).
 
-### Дополнительный завершённый контекст
+<a id="out-4"></a>
+### OUT-4 — Selected-processing resource budget remains unaccepted
 
-- Зависимость observability от IOC pipeline снята выносом generic contracts в
-  `platform-etl`.
-- `ioc.source.charset` и `ioc.sink.csv.charset` исполняются на I/O boundaries;
-  unmappable projection values дают агрегированный WARN.
-- Пустая атрибуция использует `source=""` и `SOURCE.MARKERS_UNMATCHED`, а не
-  строковый sentinel `UNKNOWN`.
+**Qualification · owner: processing/application.** Historical selected-path
+measurements preserved correctness but exceeded accepted allocation/heap budgets:
+about 4.04× caller allocations for 100k/20 keys and about 1.255×/1.294× sampled heap
+for 50%/0% duplicates against a 1.25× limit. A later URL→host/IP workload retained
+occurrence-proportional mapping and about 3.67 GB caller allocations. These are
+dated measurements, not a fresh comparison of every later cleanup.
 
-> Связанные документы: [ADR/](ADR/) (история решений и исходные
-> `Открытые вопросы`), [dev/](dev/) (как устроены способности).
+Close with agreed workload/resource limits and measured improvement preserving
+diagnostics, IDs, provenance and import participants, including concurrent
+application SLOs. Passing build gates is insufficient.
+See [processing](dev/processing.md) and [measurement history](dev/native-capacity.md).
+
+<a id="ops-8"></a>
+### OPS-8 — Managed SMB import needs per-target qualification
+
+**Qualification · owner: SMB import/target deployment.** Historical P8 Samba results
+do not establish the later two-identity ADR-0025 contract for every server family.
+Each claimed target needs distinct producer/service identities, capability gate,
+producer-denial, server no-replace rename/share modes, stable file ID, disconnect
+recovery, exact terminal purge and `CHANGE_NOTIFY` evidence. Polling replaces lost
+notifications, not ownership/retention checks.
+
+Keep managed SMB import disabled until its configured source is qualified.
+Close per claimed family with the full evidence; an offline skip or one family
+cannot qualify another. This ID replaced an accidentally reused active OPS-7;
+the historical OPS-7 fast path remains closed separately.
+See [import operations](guides/dataframe-import.md) and [ADR 0025](ADR/0025-managed-import-smb-service-namespace-and-terminal-retention.md).
+
+## Active library and developer-tooling work
+
+<a id="9-developer-tooling--build-tool"></a>
+<a id="tool-6"></a>
+### TOOL-6 — Automated compatibility comparison of published APIs
+
+**Open · owner: library API/Maven/CI.** Current consumers do not compare the entire
+public/protected API with a released baseline; removing an unused method can pass
+CI and break another service. The scope now includes all six admitted libraries,
+not only concurrency/diagnostics. Activate before their next release, especially
+when APIs change; behavioral review/tests remain separate from source/binary comparison.
+
+Completion requires:
+
+- Explicit published baseline, checked API surface, reproducible command and
+  source/binary compatibility report for each admitted component.
+- CI/release integration that fails on unexpected incompatibility or unavailable
+  baseline; fetching it must not add required network to offline `make verify`.
+- Regressions detecting removed/changed methods even when current consumers do
+  not call them, and accepting a compatible internal change.
+- Reviewed intentional breaks following [version policy](RELEASE-PROCESS.md#reusable-library-versions),
+  including minor/migration notes in 0.x. Do not silently update a baseline to pass.
+  POM/CI versions remain shared until TOOL-9; events retain exact family equality.
+
+[japicmp](https://github.com/siom79/japicmp) is a candidate, not an adopted gate.
+See [development](guides/libraries/development.md) and [publication](guides/library-publication.md).
+
+<a id="tool-7"></a>
+### TOOL-7 — Unexplained temporary GPG-key fixture failure
+
+**Open · owner: publication tooling.** During E4 on 2026-10-25, the logging signing
+fixture's `--quick-generate-key` returned 2 and its stderr was lost. The fixture
+now retains safe stderr; separate generation and later full suites passed, but
+the original cause is unknown. No automatic retry was introduced.
+
+Close by capturing stderr/GnuPG version/conditions on reproduction, finding and
+addressing the cause, and passing the complete suite without retries. A green
+rerun alone is insufficient. See [offline tests](../tools/tests/library-publication-test.py)
+and [retained release evidence](../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md#packaged-consumers-and-retained-evidence).
+
+<a id="tool-8"></a>
+### TOOL-8 — Configuration Central consumer lacks protected CI requalification
+
+**Qualification · owner: publication tooling.** `ioc-config-spring-boot:0.3.0-rc.1`
+is published in both repositories. Run `40088095516` passed GitHub consumption,
+but its Central routing failure was concealed by `tee`. Corrected local Central
+consumption passed; routing/pipefail fixes are integrated. No later protected
+recovery result is recorded; the Actions run-list review on 2026-11-07 found no
+publication run newer than 2026-10-25.
+
+Close with protected recovery using original validation `40087127800`, the same
+tag, signed bytes and deployment `90e22519-418d-4b74-ac5a-cadcc3d2c559`, with no
+rebuild/resign. Review actual logs, hashes and origins from both CI consumers.
+Local success does not close it. See [component record](../.github/release-notes/ioc-config-spring-boot-0.3.0-rc.1.md)
+and [consumer](../tools/fixtures/configuration-consumer/README.md).
+
+<a id="tool-9"></a>
+### TOOL-9 — Activate independent library versions in Maven and CI
+
+**Open · owner: Maven/publication tooling.** [ADR 0048](ADR/0048-independent-library-versions-and-reuse.md)
+accepts separate concurrency/diagnostics/logging/configuration versions and one
+events core/adapter family version. Current POM dependencies and admission by
+`release-X.Y.Z` still use the shared revision; a global `-Drevision` does not
+establish independence.
+
+Close all [activation criteria](RELEASE-PROCESS.md#activation-of-independent-versions):
+separate version sources, product/library-only scenarios, immutable source/tag/
+recovery identity, exact-version events family and service consumption without
+local reactor substitution. Trigger: before the first independently versioned
+release. A policy change alone is insufficient.
+
+<a id="tool-10"></a>
+### TOOL-10 — Lifecycle smoke/load waits for an obsolete terminal filename
+
+**Open · owner: lifecycle developer tooling.** `lifecycle-smoke.sh` waits for
+`*-initial.html`/`*-reappearance.html`; Native archives sealed input as
+`.html.sealed`. The 2026-11-04 1,000-row smoke stopped at the first wait despite
+an existing done file; later expiry/retention/non-reuse assertions did not run.
+`make lifecycle-load` shares this harness.
+
+Close with a terminal-delivery-aware wait that cannot falsely match another
+file, a regression fixture and a complete isolated smoke without retries;
+qualify load separately with its thresholds. Focused JUnit does not replace it.
+See [harness](../tools/dev/lifecycle-smoke.sh) and [lifecycle operations](guides/canonical-record-lifecycle.md).
+
+## Deferred improvements and extension options
+
+These entries do not promise an implementation or a release date. A port, small
+module or supported configuration knob is not itself a defect. Keep the inward
+dependency rule and service-owned policies when activating a proposal.
+
+<a id="3-экстракция--корпус-ext"></a>
+<a id="4-наблюдаемость-obs"></a>
+<a id="5-код-смелл-code"></a>
+<a id="6-архитектура--модульность-arch"></a>
+
+| ID | State and remaining scope | Trigger / completion | Owner and reference |
+|---|---|---|---|
+| <a id="ing-7"></a>ING-7 | `deferred`: eligible mutable projection refresh still reads and rewrites the full active artifact, O(N); immutable export has independent cadence | Measured projection cost warrants incremental/cache or generation policy; preserve snapshot/expiry/recovery consistency | Storage/projection; [export](dev/artifact-export.md) |
+| <a id="ing-8"></a>ING-8 | `deferred`: HTTP use-case driving adapter; loopback actuator is not REST ingest/TAXII/BFF | A real API consumer; separate adapter, request correlation and authenticated non-loopback health/details | Application/web; [architecture](ARCHITECTURE.md) |
+| <a id="out-1"></a>OUT-1 | `deferred`: no general enrichment providers; shipped reputation metadata defaults are NULL, but constants/import can populate configured fields | Consumer enrichment contract; public first/last-seen timestamps must not be confused with internal lifecycle validity | Processing/domain; [CSV contract](dev/csv-output-format.md) |
+| <a id="out-2"></a>OUT-2 | `deferred`: CSV quoting is not spreadsheet formula neutralization; default source markers constrain dangerous prefixes, arbitrary future text may not | Broader marker/free-text policy; validate/reject or add explicit spreadsheet encoding without silently changing machine-feed values | Output/security; [threat model](THREAT-MODEL.md) |
+| <a id="ext-1"></a>EXT-1 | `deferred`: IPv6/email types and their end-to-end contracts are absent; adding a regex is insufficient | A supported consumer needs them; define type, normalization, classification, carrier/export/import and tests | Domain/processing; [processing](dev/processing.md) |
+| <a id="ext-2"></a>EXT-2 | `partial`: generic domain detection can emit `.onion`; exact v3 56-character base32 boundaries are not enforced | Adopt strict onion validation with positive/negative boundaries on both regex engines | Extraction/classification; [pattern contract](../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/PatternEngineConfigurationTest.java) |
+| <a id="ext-3"></a>EXT-3 | `partial`: golden, boundary and engine-parity corpora exist; broad representative provider/non-PSL expectations are incomplete | Expand with independent expected outputs and explicit host/provider semantics; manual variant-1/3 examples are not a variant-2 oracle | Domain/fixtures; [testing](TESTING.md) |
+| <a id="obs-4"></a>OBS-4 | `deferred`: durable diagnostic occurrence/report/quarantine contract, beyond synchronous best-effort delivery | Real audit/reprocess need; define identity, retention and whether report failure affects processing; do not derive durable IDs from MDC | Diagnostics/application; [observability](dev/observability.md) |
+| <a id="obs-5"></a>OBS-5 | `deferred`: generated Elasticsearch mappings and rollover/reindex migration | First supported ES/data-stream consumer; install mappings from field metadata before indexing; a producer fix cannot repair old mappings | Observability/consumer; [logging](guides/libraries/logging-slf4j.md) |
+| <a id="obs-6"></a>OBS-6 | `deferred`: invalid field type intentionally throws before log-level checking; fault-tolerant logging policy is undecided | A service needs isolation; define visible bounded failure without recursion/value disclosure. Strict current behavior is a supported contract | Logging/service integration; [LogEvent tests](../platform/platform-logging-slf4j/src/test/java/com/iocextractor/platform/logging/LogEventTest.java) |
+| <a id="code-1"></a>CODE-1 | `partial`: convenience constructors were removed; extraction factory/production constructor still have a long dependency list | A meaningful cohesive composition boundary, not a parameter bundle merely to reduce argument count | Composition root; [modularization](MODULARIZATION.md) |
+| <a id="code-5"></a>CODE-5 | `deferred`: no uniform explicit nullness contract/build analyzer; JDT automatic annotations differ by module classpath | Adopt one incremental contract/analyzer with explicit boundary nullability; preserve useful existing IDE diagnostics | Java/build; [JDT preferences](../tools/eclipse-jdt.prefs) |
+| <a id="arch-1"></a>ARCH-1 | `deferred`: review platform module granularity only if dependency/release overhead is demonstrated; a tiny module is not a violation | Measured maintenance cost and boundary-preserving design; do not merge independent integration families merely by line count | Architecture/platform; [module map](MODULARIZATION.md) |
+| <a id="arch-2"></a>ARCH-2 | `deferred`: `PatternEngine` remains an inward domain port, not a shared platform regex API | A genuinely generic external consumer; keep framework dependencies outward | Domain/platform; [architecture](ARCHITECTURE.md) |
+| <a id="arch-3"></a>ARCH-3 | `deferred`: Spring Modulith/canvas is an evaluation option, not an installed seam | Concrete architecture-analysis need and a useful signal beyond current reactor/ArchUnit enforcement | Architecture/build; [testing](TESTING.md) |
+| <a id="exp-1"></a>EXP-1 | `deferred`: STIX/OpenIOC export adapter absent; `stixType()` metadata is not a complete wire model | Real exchange consumer; define mapping, identity, version and independent consumer fixtures | Export/domain; [architecture](ARCHITECTURE.md) |
+| <a id="exp-2"></a>EXP-2 | `deferred`: no `.deb` lifecycle; shell installer/deployment remain supported | Distribution requirement; define upgrade/config/permissions/rollback semantics and package tests | Packaging; [deployment](guides/deployment.md) |
+| <a id="ops-2"></a>OPS-2 | `deferred`: no project-supplied OS logrotate policy; packaged daemon has Logback rolling files and journald | Host retention policy requires it; avoid competing rotation owners and qualify permissions/reopen behavior | Operations/packaging; [observability](dev/observability.md) |
+| <a id="exp-3"></a>EXP-3 | `deferred`: active appliance delivery/API connectors beyond file-slice SMB publication | A concrete appliance; consumer-owned delivery ledger/retention view, AND-composed guards and separate driven adapter | Export/delivery; [ADR 0014](ADR/0014-event-driven-ingest-to-delivery.md) R3 |
+| <a id="exp-4"></a>EXP-4 | `deferred`: DuckDB/Parquet analytics option, not an adopted engine | Columnar/analytics consumer plus measured value; keep SQLite canonical write authority | Read/export adapters; [storage](dev/storage.md) |
+| <a id="exp-5"></a>EXP-5 | `deferred`: immutable export only executes `complete`; append/update modes require more than vocabulary | Durable watermark and explicit consumer contract; unsupported mode must fail before I/O | Export; [artifact export](dev/artifact-export.md) |
+| <a id="ops-3"></a>OPS-3 | `partial`: generic sync lacks the full capability gate; managed import already has blocking per-source probes/health | Need for broader generic preflight; preserve operator-owned share/ACL and separate producer-denial qualification in OPS-8 | SMB/sync; [import](dev/dataframe-import.md) |
+| <a id="ops-4"></a>OPS-4 | `deferred`: baseline event/reconcile/keyed coordination exists; durable outbox/broker and high/low-water hysteresis do not | Real interprocess delivery or measured pressure requiring hysteresis; events remain hints, ledgers/reconcile authority | Sync/events; [coordination](dev/event-coordination.md) |
+| <a id="ops-5"></a>OPS-5 | `deferred`: fetch-history retention and targeted discovery | Bound historical ledger growth with reviewed idempotency retention; optimize listing only after detection-duration evidence | Fetch/storage; [sync](dev/sync.md) |
+| <a id="ops-6"></a>OPS-6 | `deferred`: fetch is serial within an endpoint; cross-endpoint execution exists | Measured one-share batch SLO bottleneck; bounded sessions/admission/health and first address OPS-11/12. Parallel safety is not blanket-proven | SMB/concurrency; [sync](dev/sync.md) |
+| <a id="src-1"></a>SRC-1 | `deferred`: Tika umbrella parser set exceeds the qualified HTML/PDF/DOCX/XLSX baseline | Measured size/security benefit justifies loss of best-effort formats; compare explicit modules and extraction quality | Source/packaging; [source reader](../adapters/adapter-source-tika/src/main/java/com/iocextractor/adapter/out/source/TikaSourceReader.java) |
+| <a id="tool-1"></a>TOOL-1 | `deferred`: safe affected-test accelerator; existing taxonomy/module targets already work | Measured local-cycle cost; include staged/unstaged/untracked paths and upstream/downstream closure, fall back to full gate for unknown/shared changes | Build; [testing](TESTING.md) |
+| <a id="tool-2"></a>TOOL-2 | `deferred`: deterministic Java formatter/fmt-check absent; SpotBugs/CPD/PMD gates already exist separately | Dedicated mechanical-change slice after formatter/diff review; introduce check only after clean baseline | Build/style; [build quality](dev/build-quality.md) |
+| <a id="tool-3"></a>TOOL-3 | `partial`: seeded fixtures, isolated runtime, smoke and dedicated lifecycle/import/aggregate load tools exist; no single generic performance report contract | Need for comparable oneshot measurements: input/unique/committed counts, diagnostics, elapsed/memory and binary/config identity. Keep TOOL-10 failure and load acceptance separate | Developer tooling; [tools](../tools/dev/README.md) |
+| <a id="tool-4"></a>TOOL-4 | `deferred`: external suites still require operator-provided fixtures; centralized capability/provisioning/evidence control is absent | Before another integration family or required external CI status; meet the acceptance contract below | Integration/test infrastructure; [external tests](TESTING.md#external-and-slow-evidence) |
+| <a id="tool-5"></a>TOOL-5 | `deferred`: PIT pilot is intentionally domain-only; no reviewed adoption matrix for other production scopes | Dedicated test-quality work or a demonstrated critical assertion gap; meet the acceptance contract below | Test quality/module owners; [mutation pilot](TESTING.md#diagnostic-pilots) |
+
+### External-harness acceptance for TOOL-4
+
+Require one suite registry with lifecycle, capabilities, expected counts, timeout,
+owner, cadence and gate policy; a secret-free provisioned target descriptor;
+readiness/capability checks; isolated namespace/lease; failure-safe verified cleanup
+and bounded janitor. Credentials enter only through a secret boundary, not Maven
+properties or retained reports. The verifier must prove expected equals executed,
+reject silent provisioned skips and distinguish product/environment/capability/
+cleanup/inconclusive outcomes. Evidence binds commit, suite/runner/provider
+revision, redacted target, reports, diagnostics and cleanup. A stable Make/CI
+facade must migrate SMB plus a second real integration family; abstractions alone
+do not close it. Offline verify remains independent.
+
+### Mutation-expansion acceptance for TOOL-5
+
+Use the current production universe from the build configuration, not the obsolete
+21-module count; TCK stays outside production mutation denominators. Start with
+pure application/platform scopes; do not admit integration-heavy adapters/bootstrap
+by default. Record
+adopt/defer/reject per scope, critical behavior/test consumers and rationale.
+Admitted packages/consumers must have reproducible commands, HTML/XML reports,
+commit/tree identity and no silent overlap/gaps. Measure time, memory,
+mutation/test-strength signal, NO_COVERAGE and survivor noise; give survivors an
+owner/disposition. Adopt cadence/gates only after stable pilots and reviewed policy.
+Decide differential analysis separately, including cache correctness and licensing;
+do not turn the diagnostic pilot into an unconditional PR score.
+
+## Closed and excluded items
+
+<a id="архив-закрытых-долгов"></a>
+
+Archive entries preserve the original scope; they do not claim that all neighboring
+features or resource budgets are complete. Dated qualification remains dated.
+
+| ID | Disposition | Implemented outcome and evidence |
+|---|---|---|
+| <a id="ing-1"></a>ING-1 | `closed` | Declarative done/failed retention and delete/archive ports; obsolete partition retention removed. [Retention](dev/ingestion.md) |
+| <a id="ing-2"></a>ING-2 | `out-of-scope` | Tail/offset/rotation mode excluded for discrete documents. A future streaming source needs a new source-mode contract, not a dormant promise. [Processing](dev/processing.md) |
+| <a id="ing-3"></a>ING-3 | `closed` | Daemon-only loopback actuator/health transport; REST use-case adapter remains ING-8. [Daemon operations](guides/daemon-operations.md) |
+| <a id="ing-4"></a>ING-4 | `closed` | Service ledger plus canonical JDBC dataframe truth, per-artifact identity and mutable CSV projection; partition staging removed. [Storage](dev/storage.md) |
+| <a id="ing-4a"></a>ING-4a | `closed` | Durable STARTED→DB_COMMITTED→PROJECTION_COMPLETED→COMPLETED checkpoints and run recovery; cross-ledger partial-run resume remains ING-11. [Ingestion](dev/ingestion.md) |
+| <a id="ing-5"></a>ING-5 | `closed` | Separate aggregation trigger removed with partition staging; direct canonical ingest. [Ingestion](dev/ingestion.md) |
+| <a id="ing-6"></a>ING-6 | `closed` | Partition-wrapper boundary removed; source identity belongs to application/adapters. [Architecture](ARCHITECTURE.md) |
+| <a id="ing-9"></a>ING-9 | `closed` | Retention archive preserves relative target paths using baseDir instead of flattening leaves. [Retention tests](../core/ioc-application/src/test/java/com/iocextractor/application/maintenance/RetentionServiceTest.java) |
+| <a id="ing-10"></a>ING-10 | `closed` | Recovery-before-poller startup, source-key guard and monotonic transitions; single daemon, not distributed fencing. Checkpoints f4f011e/c3a03e2/a44d10f/7ce5f8f; [ingestion](dev/ingestion.md) |
+| <a id="ing-12"></a>ING-12 | `closed` | Bounded hash retry and typed terminal unreadable-source diagnostic; physical pre-claim fate remains ING-13. [Ingestion](dev/ingestion.md) |
+| <a id="ing-14"></a>ING-14 | `closed` | Quiet-period discards re-enter the WatchService retry set; default full polling remains correctness path. [Filter integration test](../adapters/adapter-ingest/src/test/java/com/iocextractor/adapter/in/ingest/IngestFileListFilterIT.java) |
+| <a id="ing-17"></a>ING-17 | `closed` | Equivalent terminal CAS accepts only unchanged authority/evidence and verifies registration even on finalized retry. Completion regressions and the recorded corrected 100-DOCX run support closure; failed load windows remain failed. [Completion tests](../core/ioc-application/src/test/java/com/iocextractor/application/ingest/admission/DocumentAdmissionCompletionTest.java), [history](dev/native-capacity.md) |
+| <a id="ops-1"></a>OPS-1 | `closed` | Original multi-file/new-file verification is covered by recorded 100-DOCX intake; deterministic running-daemon/watch tests were freshly rechecked 2026-11-07. Full polling is the default; watcher is an accelerator. This does not qualify multi-endpoint identity/landing (OPS-11/12). [Daemon tests](../bootstrap/ioc-app/src/test/java/com/iocextractor/DaemonIngestE2EIT.java), [batch history](dev/native-capacity.md) |
+| <a id="obs-d1"></a>OBS-D1 | `closed` | ADR-0017 diagnostics, bounded outcomes, exactly-once runner delivery and prepare→checkpoint→commit; empty producer ratchet. [Observability](dev/observability.md) |
+| <a id="obs-d3"></a>OBS-D3 | `closed` | Event-local scalar fields use typed SLF4J key/value; MDC owns ambient correlation. Current Boot 4 encoder preserves the contract. [Observability](dev/observability.md) |
+| <a id="obs-1"></a>OBS-1 | `closed` | Six-level severity→log-level mapping documented/tested, including FATAL/ERROR→error. [Observability](dev/observability.md) |
+| <a id="obs-2"></a>OBS-2 | `closed` | Unmappable mutable projection values yield counted, value-free OPERATION/WARN diagnostics in completion; immutable exports retain REPORT. [CSV contract](dev/csv-output-format.md) |
+| <a id="obs-3"></a>OBS-3 | `closed` | Generated log catalog, live action/reference ratchet and doc-sync. [Catalog](LOGGING-CATALOG.md) |
+| <a id="obs-7"></a>OBS-7 | `closed` | E2 keeps publication failure primary and distinct observer failure suppressed, including self/suppression-disabled cases. [Spring publisher](../adapters/adapter-events-spring/src/main/java/com/iocextractor/adapter/out/events/spring/SpringControlEventPublisher.java) |
+| <a id="obs-8"></a>OBS-8 | `closed` | E2 separates delivery/success observation and bounds fallback WARN RuntimeException; Error propagates. Synthetic provider failure was not a production Logback incident. [Spring publisher](../adapters/adapter-events-spring/src/main/java/com/iocextractor/adapter/out/events/spring/SpringControlEventPublisher.java) |
+| <a id="obs-9"></a>OBS-9 | `closed` | L3-2 moved internal names to ioc.event.type and skipped disposition to ioc.operation.disposition; scalar profile excludes ECS event.type/category. Real encoder branches are tested. [Migration IT](../bootstrap/ioc-app/src/test/java/com/iocextractor/observability/LoggingMigrationIT.java) |
+| <a id="obs-10"></a>OBS-10 | `closed` | L3-2 removed explicit error.type from the Throwable branch; real encoder tests assert bytes/JSON/no internal errors and retain type-only logging separately. [Migration IT](../bootstrap/ioc-app/src/test/java/com/iocextractor/observability/LoggingMigrationIT.java) |
+| <a id="cfg-1"></a>CFG-1 | `closed` | Typed auto/explicit-long ID-start parsing replaced silent numeric fallback. [Configuration](dev/configuration.md) |
+| <a id="cfg-2"></a>CFG-2 | `closed` | Startup identity↔sink/schema/registry/id-policy cross-validation. [Configuration](dev/configuration.md) |
+| <a id="cfg-3"></a>CFG-3 | `closed` | Legacy stage-number runtime message removed with old aggregation/storage; operator diagnostics use configuration vocabulary. [Failure reports](dev/configuration-failure-reports.md) |
+| <a id="cfg-4"></a>CFG-4 | `closed` | Strict unknown-key checks across YAML/CLI/system/env, schema-aware IOC_* matcher and value-free override reporting; removed tombstones retain migration hints. [Configuration](dev/configuration.md) |
+| <a id="cfg-5"></a>CFG-5 | `closed` | Controlled YAML/semantic/Boot reports exclude rejected values and raw causes; arbitrary framework DEBUG logs remain outside that guarantee. [Failure-report contract](dev/configuration-failure-reports.md) |
+| <a id="code-2"></a>CODE-2 | `closed` | Legacy CSV lookup duplication removed; domain classification and canonical row keys own the behavior. [Processing](dev/processing.md) |
+| <a id="code-3"></a>CODE-3 | `closed` | One materialized ClassificationDecision per NETWORK IOC reused by providers/filter/TRACE. [Processing](dev/processing.md) |
+| <a id="code-4"></a>CODE-4 | `closed` | Catalog discovery/doc-sync replaced a brittle fixed diagnostic-count assertion. [Diagnostics catalog](DIAGNOSTICS-CATALOG.md) |
+| <a id="arch-4"></a>ARCH-4 | `closed` | E2 unwraps Spring's Error wrapper and propagates the original Error; real annotated listener and direct Error are tested. Service owns listeners/executors. [Events Spring](guides/libraries/events-spring.md) |
+| <a id="exp-6"></a>EXP-6 | `closed` | Publish ledger pins unfinished/missing deliveries; only SUCCEEDED/ABANDONED permit slice deletion. [Export](dev/artifact-export.md) |
+| <a id="ops-7"></a>OPS-7 | `closed` | Post-completion CanonicalArtifactsChanged nudges coalesced quiet-period export; interval/reconcile remains authority. ADR-0014 R2; [coordination](dev/event-coordination.md) |
+| <a id="ops-9"></a>OPS-9 | `closed` | Exact remote terminal/quarantine purge precedes CAS local/receipt/ledger cleanup; replay is detached, recursive deletion forbidden. Live family breadth remains OPS-8. [Import](dev/dataframe-import.md) |
+
+Completed background changes also include framework-free pipeline contracts in
+platform-etl, configured source/sink charset enforcement, and empty source labels
+with SOURCE.MARKERS_UNMATCHED instead of the old UNKNOWN sentinel.

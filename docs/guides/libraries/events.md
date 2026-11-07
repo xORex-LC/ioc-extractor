@@ -101,6 +101,12 @@ The interface requires non-null metadata, but publishers need not inspect it.
 The no-ops and recorder check the event reference only; they cannot certify a
 custom implementation's metadata or payload.
 
+Prefer immutable event payloads. A Java record does not make a contained list or
+map immutable: copy mutable inputs when constructing the event, or publish a
+stable reference to service-owned durable work. The port adds no defensive copy
+or synchronization; listeners may receive the same object on different threads
+according to the chosen delivery adapter.
+
 ## Choose metadata explicitly
 
 | Record component | Meaning and validation |

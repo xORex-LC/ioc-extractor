@@ -249,6 +249,22 @@ Spring/provider logging is a separate output boundary: configure it in the
 consuming application. This example does not mutate process-wide streams and
 does not promise that arbitrary framework logging is value-free.
 
+The four method outcomes have deliberately coarse boundaries:
+
+| Code | Stage |
+|---|---|
+| `INPUT_INVALID` | The explicit YAML loader failed to read/parse the candidate |
+| `INPUT_POLICY` | Not exactly one document, a name outside the allowed namespace, or a string containing a placeholder |
+| `NAME_CHECK` | Incomplete inspection or a declaration other than KNOWN |
+| `BINDING_OR_VALIDATION` | Runtime failure while refreshing, obtaining the bound model or closing the check context |
+
+These categories do not prescribe CLI exit codes. Pass a non-null candidate and
+a stable override map; programming errors, arbitrary map callbacks and `Error`
+are not universally normalized by this recipe. The recipe reads values to enforce
+its placeholder policy; the shared inspector still reads names only. Keep input
+size/cardinality and loader limits under application ownership. A restricted bean
+set is not a resource quota or a sandbox for arbitrary source implementations.
+
 ## Evidence and limits
 
 `ConfigurationCheckRecipeIT` compiles this exact Java block and runs it in a

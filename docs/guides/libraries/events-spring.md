@@ -103,6 +103,12 @@ payload validation; the adapter cannot validate the sample record for it.
 IOC constructs the same adapter in its composition root with a logging observer.
 No publisher bean or listener is installed merely by calling the constructor.
 
+For an event that does not extend Spring's `ApplicationEvent`, the context wraps
+the original object in `PayloadApplicationEvent`. A typed `@EventListener`, as
+above, receives that payload. Default listener selection follows Java event
+types, not the metadata's `eventType` text; that text is not a routing key or
+subscription registry. A low-level Spring listener must account for the wrapper.
+
 ## Read the failure boundary precisely
 
 | What the delegate does | Adapter behavior |
@@ -117,6 +123,12 @@ An observed runtime failure is contained, not converted into a reliable success
 or a safe retry signal. Listeners may already have committed effects. A normal
 return also does not prove that any/all handlers completed or durable work exists.
 Keep idempotency, transactions, durable ledgers and reconciliation in the service.
+
+With `NoopControlEventObserver`, an ordinary delegate runtime failure normally
+returns without a failure signal or adapter WARN. The fallback WARN path runs
+only when an observer callback itself throws a runtime exception. Installing a
+logging provider alone therefore does not make publication failures visible;
+choose an observer that records the observations the service needs.
 
 ## Keep telemetry failure separate from delivery
 

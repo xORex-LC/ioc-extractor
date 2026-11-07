@@ -102,6 +102,13 @@ public final class SpringEventsExample {
 адаптер в composition root с logging observer. Вызов constructor сам по себе
 не регистрирует publisher bean или listener.
 
+Если событие не наследует Spring `ApplicationEvent`, контекст оборачивает
+исходный объект в `PayloadApplicationEvent`. Типизированный `@EventListener`,
+как в примере, получает сам payload. Стандартный выбор listeners следует
+Java-типам событий, а не тексту `eventType` из metadata: это поле не служит
+ключом маршрутизации или реестром подписок. Низкоуровневый Spring listener
+должен учитывать обёртку.
+
 ## Точная граница ошибок
 
 | Поведение delegate | Поведение адаптера |
@@ -117,6 +124,12 @@ public final class SpringEventsExample {
 Нормальный возврат тоже не доказывает, что какой-либо/каждый handler завершился
 или записал durable state. Idempotency, транзакции, ledgers и сверка состояния
 принадлежат сервису.
+
+С `NoopControlEventObserver` обычная runtime-ошибка delegate обычно приводит
+к возврату без сигнала об ошибке и без WARN адаптера. Fallback WARN выполняется
+только при runtime-ошибке самого callback observer. Поэтому одного logging
+provider недостаточно для видимости ошибок публикации: выберите observer,
+который записывает необходимые сервису наблюдения.
 
 ## Ошибка telemetry не меняет результат доставки
 
