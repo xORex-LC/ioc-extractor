@@ -178,6 +178,9 @@ Examples: [Guava](https://github.com/advisories/GHSA-xxph-c9ww-hj94),
 [jsoup](https://github.com/advisories/GHSA-65r4-943x-97jj),
 [Jackson](https://github.com/advisories/GHSA-cxp5-3px4-pw24).
 
+The [dated affected-version matrix](../.github/release-evidence/0.3.0.md#src-3-dated-affected-version-screen)
+retains all eleven advisory IDs, seven packaged coordinates and the screened JAR identity.
+
 Close with owner-reviewed reachability/disposition for each match or compatible
 updates, regression/consumer checks and a fresh release security gate. Deployment
 health is not a security result; an indefinite suppression is not disposition.
@@ -391,6 +394,32 @@ dependency rule and service-owned policies when activating a proposal.
 | <a id="tool-3"></a>TOOL-3 | `partial`: seeded fixtures, isolated runtime, smoke and dedicated lifecycle/import/aggregate load tools exist; no single generic performance report contract | Need for comparable oneshot measurements: input/unique/committed counts, diagnostics, elapsed/memory and binary/config identity. Keep TOOL-10 failure and load acceptance separate | Developer tooling; [tools](../tools/dev/README.md) |
 | <a id="tool-4"></a>TOOL-4 | `deferred`: external suites still require operator-provided fixtures; centralized capability/provisioning/evidence control is absent | Before another integration family or required external CI status; meet the acceptance contract below | Integration/test infrastructure; [external tests](TESTING.md#external-and-slow-evidence) |
 | <a id="tool-5"></a>TOOL-5 | `deferred`: PIT pilot is intentionally domain-only; no reviewed adoption matrix for other production scopes | Dedicated test-quality work or a demonstrated critical assertion gap; meet the acceptance contract below | Test quality/module owners; [mutation pilot](TESTING.md#diagnostic-pilots) |
+
+<a id="arch-5"></a>
+### ARCH-5 — Review internal ETL contracts before external reuse
+
+**Deferred · owner: ETL/platform architecture.** The internal runner and direct
+`Pipeline` construction need a deliberate consumer-contract review before reuse
+outside this application. The constructor does not validate payload-type chains;
+custom failure policies inspect compacted retained details, rather than complete
+history. Policy runs after stages: initial FATAL does not prevent the first stage,
+and an empty chain has no checkpoint. Observer/cleanup failures can follow stage
+effects, and `stageFailed` is not exhaustive. The runner owns no transaction,
+rollback, retry, timeout or cancellation protocol.
+
+Keep the kernel internal, use typed composition and keep effect/recovery ownership
+in the application. Non-throwing observers and sinks avoid adding failures after
+effects; they do not provide durable completion evidence. These limits are now
+documented in Javadoc and the module README; that documentation is neither a
+behavior fix nor library admission. This deferred review is not a release blocker.
+
+Activate before external reuse/publication. Close with explicit supported contracts
+and consumer regressions for direct type composition, compacted custom policy,
+seed diagnostics/empty chains, callback/scope failures and resource ownership.
+See the [module reference](../platform/platform-etl/README.md),
+[Pipeline](../platform/platform-etl/src/main/java/com/iocextractor/platform/etl/Pipeline.java),
+[runner](../platform/platform-etl/src/main/java/com/iocextractor/platform/etl/PipelineRunner.java)
+and [observer](../platform/platform-etl/src/main/java/com/iocextractor/platform/etl/PipelineObserver.java).
 
 ### External-harness acceptance for TOOL-4
 

@@ -122,8 +122,9 @@ request. It never becomes a trusted canonical row or lifecycle ID. Requests use
 profile used to publish the artifact when those IDs must appear in that output.
 `preserve-existing` keeps a matched survivor's slot even when its imported ID
 differs. A new record requesting an occupied slot receives the lowest available
-slot; the receipt and terminal report record the reassignment. These are separate
-cases: `existing-record-policy` controls the survivor mismatch only. In an
+slot; the canonical receipt retains the slot resolution, but the terminal report
+does not expose it. These are separate cases: `existing-record-policy` controls
+the survivor mismatch only. In an
 already initialized registry, a matched lifecycle without a slot is rejected
 under either policy; do not substitute its canonical ID. An eligible export can
 first reconcile that assignment.
@@ -337,10 +338,26 @@ A successful command confirms admission; the daemon completes processing later.
 Use `--new-delivery` with a stable chosen ID when retrying the same replay request;
 without it each invocation generates another occurrence.
 
-Reports contain safe counts, logical CSV record numbers and diagnostic codes,
-not raw IOC cells or producer paths. Warning details are bounded and are not an
-exact count of every warning encountered. The defaults retain successful units
-for `30d` and unsuccessful units, including `COMPLETED_WITH_ERRORS`, for `90d`.
+### Terminal report
+
+The protected `report.json` uses the following fields:
+
+| Fields | Meaning |
+|---|---|
+| `schemaVersion`, `deliveryId`, `sourceId`, `outcome` | Report format version (currently `1`), occurrence, configured source and terminal outcome |
+| `acceptedRows`, `rejectedRows`, `publicMutations` | Aggregate logical-row and public-mutation counts |
+| `contractId`, `contractVersion`, `contractFingerprint` | Present when the delivery pinned a contract |
+| `affectedArtifacts`, `deliveryCodes` | Changed artifacts and safe delivery-level diagnostic codes |
+| `issues`, `warnings` | Arrays of logical CSV record number `row`, nullable `artifact` and diagnostic `code` |
+
+For committed deliveries, the default receipt reader includes at most 10,000
+rejection entries and 10,000 warning entries, independently. The report has no
+truncation flag or omitted-entry count; array lengths are not complete diagnostic
+totals. Phase timings and requested/assigned slot resolutions are not report
+fields. Reports never contain raw IOC cells or producer paths.
+
+The defaults retain successful units for `30d` and unsuccessful units, including
+`COMPLETED_WITH_ERRORS`, for `90d`.
 A retention action `archive` archives the protected local unit; it does not
 preserve an SMB forward source object, which is still purged first. Neither
 retention nor replay deletes canonical records missing from an input file.

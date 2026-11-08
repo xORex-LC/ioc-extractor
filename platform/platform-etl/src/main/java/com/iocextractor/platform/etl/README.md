@@ -1,36 +1,26 @@
 # com.iocextractor.platform.etl
 
-## Назначение
+Framework-free pipeline contracts and sequential execution. Pipeline composition
+chooses stage order; individual stages own their payload operations. See the
+[module README](../../../../../../../README.md) for dependency rules, diagnostic
+retention, policy checkpoints and observer failure boundaries.
 
-Framework-free ядро ETL-конвейера: `Envelope`, `EnvelopeMeta`, `Stage`,
-`StageId`, `Pipeline`, `PipelineRunner` и `PipelineObserver`. Пакет задаёт
-универсальную модель Pipes-and-Filters и не знает о IOC-предметке, Spring, CLI,
-Tika, CSV или logging/MDC.
+## Reading map
 
-**Правило слоя:** ETL core зависит только на diagnostics/errors. Порядок стадий
-задаётся в `Pipeline`, а не внутри stage-классов.
-
-## Структура
-
-| Подпапка / файл | Назначение |
+| File | Responsibility |
 |---|---|
-| `Envelope.java` | Immutable payload + metadata + diagnostics |
-| `EnvelopeMeta.java` | Generic run/source/stage metadata + extension attributes |
-| `Stage.java` | Контракт одного filter-шагa |
-| `Pipeline.java` | Type-safe список стадий |
-| `PipelineRunner.java` | Последовательное исполнение, delta-delivery, bounded accumulation + `FailurePolicy` |
-| `PipelineRunResult.java` | Финальный Envelope + типизированный diagnostic summary |
-| `PipelineObserver.java` | Порт operational events для runner |
-| `NoopPipelineObserver.java` | No-op observer для тестов/простых конструкторов |
-| `StageId.java` | Generic stable stage identifier |
-| `StageExecutionException.java` | Ошибка неверного исполнения pipeline |
+| [package-info.java](package-info.java) | Shared execution and ownership boundary |
+| [Envelope.java](Envelope.java) | Payload reference, metadata, copied diagnostic list and exact counts |
+| [EnvelopeMeta.java](EnvelopeMeta.java) | Run/source/stage correlation and copied extension-attribute map |
+| [Stage.java](Stage.java) | One transformation and its append-only diagnostic contract |
+| [Pipeline.java](Pipeline.java) | Ordered stage list and declared payload-type composition |
+| [PipelineRunner.java](PipelineRunner.java) | Calling-thread execution, bounded diagnostics and post-stage policy |
+| [PipelineRunResult.java](PipelineRunResult.java) | Final envelope and exact diagnostic summary |
+| [PipelineObserver.java](PipelineObserver.java) | Synchronous operational callbacks and scope handles |
+| [NoopPipelineObserver.java](NoopPipelineObserver.java) | Observer without effects |
+| [StageId.java](StageId.java) | Stable stage identifier |
+| [StageExecutionException.java](StageExecutionException.java) | Checked observer-scope close failure wrapper |
 
-## Зависимости
-
-**Зависит от:** `ioc-platform-diagnostics`, `ioc-platform-errors`.
-
-**Не импортируется:** `adapter`, `bootstrap`, Spring, Logback/MDC, Tika,
-commons-csv, picocli, `ioc-domain`, `ioc-application`.
-
-Suppression summary доставляется и при normal completion, и перед policy
-rejection: stopping diagnostic не маскирует факт усечения.
+Container copies do not make payloads, attribute values or stage instances deeply
+immutable. Their owners decide sharing and thread safety. Exact member contracts
+belong in Javadoc; application transactions and recovery belong outside this package.

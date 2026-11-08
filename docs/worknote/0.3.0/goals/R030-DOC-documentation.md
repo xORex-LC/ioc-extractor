@@ -8,154 +8,64 @@ source_of_truth: false
 language: "ru"
 ---
 
-# R030-DOC — Documentation migration и consistency
+# R030-DOC — Актуализация, полнота и переводы
 
-## Outcome
+## Результат и состояние
 
-Публикуемая документация English-first, структурно единообразна и соответствует
-коду. Russian translations располагаются в определённых `ru/` paths. README
-остаются только на английском.
+`in-progress`: основной комплект root/dev/guides пересмотрен по live sources и
+согласован EN/RU, но общий goal ещё не закрыт. Остаток ведётся в единственной
+[очереди](../documentation/remaining-work.tsv), результаты выполненных пакетов — в
+[release evidence](../../../../.github/release-evidence/0.3.0.md).
+Политика языка, ownership, Javadoc, README и generated docs принадлежит
+[CONVENTIONS](../../../CONVENTIONS.md); release policy —
+[RELEASE-PROCESS](../../../RELEASE-PROCESS.md).
 
-Execution mode: **same-change module updates + global translation wave**.
+## Оставшаяся работа
 
-Авторитетные conventions:
-
-- [CONVENTIONS](../../../CONVENTIONS.md);
-- [RELEASE-PROCESS](../../../RELEASE-PROCESS.md).
-
-## Language layout
-
-| English canonical | Russian translation |
+| Scope | Объём и обязательный результат |
 |---|---|
-| `docs/*.md` | `docs/ru/*.md` |
-| `docs/dev/*.md` | `docs/dev/ru/*.md` |
-| `docs/ADR/*.md` | `docs/ADR/ru/*.md` |
-| `docs/guides/*.md` | `docs/guides/ru/*.md` |
+| Исторические ADR | 49 оригиналов: 20 RU требуют EN canonical translation, 29 EN — RU companion; очередь сохраняет исходный язык, original bytes SHA-256 на input revision `1ad9f8b483575c136c2eb5529869fb01fa53ad00` и semantic parity obligation |
+| README | 126 root/module/directory/package references: сверить ответственность, структуру, entry points, dependencies/ports и links; English-only на месте |
+| Security docs | `SECURITY-ENGINEERING.md` и `THREAT-MODEL.md`: полный аудит/перевод отдельно от уже выполненных пакетов; принятое отложение не означает закрытие |
+| Исторические release paths | 15 paths: сохранить identity/history, проверить navigation, language и archival dispositions; не переписывать опубликованные результаты |
+| Redirects | 6 redirect paths: проверить target, anchors и отсутствие новой самостоятельной нормативной копии |
 
-README:
+Числа относятся к сохранённому inventory очереди. Новый/изменённый документ
+добавляется туда явно; объём не сокращается только из-за cleanup worknotes.
+Ссылочный README не считается проверенным при аудите ссылающегося overview.
 
-- root/module/directory/package `README.md` переводится на English на месте;
-- Russian README copy не сохраняется.
+## Ограничения миграции
 
-Worknotes:
+- Корневые maps сохраняют костяк и связи; локальные детали принадлежат owning
+  README, межмодульная механика — dev/, использование — guides/, причины — ADR.
+- Для исходно Russian ADR original переносится побайтово в `docs/ADR/ru/`,
+  canonical English явно помечается переводом исторической записи. Для исходно
+  English ADR canonical original остаётся на месте, в `docs/ADR/ru/` добавляется
+  помеченный перевод. Номер, смысл, статус, alternatives/consequences и source
+  provenance сохраняются в обоих случаях. Hash/source snapshot и паритет
+  проверяются до закрытия; reconsideration оформляется отдельно по
+  append-only/supersede protocol.
+- Original hashes очереди совпадают с исходным ADR baseline. Для `ADR-0025`
+  отдельно одобрен editorial URL repair: ссылка указывает на immutable Git blob,
+  prose решения не менялась; текущий hash отличается от original. Остальные ADR
+  в этом cleanup не редактируются. Byte-exact move в `ru/` меняет базу relative
+  links и сам по себе не доказывает их работоспособность. Возможные citation-only
+  rebases требуют отдельного явного review со списком исправленных href,
+  original/current hash и подтверждением неизменности решения.
+- README переводятся на месте без Russian copies. EN/RU пары остальных docs
+  проверяются на полноту и совпадение supported behavior.
+- `DIAGNOSTICS-CATALOG.md` и `LOGGING-CATALOG.md` остаются generated references:
+  ручное редактирование/перевод и Russian copies исключены.
+- Worknotes остаются русскими release records и не становятся authoritative
+  published docs или link targets из docs/README.
 
-- остаются Russian-only;
-- не имеют English pair;
-- не являются published documentation;
-- не становятся link targets из docs/README.
+## Критерии закрытия
 
-Новый документ или substantive rewrite создаётся на английском. Один документ
-не смешивает prose languages.
-
-## Documentation axes
-
-- root docs — project-wide maps/law;
-- `docs/dev/` — mechanics одной capability;
-- `docs/ADR/` — immutable decision history;
-- `docs/guides/` — operator/integrator usage;
-- co-located README — module/directory reference.
-
-Документ не дублируется между buckets: используется cross-link.
-
-В 0.3.0 создаётся English canonical `docs/TESTING.md` как project-wide testing
-law: test levels/lifecycle, naming/tags, local/CI commands, coverage thresholds,
-flake/exclusion policy и evidence expectations. Capability-specific test
-mechanics остаются в соответствующих `docs/dev/` или module README и
-cross-link на общий contract.
-
-## Same-change rule
-
-Feature/refactor/retirement/public API change обновляет:
-
-- affected capability doc;
-- module/directory README;
-- root architecture/module map, если затронута;
-- guide/operator contract, если изменён;
-- release notes/migration guidance при compatibility impact.
-
-Stale docs считаются failing contract.
-
-## ADR translation protocol
-
-Перевод accepted ADR является controlled file-migration exception, но не
-изменением решения:
-
-1. существующий Russian ADR переносится в `docs/ADR/ru/` побайтово, без
-   исправления prose, metadata или links;
-2. English translation появляется в canonical `docs/ADR/` и явно помечается
-   как перевод исторической записи, а не новая редакция решения;
-3. status/context/decision/alternatives/consequences сохраняются;
-4. English translation ссылается на Russian original, а `docs/ADR/README.md`
-   сопоставляет обе версии; Russian original ради reciprocal link не меняется;
-5. translation отделена от architecture reconsideration;
-6. semantic parity проходит review;
-7. English translation становится authoritative для canonical navigation, но
-   не переписывает исторический Russian source;
-8. дальнейшие изменения снова follow append-only/supersede policy.
-
-Нумерация ADR не меняется.
-
-## Generated documentation
-
-Generated docs:
-
-- не редактируются и не переводятся вручную;
-- изменяются через code/generator;
-- получают Russian variant только при поддержке генератора;
-- проверяются consistency gate.
-
-`docs/DIAGNOSTICS-CATALOG.md` и `docs/LOGGING-CATALOG.md` полностью исключены из
-translation scope: они остаются canonical generated references, не получают
-ручных или Russian copies и пинятся существующими doc-sync tests.
-
-## Migration inventory
-
-Inventory классифицирует каждый документ:
-
-- canonical language;
-- translation required/not-required;
-- translated;
-- stale;
-- generated;
-- README English-only;
-- owner и related capability.
-
-## Procedure
-
-1. Построить translation/document inventory.
-2. Перевести root maps.
-3. Перевести capability docs.
-4. Перевести guides.
-5. Перевести ADR по protocol.
-6. Перевести README in place.
-7. Проверить generated disposition.
-8. Исправить navigation/internal links.
-9. Выполнить semantic parity review.
-10. Запустить documentation convention/link checks.
-
-## Definition of Ready
-
-- source/target paths известны;
-- document bucket/owner определены;
-- ADR/generated/README policy применима;
-- semantic-review criteria установлены;
-- architecture change не смешивается с translation.
-
-## Definition of Done
-
-- English originals находятся canonical paths;
-- `docs/TESTING.md` соответствует live Maven/Make/CI behavior;
-- required Russian translations находятся в `ru/`;
-- Russian ADR originals сохранены побайтово, English translations помечены и
-  проверены по protocol;
-- README English-only;
-- generated docs не hand-edited, а diagnostic/logging catalogs не включены в
-  translation scope;
-- stale translations помечены;
-- navigation и links проходят checks;
-- affected code contracts отражены.
-
-## Dependencies
-
-Получает changes от всех goals. Global translation wave может выполняться
-параллельно, но final completion блокирует `R030-REL`.
+Очередь имеет result или явное принятое disposition по каждому path; обязательные
+review/translation выполнены, ADR originals проверены по hash и revision,
+English canonical/Russian paths корректны, README English-only, generated outputs
+проверены генератором. Документы достаточно полно описывают свои контракты,
+ограничения и сценарии по live sources; navigation, semantic parity и convention/
+link checks проходят. `TESTING.md` и остальные уже принятые policies остаются
+согласованы с кодом. Final completion блокирует `R030-REL`; same-change обновления
+от остальных goals продолжаются до релиза.

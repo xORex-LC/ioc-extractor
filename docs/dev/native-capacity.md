@@ -107,6 +107,41 @@ Queue growth, quota pressure or long control delay alone need not change UP.
 Use the [sizing guide](../guides/bulk-resource-sizing.md#observe-the-run) to assess
 them over a declared interval. Health is not a per-document completion receipt.
 
+## Historical lifecycle-load calibration
+
+The 2026-08-19 P6 lifecycle run established the host-specific regression envelope
+still selected by `make lifecycle-load`. It used source commit
+`b5bdd1a10802b9f5b7158d2e39ed9d34c2d98537`, a clean tree and JAR SHA-256
+`84c5a76957c8cf5ee1d0f615fe5155162718d8c41631ab085430e9a7e8fbc299`.
+The host was x86_64 WSL2 Linux `6.6.87.2`, OpenJDK `21.0.11`, SQLite `3.45.1`,
+12 logical CPUs and approximately 15.5 GiB RAM. The JVM used
+`-Xms128m -Xmx512m -XX:+ExitOnOutOfMemoryError`.
+
+Normal daemon ingestion of 66,667 input rows produced 100,001 canonical artifact
+rows under that version's mapping. This is a historical mapping-dependent count,
+not the expected count for every later artifact configuration.
+
+| Metric | P6 result | Reference guard |
+|---|---:|---:|
+| Canonical active rows | 100,001 | at least 100,000 |
+| Deadline spread | 5,306 ms | at most 30,000 ms |
+| Archive/drain throughput | 10,984.29 rows/s | at least 2,500 rows/s |
+| Retention restart-to-drain | 40,602 ms | at most 180,000 ms |
+| JVM lifetime VmHWM | 571,144 KiB | at most 1,048,576 KiB |
+
+The 2,500-rows/s floor is about 23% of that qualifying result and below the slower
+diagnostic calibration; it catches large regressions without promising portable
+capacity. The retention limit is a regression guard, not a production SLA.
+The run exercised expiry, history, projections and query plans; its old public-ID
+non-reuse assertion was superseded by P7 stable reusable export slots. Internal
+canonical/lifecycle non-reuse remains a separate contract.
+
+This rootless run does not qualify packaged upgrade/rollback or current source.
+The current terminal-filename mismatch, TOOL-10, still requires harness repair
+and requalification as described below. Retained candidate qualification and
+supersession boundaries are recorded in the
+[0.3.0 release evidence](../../.github/release-evidence/0.3.0.md).
+
 ## Original incident and confirmed fixes
 
 On 2026-10-04, installed release `860a3b2bdf3c-20261004T082925Z`

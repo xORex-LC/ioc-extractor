@@ -361,6 +361,12 @@ forbidden.
 Plugin and PMD engine dependencies are pinned independently so an engine
 upgrade cannot silently fall back to the plugin's bundled version.
 
+The `16/13` thresholds were calibrated against reviewed handler and construction
+hotspots. Lower thresholds also flagged flat validation, state handling and
+framework wiring; no evaluated `CyclomaticComplexity` threshold isolated a useful
+subset. Recalibration requires a reviewed comparison of actionable findings and
+noise across the full production scope, rather than a target finding count.
+
 The separate
 [`pmd-watchlist-ruleset.xml`](../../build-support/pmd-report/pmd-watchlist-ruleset.xml)
 contains exactly `PreserveStackTrace`, `CloseResource` and `NcssCount`. The first

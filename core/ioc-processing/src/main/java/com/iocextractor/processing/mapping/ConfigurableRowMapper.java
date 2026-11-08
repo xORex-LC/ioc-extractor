@@ -17,11 +17,18 @@ import static com.iocextractor.processing.mapping.RowMappingException.ComponentK
  * registries of {@link ValueProvider}s and {@link Transform}s. Adding an output
  * format is configuration, not code.
  *
- * <p>Per column: a {@code when-type} gate nulls the cell for other indicator
- * types; {@code const} then uses the literal value (null ⇒ CSV NULL), otherwise
- * the named provider supplies it; finally the ordered transforms are applied.
- * The DSL is limited by design — no expressions or conditions beyond
- * {@code when-type}.
+ * <p>Each column first applies its type gate ({@code when-type} or
+ * {@code when-types}) and all named {@code when} predicates. A failed gate yields
+ * a null cell without invoking its provider or transforms. Otherwise {@code const}
+ * supplies the literal value, or the named provider computes it, followed by the
+ * declared transforms in order. Transforms run only when the starting value is
+ * non-null; a null result becomes a null output cell.
+ *
+ * <p>For mapping with column views, the gates and provider of a column inspect
+ * that column's resolved view; unlisted columns use the default view. Conditions,
+ * providers and transforms come from the supplied registries, not an expression
+ * evaluator. Runtime guards reject unresolved registry names even when the
+ * composition root has already validated configuration.
  */
 public final class ConfigurableRowMapper implements RowMapper {
 

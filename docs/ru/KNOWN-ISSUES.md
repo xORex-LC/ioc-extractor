@@ -182,6 +182,10 @@ JAR содержит Jackson core/databind 2.21.5 и 3.1.5, Junrar 7.6.0, Guava 
 [jsoup](https://github.com/advisories/GHSA-65r4-943x-97jj),
 [Jackson](https://github.com/advisories/GHSA-cxp5-3px4-pw24).
 
+[Датированная матрица затронутых версий](../../.github/release-evidence/ru/0.3.0.md#src-3-датированная-проверка-затронутых-версий)
+сохраняет все одиннадцать advisory ID, семь координат зависимостей и идентичность
+проверенного JAR.
+
 Закрытие: рассмотрение достижимости/disposition каждого совпадения владельцем
 либо совместимые обновления, regression/consumer checks и свежий релизный security
 gate. Health развёртывания не является security-результатом; бессрочный suppression
@@ -400,6 +404,33 @@ recovery identity, точная версия events family и потреблен
 | <a id="tool-3"></a>TOOL-3 | `partial`: Seeded fixtures, isolated runtime, smoke и lifecycle/import/aggregate load tools уже есть; нет общего контракта performance report | Сравнимые oneshot measurements: input/unique/committed counts, diagnostics, время/память, binary/config identity. TOOL-10 и load acceptance отдельно | Инструментарий разработки; [инструменты](../../tools/dev/README.md) |
 | <a id="tool-4"></a>TOOL-4 | `deferred`: External suites ещё требуют fixtures оператора; общего capability/provisioning/evidence control нет | До следующего семейства интеграций или обязательного external CI status; критерии ниже | Инфраструктура интеграционных тестов; [внешние тесты](TESTING.md#внешние-и-медленные-проверки) |
 | <a id="tool-5"></a>TOOL-5 | `deferred`: PIT pilot намеренно domain-only; нет рассмотренной adoption matrix остальных production scopes | Отдельная test-quality работа или доказанный критичный assertion gap; критерии ниже | Качество тестов/владельцы модулей; [mutation pilot](TESTING.md#диагностические-пилоты) |
+
+<a id="arch-5"></a>
+### ARCH-5 — Пересмотр внутренних ETL-контрактов до внешнего использования
+
+**Deferred · владелец: ETL/platform architecture.** До использования вне приложения
+нужен отдельный пересмотр потребительских контрактов внутреннего runner и прямого
+создания `Pipeline`. Конструктор не проверяет цепочку типов payload; пользовательские
+failure policies видят сохранённые после сокращения детали, а не полную историю.
+Политика проверяется после стадий: исходный FATAL не предотвращает первую стадию,
+а у пустой цепочки нет checkpoint. Ошибки observer/cleanup могут возникнуть после
+эффектов стадии; `stageFailed` не охватывает все отказы. Runner не владеет
+транзакциями, rollback, повторами, timeout или протоколом отмены.
+
+Сохраняйте ядро внутренним, используйте типизированную композицию, а владение
+эффектами и восстановлением оставляйте приложению. Observers и sinks, которые не
+выбрасывают исключений, помогают избежать дополнительных отказов после эффектов,
+но не подтверждают долговечное завершение. Ограничения закреплены в Javadoc и README модуля; это
+документирование не исправляет поведение и не допускает библиотеку к публикации.
+Отложенный пересмотр не является блокером релиза.
+
+Триггер — внешнее использование/публикация. Закрытие: явные поддерживаемые контракты
+и потребительские регрессии для прямой композиции типов, пользовательской политики
+после сокращения диагностик, исходных диагностик/пустых цепочек, ошибок callbacks/
+scopes и владения ресурсами. См. [описание модуля](../../platform/platform-etl/README.md),
+[Pipeline](../../platform/platform-etl/src/main/java/com/iocextractor/platform/etl/Pipeline.java),
+[runner](../../platform/platform-etl/src/main/java/com/iocextractor/platform/etl/PipelineRunner.java)
+и [observer](../../platform/platform-etl/src/main/java/com/iocextractor/platform/etl/PipelineObserver.java).
 
 ### Критерии внешнего harness для TOOL-4
 

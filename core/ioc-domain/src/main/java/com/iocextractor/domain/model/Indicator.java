@@ -3,9 +3,15 @@ package com.iocextractor.domain.model;
 import java.util.Objects;
 
 /**
- * A fully resolved indicator: refanged, normalized value + its type + provenance.
- * Immutable domain value object — equality is by (type, value) so deduplication
- * is independent of provenance.
+ * A fully resolved indicator with its refanged, normalized value, type and provenance.
+ *
+ * <p>Record equality includes all three components, including {@code source}.
+ * Extraction deduplication instead uses {@link #dedupKey()}, which deliberately
+ * ignores provenance. Equal deduplication keys therefore do not imply equal records.
+ *
+ * @param value refanged, normalized indicator text; not null
+ * @param type indicator vocabulary entry; not null
+ * @param source attributed document provenance; not null
  */
 public record Indicator(String value, IndicatorType type, SourceContext source) {
 

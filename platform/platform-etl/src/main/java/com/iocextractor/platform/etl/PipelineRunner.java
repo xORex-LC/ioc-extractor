@@ -16,7 +16,35 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Sequential runner for a pipeline.
+ * Runs stages sequentially on the calling thread with a diagnostic-detail budget.
+ *
+ * <p>Initial diagnostics seed the accumulator without being redelivered as new
+ * stage occurrences. Each stage must preserve the input diagnostic prefix and
+ * exact observed counts. Newly retained occurrences are delivered before policy
+ * evaluation, then the next stage receives a compacted envelope. The result's
+ * summary retains exact counts, while custom {@link FailurePolicy} implementations
+ * inspect a notification built from retained details and any suppression marker,
+ * not the complete diagnostic history.
+ *
+ * <p>The retention budget limits {@code ELEMENT}/{@code RUN} details.
+ * {@code OPERATION} occurrences bypass that budget and remain visible, so it is
+ * not a total diagnostic-count or heap bound. Suppression markers are summaries,
+ * not additional observed occurrences.
+ *
+ * <p>Policy is evaluated after each stage, not before the first stage. A fatal
+ * diagnostic in the input therefore does not prevent the first stage from
+ * running; an empty pipeline does not evaluate policy. A policy rejection can
+ * follow a stage's externally visible effects. The runner does not start a
+ * transaction, roll back effects, retry work or own a timeout/cancellation protocol.
+ *
+ * <p>{@link PipelineObserver} callbacks and scope cleanup are synchronous and
+ * are not a general failure-isolation boundary. They can fail before execution
+ * or after stage effects have completed. A stage's {@link DiagnosticException}
+ * is delivered and propagated; another {@link RuntimeException} from the stage
+ * body is converted to {@code PIPELINE.STAGE_FAILED}. An {@link Error} is not
+ * translated into a diagnostic or guaranteed a failure callback or terminal
+ * suppression delivery. Supply the required non-throwing {@link DiagnosticSink}
+ * and keep stage resource/recovery ownership outside the runner.
  */
 public final class PipelineRunner {
 
@@ -70,7 +98,17 @@ public final class PipelineRunner {
         this(failurePolicy, observer, diagnosticSink, diagnosticFactory, DEFAULT_MAX_DIAGNOSTICS_PER_RUN);
     }
 
-    /** Creates a runner with an explicit per-run diagnostic retention budget. */
+    /**
+     * Creates a runner with an explicit per-run diagnostic retention budget.
+     *
+     * @param failurePolicy policy evaluated against compacted details after each stage
+     * @param observer synchronous operational callbacks and scope handles
+     * @param diagnosticSink non-throwing diagnostic delivery port
+     * @param diagnosticFactory factory for generic failures and suppression markers
+     * @param maxDiagnosticsPerRun positive ELEMENT/RUN detail budget; OPERATION
+     *                             occurrences are outside it; not a payload or heap limit
+     * @throws IllegalArgumentException if the retention budget is not positive
+     */
     public PipelineRunner(FailurePolicy failurePolicy,
                           PipelineObserver observer,
                           DiagnosticSink diagnosticSink,
@@ -87,12 +125,13 @@ public final class PipelineRunner {
     }
 
     /**
-     * Runs the pipeline over the initial envelope.
+     * Runs the pipeline over the initial envelope, with the same failure behavior
+     * as {@link #runWithOutcome(Envelope, Pipeline)}.
      *
-     * @param input initial envelope
-     * @param pipeline pipeline to run
      * @param <I> initial payload type
      * @param <O> final payload type
+     * @param input initial envelope
+     * @param pipeline pipeline to run
      * @return final envelope
      */
     public <I, O> Envelope<O> run(Envelope<I> input, Pipeline<I, O> pipeline) {
@@ -100,25 +139,54 @@ public final class PipelineRunner {
     }
 
     /**
-     * Runs the pipeline and returns its final envelope together with the typed
-     * diagnostic summary maintained by the bounded accumulator.
+     * Runs the pipeline and returns its compacted final envelope and exact
+     * diagnostic summary.
      *
-     * @param input initial envelope
-     * @param pipeline pipeline to run
+     * <p>An empty pipeline retains the input payload and compacts its diagnostics
+     * without evaluating failure policy. Once the stage loop is entered, normal
+     * completion and runtime failure attempt delivery of the terminal suppression
+     * marker, if present. This does not make observer or sink failures harmless
+     * after completed effects.
+     *
      * @param <I> initial payload type
      * @param <O> final payload type
+     * @param input initial envelope
+     * @param pipeline pipeline to run
      * @return typed pipeline outcome
      */
     public <I, O> PipelineRunResult<O> runWithOutcome(Envelope<I> input, Pipeline<I, O> pipeline) {
         return runPart(input, pipeline, true);
     }
 
-    /** Runs a precommit segment; its suppression summary is emitted on failure or final continuation. */
+    /**
+     * Runs a segment while deferring terminal suppression delivery on success.
+     *
+     * <p>The caller must either continue with {@link #runWithOutcome(Envelope, Pipeline)}
+     * using the returned envelope or call {@link #finishPreparation(Envelope)}
+     * once when abandoning that continuation. Runtime failure from the stage loop
+     * attempts terminal summary delivery immediately. Calling this method does
+     * not itself make the supplied stages side-effect-free or establish a
+     * transaction boundary.
+     *
+     * @param <I> declared initial payload type
+     * @param <O> declared final payload type
+     * @param input initial envelope
+     * @param pipeline segment to execute in order
+     * @return compacted prepared envelope and exact diagnostic counts
+     */
     public <I, O> PipelineRunResult<O> runPreparation(Envelope<I> input, Pipeline<I, O> pipeline) {
         return runPart(input, pipeline, false);
     }
 
-    /** Completes diagnostic delivery when a prepared segment is cancelled without continuation. */
+    /**
+     * Delivers the retained suppression marker when a segment has no continuation.
+     *
+     * <p>This does not cancel work, close stage resources, evaluate policy or open
+     * a new observer scope. Calls are not deduplicated; the owner must finalize
+     * diagnostic delivery once rather than also continuing the same preparation.
+     *
+     * @param prepared envelope returned by a successfully prepared segment
+     */
     public void finishPreparation(Envelope<?> prepared) {
         emitSuppressionSummary(Objects.requireNonNull(prepared, "prepared").diagnostics(), null);
     }

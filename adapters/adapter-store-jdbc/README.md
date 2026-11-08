@@ -24,6 +24,12 @@ import staging are retained private input mechanisms, not alternate canonical
 storage. The service DB owns coordination; the dataframe DB owns canonical
 facts and receipts. Bootstrap owns datasource lifetime.
 
+The service schema's nullable `import_delivery.public_mutations` is not populated
+or read by the current delivery ledger. NULL does not mean zero mutations or a
+failed canonical commit. Use dataframe `import_commit.public_mutations` through
+`JdbcImportCommitEvidenceStore` for committed mutation evidence; the service
+column is not a second canonical authority.
+
 ## Runtime contracts
 
 - Artifact schema reconciliation is additive and excludes internal `_` columns
@@ -53,6 +59,9 @@ facts and receipts. Bootstrap owns datasource lifetime.
 - Bounded row decoding and 128-row/1-MiB receipt batches avoid a retained
   document-wide payload. Receipt replay merges ordered row/position cursors in
   one snapshot and rejects missing, duplicate or orphan position evidence.
+  Separately, the private document-row format limits its values map and its
+  ordered-field-position map to 128 entries each. This structural cap is not a
+  receipt batch size or a general CSV-column limit; byte limits apply as well.
 - Mutable projection streaming returns count and generation from one read
   transaction. Acknowledgement records installed coverage only, leaving newer
   work pending. CSV installation/acknowledgement is application-serialized.

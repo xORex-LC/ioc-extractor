@@ -8,121 +8,55 @@ source_of_truth: false
 language: "ru"
 ---
 
-# R030-SEC — Repository, CI и publication security
+# R030-SEC — Безопасность repository, CI и публикации
 
-## Outcome
+## Результат и состояние
 
-Repository-hosted settings, CI/CD и Maven publication path соответствуют
-принятому hardening baseline и подтверждены reproducible либо external
-evidence.
+`in-progress`: dependency remediation имеет историческую квалификацию, но общий
+repository/workflow/publication gap analysis и release dispositions не завершены.
+[Release evidence](../../../../.github/release-evidence/0.3.0.md#dependency-and-publication-evidence)
+сохраняет исходные проверки; текущие obligations определяются
+[SECURITY-ENGINEERING](../../../SECURITY-ENGINEERING.md),
+[THREAT-MODEL](../../../THREAT-MODEL.md) и
+[KNOWN-ISSUES](../../../KNOWN-ISSUES.md#src-3).
 
-Execution mode: **primarily global**.
+## Оставшаяся работа
 
-Авторитетные документы:
+- Сверить фактические branch/review/status/tag/environment protections и
+  CODEOWNERS; repository text не доказывает внешние settings. Required checks
+  должны соответствовать принятым project-owned blocking gates.
+- Проверить pinned Actions, permissions/triggers, untrusted-PR isolation,
+  credentials, retention, immutable inputs и contracts внешних CI/reporting
+  services: доступ, отправляемые данные, outage и enforcement.
+- Завершить dependency/source-security review: review/update automation,
+  воспроизводимый offline scan, secret scanning, justified suppressions с
+  owner/expiry и residual-risk dispositions.
+- Разобрать `SRC-3`: актуальная advisory applicability, достижимые input paths,
+  remediations/accepted risks и согласованное release решение. Исторический
+  dependency scan не закрывает новые либо найденные позднее runtime advisories.
+- Пересмотреть statement `SEC-LOG-1`: сверить обещанную redaction с фактическими
+  owned reports, log catalog и границами raw IOC/URL/credential handling;
+  обновить registry/threat claims и tests при расхождении.
+- Проверить publication trust/credential boundary, protected workflow,
+  no-overwrite и совпадение verified/published bytes; сохранить disposition
+  checksums, provenance/attestation и внешней repository qualification.
 
-- [SECURITY-ENGINEERING](../../../SECURITY-ENGINEERING.md);
-- [THREAT-MODEL](../../../THREAT-MODEL.md).
+## Критерии закрытия
 
-## Scope
+Каждый применимый control имеет подтверждённое состояние и evidence; изменения
+в тот же change отражены под прежним stable ID или новым ID в security registry.
+Required protections и credential boundary проверены, critical findings закрыты,
+остаточные риски/suppressions имеют owner, rationale и срок/условие пересмотра.
+Недоступная внешняя проверка имеет явное release disposition и не отмечается pass.
 
-Результаты goal MUST обновлять состояния control registry в
-[SECURITY-ENGINEERING §4](../../../SECURITY-ENGINEERING.md#4-реестр-текущих-контролей)
-тем же change, который реализует или изменяет control. Существующий control
-сохраняет stable ID; новый control получает новый ID, state и evidence.
+## Граница и зависимости
 
-### Repository governance
+Глубокое внедрение SAST/CodeQL отложено: `SEC-VER-1` остаётся Planned; generic
+SpotBugs не закрывает security control. Не вводятся случайные scanners, broad
+permissions или online scan как единственный gate. Локальная release publication
+и credentials в repository/examples не допускаются.
 
-- default branch protection;
-- required status checks для project-owned blocking gates; signal-only external
-  reporting не включается без отдельного control decision;
-- required reviews;
-- protected tags/releases;
-- CODEOWNERS для sensitive areas;
-- evidence внешних settings, не представленных в Git.
-
-### Dependency и source security
-
-- dependency review;
-- offline/reproducible vulnerability scan policy;
-- update automation;
-- immutable/pinned CI Actions;
-- secret scanning и credential hygiene;
-- justified suppressions с owner/expiry.
-
-### Workflow security
-
-- least-privilege `permissions`;
-- trusted triggers;
-- untrusted PR isolation;
-- protected environments;
-- no secret exposure in logs/artifacts;
-- explicit artifact retention;
-- immutable release inputs;
-- external CI/reporting services имеют зарегистрированные permissions,
-  credential, data-sharing, outage и enforcement contracts.
-
-### Publication security
-
-- credentials доступны только protected workflow;
-- release publication не запускается локально;
-- coordinates/version immutable;
-- published bytes совпадают с verified bytes;
-- overwrite запрещён;
-- checksums, provenance/attestation disposition сохранены;
-- repository/auth model проходит threat review.
-
-Sensitive paths включают release workflows, packaging, bootstrap configuration,
-storage/migrations, messaging contracts и publication metadata.
-
-## Procedure
-
-1. Выполнить gap analysis относительно security docs.
-2. Классифицировать controls `Existing/Strengthen/Introduce/Evaluate/Deferred`.
-3. Проверить workflows и effective permissions.
-4. Проверить dependency/security reports.
-5. Собрать external evidence branch/tag/environment settings.
-6. Выполнить threat review publication path.
-7. Исправлять controls reviewable slices.
-8. Сделать stable project-owned blocking checks required; signal-only controls
-   оставить non-required.
-9. Обновить registry states/evidence или добавить новый control ID.
-10. Сохранить residual risks и dispositions.
-
-## Non-goals
-
-- глубокое внедрение SAST и GitHub CodeQL в 0.3.0; этот контур требует
-  отдельного security scope, threat/rule model и triage policy;
-- трактовка generic SpotBugs bug-pattern analysis как закрытие
-  `SEC-VER-1`: без отдельно принятого security ruleset/SAST control он
-  остаётся build-quality check, а `SEC-VER-1` — `Planned`;
-- случайный набор scanners без signal ownership;
-- online/non-reproducible scan как единственный release gate;
-- broad permissions «для удобства»;
-- локальная release publication;
-- хранение credentials в repository/config examples.
-
-## Definition of Ready
-
-- control/risk определён;
-- current state и desired state известны;
-- repository-hosted evidence доступно либо имеет owner;
-- workflow/credential impact понятен;
-- verification plan определён.
-
-## Definition of Done
-
-- required protections подтверждены;
-- workflows least-privilege и pinned;
-- dependency/security gates стабильны;
-- publication environment защищён;
-- credential boundary проверена;
-- critical findings закрыты;
-- suppressions/residual risks имеют owner и rationale;
-- external settings evidence сохранено;
-- каждое реализованное/изменённое security-relevant control отражено в
-  `SECURITY-ENGINEERING.md` §4 тем же change.
-
-## Dependencies
-
-Требует `R030-BASE`, использует `R030-BUILD` CI infrastructure, блокирует
-release publication в `R030-LIB` и финальный `R030-REL`.
+Перевод и полный отдельный аудит двух security-документов отложены в `R030-DOC`;
+это не откладывает обязательный review применимых controls и `SRC-3/SEC-LOG-1`.
+Требуются `R030-BASE/BUILD`; goal участвует в publication admission и блокирует
+финальный go/no-go `R030-REL` до закрытия обязательств либо принятого scope change.

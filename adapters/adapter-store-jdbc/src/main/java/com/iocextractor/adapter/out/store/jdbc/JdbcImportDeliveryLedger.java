@@ -43,6 +43,12 @@ import java.util.function.Function;
  * SQLite service-ledger adapter for globally ordered managed dataframe imports.
  * Reservation, state/version CAS and compact transition evidence are committed
  * atomically. The minimum nonterminal sequence remains the sole scheduling head.
+ *
+ * <p>The service schema retains a nullable {@code import_delivery.public_mutations}
+ * column, but this adapter neither reads nor populates it. A null there is expected,
+ * not a zero-mutation result or evidence of a missing canonical commit. Mutation
+ * counts and canonical idempotency belong to the dataframe {@code import_commit}
+ * receipt, exposed by {@link JdbcImportCommitEvidenceStore}.
  */
 public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
 

@@ -5,23 +5,36 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Type-safe ordered list of stages.
+ * Ordered stage composition with declared input and output payload types.
  *
- * @param stages ordered stages
- * @param <I> initial payload type
- * @param <O> final payload type
+ * <p>{@link #start()} and {@link #then(Stage)} connect declared payload types at
+ * compile time. The direct record constructor accepts wildcard stages and does
+ * not verify adjacency or consistency with {@code I}/{@code O}. Callers using
+ * that constructor, raw types or unchecked casts own those checks; a mismatch
+ * can fail during execution after earlier stages have already run.
+ *
+ * <p>The stage list is an immutable defensive copy. Stage instances and their
+ * captured resources are not copied or made thread-safe. An empty composition
+ * is supported; it does not introduce a stage-level failure-policy checkpoint.
+ *
+ * @param <I> declared initial payload type
+ * @param <O> declared final payload type
+ * @param stages ordered stage instances; copied, with no null elements
  */
 public record Pipeline<I, O>(List<Stage<?, ?>> stages) {
 
     /**
-     * Creates a pipeline with defensive stage copying.
+     * Copies the stage list without validating the stages' payload-type chain.
+     *
+     * @param stages ordered stage instances; not null and containing no nulls
+     * @throws NullPointerException if the list or an element is null
      */
     public Pipeline {
         stages = List.copyOf(Objects.requireNonNull(stages, "stages"));
     }
 
     /**
-     * Starts an empty pipeline.
+     * Starts an empty composition whose declared input and output types agree.
      *
      * @param <I> initial payload type
      * @return empty pipeline
