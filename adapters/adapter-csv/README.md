@@ -1,67 +1,75 @@
 # adapters/adapter-csv
 
-## Назначение
+## Purpose and boundary
 
-CSV integration-family adapter providing strict inbound record streaming,
-artifact preparation, canonical CSV projection and immutable artifact slices.
+CSV integration-family adapter, `com.iocextractor:ioc-adapter-csv`. It implements
+application ports for strict import parsing, artifact preparation, mutable
+canonical projections and immutable local export slices. Commons CSV and
+filesystem mechanics remain here; application owns canonical commits, failure
+policy, projection generations, export-ledger transitions and delivery sagas.
 
-**Правило слоя:** owns Commons CSV parsing/writing, artifact preparation and
-local atomic publication; domain/application do not depend on Commons CSV or
-filesystem mechanics. Import/export orchestration remains in application ports.
+## Structure
 
-## Структура
-
-| Подпапка / файл | Назначение |
+| Directory / file | Responsibility |
 |---|---|
-| `pom.xml` | Maven module descriptor |
-| `src/main/java/com/iocextractor/adapter/in/csv/` | Strict decoder, exact-header validation and callback-streaming CSV reader |
-| `src/main/java/com/iocextractor/adapter/out/sink/csv/` | CSV projection, artifact preparer and export slice writers |
+| [pom.xml](pom.xml) | Module dependencies; versions managed by the parent |
+| [Inbound package](src/main/java/com/iocextractor/adapter/in/csv/README.md) | Strict decoding, exact headers, synchronous record streaming and import registries |
+| [Outbound package](src/main/java/com/iocextractor/adapter/out/sink/csv/README.md) | Preparation, CSV byte policy, projection replacement, slice publication/verification and filesystem leases |
+| [Inbound tests](src/test/java/com/iocextractor/adapter/in/csv/README.md) | Input limits, parser behavior and whole-cell validation |
+| [Outbound tests](src/test/java/com/iocextractor/adapter/out/sink/csv/README.md) | Mapping/policy, deterministic bytes, filesystems and recovery |
 
-## Зависимости
+The two production packages have matching test packages. Synthetic inputs and
+filesystem trees are constructed inline or under temporary directories; there is
+no module-local resource-fixture tree.
 
-**Зависит от:** `ioc-application`, `ioc-processing`, `ioc-domain`, platform
-errors/diagnostics/observability, Commons CSV, SLF4J API.
+## Dependencies
 
-**Не импортируется:** bootstrap and sibling adapters.
+Production dependencies are `ioc-application`, `ioc-processing`, `ioc-domain`,
+platform errors, diagnostics API/catalog and observability, SLF4J API and Commons
+CSV. `ioc-application-tck` is test-scoped; shared test dependencies come from the
+parent. Commons CSV's transitive dependencies belong to the resolved Maven graph;
+there is no direct Commons IO declaration in this POM.
 
-## Контракты
+Do not import JDBC, SMB, bootstrap or sibling adapters. Bootstrap composes these
+implementations with storage and the manifest codec. JSON passes through the
+application `SliceManifestCodec` port, so this module has no compile dependency
+on the Jackson manifest adapter. Framework-free core modules must not import
+Commons CSV or these filesystem implementations.
 
-- mutable projection path формирует CSV из canonical repository только через
-  общий application owner; результат содержит поколение прочитанного снимка.
-  Поток проверяет отмену по строкам и перед atomic rename;
-  parentless relative leaf поддерживается через current directory, filesystem
-  root отклоняется как path без имени файла и в bootstrap preflight, и на
-  adapter boundary;
-- общий formatter задаёт LF/CRLF и независимые ALL/MINIMAL/NONE для заголовка
-  и значений; strict NONE отклоняет неоднозначные cells до публикации. Контракт:
-  [CSV output format](../../docs/dev/csv-output-format.md);
-- mutable projection проверяет logical header/cell values до записи и при
-  charset replacement возвращает одну `SINK.CHARSET_UNMAPPABLE` diagnostic с
-  точными counts при ALL/ALL; для MINIMAL/NONE кодирование строгое, чтобы
-  replacement не создал CSV syntax; diagnostic доставляет application orchestration, не adapter;
-- `CsvArtifactPreparer` выполняет config-driven filtering/mapping до policy
-  checkpoint; provider/transform из `ioc-processing` может явно вернуть data-dependent failure
-  только через `MappingValueException`. Общий `ConfigurableRowMapper` локализует его
-  как `RowMappingException` (column + component kind/name), а preparer создаёт
-  element diagnostic. Остальные mapper defects останавливают run;
-  route/filter/mapping decisions передаются в gated application TRACE port без
-  повторной классификации. Метод `prepareRouted` готовит одну выбранную ветку
-  с отдельными представлениями колонок и сохраняет позицию управляемых полей;
-  та же настройка фильтра, mapper и диагностик используется повторно;
-- processed import использует только Router adapter в bootstrap с явно
-  объявленными input/output bindings; CSV adapter отвечает за parsing и
-  declarative artifact field mapping. Provider-name inference удалён;
-- public id остаётся deferred slot до commit; `from: id` не допускает
-  `when-type` или transforms, что проверяется bootstrap config preflight;
-  mapping SPI не получает временный id, а id-provider возвращает пустой slot;
-- `CsvArtifactSliceWriter` получает callback-stream из `SnapshotSliceReader`,
-  пишет data/manifest/`_SUCCESS` в staging и публикует каталог одним
-  `ATOMIC_MOVE`; immutable slice encoder использует `REPORT`, потому что lossy
-  bytes нарушили бы hash/manifest contract;
-- JSON codec внедряется через `SliceManifestCodec`: compile-time зависимости на
-  sibling Jackson adapter нет;
-- service DB, export-run transitions и delivery в модуль не входят.
+## Entry points and contracts
 
-Export formation/recovery uses profile-scoped NIO leases (ADR-0037). CSV slice
-materialization owns its state per invocation and allows unrelated profiles to
-stream concurrently under the shared reader budget.
+| Path | Contract / authority |
+|---|---|
+| Inbound CSV | Reads a caller-resolved pinned snapshot; recognition/mapping contracts, delivery ownership and promotion remain in application |
+| Artifact preparation | Filters/maps already-classified views before the failure-policy checkpoint; carries deferred canonical ID allocation, not durable writes |
+| Mutable projection | Streams canonical truth to one derived CSV and reports the snapshot generation; invocation must pass through the shared application generation owner |
+| Immutable export | Streams a profile snapshot into staging, verifies manifest/data/marker bytes and publishes one directory atomically under a caller-held profile lease |
+
+Mutable projections are replaced per artifact, not as an atomic multi-artifact
+set. Immutable slices have a separate identity and publication protocol.
+Canonical identity and reusable immutable-export slots belong to application /
+storage; the CSV formatter does not assign either identity or change TTL.
+
+Processing plans and processed-import input/output bindings are composed in
+bootstrap using the router adapter. This module supplies CSV parsing and field
+mapping, without inferring processing plans from provider names. Providers,
+transforms and predicates live in `ioc-processing`; semantic reuse/classification
+is not repeated per mapped column.
+
+See [processing](../../docs/dev/processing.md), [import internals](../../docs/dev/dataframe-import.md), [artifact export](../../docs/dev/artifact-export.md) and [CSV output format](../../docs/dev/csv-output-format.md).
+Output-format settings and import-contract dialects are separate policies.
+
+## Verification and related docs
+
+Run from the repository root:
+
+```bash
+make test-module MODULE=adapters/adapter-csv
+make test-integration-module MODULE=adapters/adapter-csv
+```
+
+The first command covers Surefire; the second covers deterministic Failsafe
+filesystem contracts and upstream modules. `make verify` is the reactor gate.
+Test-package READMEs describe what local codecs, temporary trees and injected
+failures prove. They do not replace deployment-filesystem qualification or
+cross-adapter end-to-end tests. General policy is [TESTING.md](../../docs/TESTING.md).

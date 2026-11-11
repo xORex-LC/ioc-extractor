@@ -52,18 +52,18 @@ TEST и обновление документа не закрывают проч
 | `core/ioc-processing` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `core/ioc-application` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `core/ioc-application-tck` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-config-spring-boot` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-events-spring` | `planned` | `planned` | `planned` | `planned` | `planned` |
+| `adapters/adapter-config-spring-boot` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-events-spring` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `adapters/adapter-regex-re2j` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `adapters/adapter-psl` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `adapters/adapter-processing-camel` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `adapters/adapter-source-tika` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-csv` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-manifest-json-jackson` | `planned` | `planned` | `planned` | `planned` | `planned` |
+| `adapters/adapter-csv` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-manifest-json-jackson` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `adapters/adapter-store-jdbc` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `adapters/adapter-transport-smb` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-ingest` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-cli-picocli` | `planned` | `planned` | `planned` | `planned` | `planned` |
+| `adapters/adapter-ingest` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-cli-picocli` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `bootstrap/ioc-app` | `planned` | `planned` | `planned` | `planned` | `planned` |
 
 ## Оставшаяся очередь
@@ -75,7 +75,7 @@ TEST и обновление документа не закрывают проч
 | Supported/history retirement surfaces | RETIRE / owning modules | Сохранить migrations/ledger replay, engine fallback, SMB, maintenance, publish/TCK до принятого retirement; [контракт](goals/R030-RETIRE-retirement.md) |
 | Security: SRC-3 | SEC / dependency owners | Датированная affected-version матрица сохранена; reachability/owner disposition либо qualified remediation и fresh security evidence ещё нужны |
 | SEC-LOG-1 | SEC / observability | При отложенном аудите SECURITY-ENGINEERING сверить broad redaction statement с formatter-only structured-context contract; free message/Throwable/cause/suppressed требуют producer ownership; это не доказательство новой утечки |
-| DOC remaining paths | DOC / owning documents | [198 исходных задач](documentation/remaining-work.tsv): 49 ADR translations, 126 README reviews, 2 отложенных security docs, 15 release records, 6 compatibility redirects; локальный частичный review не закрывает полный scope |
+| DOC remaining paths | DOC / owning documents | [198 исходных задач](documentation/remaining-work.tsv): 49 ADR translations, 126 исходных README reviews (11 README verified (CLI/configuration/CSV/Spring events/ingest/manifest), 115 pending), 2 отложенных security docs, 15 release records, 6 compatibility redirects; локальный частичный review не закрывает полный scope |
 | Publication follow-ups | LIB/SEC/REL | TOOL-6 API comparison, TOOL-7 provenance, TOOL-8 protected configuration CI recovery, TOOL-9 independent-version Maven/CI transition; не повторная публикация исходных RC |
 | External target qualification | DATA/REL / operators | OPS-8 H5 две identities; неподтверждённые server/platform claims остаются skips; source default disabled |
 | Operational/source findings | Owning capabilities / REL | OPS-10…14, OUT-4, ING-11/13/15/16, SRC-3 и TOOL-10 сохраняются в [KNOWN-ISSUES](../../KNOWN-ISSUES.md); retirement записок не закрывает их |
@@ -101,3 +101,82 @@ RETIRE-DEP-9 (application→platform-errors) и RETIRE-DEP-10 (CSV→commons-io)
 проектные журналы retired; они доступны в immutable snapshot из qualification
 record, но не являются новым active backlog. Шесть опубликованных RC не означают
 закрытие всех модулей или готовность приложения к выпуску.
+
+### README CLI adapter — 2026-11-11
+
+Рекурсивно пересмотрены два исходных README `adapter-cli-picocli`; добавлены
+README test package и consumer fixtures. Все четыре reference-документа на
+английском: локальные обязанности, структура, dependencies, early/Spring paths,
+ленивое разрешение use cases, вывод/exit codes и границы test coverage.
+Два исходных queue items закрыты с сохранением original hash/revision;
+новые test/fixture references указаны как companion outcomes в строке модуля.
+Это закрывает affected DOC cell выбранного модуля, остальные goals не
+переоценены. Проверки: полный `make verify`, локальные ссылки и структура README;
+логи проверки остаются локальными в `.dev/cli-readme-audit/`.
+
+### README configuration adapter — 2026-11-11
+
+Пересмотрен module README adapter-config-spring-boot, добавлены английские
+README production/test packages. Описаны API/internal boundary, source/schema
+coverage, name-only/result/migration contracts, ownership и различия local tests /
+standalone qualification. Один исходный queue item verified с прежним hash/ref;
+новые references записаны как companion outcomes. DOC cell модуля закрыт;
+остальные goals, TOOL-8 и историческая publication qualification не переоценены.
+Проверки: make verify, dependency tree, README file maps и локальные ссылки;
+логи локальные в `.dev/config-readme-audit/`.
+
+### README CSV adapter — 2026-11-11
+
+Рекурсивно пересмотрены три исходных README adapter-csv и добавлены английские
+README обоих test packages. Уточнены strict input и limits, validators/transforms,
+deferred preparation, mapping DSL, generation-owned mutable projection, encoding,
+immutable staging/recovery/durability, leases и разные retention/catalog semantics.
+Пять references описывают local ownership и границы test evidence; wire-format
+Jackson tests и deployment-filesystem qualification не подменяются локальными
+codec fixtures. Три исходных queue items verified с сохранением hash/ref, новые
+companion outcomes отмечены в очереди. Закрыт только affected DOC cell.
+Проверки: make verify, dependency tree, README file maps/links и diff --check;
+локальные логи `.dev/csv-readme-audit/`.
+
+### README Spring events adapter — 2026-11-11
+
+Пересмотрен module README adapter-events-spring, добавлены английские README
+production/test packages. Уточнены one-attempt publication, partial delivery,
+normal-return/observer semantics, immediate Spring Error unwrap, primary/suppressed
+failure evidence и service-owned dispatch/resource boundary. Явно отделены
+inline executor tests от async completion и source tests от packaged consumers.
+Один original queue item verified с прежним hash/ref; новые references отмечены
+как companion outcomes. Только affected DOC cell закрыт; family publication,
+independent-version activation и другие goals не переоценены. Проверки: make
+verify, dependency tree, file maps/links и diff --check; логи локальные в
+`.dev/events-spring-readme-audit/`.
+
+### README ingest adapter — 2026-11-11
+
+Пересмотрены module README и inbound package README adapter-ingest, русский
+package reference переведён на English. Добавлены три README: outbound
+maintenance и два test packages. Локальная карта покрывает document admission,
+bounded prepare/ordered promotion, journals/retry/recovery/shutdown, managed import
+snapshots/terminal units и ordinary leaf retention. Уточнены разные WatchService
+backstops, pre-hash blocked queue, strict atomic claim/seal versus weaker legacy
+ledger/retention fallback, observation и single-daemon boundary. Два original
+queue items verified, исходные ref/hash/language сохранены, новые README отмечены
+companions. Только affected DOC cell закрыт; прочие goals и внешняя qualification
+не переоценены. Проверки: make verify, dependency tree, README links/file maps,
+English/provenance/preservation checks и diff --check; локальные логи в
+`.dev/ingest-readme-audit/`.
+
+### README Jackson manifest adapter — 2026-11-11
+
+Оба исходных README adapter-manifest-json-jackson пересмотрены и переведены
+на English; добавлен test-package README. Карта охватывает codec/package-info,
+четыре private wire records и единственную IT suite. Сверены POM/dependency tree,
+port/models, bootstrap wiring и filesystem integrity callers. Уточнены exact
+UTF-8 bytes, ordered arrays, legacy v1/explicit-layout v2, null/enum/error/resource
+границы и caller-owned hash/marker verification. Убрано неверное blanket обещание
+missing-field rejection: missing primitive rows -> zero подтверждён локальным
+probe. V1 golden, V2 round-trip и независимые consumer fixtures разграничены.
+Два original queue items verified, provenance сохранены, новый README отмечен
+companion; только affected DOC cell закрыт. Прочие goals не переоценены.
+Проверки: make verify, dependency tree, make docs, README links/file maps/English,
+provenance/preservation и diff --check; локальные логи `.dev/manifest-readme-audit/`.

@@ -1,55 +1,88 @@
-# ioc-events-spring
+# adapters/adapter-events-spring
 
-Explicit Spring adapter for the JDK-only
-[local event contracts](../../platform/platform-events/README.md). Requires Java 21.
-Published coordinate: `io.github.xorex-lc:ioc-events-spring:0.3.0-rc.1`;
-the reactor remains at `0.3.0-SNAPSHOT`. Separate Central/GitHub consumers passed
-in [run 40162675262](https://github.com/xORex-LC/ioc-extractor/actions/runs/40162675262).
+## Purpose and boundary
 
-## Layer and dependencies
+Explicit Spring adapter for the framework-free
+[local event contracts](../../platform/platform-events/README.md), published as
+`io.github.xorex-lc:ioc-events-spring`. The only public type,
+`SpringControlEventPublisher`, implements `ControlEventPublisher` using a
+service-supplied `ApplicationEventPublisher` and `ControlEventObserver`.
 
-Required main dependencies are `ioc-platform-events` at exactly the same version,
-Spring Context 7.0.9 and SLF4J API 2.0.18. The standalone POM has no private parent,
-Boot, logging provider, starter, auto-configuration or IOC application/domain
-coupling. The test-only application TCK supplies integration annotations.
+The adapter owns one publication attempt and its publication-level observation.
+Services own listener registration, dispatch configuration, isolation, execution,
+durable state and recovery. There is no broker, queue, retry, serialization or
+subscription framework here.
 
-The only public type is
-`com.iocextractor.adapter.out.events.spring.SpringControlEventPublisher`.
-Its public constructor accepts an application-owned `ApplicationEventPublisher`
-and `ControlEventObserver`; `publish(ControlEvent)` attempts delivery once and
-observes its result. No bean, listener, multicaster, error handler, executor or
-shutdown resource is created. Services own dispatch configuration and recovery.
+## Structure
 
-Ordinary runtime publication failures are observed and contained; direct Error
-and an immediately Spring-wrapped Error propagate. Observer and final logger
-runtime failures have explicit containment/suppression rules. No all-handler,
-nonthrowing, durable-completion or retry guarantee is added. Concurrent callers
-require a thread-safe delegate and observer. The maintained guide and public
-Javadoc define the complete failure/disclosure boundary.
-
-## Contents and verification
-
-| Path | Contents |
+| Directory / file | Responsibility |
 |---|---|
-| `src/main/java/com/iocextractor/adapter/out/events/spring/` | Publisher and package Javadoc |
-| `src/test/java/com/iocextractor/adapter/out/events/spring/` | Stub failure contracts and real-context listener/configuration integration |
-| `pom.xml` | Reactor build, parent-independent POM and publication archives |
+| [pom.xml](pom.xml) | Reactor identity, dependencies, flattened consumer POM and publication archives |
+| [Production package](src/main/java/com/iocextractor/adapter/out/events/spring/README.md) | Publisher, package Javadoc and exact failure/disclosure boundaries |
+| [Test package](src/test/java/com/iocextractor/adapter/out/events/spring/README.md) | Stub-based failure contracts and real Spring-context integration |
 
-Start with the [English guide](../../docs/guides/libraries/events-spring.md) or
-[Russian guide](../../docs/guides/ru/libraries/events-spring.md).
-[ADR 0047](../../docs/ADR/0047-explicit-spring-control-event-adapter.md) records
-ownership; [IOC coordination](../../docs/dev/event-coordination.md) explains the
-service's durable backstops and composition.
+One production package has a matching test package. Synthetic events, observers
+and logger fixtures are inline; there is no module-local test-resource tree.
+Packaging copies the repository LICENSE into `META-INF`.
 
-Run `make test-module MODULE=adapters/adapter-events-spring` and
-`make test-integration-module MODULE=adapters/adapter-events-spring`.
-The [standalone Spring consumer](../../tools/fixtures/events-spring-consumer/README.md)
-executes both actual guide examples on JARs, checks default/BOM mediation,
-dependency/routing negatives and eight primary hashes/origins. EN/RU Java/XML
-blocks must match before compilation. The
+## Dependencies
+
+Main dependencies are `ioc-platform-events`, Spring Context and SLF4J API.
+The qualified baseline is Java 21, Context 7.0.9 and SLF4J API 2.0.18. The
+parent manages reactor versions; packaging resolves a parent-independent POM.
+The core/adapter publication family requires the same version. Current source
+versions remain lockstep; the accepted independent-version transition is still
+[TOOL-9](../../docs/KNOWN-ISSUES.md), not a runtime compatibility checker.
+
+There is no production Boot dependency, logging provider, starter,
+auto-configuration or IOC application/domain coupling. The application TCK is
+test-scoped for integration annotations. Keep service events and IOC logging
+policy in their owning modules rather than adding them to this adapter.
+
+## Entry points and contracts
+
+Construction is explicit; the adapter installs no bean, listener, multicaster,
+error handler or executor and owns no shutdown resource. Ordinary runtime
+publication failures are observed and contained; direct Errors and immediately
+Spring-wrapped Errors propagate. Publication can fail after partial delivery,
+and normal return does not establish any/all-handler or durable completion.
+
+Observer and fallback-logger failures have separate containment rules, detailed
+in the production package. Concurrent use requires a thread-safe delegate and
+observer. No metadata inspection, payload copy or MDC propagation is added.
+
+IOC wires the publisher and its logging observer in
+[EventCoordinationConfig](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/EventCoordinationConfig.java).
+Its [coordination model](../../docs/dev/event-coordination.md) keeps events as latency
+hints and durable ledgers/reconciliation as the correctness backstop. Replacing
+that policy or configuring a different multicaster belongs to the service.
+
+## Verification and related docs
+
+Run from the repository root:
+
+```bash
+make test-module MODULE=adapters/adapter-events-spring
+make test-integration-module MODULE=adapters/adapter-events-spring
+```
+
+The first command runs Surefire; the second runs the Failsafe Spring-context
+contract and upstream modules. Full reactor acceptance uses `make verify`.
+The test README distinguishes inline executor checks from asynchronous-worker
+qualification. Public Javadoc and the [consumer guide](../../docs/guides/libraries/events-spring.md) ([RU](../../docs/guides/ru/libraries/events-spring.md))
+are the API and usage references; [ADR 0047](../../docs/ADR/0047-explicit-spring-control-event-adapter.md)
+records ownership.
+
+Normal packaging produces `target/publication.pom`; the `library-publication`
+profile adds source and strict Javadoc archives. The
+[standalone consumer](../../tools/fixtures/events-spring-consumer/README.md)
+uses prepared core/adapter bundles to execute both guide examples and check
+mediation, routing and eight primary artifact hashes/origins. A reactor pass
+alone does not establish repository consumption or another framework baseline.
+
+Published `0.3.0-rc.1` has separate Central/GitHub consumer evidence in the
 [release record](../../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md)
-retains original signed pair/repository evidence; the
-[publication procedure](../../docs/guides/library-publication.md#events-api-and-version-ownership)
-requires the published/qualified same-version core before protected adapter
-publication. Local consumers do not authorize a release or qualify another
-framework baseline, async all-handler completion or second deployed service.
+and protected run 40162675262. The [publication procedure](../../docs/guides/library-publication.md)
+requires the published/qualified same-version core before adapter admission.
+Those historical identities do not qualify a changed bundle, asynchronous
+all-handler completion or a second deployed service.
