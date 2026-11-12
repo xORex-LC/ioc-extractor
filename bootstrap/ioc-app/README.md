@@ -1,210 +1,88 @@
 # bootstrap/ioc-app
 
-## Назначение
+## Purpose and boundary
 
-Spring Boot executable jar and composition root for the IOC extractor.
+The executable Spring Boot application and composition root. Maven artifact
+`com.iocextractor:ioc-app` assembles framework-free core services and concrete
+adapters into oneshot commands or the long-running daemon. Inner modules must
+not depend on this module.
 
-**Правило слоя:** owns runtime configuration, Spring wiring and executable
-packaging. Business rules stay in domain/application; IO details stay in
-adapters.
+This module owns external configuration, IOC-specific wiring, startup/shutdown,
+control-event listeners and operational views. IOC algorithms and durable use
+cases belong to core; storage/transport/parser mechanics belong to adapters.
+The bootstrap Java package currently contains several capability groups in one
+flat directory. Its README provides a responsibility map without changing that
+layout.
 
-## Структура
+## Structure and reading order
 
-| Подпапка / файл | Назначение |
+| Directory / file | Responsibility |
 |---|---|
-| `pom.xml` | Executable app Maven module |
-| `src/main/java/com/iocextractor/` | Application entrypoint and bootstrap config |
-| `src/main/resources/` | Runtime `application.yml`, Logback config and Spring configuration metadata/hints |
-| `src/test/java/com/iocextractor/` | Context, architecture, configuration/documentation contracts and golden e2e tests |
+| [pom.xml](pom.xml) | Runtime assembly, executable packaging, build identity and test support |
+| [Application package](src/main/java/com/iocextractor/README.md) | Process entry point and early command paths |
+| [Bootstrap package](src/main/java/com/iocextractor/bootstrap/README.md) | Configuration, graph segments, startup barriers, workers and health |
+| [Runtime resources](src/main/resources/README.md) | Classpath defaults, logging and Spring registration/metadata |
+| [Test tree](src/test/java/com/iocextractor/README.md) | Repository contracts and composed runtime scenarios |
+| [Test resources](src/test/resources/README.md) | Isolated profiles, golden wires and independent consumers |
 
-## Configuration inspection
+Start at the application package for process behavior, then use the bootstrap
+map to select a capability. Cross-module algorithms remain in `docs/dev/`;
+operator procedures remain in `docs/guides/`.
 
-Source traversal and shared name observations come from
-[`adapter-config-spring-boot`](../../adapters/adapter-config-spring-boot/README.md).
-Bootstrap owns `IocProperties`, strict IOC spelling rules, compatibility checks
-for unsupported shared shapes, semantic validation, startup failures and source
-display selection. Shared observations do not establish Binder provenance;
-the local report retains the first external declaration.
+## Dependencies and packaging
 
-YAML and semantic-check failures use
-[controlled failure reports](../../docs/dev/configuration-failure-reports.md).
-Bootstrap retains IOC codes and migration guidance. The report omits parser and
-exception messages, validation values/arguments and dynamic map keys; owned Boot
-analyses omit the original cause so their DEBUG reporter cannot print it.
+The POM selects core, platform and adapter modules plus focused Boot starters
+for base runtime, validation, actuator and Web MVC. Direct framework APIs used by
+composition include Logback/SLF4J, HikariCP, Jakarta Validation, Commons CSV and
+Camel API. Shared versions belong to the parent, not another README inventory.
+The configuration processor is optional; TCK, Boot test support and ArchUnit are
+test-scoped. Dependency versions and transitive parser/crypto/database families
+must be assessed from the effective runtime tree.
 
-The semantic command keeps effective Boot sources, imports and profiles while
-registering only configuration/preflight beans. It blocks scalar/indexed extra
-bean sources and caller-owned CLI loading routes, pins its short-lived lifecycle
-and closes the context. Imports remain trusted deployment inputs. The
-[closed-input consumer recipe](../../docs/guides/libraries/config-spring-boot-check.md)
-uses a different explicit policy: one document plus literal overrides, with no
-ConfigData or ambient sources. `IocConfigurationContextIT` qualifies IOC loading
-and whole-list replacement; `ConfigurationCheckRecipeIT` runs the guide without
-IOC classes. Neither fixture establishes cold repository consumption.
+Spring JDBC arrives through the JDBC adapter, but a Boot JDBC auto-configuration
+module is not part of the runtime graph. Datasources, migrations, admission and
+writers are wired explicitly. Bootstrap can reference concrete adapters to bind
+ports; their SDK types must not leak inward into core contracts.
 
-## Artifact export graph
+This is the reactor's runnable JAR. The Boot plugin repackages it and generates
+`META-INF/build-info.properties`. Local builds record Maven identity and UTC time;
+`-Dbuild.commit=<full-hex-object-id>` activates the validated commit-metadata
+profile. Runtime does not need `.git`. CLI version reads that resource before
+Spring; actuator exposes available build identity. IDE execution may lack generated
+build metadata without preventing runtime bean construction.
 
-`ExportPlanCatalog` eagerly и без IO преобразует `ioc.export.profiles` в
-resolved application plans. На этой границе проверяются уникальность profiles,
-ссылки только на enabled sink artifacts, наличие identity policy, file-name
-коллизии и единственный поддержанный v1 mode `complete`. `planHash` включает
-CSV format, ordered schema, identity, весь active mapping артефакта и reusable
-export-slot policy для artifacts с внешней `id`.
+## Runtime boundaries
 
-Service datasource/migrations скрыты за `LazyServiceStorage`, который не
-реализует `DataSource` и поэтому не активируется type-discovery механизмами
-Spring/Actuator. Export use cases зарегистрированы как lazy beans.
-`ExportCommand` держит только `ObjectProvider`, поэтому `--help`, `extract` и
-`health` не открывают service SQLite. Первый фактический
-`ioc export` связывает `JdbcArtifactRevisionReader`, `JdbcSnapshotSliceReader`,
-`JdbcExportRunLedger`/progress store, `CsvArtifactSliceWriter` и Jackson codec.
-`JdbcSnapshotSliceReader` внутренне reconcile-ит same-dataframe-DB slot registry;
-отдельного Spring bean/module или service-DB authority для него нет.
+`IocExtractorApplication` checks internal YAML/semantic-validation requests before
+lightweight picocli help/version/health/syntax paths. Ordinary commands then enter
+Spring; oneshot closes the context and exits, while daemon mode keeps it running.
+The semantic checker creates only its explicit configuration/preflight graph;
+it does not component-scan the application. See the application-package README
+for the ordering and side-effect boundaries.
 
-`IocYamlSyntaxCheck` первым обслуживает internal packaged `ExecCondition`
-validation;
-`EarlyCliLauncher` затем завершает root/subcommand help, `-V`/`--version`,
-`health` и CLI syntax errors до `SpringApplication.run()`. Эти пути вообще не
-создают Spring context. Оставшийся oneshot context использует
-`spring.main.lazy-initialization=true`: validation-only ветки не создают
-dataframe datasource, миграции или тяжёлые use cases.
-В daemon mode `DaemonWebEnvironmentPostProcessor` принудительно возвращает eager initialization,
-чтобы schema migration/recovery завершились до запуска poller-ов и scheduler-ов.
-Spring Boot 4 подключён через focused starters. JDBC auto-configuration module отсутствует в
-runtime graph: storage, migrations и transactions по-прежнему собираются явно в composition
-root/JDBC adapter, а `DaemonWebEnvironmentPostProcessor` больше не поддерживает строковый список
-несуществующих JDBC exclusions.
+Daemon startup must complete migration, recovery and canonical-data admission
+before opening intake. Background hints only accelerate work: ledgers, durable
+revisions/deadlines and periodic reconcile remain authoritative. Export formation,
+mutable projection, lifecycle retention, import retention and file maintenance
+have distinct owners even when they share configuration or executors.
 
-Executable jar содержит стандартный `META-INF/build-info.properties`, который
-создаётся goal `spring-boot:build-info` только в этом runnable module. Обычная
-локальная сборка включает Maven group/artifact/name/version и UTC build time.
-Release/CI build дополнительно передаёт уже разрешённый полный Git SHA через
-`-Dbuild.commit=<sha>`; профиль `embed-build-commit` добавляет его как
-`build.commit`, проверяя full hexadecimal object ID, не выполняя `git` и не
-требуя `.git` во время runtime.
-Actuator публикует доступные значения в `/actuator/info`. Production beans не
-требуют наличия `BuildProperties`, поэтому запуск из IDE без generated metadata
-остаётся допустимым.
-CLI `ioc --version` читает этот resource напрямую через JDK-only reader и потому
-завершается до Spring startup; version обязательна, commit/time остаются optional.
+The shipped web surface is loopback actuator health/info in daemon mode, not a
+public IOC REST API. `runtime.mode` controls process/web behavior; observability
+mode selects logging defaults through Spring profiles. Keep those settings
+explicitly aligned in deployment configuration.
 
-`LoggingExportObserver` — bootstrap adapter application-порта: он переводит
-durable checkpoints saga в ECS actions/fields, не добавляя SLF4J-зависимость в
-application core.
+## Verification and related docs
 
-`LoggingPipelineDecisionTracer` — второй outbound adapter: он реализует двойной
-затвор `per-item-trace-enabled × logger TRACE`, строит ECS event только после
-обоих проверок, пишет safe short identity и маскирует URL query. Application
-stages передают ему только уже вычисленные решения.
+Run from the repository root:
 
-`RouterRuntimeConfiguration` активирует отдельный Camel runtime лишь при наличии
-`RouterPlanRegistration`, проверяет план до готовности контекста и передаёт
-владение остановкой Spring. В daemon mode условный health indicator сообщает
-готовность маршрутов. `RouterMdcScopes` ограничивает поля plan/view/branch
-временем локальной операции и возвращает родительский MDC. `RouterTraceBridge`
-отправляет технические решения без значений IOC в уже существующий
-`PipelineDecisionTracer`; итоговые диагностики остаются у application.
-`IocRouterConfiguration` регистрирует проверенные IOC-планы в одном Camel
-runtime. `DocumentProcessingAdapter` переводит результат в application port и
-использует preparer конкретного запуска. Обязательный `document-plan`
-задаёт этот путь для oneshot и daemon; отсутствие выбора отклоняется preflight.
-`IocProcessingOperations` и `IocProcessingRouteAdapter` общие для document и
-processed-import seams. `RouterProcessedImportRowPreparer` собирает одну
-логическую import-строку из явно названных IOC-входов и выходных колонок;
-каждый processed-контракт обязан выбрать путь через явный `processed-route`,
-даже при выключенном intake. Поставляемый документный план использует исходные
-значения и `retained-observations`; очистка host/IP требует явного нового плана.
-`IocProcessingProperties` связывает операторские планы типизированно, а
-`ProcessingPlanCatalog` при старте проверяет ссылки и формирует
-`ProcessingPlanBindings` для document/import точек входа. Отпечаток политики
-включает план и версию семантики. В daemon service schema v12 запрещает смену
-политики документа при незавершённом intake; закреплённый import contract
-сверяется до повторного staging.
+```bash
+make test-module MODULE=bootstrap/ioc-app
+make test-integration-module MODULE=bootstrap/ioc-app
+```
 
-Composition root выбирает typed `PipelineFailurePolicy`, diagnostic budget и
-non-throwing diagnostics bridge. Default application config — `fail-fast`; production
-daemon template явно задаёт `collect-and-continue` и budget 10 000.
-
-## Canonical lifecycle runtime
-
-Bootstrap собирает framework-free lifecycle use cases с SQLite adapters через common
-`CanonicalDataAdmissionState`. Stateful oneshot extract/export вызывают
-admission defensively; daemon export, deadline, history-retention и
-mutable-projection schedulers
-остаются инертны, пока ingestion startup coordinator не завершит run/source
-recovery и admission. Три lifecycle workers владеют отдельными single-thread
-`ScheduledExecutorService`. Deadline worker coalesce-ит lossy events и каждые
-`5s` read-only обновляет aggregate timer из durable nearest deadline; лишь due
-timer запускает reconciliation. Projection сохраняет `5s` generation backstop,
-а independent history worker по умолчанию запускается раз в `1h` и немедленно
-продолжает bounded backlog.
-
-`LifecycleHealthIndicator` только читает aggregate durable state и отображает
-safe `UP`, recoverable `DEGRADED` или fail-closed `DOWN`. Typed
-`ioc.lifecycle.validity` выбирает `disabled|fixed`, positive fixed TTL и explicit
-legacy policy; activation выполняется admission-ом до stateful work. Composition
-также вычисляет processing-policy fingerprint и подключает 30-day receipt fast
-path для daemon, а stateful oneshot пишет через тот же lifecycle writer.
-Classpath default остаётся upgrade-compatible `disabled`, тогда как fresh
-production packaging template включает `fixed/12h`; существующий operator YAML
-при upgrade не перезаписывается. Spring
-`@Scheduled`, ShedLock, Spring Batch, новый module и новая runtime library не
-используются.
-
-## Managed dataframe import runtime
-
-При `ioc.dataframe-import.enabled=true` composition root собирает framework-free
-recognition/staging/promotion/finalization use cases с local либо SMB ownership,
-service/dataframe JDBC evidence и общим post-commit event path. SMB sources
-используют тот же endpoint catalog и shared session pool, что ordinary sync;
-server-side rename предшествует durable local snapshot, а `CHANGE_NOTIFY`
-остаётся необязательным doorbell. Один shared local snapshot-store bean
-обслуживает local, SMB и replay flows через application port; transport router
-отдельно предоставляет source capability и terminal-source retention без
-adapter-to-adapter dependency. Один
-`CanonicalIntakeStartupCoordinator` держит ordinary ingest и managed import
-закрытыми до обеих recovery-процедур и lifecycle admission. Periodic full scan
-и ledger reconcile остаются correctness backstop; WatchService,
-`CHANGE_NOTIFY` и application events только вызывают bounded `nudge()`.
-
-Global import drain и recovery используют один constant keyed lane, поэтому
-executor ordering не может обойти минимальный durable sequence. Runtime health
-и Micrometer gauges публикуют только phase, aggregate backlog, safe head retry
-facts, aggregate source-readiness counts и lane depth. Incompatible source
-делает health `DOWN`, transient source — `DEGRADED`; endpoint/path/identity не
-публикуются.
-Shutdown сначала закрывает watches/new hints, затем scheduler и ждёт уже
-принятую lane work до typed timeout.
-
-## Ordered observation operations
-
-Composition включает cross-delivery ordering только при наличии enabled
-`latest-registered` artifact field. Oneshot использует registration decorator;
-daemon document intake выбирает JDBC либо file-backed admission journal;
-managed import резервирует admission atomарно с service delivery и передаёт тот
-же rank в canonical promotion. Startup восстанавливает pre-hash document
-admissions до ordinary source ledger и отказывается re-rank-ить legacy work.
-
-`ObservationRegistrationRetentionScheduler` выполняет bounded cleanup по
-существующему receipt/history horizon. Он не удаляет unresolved oneshot rows.
-`ObservationRegistrationHealthIndicator` публикует safe aggregate counts и
-переводит health в `DOWN`, если crashed oneshot registration остаётся без
-terminal disposition. Rollback schema v11 требует coordinated restore обеих DB,
-configuration и service-owned files; composition не поддерживает schema strip.
-
-`EventCoordinationConfig` явно создаёт `SpringControlEventPublisher` из
-[adapter-events-spring](../../adapters/adapter-events-spring/README.md).
-IOC-наблюдатель, обработчики и настройки Spring dispatch остаются в bootstrap;
-общий адаптер не регистрирует multicaster или executor.
-
-## Зависимости
-
-**Зависит от:** selected platform/core/adapters modules, Spring Boot and its
-Logback `StructuredLogEncoder`; `IocEcsStructuredLogEncoder` сохраняет static
-`event.dataset` внутри nested ECS context-pair object Boot 4.
-
-**Не импортируется:** no inner module depends on `ioc-app`.
-
-Mutable CSV устанавливается только через общий `GenerationOwnedArtifactProjection`:
-composition root не публикует raw `CsvArtifactProjection` как bean. Oneshot, ingest,
-run recovery и lifecycle convergence получают один `ArtifactProjection`.
+Full acceptance uses `make verify`. The tests exercise deterministic local
+composition and consumer contracts; they do not qualify a production host,
+live SMB server or reference-load profile. See
+[architecture](../../docs/ARCHITECTURE.md), [module boundaries](../../docs/BOUNDARIES.md),
+[configuration](../../docs/guides/configuration.md), [CLI](../../adapters/adapter-cli-picocli/README.md),
+[deployment](../../docs/guides/deployment.md) and [testing policy](../../docs/TESTING.md).

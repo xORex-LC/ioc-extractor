@@ -31,7 +31,7 @@ ID и перенесите результат со свидетельствам�
 его ID строчными буквами, например `KNOWN-ISSUES.md#ops-11`.
 
 Сначала устраняйте возможную потерю/пропуск входа и несогласованную активацию
-([OPS-11](#ops-11), [OPS-12](#ops-12), [OPS-13](#ops-13), [OPS-14](#ops-14)),
+([OPS-11](#ops-11), [OPS-12](#ops-12), [OPS-13](#ops-13), [OPS-14](#ops-14), [OPS-15](#ops-15)),
 параллельно рассматривая безопасность [SRC-3](#src-3). Затем — отказы повторов/
 статуса и оставшуюся ресурсную/эксплуатационную квалификацию. Новое обогащение,
 форматы и инструменты не заменяют эту работу.
@@ -166,6 +166,27 @@ restart/CLI может совместить новые host-файлы со ст
 единый путь отказа либо staging до preflight, тесты rejection/restart с проверкой
 unit/helpers/current/баз. См. [скрипт активации](../../packaging/deploy-local-root.sh)
 и [развёртывание](../guides/ru/deployment.md).
+
+<a id="ops-15"></a>
+### OPS-15 — Unchecked-сбой миграции может зафиксировать часть DDL
+
+**Открыто · владелец: миграции SQLite schema.** `SqliteUserVersionSchemaMigrator.apply`
+откатывает `SQLException`, но в `finally` восстанавливает auto-commit без
+безусловного rollback guard. На соединении с обычным исходным auto-commit
+unchecked-исключение или Error между DDL statements может зафиксировать предыдущие
+statements при неизменном `user_version`. Локальный fault-injection probe
+2026-11-12 на файловой SQLite выбросил `AssertionError` перед вторым CREATE:
+первая таблица сохранилась при версии ноль. Дефект касается обоих каталогов
+миграций; более сильный cleanup-контракт canonical writers на него не распространяется.
+
+После нештатного сбоя миграции сохраните и проверьте schema/version evidence,
+перед повтором восстановите согласованную резервную копию; не снижайте
+`user_version` и не считайте неуспешную версию гарантированно свободной от изменений.
+Закрытие требует rollback-before-restore для любого неуспешного pre-commit выхода,
+сохранения исходной/suppressed ошибки и регрессий для SQL, unchecked и Error paths.
+Сбой observer после commit должен оставаться отличимым от rollback. См.
+[мигратор](../../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/SqliteUserVersionSchemaMigrator.java)
+и [storage adapter](../../adapters/adapter-store-jdbc/README.md).
 
 ## Ресурсы, безопасность и квалификация цели
 

@@ -29,7 +29,7 @@ and move the outcome and evidence to the archive. Link to an item with its lower
 ID anchor, for example `KNOWN-ISSUES.md#ops-11`.
 
 Address possible lost/skipped input and inconsistent activation first
-([OPS-11](#ops-11), [OPS-12](#ops-12), [OPS-13](#ops-13), [OPS-14](#ops-14)),
+([OPS-11](#ops-11), [OPS-12](#ops-12), [OPS-13](#ops-13), [OPS-14](#ops-14), [OPS-15](#ops-15)),
 alongside the security disposition in [SRC-3](#src-3). Then address retry/status
 failures and outstanding resource/deployment qualification. New enrichment,
 formats and tooling options do not replace this operational work.
@@ -162,6 +162,27 @@ restore matching unit/helpers from the rollback point and reload systemd. Close
 with one failure path or staging before preflight, plus rejection/restart tests
 checking unit/helpers/current/databases. See [activation script](../packaging/deploy-local-root.sh)
 and [deployment](guides/deployment.md).
+
+<a id="ops-15"></a>
+### OPS-15 — Unchecked migration failure can commit partial DDL
+
+**Open · owner: SQLite schema migration.** `SqliteUserVersionSchemaMigrator.apply`
+rolls back `SQLException`, but its `finally` restores auto-commit without an
+unconditional rollback guard. On a normally auto-committing connection, an
+unchecked failure or Error between DDL statements can therefore commit earlier
+statements while `user_version` remains unchanged. A 2026-11-12 fault-injection
+probe on file-backed SQLite threw `AssertionError` before the second CREATE:
+the first table remained durable at version zero. This affects both migration
+catalogs; canonical writers' stronger cleanup contract does not cover it.
+
+After abnormal migration failure, preserve and inspect schema/version evidence
+and restore a coordinated backup before retrying; do not lower `user_version`
+or assume the failed version left no changes. Close with rollback-before-restore
+for every unsuccessful pre-commit exit, original/suppressed failure preservation
+and regressions for SQL, unchecked and Error paths. A post-commit observer failure
+must remain distinguishable from rollback. See the
+[migrator](../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/SqliteUserVersionSchemaMigrator.java)
+and [storage adapter](../adapters/adapter-store-jdbc/README.md).
 
 ## Resource, security and target qualification
 

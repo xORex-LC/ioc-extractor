@@ -1,75 +1,93 @@
-# adapter-processing-camel
+# adapters/adapter-processing-camel
 
-Internal Camel integration family for bounded preparation plans. The `contract`
-package contains neutral immutable descriptors, `compile` validates references
-and binds ordered predicates to a selector while generating local view and
-branch routes. `runtime` owns the embedded Camel context and selects an
-admitted plan by ID. It computes prerequisite and selected-branch mapping views
-on demand once per call, then sends eligible branches sequentially through the
-existing bound ProducerTemplate. Complete selection and required-view resolution
-precede every destination call. Each branch retains its native consumer and
-UnitOfWork, must return a typed reply, and sees a fresh exchange with the same
-immutable declared input. Ordered replies accumulate only within this invocation
-and become immutable on return. There is no extra dispatch route, Recipient List
-exchange, aggregation wrapper or batch-wide UnitOfWork.
-Fixed endpoints are bound after context startup and owned
-by that runtime; the template receives endpoint references.
-Parameterized predicates bind validated arguments once per condition leaf at
-compilation. Operation and destination processors are also captured during
-compilation; condition trace status labels are immutable constants, so disabled
-tracing performs no status-name formatting. The bound predicates must be reusable across concurrent calls;
-invocation-specific values never enter a shared argument cache.
-`RoutingExecutionScopes` and `RoutingTraceSink` are optional neutral hooks:
-bootstrap supplies MDC scopes and maps value-free decisions with the pinned
-policy fingerprint to the existing application tracer. A registered plan
-activates an isolated context; without a
-registration, bootstrap creates no Camel runtime. `CamelRouteRuntime` admits
-concurrent callers with invocation-local views and replies, exposes readiness,
-rejects new calls during close and waits for active calls for a bounded period
-before stopping Camel. Selected document and processed-import policies now share
-one admitted context; the branch route sets plan and branch IDs before a
-destination resolves its IOC-specific bindings. Malformed dynamic rule IDs and reason
-codes are replaced in trace evidence without changing the returned failure
-reference. The generated branch route sets the branch ID before calling its
-destination so a caller may bind distinct field views for branches sharing a
-destination; the reply retains the same branch ID. An unavailable destination
-may carry opaque local evidence to its caller, without teaching this technical
-module IOC diagnostics.
+## Purpose and boundary
 
-Only this adapter may depend on Camel. Operator input never supplies endpoint
-addresses or scripts. The compiled selector owns tri-state FIRST/ALL/EXCLUSIVE
-eligibility and no-match decisions; Camel owns ordinary operation and destination
-execution. An explicit `view.recover` edge uses one earlier alternate view and a
-registry-checked reason allowlist. The invocation-local result reports which
-branches actually demanded each failure, whether recovery succeeded, and any
-selected branch blocked during preparation. Destination replies are typed as
-prepared, filtered or expected failure. Unexpected exceptions abort the call.
-The outer application pipeline owns diagnostic severity, checkpoint and
-persistence. This module is not independently published.
+Internal embedded Camel runtime for bounded local preparation plans. The reactor
+artifact is `com.iocextractor:ioc-adapter-processing-camel`; it is not a runnable
+service or an independently published library.
 
-`camel-direct` supplies the local runtime endpoint, `camel-core-languages`
-supplies Camel's `simple` language required during context startup, and
-`jspecify` completes Camel's annotation types for bytecode analysis. These
-runtime/analysis dependencies have no source imports in this module. The
-Camel API, route model and runtime processor dependencies are declared directly;
-`camel-support` also supplies the DSL builder
-superclasses required at compile time and exchange fixtures in tests. Versions remain managed by the existing parent `camel.version` property.
+The module validates technical descriptors, compiles registered predicates and
+local routes, resolves demanded views and dispatches selected branches. It owns
+the embedded context, producer and endpoint bindings. IOC schemas, diagnostics,
+classification, mapping policy, canonical writes and failure-policy checkpoints
+belong to the caller. Operator configuration never supplies Camel endpoint URIs,
+scripts or arbitrary expression-language programs.
 
-Functional compiler/runtime conformance tests cover branch ordering, immutable
-replies, distinct exchanges, native UnitOfWork completion, recovery, stopped
-routes, readiness and bounded shutdown. Production Spring document/import
-fixtures connect this runtime to IOC preparation and Native canonical storage.
-Historical cost results and their limits are in
-[native capacity](../../docs/dev/native-capacity.md); they do not establish a
-portable throughput target.
+## Structure
 
-See [routing capability](../../docs/dev/processing.md),
-[module map](../../docs/MODULARIZATION.md) and
-[ADR 0031](../../docs/ADR/0031-bounded-camel-preparation-runtime.md).
-The execution simplification is decided by
+| Directory / file | Responsibility |
+|---|---|
+| [pom.xml](pom.xml) | Camel integration family and test architecture dependency |
+| [contract](src/main/java/com/iocextractor/adapter/processing/camel/contract/README.md) | Neutral descriptors, typed outcomes, selection/failure evidence and optional observation hooks |
+| [compile](src/main/java/com/iocextractor/adapter/processing/camel/compile/README.md) | Admission limits/references, once-bound predicates and generated local view/branch routes |
+| [runtime](src/main/java/com/iocextractor/adapter/processing/camel/runtime/README.md) | Isolated context lifecycle, per-invocation views/recovery, sequential dispatch and readiness |
+| [tests](src/test/java/com/iocextractor/adapter/processing/camel/README.md) | Real embedded Camel execution, admission, recovery, lifecycle and dependency boundaries |
+
+All three production packages share one test package. Fixtures are synthetic
+in-memory models/processors; there is no module-local resource tree.
+
+## Dependencies
+
+Production dependencies are Camel API, route model, core engine/processor and
+support, the direct component, core languages and JSpecify. The parent manages
+their versions; Java 21 is the project baseline. ArchUnit is test-scoped and
+JUnit/AssertJ come from the shared parent test setup.
+
+`camel-direct` provides local endpoints; `camel-core-languages` supplies the
+`simple` language needed at context startup. JSpecify supplies Camel annotation
+types for bytecode analysis. These dependencies are needed even without direct
+source imports. `camel-support` supplies DSL builder superclasses and test
+exchange fixtures. Preserve these roles during dependency cleanup.
+
+There are no application/domain/platform, Spring, CSV, database or remote
+transport dependencies here. Neutral does not mean every package is Camel-free:
+`contract` carries no Camel types, while `compile` deliberately accepts Camel
+processors and emits RouteBuilders. The local architecture test prevents IOC
+application/domain/bootstrap and Spring leakage across these packages.
+
+## Entry points and contracts
+
+Compile trusted `PlanDescriptor` values against an `OperationCatalog` using
+`CamelPlanCompiler`, then construct/close `CamelRouteRuntime`. Each `execute`
+selects one admitted plan, resolves reached eligibility and selected required
+views before any destination call, and dispatches eligible branches sequentially.
+View/reply state is per invocation. Branches have separate native Exchange and
+UnitOfWork instances; there is no batch-wide transaction or dispatch/Recipient
+List/aggregation wrapper route. Expected failures are typed; unexpected faults
+abort the call without rolling back effects of earlier processors.
+
+Collection snapshots do not deep-copy arbitrary values. Callers supply immutable
+or safely shared payloads and thread-safe reusable processors, predicates, scopes
+and observers. Separate exchange headers/properties do not isolate mutation of
+shared body objects. Runtime close rejects new calls and bounds active-call drain
+before stopping Camel; it cannot guarantee termination of arbitrary caller code.
+
+Current IOC bootstrap admits required document and processed-import policies
+into one shared context through
+[IocRouterConfiguration](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/IocRouterConfiguration.java) and
+[RouterRuntimeConfiguration](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/RouterRuntimeConfiguration.java).
+This is the required processing path, not an optional backend activated by an
+ad-hoc registration. Bootstrap owns Spring/MDC/tracer integration, policy
+fingerprints, readiness exposure and shutdown registration.
+
+## Verification and related docs
+
+Run from the repository root:
+
+```bash
+make test-module MODULE=adapters/adapter-processing-camel
+```
+
+All five local suites run in Surefire, including real embedded Camel tests;
+there are no local Failsafe suites. Full reactor acceptance uses `make verify`.
+The test README distinguishes technical conformance from IOC composition and
+capacity qualification.
+
+See [processing internals](../../docs/dev/processing.md),
+[processing routes guide](../../docs/guides/ioc-processing-routes.md),
+[ADR 0031](../../docs/ADR/0031-bounded-camel-preparation-runtime.md) and
 [ADR 0040](../../docs/ADR/0040-native-sequential-preparation-dispatch.md).
-
-The execution conformance suite checks native view UnitOfWork success/failure
-completion, stopped-route refusal and isolation of mutable exchange headers and
-properties between views and recipients. These guarantees also constrain future
-changes to execution granularity.
+Historical measurements and their limits live in
+[native capacity](../../docs/dev/native-capacity.md); they are not portable
+throughput or whole-process memory guarantees. Exact member guarantees remain
+in Java Javadoc; package READMEs provide the local reading map.

@@ -54,17 +54,17 @@ TEST и обновление документа не закрывают проч
 | `core/ioc-application-tck` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `adapters/adapter-config-spring-boot` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `adapters/adapter-events-spring` | `planned` | `planned` | `planned` | `planned` | `verified` |
-| `adapters/adapter-regex-re2j` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-psl` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-processing-camel` | `planned` | `planned` | `planned` | `planned` | `planned` |
+| `adapters/adapter-regex-re2j` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-psl` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-processing-camel` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `adapters/adapter-source-tika` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `adapters/adapter-csv` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `adapters/adapter-manifest-json-jackson` | `planned` | `planned` | `planned` | `planned` | `verified` |
-| `adapters/adapter-store-jdbc` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-transport-smb` | `planned` | `planned` | `planned` | `planned` | `planned` |
+| `adapters/adapter-store-jdbc` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-transport-smb` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `adapters/adapter-ingest` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `adapters/adapter-cli-picocli` | `planned` | `planned` | `planned` | `planned` | `verified` |
-| `bootstrap/ioc-app` | `planned` | `planned` | `planned` | `planned` | `planned` |
+| `bootstrap/ioc-app` | `planned` | `planned` | `planned` | `planned` | `verified` |
 
 ## Оставшаяся очередь
 
@@ -75,10 +75,10 @@ TEST и обновление документа не закрывают проч
 | Supported/history retirement surfaces | RETIRE / owning modules | Сохранить migrations/ledger replay, engine fallback, SMB, maintenance, publish/TCK до принятого retirement; [контракт](goals/R030-RETIRE-retirement.md) |
 | Security: SRC-3 | SEC / dependency owners | Датированная affected-version матрица сохранена; reachability/owner disposition либо qualified remediation и fresh security evidence ещё нужны |
 | SEC-LOG-1 | SEC / observability | При отложенном аудите SECURITY-ENGINEERING сверить broad redaction statement с formatter-only structured-context contract; free message/Throwable/cause/suppressed требуют producer ownership; это не доказательство новой утечки |
-| DOC remaining paths | DOC / owning documents | [198 исходных задач](documentation/remaining-work.tsv): 49 ADR translations, 126 исходных README reviews (11 README verified (CLI/configuration/CSV/Spring events/ingest/manifest), 115 pending), 2 отложенных security docs, 15 release records, 6 compatibility redirects; локальный частичный review не закрывает полный scope |
+| DOC remaining paths | DOC / owning documents | [198 исходных задач](documentation/remaining-work.tsv): 49 ADR translations, 126 исходных README reviews (23 README verified (CLI/configuration/CSV/Spring events/ingest/manifest/Camel/PSL/regex/JDBC/SMB/bootstrap), 103 pending), 2 отложенных security docs, 15 release records, 6 compatibility redirects; локальный частичный review не закрывает полный scope |
 | Publication follow-ups | LIB/SEC/REL | TOOL-6 API comparison, TOOL-7 provenance, TOOL-8 protected configuration CI recovery, TOOL-9 independent-version Maven/CI transition; не повторная публикация исходных RC |
 | External target qualification | DATA/REL / operators | OPS-8 H5 две identities; неподтверждённые server/platform claims остаются skips; source default disabled |
-| Operational/source findings | Owning capabilities / REL | OPS-10…14, OUT-4, ING-11/13/15/16, SRC-3 и TOOL-10 сохраняются в [KNOWN-ISSUES](../../KNOWN-ISSUES.md); retirement записок не закрывает их |
+| Operational/source findings | Owning capabilities / REL | OPS-10…15, OUT-4, ING-11/13/15/16, SRC-3 и TOOL-10 сохраняются в [KNOWN-ISSUES](../../KNOWN-ISSUES.md); retirement записок не закрывает их |
 | Internal ETL reuse | QUAL/ARCH / ETL | Перед внешним reuse/publication сверить direct construction, compacted-policy input, post-effect observer failures и resource budget; текущие ограничения закреплены в README/Javadoc, ARCH-5 |
 | Final release comparison | REL | Повторить representative workloads с сопоставимым boundary; latency/RSS regression и unavailable checks получают явный disposition |
 
@@ -180,3 +180,99 @@ probe. V1 golden, V2 round-trip и независимые consumer fixtures ра
 companion; только affected DOC cell закрыт. Прочие goals не переоценены.
 Проверки: make verify, dependency tree, make docs, README links/file maps/English,
 provenance/preservation и diff --check; локальные логи `.dev/manifest-readme-audit/`.
+
+### README Camel processing adapter — 2026-11-12
+
+Module README adapter-processing-camel пересмотрен; добавлены четыре English
+README: contract/compile/runtime и test package. Карта охватывает 21 production
+и 5 test Java files. Уточнены neutral/Camel dependency seam, admission bounds,
+once-bound predicates, ordered tri-state selection, lazy view/recovery evidence,
+native sequential dispatch/UnitOfWork, shallow payload ownership и lifecycle.
+Устаревший optional-registration текст заменён текущим required bootstrap path;
+разграничены readiness snapshot, bounded drain и termination caller workers.
+Один original queue item verified с сохранением ref/hash/language; companions
+отмечены в note, закрыт только affected DOC cell. Остальные goals и историческая
+capacity/security qualification не переоценены. Проверки: make verify, dependency
+tree, make docs, README links/file maps/English/provenance и diff --check;
+локальные логи `.dev/camel-readme-audit/`.
+
+### README PSL adapter — 2026-11-12
+
+Оба исходных README adapter-psl пересмотрены и переведены на English; добавлен
+test-package README. Сверены classifier/domain port/feature extractor/policy,
+bootstrap wiring, POM/dependency tree и packaged Guava suffix data. Уточнены
+PRIVATE/public boundaries, порядок shortcuts/PSL, UNKNOWN, lexical IPv4 и onion
+validation limits, bare-host input и отсутствие network refresh; устаревшая
+stage-3 привязка заменена actual call chain. Локальный 15-case probe подтвердил
+добавленные граничные пояснения, без изменения Java/tests. Два original queue
+items verified, provenance сохранены, новый README отмечен companion. Закрыт
+только affected DOC cell; остальные goals/security qualification не переоценены.
+Проверки: make verify, dependency tree, make docs, README links/file maps/English,
+provenance/preservation и diff --check; локальные логи `.dev/psl-readme-audit/`.
+
+### README regex adapter — 2026-11-12
+
+Оба исходных README adapter-regex-re2j пересмотрены/переведены English; добавлен
+test-package README. Карты охватывают четыре production files и shared contract
+suite. Сверены compile/cursor helpers, domain port/consumers, POM/tree и bootstrap
+selection/configured-pattern tests. Уточнены lazy borrowed CharSequence и lifetime,
+UTF-16 half-open/full-match offsets, eager mutable findAll и caller-owned limits,
+native errors, common syntax и explicit JDK choice без automatic fallback.
+Локальный contract и bootstrap corpus отделены от universal equivalence и
+security/performance qualification. Два original queue items verified, input
+provenance сохранены, новый README отмечен companion; только affected DOC cell
+закрыт, остальные goals не переоценены. Проверки: make verify, dependency tree,
+make docs, README links/file maps/English/provenance/preservation и diff --check;
+локальные логи `.dev/regex-readme-audit/`.
+
+### README JDBC storage adapter — 2026-11-12
+
+Пересмотрены module/package README adapter-store-jdbc; добавлены English README
+dataframe/service SQL и test package. Карты охватывают 100 production, 32 test
+Java files и 26 SQL resources. Сверены ownership двух БД, Native transaction/
+receipt/id/slot boundaries, schema catalogs, connection PRAGMAs, thread-confined
+sessions, workspaces и health/test limits. Два original queue items verified,
+input provenance сохранены; три companion README отмечены в note, закрыт только
+affected DOC cell. OPS-15 (unchecked migration failure commits partial DDL at old
+user_version) воспроизведён isolated file-backed SQLite probe и добавлен EN/RU
+в KNOWN-ISSUES; проблема открыта, canonical rollback guarantee не распространён
+на мигратор. Other goals, load/security/deployment qualification не переоценены.
+Проверки: make verify, dependency tree, make docs, all README links/file maps,
+English/provenance/preservation и diff --check; логи `.dev/jdbc-readme-audit/`.
+
+### README SMB transport adapter — 2026-11-12
+
+Пересмотрены/переведены module/package README adapter-transport-smb, добавлен
+English test-package README. Карты охватывают 22 production и 17 test Java files.
+Сверены POM/compile+runtime tree, bootstrap shared pool/snapshot/watcher wiring,
+endpoint/session ownership, encryption/timeouts, marker-last publish и его пределы,
+managed probe/claim/materialization/disposition/retention, notifications и telemetry.
+Уточнены positive-only live encryption contract, разные cleanup scopes notify/import
+fixtures, partial credential profiles и фактический охват two-identity denial test.
+Два original queue items verified, provenance сохранены; companion отмечен в note,
+закрыт только affected DOC cell. OPS-8 и server/security/capacity qualification
+не переоценены; external contracts без provisioned target остаются skipped.
+Проверки: make verify, make doctor-core/docs, dependency trees, source README links/
+file maps, English/provenance/preservation, command syntax/selectors и diff --check;
+логи `.dev/smb-readme-audit/`. Java/POM/tests unchanged.
+
+### README bootstrap application — 2026-11-12
+
+Последовательно пересмотрены/переведены module, entry-package и bootstrap-package
+README ioc-app; добавлены 13 English companions для runtime resources/META-INF,
+Java test groups и consumer/golden/customer resources. Карты охватывают 135
+production и 96 test-tree Java files плюс 2 Java consumer source fixtures.
+Плоский production package из 134 files разложен по responsibility sections без
+переноса Java. Сверены main/early CLI/checkers, explicit config/registry admission,
+AppConfig/SyncConfig/import graph, lazy datasource ownership, required processing
+и policy pins, recovery-before-intake, worker phases/admission/stop boundaries,
+mutable/immutable output, event backstops, health/logging и packaged resources.
+Исправлены монолитная карта несуществующих subdirectories, прежняя sequential
+export cadence, stale event-publisher ownership и optional-router framing.
+Три original queue items verified, provenance сохранены; 13 companions отмечены
+в note. Exact consumer slices не дополнены README (membership — wire contract).
+Закрыт только affected DOC cell; live SMB/deployment/security/load acceptance и
+other module goals не переоценены. Java/POM/config/test behavior unchanged;
+previous README waves и OPS-15 сохранены. Проверки: make verify, doctor/docs,
+runtime dependency tree, все source README links/maps, English/provenance/
+preservation, command syntax/selectors и diff --check; логи `.dev/bootstrap-readme-audit/`.

@@ -1,76 +1,106 @@
 # adapters/adapter-store-jdbc
 
-The outbound relational-storage adapter implements inward-facing application
-ports with Spring JDBC, sqlite-jdbc and HikariCP. It owns Native canonical
-transactions, schemas/migrations, lifecycle/history/receipts, identities,
-provenance, export slots, durable coordination ledgers and storage health.
-Domain/application code never imports JDBC, SQL or Spring transaction types.
+## Purpose and boundary
 
-## Contents
+SQLite implementation of inward application storage ports using Spring JDBC,
+sqlite-jdbc and HikariCP. The internal reactor artifact is
+`com.iocextractor:ioc-adapter-store-jdbc`; it is not independently published or
+runnable. Native SQLite is the production canonical backend. Private document
+and CSV-import workspaces are preparation mechanisms, not alternate canonical
+stores or publication backends.
+
+The adapter owns SQL, local transactions, schemas/migrations, identities,
+lifecycle/history/receipts, export slots, coordination ledgers and storage health
+observations. Application owns policies, orchestration and recovery; bootstrap
+owns datasource composition, shared writer admission and pool shutdown. Domain
+and application remain free of JDBC/SQL/Spring transaction types.
+
+## Structure
 
 | Location | Responsibility |
 |---|---|
-| `src/main/java/com/iocextractor/adapter/out/store/jdbc/` | Native repositories, transaction-scoped SQL helpers and private document/import workspaces |
-| `src/main/resources/com/iocextractor/adapter/out/store/jdbc/dataframe/` | Versioned canonical dataframe migrations |
-| `src/main/resources/com/iocextractor/adapter/out/store/jdbc/service/` | Versioned coordination migrations |
-| `src/test/` | File-backed Native contracts, failure/recovery, lifecycle, matching, slot and workspace checks |
+| [pom.xml](pom.xml) | Storage integration family and inward/test dependencies |
+| [Production package](src/main/java/com/iocextractor/adapter/out/store/jdbc/README.md) | Grouped map of repositories, transaction helpers, workspaces and ledgers |
+| [Dataframe migrations](src/main/resources/com/iocextractor/adapter/out/store/jdbc/dataframe/README.md) | Canonical metadata/receipt/identity/slot migration chain |
+| [Service migrations](src/main/resources/com/iocextractor/adapter/out/store/jdbc/service/README.md) | Durable coordination migration chain and retained upgrade history |
+| [Test package](src/test/java/com/iocextractor/adapter/out/store/jdbc/README.md) | Unit/SQL trust checks, file-backed SQLite contracts and opt-in import load |
 
-## Dependencies and boundaries
+There is one production Java package and one matching test package. Migration
+SQL is packaged under two separate resource families; test data/old-schema
+fixtures are built inline rather than stored in a test-resource tree.
 
-Depends on `ioc-application`, platform errors/diagnostics/observability, Spring
-JDBC/transactions, HikariCP and sqlite-jdbc. The application TCK is test-only.
-There is one production SQLite backend. Document preparation and sealed CSV
-import staging are retained private input mechanisms, not alternate canonical
-storage. The service DB owns coordination; the dataframe DB owns canonical
-facts and receipts. Bootstrap owns datasource lifetime.
+## Store authority and dependencies
 
-The service schema's nullable `import_delivery.public_mutations` is not populated
-or read by the current delivery ledger. NULL does not mean zero mutations or a
-failed canonical commit. Use dataframe `import_commit.public_mutations` through
-`JdbcImportCommitEvidenceStore` for committed mutation evidence; the service
-column is not a second canonical authority.
+| Store | Owns |
+|---|---|
+| Dataframe DB | Canonical rows/keys/aliases, provenance and ordered origins, lifecycle/history, observation order, canonical receipts, ID allocators, projection generations and export-slot state |
+| Service DB | Ingest/run, document admission/policy pins, import delivery/recovery references, export progress, fetch and publish coordination |
+| Private workspaces | Source/policy-pinned preparation and sealed import evidence; disposable under their ownership/recovery rules |
 
-## Runtime contracts
+These stores do not share a transaction. A service-ledger status or CSV file
+cannot substitute for canonical receipt authority. In particular, nullable
+`import_delivery.public_mutations` is neither populated nor read by the current
+delivery ledger: NULL is not a zero count or failed-commit signal. Committed
+mutation evidence comes from dataframe `import_commit` through
+`JdbcImportCommitEvidenceStore`.
 
-- Artifact schema reconciliation is additive and excludes internal `_` columns
-  from public-schema drift. Record/match identity migration stages collision
-  checks before durable changes. Normal migrations reject unsupported formats.
-- Ordinary lifecycle confirmation is atomic per artifact. Managed import is
-  atomic across its branches and receipt. Canonical/lifecycle ID reservations
-  are durable and never reused after rollback; external sparse slots are a
-  separate `(profile, artifact)` contract.
-- Unsuccessful transactions, including `Error` paths, roll back before restoring
-  auto-commit. Post-commit recovery remains receipt-owned. TEMP planning is local
-  to an operation and its cleanup is explicitly scoped to the `temp` schema.
-- Preferred-slot requests and resolutions stream through SQL scratch with
-  complete-set validation before allocation. Conflicting new related keys reject
-  complete logical fan-outs; an unassigned survivor in an initialized slot
-  namespace is a row rejection, never a fabricated canonical-ID assignment.
-- Fair writer admission does not preempt active transactions. Safe lifecycle
-  UTC is sampled after obtaining Native write ownership; active reads use a
-  strict deadline predicate.
-- Indexed complete-key matching and mutation sessions reuse at most 32
-  thread-confined statements. Sessions own statements; callers own connections,
-  transactions, ID ranges, revision aggregation and receipt publication.
-- Private document leases account aggregate memory, disk and pins. Disk-backed
-  source pages/extraction scratch and the global reducer feed sealed repeatable
-  cursors. Source scratch is removed before seal. File leases and ownership
-  markers prevent cleanup of live or foreign workspaces.
-- Bounded row decoding and 128-row/1-MiB receipt batches avoid a retained
-  document-wide payload. Receipt replay merges ordered row/position cursors in
-  one snapshot and rejects missing, duplicate or orphan position evidence.
-  Separately, the private document-row format limits its values map and its
-  ordered-field-position map to 128 entries each. This structural cap is not a
-  receipt batch size or a general CSV-column limit; byte limits apply as well.
-- Mutable projection streaming returns count and generation from one read
-  transaction. Acknowledgement records installed coverage only, leaving newer
-  work pending. CSV installation/acknowledgement is application-serialized.
-- Connection PRAGMAs are physical-driver settings, not repeated pool-borrow
-  mutations. Logging uses the shared typed event/field catalog.
+Direct production dependencies are `ioc-application`, platform diagnostic API,
+errors/diagnostics/observability, SLF4J, Spring JDBC/transactions, HikariCP and
+sqlite-jdbc. The application TCK is test-scoped. Versions and Java 21 come from
+the parent. There is no sibling-adapter, CSV parser, Camel, transport or bootstrap
+dependency; composition supplies those collaborators through inward contracts.
 
-For cross-module algorithms, recovery, migrations and limits, see
-[storage](../../docs/dev/storage.md),
+## Entry points and contracts
+
+Bootstrap opens service/dataframe pools, runs the explicit version catalogs,
+reconciles configured artifact schemas/identity and completes lifecycle admission
+before intake. Artifact reconciliation is additive and excludes internal `_`
+columns from public drift checks; destructive/type drift requires an explicit
+migration. Identity backfill preflights collisions before durable mutation.
+
+Ordinary confirmation is atomic per artifact; managed import promotes accepted
+branches and its receipt in one dataframe transaction. Independently committed
+canonical/lifecycle ID ranges stay burned after rollback. Reusable sparse
+immutable-export slots are a separate `(profile, artifact)` identity contract.
+Native canonical writers roll back unsuccessful transactions, including Error
+paths, before restoring auto-commit; post-commit failures remain receipt-owned.
+This is not a blanket guarantee for every transaction helper: the migrator's
+unchecked-failure gap is [OPS-15](../../docs/KNOWN-ISSUES.md#ops-15).
+
+Writer admission is shared, in-process and non-preemptive. Native lifecycle writes
+sample safe UTC after SQLite write ownership; active membership uses a strict
+deadline. Statement/mutation sessions are thread-confined and close before their
+caller commits. Workspaces account memory/disk/pins independently; SQL-backed
+planning and streaming remove retained delivery-wide Java payloads without
+establishing a total process RSS bound.
+
+Mutable projection streaming returns count/generation from one read transaction;
+acknowledgement installs only that generation, leaving newer work pending. CSV
+installation/acknowledgement is application-serialized. Immutable export captures
+profile coverage and rows in one snapshot after slot reconciliation. Filesystem
+publication and service finalization remain separate recoverable effects.
+
+The production package explains receipt completeness/batching, slot validation,
+connection ownership and workspace cleanup. PRAGMAs are physical-driver settings,
+not mutations repeated on each pool borrow. Storage health is a local observation,
+not proof that all application ledgers, clocks or delivery state are healthy.
+
+## Verification and related docs
+
+Run from the repository root:
+
+```bash
+make test-module MODULE=adapters/adapter-store-jdbc
+make test-integration-module MODULE=adapters/adapter-store-jdbc
+```
+
+Surefire and Failsafe own separate cohorts; the opt-in managed-import load shell
+normally skips. Full reactor acceptance uses `make verify`. The test README maps
+local evidence, inherited TCKs and workload/target limits. A passing gate does not
+close the [known storage/operational issues](../../docs/KNOWN-ISSUES.md).
+
+See [storage](../../docs/dev/storage.md),
 [canonical lifecycle](../../docs/dev/canonical-record-lifecycle.md),
-[dataframe import](../../docs/dev/dataframe-import.md) and
-[native capacity](../../docs/dev/native-capacity.md).
-The storage decision is [ADR 0042](../../docs/ADR/0042-native-sqlite-production-storage.md).
+[dataframe import](../../docs/dev/dataframe-import.md),
+[native capacity](../../docs/dev/native-capacity.md) and
+[ADR 0042](../../docs/ADR/0042-native-sqlite-production-storage.md).
