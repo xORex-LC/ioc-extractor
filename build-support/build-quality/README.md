@@ -1,57 +1,74 @@
-# build-support/build-quality
+# Shared analyzer verification tools
 
-## Purpose
+## Purpose and structure
 
-Repository-owned, JDK-only verification of build-quality analyzer scope and
-report integrity. The verifier is neutral infrastructure shared by SpotBugs,
-PMD CPD and PMD source analysis; it contains no production code and is not a
-Maven reactor project.
+JDK-only source/configuration/report checks shared by the three analyzer report
+owners. This directory has no POM and is not a reactor module. The tools must
+remain outside production dependencies and production coverage denominators.
 
-## Structure
-
-| File | Purpose |
+| File | Responsibility |
 |---|---|
-| `BuildQualityVerifier.java` | Fail-closed reactor/manifest reconciliation and control-specific report validation |
-| `BuildQualityVerifierTest.java` | Synthetic-reactor contract harness for happy paths and negative mutations |
-| `SpotBugsBaselineVerifier.java` | Exact accepted-finding validation, raw/report reconciliation and proposal-only delta generation |
-| `SpotBugsBaselineVerifierTest.java` | Synthetic baseline, analyzer-health and aggregate-integrity contract harness |
-| `SpotBugsReportFilter.java` | Applies the generated narrow filter to raw SpotBugs XML without a second bytecode-analysis pass |
+| [BuildQualityVerifier.java](BuildQualityVerifier.java) | Reconcile reactor/manifest/dependency/source scope and control-specific late report contracts |
+| [BuildQualityVerifierTest.java](BuildQualityVerifierTest.java) | Temporary synthetic reactors, valid configurations and negative mutations |
+| [SpotBugsBaselineVerifier.java](SpotBugsBaselineVerifier.java) | Validate accepted identities, emit narrow filter, compare raw/filtered/aggregate findings and propose non-accepting deltas |
+| [SpotBugsBaselineVerifierTest.java](SpotBugsBaselineVerifierTest.java) | Synthetic baseline, proposal constraints, analyzer health and aggregate-union scenarios |
+| [SpotBugsReportFilter.java](SpotBugsReportFilter.java) | Apply SpotBugs' workflow filter to existing raw XML without another bytecode-analysis pass |
 
-The root POM compiles the JDK-only sources with AntRun and runs both contract
-harnesses once in `validate` with `inherited=false`. It then validates the real
-SpotBugs, CPD and PMD manifests plus the SpotBugs accepted baseline before Maven
-starts child projects. Analyzer report modules run the applicable verifier
-later in `verify`, after their reports exist.
+## Invocation and dependency ownership
 
-## Contract tests
+The [root POM](../../pom.xml) compiles these default-package classes together with the
+coverage/test-lifecycle tools using the configured Java release, then runs all
+four standalone contract harnesses once in root `validate` (`inherited=false`).
+The real manifests and baseline are validated before child builds. Report POMs
+reuse these tools for their late checks; PMD also uses Java source-file execution.
 
-Run the root-only fail-fast gate with:
+Run the early contract gate from the repository root:
 
 ```bash
 ./mvnw -B -ntp -N validate
 ```
 
-The fixture harnesses never change the checkout. They create temporary
-synthetic reactors and currently verify:
+This does not generate current production analyzer reports. Full `make verify`
+and the separate `make pmd-analysis` own those executions. Harness success
+validates exercised verifier behavior, not correctness of every production class.
+Temporary synthetic reactors do not alter the checkout.
 
-- `BuildQualityVerifier`: 8 happy paths and 59 negative scenarios covering
-  reactor/manifest drift, packaging and skip policy, report-module ordering,
-  SpotBugs/CPD/PMD scope, exact PMD rulesets/properties, suppressions, PMD
-  per-rule and CPD group-count ratchets, stale output cleanup and late XML/HTML
-  integrity;
-- `SpotBugsBaselineVerifier`: 4 happy paths and 24 negative scenarios covering
-  accepted-entry schema, review-trigger quality, selector precision, analyzer
-  health, exact raw identity comparison, filtered visibility, module coverage
-  and aggregate-union integrity.
+The verifiers use JDK XML/filesystem APIs without a parser or Maven-model library.
+`SpotBugsReportFilter` compiles with the JDK alone but reflectively needs the
+compatible SpotBugs engine on its runtime classpath, supplied by AntRun's plugin
+realm. It is a version-sensitive bridge, not a general public filtering API.
 
-Each negative case must return a non-zero status and a stable, specific
-diagnostic. Add a regression scenario whenever verifier behavior is tightened
-or a fail-open path is found.
+## Contracts and limits
 
-## Ownership
+`BuildQualityVerifier` accepts `spotbugs`, `cpd` or `pmd`, with `validate` or
+`verify-reports`; PMD late verification also selects `policy` or `watchlist`.
+Early validation checks accepted reactor coordinates/dispositions, report ordering,
+source roots, cleanup/wiring, exact rulesets and relevant suppression/skip policy.
+Late checks require usable XML/HTML and enforce the selected report contract.
 
-Control-specific manifests and report configuration remain with
-`build-support/spotbugs-report`, `build-support/cpd-report` and
-`build-support/pmd-report`. Common reactor parsing, dispositions and set
-reconciliation belong here; do not copy them back into individual report
-modules.
+CPD compares reported unique file paths to every current in-scope Java file.
+PMD reports list finding-bearing files: the verifier checks those paths against
+the admitted inventory, accepted rules and engine, and rejects processing/config
+errors. It does not reinterpret an omitted PMD `<file>` as a missing analyzed file.
+SpotBugs checks expected report pairs/exclusions; its baseline verifier additionally
+compares the raw aggregate to the module findings as a multiset.
+
+`SpotBugsBaselineVerifier` has `validate`, `verify` and `propose` modes. Validation
+writes only the generated filter. Verification compares raw identities before
+checking filtered visibility and aggregate integrity. Proposal writes only under
+`target/` and cannot accept findings or edit the tracked baseline. See the
+[SpotBugs owner](../spotbugs-report/README.md) for identity and review rules.
+
+The filter bridge intentionally returns when raw XML is absent. Its successful
+exit alone is not completeness evidence; late scope/baseline checks reject missing
+required reports. The full contract is provided by the ordered lifecycle, not
+by each helper invocation in isolation.
+
+All command failures return nonzero with diagnostics. Synthetic negative cases
+must assert both rejection and the expected diagnostic. Add a regression mutation
+for a corrected fail-open path; keep new control-specific policy with its owner,
+and common reactor/set/report mechanics here. The matrix covers reviewed cases,
+not every possible hostile or malformed build input.
+
+[CPD](../cpd-report/README.md), [PMD](../pmd-report/README.md) and
+[build-quality internals](../../docs/dev/build-quality.md) own their report/configuration details.

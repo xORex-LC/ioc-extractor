@@ -1,32 +1,21 @@
-# com.iocextractor.application
+# Application capability map
 
-## Назначение
+## Purpose and boundary
 
-Прикладной слой: порты (driving/driven), модель ETL-конвейера и use-case,
-оркестрирующий извлечение. Описывает *что* делает приложение, не зная *как*
-(через порты).
+Application services, models and ports shared by the driving and driven layers. Dependencies point inward; direct use of application value types by adapters is expected, not a claim that only interfaces can cross a module boundary.
 
-**Правило слоя:** зависит на `domain` и framework-free platform contracts
-(`diagnostics`). Не зависит на адаптеры, Spring и `bootstrap`. Реализации портов
-внедряются снаружи (composition root).
+## Structure
 
-## Структура
-
-| Подпапка | Назначение |
+| Entry points / files | Responsibility |
 |---|---|
-| `port/in/` | Driving-порты: extraction, ingest, maintenance, artifact export/recovery и remote sync use cases |
-| `port/out/` | Driven-порты: source/sink/lookup, ingest, canonical storage, streaming artifact export и remote sync |
-| `artifact/` | Storage-neutral artifact row identity, canonical artifact snapshots and run-ledger recovery model |
-| `ingest/` | Whole-file ingest use case, source state model and post-completion control facts |
-| `export/` | Artifact Emission model: resolved plan, snapshot/manifest, formation saga, progress и retention descriptors |
-| `dataframeimport/` | Framework-free contract compiler, delivery state и merge policy managed dataframe import |
-| `sync/` | Transport-neutral remote sync value objects, error taxonomy and retry policy |
-| `cadence/` | Framework-free interval/quiet-period scheduling policies с injected `Clock` |
-| `observability/` | Compact already-computed per-item decisions для outbound TRACE port |
-| `pipeline/` | `Envelope`/`Stage`/`PipelineRunner` и concrete stages текущего ETL |
-| `service/` | `IocExtractionService` — use-case boundary и запуск pipeline |
+| [port/README.md](port/README.md) | Driving versus driven seams and collaborator ownership. |
+| [service/README.md](service/README.md), [pipeline/README.md](pipeline/README.md) | Extraction invocation ownership, stages, payloads and outcome mapping. |
+| [artifact/README.md](artifact/README.md), [observation/README.md](observation/README.md) | Identity/mutation/lifecycle and cross-delivery ordering. |
+| [ingest/README.md](ingest/README.md), [dataframeimport/README.md](dataframeimport/README.md) | Document occurrences and managed structured deliveries have distinct recovery protocols. |
+| [export/README.md](export/README.md), [sync/README.md](sync/README.md), [cadence/README.md](cadence/README.md) | Immutable formation, remote delivery/fetch and pure cadence policies. |
+| [maintenance/README.md](maintenance/README.md), [observability/README.md](observability/README.md), [classification/README.md](classification/README.md) | Retention units, computed trace values and historical package marker. |
 
-## Зависимости
+## Contracts and maintenance
 
-**Зависит от:** `domain`, `diagnostics`. **Не импортируется** адаптерами иначе
-как через порты и use-case boundary.
+Use a capability README for its local responsibilities, then its port/Javadoc for exact guarantees. Generic `Envelope`, `Stage`, `Pipeline` and `PipelineRunner` live in `platform-etl`; this module owns IOC payloads and stage implementations. Shared IOC classification is implemented in `ioc-processing`, not duplicated in the marker package. Configuration binding, scheduler/executor construction and actuator/SLF4J projection remain bootstrap responsibilities.
+[Module map](../../../../../../README.md) owns dependencies and verification; exact member guarantees remain in Javadoc.

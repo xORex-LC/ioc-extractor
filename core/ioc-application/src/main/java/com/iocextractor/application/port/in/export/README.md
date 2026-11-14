@@ -1,46 +1,21 @@
-# com.iocextractor.application.port.in.export
+# Immutable export driving ports
 
-## Назначение
+## Purpose and boundary
 
-Driving-порты bounded context **Artifact Emission**. Это единственная
-точка входа для CLI, scheduler и startup recovery: входной адаптер
-выбирает profile, а application service целиком исполняет или
-восстанавливает formation saga.
+Validate a profile without side effects, form a complete immutable slice, recover incomplete work and sweep whole-slice retention.
 
-**Правило слоя:** пакет содержит только primary interfaces и их
-command/result DTO. Входной адаптер не зависит от concrete service и
-не получает доступ к driven-портам.
+## Structure
 
-## Структура
-
-| Файл | Назначение |
+| Entry points / files | Responsibility |
 |---|---|
-| `ExportArtifactsUseCase` | Запуск одного configured profile до terminal result |
-| `ExportArtifactsCommand` | Минимальная команда с именем profile; storage/layout settings в неё не передаются |
-| `ExportArtifactsResult` | Terminal status и optional run/slice identity; pre-gate `SKIPPED` не создаёт run и возвращает `runId=null` |
-| `ValidateExportProfileUseCase` | IO-free preflight profile до разрешения CLI полного lazy export graph |
-| `RecoverExportUseCase` | Startup forward recovery всех durable incomplete runs |
-| `RunSliceRetentionUseCase` | Один profile-scoped sweep завершённых immutable slices |
-| `SliceRetentionResult` | Счётчики scanned/deleted/blocked и удалений по profile |
+| [ValidateExportProfileUseCase](ValidateExportProfileUseCase.java), [ExportArtifactsUseCase](ExportArtifactsUseCase.java), [ExportArtifactsCommand](ExportArtifactsCommand.java), [ExportArtifactsResult](ExportArtifactsResult.java) | IO-free selection before resolving the stateful export graph. |
+| [RecoverExportUseCase](RecoverExportUseCase.java), [RecoverExportProfileUseCase](RecoverExportProfileUseCase.java) | Standalone versus already-leased profile recovery. |
+| [RunSliceRetentionUseCase](RunSliceRetentionUseCase.java), [SliceRetentionResult](SliceRetentionResult.java) | Delivery-aware retention by profile. |
 
-## Контракт вызова
+## Contracts and maintenance
 
-- `export` возвращается только после terminal state: срез доступен,
-  изменений нет (`SKIPPED`) или запуск завершился ошибкой.
-- `SKIPPED` после materialization содержит run id; cheap pre-gate `SKIPPED`
-  не содержит его, поскольку single-flight/ledger не затрагивались.
-- `recoverIncomplete` возвращает число проверенных runs, а не число
-  созданных срезов.
-- Driving adapter сначала вызывает lightweight profile validation и только затем
-  разрешает storage-backed export use case; application service повторяет проверку
-  на собственной границе.
-- Slice retention применяет `max-age`/`max-count` независимо к каждому profile;
-  blocked candidates остаются в пуле, поэтому count limit при pins best-effort.
-- CAS transitions, single-flight, filesystem inspection и retry decisions — ответственность
-  application service за driven-портами, не CLI/scheduler.
+`ExportArtifactsResult` reflects formation, not remote delivery. An unchanged pre-gate can return SKIPPED without a created run; later same-byte output with newer coverage still forms a new delivery-significant slice.
 
-## Зависимости
+Formation and recovery share the cross-process profile operation lease. `RecoverExportProfileUseCase` assumes the owner already holds it; standalone recovery must acquire it. Export uses one consistent reader-owned callback snapshot and retains manifest coverage for recovery, not a later canonical reread. Remote publish has its own ports/ledger.
 
-**Зависит от:** `application.export` DTO/state vocabulary.
-
-**Не импортирует:** adapters, JDBC, filesystem, Spring, picocli и transport API.
+[Capability internals](../../../../../../../../../../../docs/dev/artifact-export.md) owns the cross-module flow. [Module map](../../../../../../../../../README.md) owns dependencies and verification; exact member guarantees remain in Javadoc.

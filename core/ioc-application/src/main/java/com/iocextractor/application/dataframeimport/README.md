@@ -1,54 +1,29 @@
-# com.iocextractor.application.dataframeimport
+# Managed dataframe import orchestration
 
-Framework-free application model for managed import of structured dataframe
-deliveries. P0 defines configuration compilation, behavior fingerprints,
-tri-state cells, merge policies and recovery state. P4 adds exact-one
-recognition and streaming recognition-to-sealed-stage orchestration. P5 adds
-ledger-first admission, source-keyed complete-listing coordination and the
-post-snapshot hint. P6 adds the forward-only staged/promotion receipt boundary
-and a decorator that publishes only post-commit convergence hints. The package
-performs no filesystem, CSV, Spring, SMB or JDBC work.
+## Purpose and boundary
 
-| Subpackage | Responsibility |
+Compile/recognize structured contracts and advance each owned delivery through pinned snapshots, sealed stage, atomic canonical promotion and forward terminalization.
+
+## Structure
+
+| Entry points / files | Responsibility |
 |---|---|
-| `model/` | Delivery, snapshot, stage and policy value objects |
-| `contract/` | Collect-all source-contract compiler and immutable catalog |
-| `mapping/` | Header resolution, declarative row mapping and field-level tri-state merge decisions |
+| [contract/README.md](contract/README.md), [mapping/README.md](mapping/README.md), [model/README.md](model/README.md) | Compiled catalog, tri-state mapping and durable delivery vocabulary. |
+| [DataframeImportAdmissionService](DataframeImportAdmissionService.java), [DataframeImportDetectionService](DataframeImportDetectionService.java), [DataframeImportSourceReadinessCoordinator](DataframeImportSourceReadinessCoordinator.java) | Ledger-first admission, complete listing and source capability gate. |
+| [DataframeImportDetectionCoordinator](DataframeImportDetectionCoordinator.java), [DataframeImportDrainCoordinator](DataframeImportDrainCoordinator.java), [DataframeImportRecoveryCoordinator](DataframeImportRecoveryCoordinator.java) | Coalesced per-source/global-lane hints; durable order remains authority. |
+| [DataframeImportStagingService](DataframeImportStagingService.java), [DataframeImportStager](DataframeImportStager.java) | Recognize/map/verify one sealed private stage without canonical writing. |
+| [DataframeImportPromotionService](DataframeImportPromotionService.java), [DataframeImportProcessingService](DataframeImportProcessingService.java), [DataframeImportRecoveryService](DataframeImportRecoveryService.java) | Advance only the durable nonterminal head and finalize from committed evidence. |
+| [DataframeImportValidationService](DataframeImportValidationService.java), [DataframeImportStatusService](DataframeImportStatusService.java), [DataframeImportReplayService](DataframeImportReplayService.java), [DataframeImportRetentionService](DataframeImportRetentionService.java) | Advisory preview, bounded status, new replay occurrence and ordered cleanup. |
+| [EventPublishingCanonicalImportWriter](EventPublishingCanonicalImportWriter.java), [ImportDeliverySnapshotPinned](ImportDeliverySnapshotPinned.java), [ResilientDataframeImportObserver](ResilientDataframeImportObserver.java) | Post-effect hints and isolated operational observation. |
 
-`DataframeImportStagingService` implements the narrow `DataframeImportStager`
-application seam and streams each pinned snapshot through the driven CSV and
-workspace ports without touching canonical truth. Driving and driven boundaries
-are under `application.port.{in,out}.dataframeimport`; all integration mechanisms
-remain in their adapters.
+## Contracts and maintenance
 
-`DataframeImportAdmissionService` reserves global order before transport work,
-persists retry eligibility instead of sleeping and publishes
-`ImportDeliverySnapshotPinned` only after immutable evidence is durable.
-`DataframeImportDetectionCoordinator` serializes poll/watch triggers by source;
-its full-source reconcile path remains correctness authority.
-`DataframeImportSourceReadinessCoordinator` gates each source through a
-transport-neutral positive capability result, caches success and reprobes a
-closed source without stopping unrelated sources.
+Reserve global claim order before transport work, then own exact immutable bytes. Full listing and readiness are independent of notifications. A closed source can be reprobed without blocking unrelated detection; it does not authorize bypassing the durable FIFO head.
 
-`DataframeImportPromotionService` advances only the durable global head from
-`STAGED` through `PROMOTING` to `CANONICAL_COMMITTED`. A receipt replay is a
-forward-finalization result and never reapplies business mutations.
-`EventPublishingCanonicalImportWriter` emits deadline, projection and artifact
-hints only for a newly committed result; durable dataframe markers remain the
-correctness backstop.
+Recognition pins exactly one allowed contract. Staging streams through a preparation session, closes that session before seal, and verifies sealed integrity. Source authority, per-row atomicity, duplicate policy and quota accounting apply to processed as well as as-is rows.
 
-`DataframeImportProcessingService` treats a durable state that already advanced
-across a failed call response as successful replay evidence. It schedules a
-retry only while the same operation still owns the current state and fails
-closed on impossible backward transitions. Forward deliveries own source
-disposition; a replay derives an explicit source-detached occurrence kind from
-its durable causal parent and never calls a transport adapter for disposition.
+The canonical writer atomically commits the accepted delivery across affected dataframe artifacts and a durable receipt. A failed response after commit is not permission to apply again: current ledger/receipt evidence determines forward finalization. Contradictory or impossible backward state fails closed. Operational observer and post-snapshot/postcommit events only accelerate convergence.
 
-`DataframeImportRetentionService` selects terminal outcomes with the shared
-retention policy but owns import-specific cleanup order: transport terminal
-source first for forward occurrences, then protected local terminal evidence,
-workspace, snapshot and dataframe receipt, with ledger CAS deletion last.
+Replay is a new causally linked, source-detached occurrence, never reopening terminal state or disposing a producer object again. Retention removes the forward transport terminal object first, then protected local terminal unit/workspace/snapshot/receipt, and ledger CAS last. Shared registration references obey their own safe purge handshake. Validation/status do not grant live claim, reorder, skip or mutation authority.
 
-`ImportWorkspaceException` classifies safe staging consistency, capacity and
-storage failures outside the port namespace, preserving the ports-as-interfaces
-boundary.
+[Capability internals](../../../../../../../../../docs/dev/dataframe-import.md) owns the cross-module flow. [Module map](../../../../../../../README.md) owns dependencies and verification; exact member guarantees remain in Javadoc.

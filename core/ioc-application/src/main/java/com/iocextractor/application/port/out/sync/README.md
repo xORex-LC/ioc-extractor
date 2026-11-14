@@ -1,51 +1,23 @@
-# application.port.out.sync
+# Remote transport and sync ledgers
 
-## Назначение
+## Purpose and boundary
 
-Outbound-порты синхронизации. Application use cases зависят только от этих
-интерфейсов; SMB/SFTP/S3 и их connection/session lifecycle остаются во внешних
-adapter-модулях.
+Hide protocol sessions/handles and separate remote file operations from local completed-slice discovery, durable work and optional push notifications.
 
-## Структура
+## Structure
 
-| Файл | Ответственность |
+| Entry points / files | Responsibility |
 |---|---|
-| `FileTransport` | Stateless remote file operations и atomic publish intent |
-| `RemoteChangeSignalSource` | Optional push capability over narrow transport-neutral `RemoteWatchTarget` |
-| `RemoteChangeWatch` / `RemoteChangeSignalHandler` | Lifecycle handle and callback sink for optional remote change watches |
-| `RemoteFetchLedger` | Durable idempotency ledger для read-only fetch |
-| `PublishLedger` | Durable per-slice/per-target publish saga ledger |
-| `CompletedSliceCatalog` | Read-only worklist verified local export slices для remote publish |
+| [FileTransport](FileTransport.java) | Stateless application-facing list/stat/get/delete/thick atomic-publish operations; adapter owns sessions. |
+| [RemoteFetchLedger](RemoteFetchLedger.java), [PublishLedger](PublishLedger.java), [CompletedSliceCatalog](CompletedSliceCatalog.java) | Fetch identity, per-slice/target delivery saga and verified local worklist. |
+| [RemoteChangeSignalSource](RemoteChangeSignalSource.java), [RemoteChangeSignalHandler](RemoteChangeSignalHandler.java), [RemoteChangeWatch](RemoteChangeWatch.java) | Optional doorbell source/callback/close handle, separate from file operations. |
 
-## Инварианты
+## Contracts and maintenance
 
-- Порт не раскрывает `RemoteSession`, stream ownership или transport-specific exceptions.
-- Raw `put`/`rename` не являются application API.
-- `publishAtomically` — единственная write-side операция с multi-file инвариантом.
-- `RemoteChangeSignalSource` не расширяет `FileTransport`: push-сигнал есть не
-  у каждого транспорта и остаётся optional capability.
-- Watch adapter получает только `sourceId`, endpoint и remote path; fetch
-  include/exclude policy не пересекает transport boundary.
-- `RemoteChangeSignalHandler.signal()` — doorbell без payload. Adapter не
-  передаёт file facts; application после сигнала запускает обычный detection.
-- `delete` существует только как seam для opt-in remote retention/cleanup, не для fetch claim.
-- `CompletedSliceCatalog` не является retention API: staging, incomplete и corrupt final
-  каталоги не превращаются в publish work; discovery сообщает corruption diagnostic,
-  а точечный `find` остаётся strict.
-- `CompletedSliceCatalog.find(profile, sliceName)` проверяет один immutable slice
-  без полного scan профиля; `sliceName` — filesystem lookup key, `sliceId` остаётся
-  durable delivery key.
-- `CompletedSliceCatalog.listCompletedSliceNames(profile)` — lightweight discovery
-  seam: имена completed-candidate каталогов без payload verification; перед delivery work
-  обязателен `find`, а мусорные children должны быть operator-visible через diagnostics.
-- `PublishLedger` — единственное durable состояние delivery saga; export run ledger
-  не меняется при remote publish/recovery.
-- `PublishLedger.findRetryable(staleBefore)` возвращает `PENDING`/`FAILED` и stale
-  `IN_PROGRESS`; aggregate status counts не требуют `findAll`.
-- Полный `findAll` является read-only health/ops view; state transitions остаются CAS-командами.
+Stateless port calls do not imply no I/O or no adapter caching. The thick publish request lets an adapter verify its own marker-last/rename protocol without leaking a transport session or creating a fine-grained storage API. General delete is for explicit owned cleanup; ordinary fetch does not mutate producer input.
 
-## Зависимости
+Push is optional and carries no file/IOC facts. Reconnect/overflow signals request ordinary detection; lost hints are recovered by complete polling/reconcile. Watches own their adapter resources and have explicit best-effort close semantics, not a promise of durable notification delivery.
 
-**Зависит от:** `application.sync` value objects, `application.export` manifest model, JDK `Path`.
+Ledger persistence and process-local in-flight tracking currently use fetch metadata identity without endpoint/source namespace; [OPS-11](../../../../../../../../../../../docs/KNOWN-ISSUES.md#ops-11) remains open. A supported port shape does not qualify SMB ACL/encryption/session capacity or fix local landing races.
 
-**Не импортируется:** smbj, Spring, JDBC, adapters, bootstrap.
+[Capability internals](../../../../../../../../../../../docs/dev/sync.md) owns the cross-module flow. [Module map](../../../../../../../../../README.md) owns dependencies and verification; exact member guarantees remain in Javadoc.

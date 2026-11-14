@@ -1,60 +1,25 @@
-# com.iocextractor.application.port.out.export
+# Immutable snapshot and slice ports
 
-## Назначение
+## Purpose and boundary
 
-Driven-порты bounded context **Artifact Emission**. Они разделяют
-canonical snapshot, streaming row hand-off, формирование/публикацию
-локальных bytes, manifest codec, durable saga state, cheap change detection
-и delivery-aware retention veto. Такое разбиение не позволяет JDBC,
-CSV/JSON и filesystem-механикам смешиваться в одном адаптере.
+Separate reader-owned consistent snapshot, streaming formatting/publication, manifest serialization, durable formation state and delivery-aware retention.
 
-**Правило слоя:** здесь только interfaces и application-model DTO. Каждый
-порт владеет одной infrastructure capability; cross-port orchestration и
-state transitions принадлежат use case.
+## Structure
 
-## Структура
-
-| Файл | Назначение |
+| Entry points / files | Responsibility |
 |---|---|
-| `SnapshotSliceReader` | До callback разрешает export-owned mapping, затем открывает strict multi-artifact read snapshot и потоково отдаёт metadata/rows |
-| `SnapshotRowConsumer` | Синхронный callback protocol `begin -> artifact* -> end` без JDBC-типов |
-| `ArtifactSliceWriter` | Формирует deterministic bytes, staging manifest, inspection/recovery и atomic visibility |
-| `SliceManifestCodec` | Единственная serialization boundary versioned manifest |
-| `ArtifactRevisionReader` | Дешёво читает canonical revisions в запрошенном порядке, не сканируя rows |
-| `ExportProgressStore` | Read side последнего terminal progress для revision/hash change detection |
-| `ExportRunLedger` | Durable CAS state machine, global single-flight и атомарная фиксация terminal progress |
-| `ExportRunReader` | Operational read model последних run checkpoints для health |
-| `ExportObserver` | Lifecycle callbacks в точках фактических durable checkpoints; конкретный ECS logger остаётся снаружи application |
-| `ExportOperationGuard` | Cross-process lease, не позволяющий recovery принять staging живого formation-run за crash evidence |
-| `SliceRetentionStore` | Перечисляет и удаляет только целые integrity-valid final slices, не leaf-файлы |
-| `SliceRetentionGuard` | Чистый delivery-aware veto, вызываемый непосредственно перед delete |
+| [SnapshotSliceReader](SnapshotSliceReader.java), [SnapshotRowConsumer](SnapshotRowConsumer.java) | Resolve export mapping, then synchronous begin/artifact/row/end callbacks under one reader-owned snapshot. |
+| [ArtifactSliceWriter](ArtifactSliceWriter.java), [SliceManifestCodec](SliceManifestCodec.java) | Deterministic staging/inspection/publication and versioned wire serialization. |
+| [ArtifactRevisionReader](ArtifactRevisionReader.java), [ExportProgressStore](ExportProgressStore.java), [ExportRunLedger](ExportRunLedger.java), [ExportRunReader](ExportRunReader.java) | Cheap ordered revisions, durable progress, atomic terminal checkpoint and operational reads. |
+| [ExportOperationGuard](ExportOperationGuard.java), [ExportObserver](ExportObserver.java) | Shared formation/recovery lease and durable-checkpoint observation. |
+| [SliceRetentionStore](SliceRetentionStore.java), [SliceRetentionGuard](SliceRetentionGuard.java) | Verified whole-slice deletion with immediate delivery veto. |
 
-## Протоколы и владение ресурсами
+## Contracts and maintenance
 
-- Reader атомарно разрешает необходимое durable projection state до callback,
-  затем владеет connection, read transaction и cursor на всём callback
-  sequence. Consumer вызывается синхронно, не удерживает rows и не запускает
-  asynchronous callbacks.
-- Callback order для каждого artifact строг: metadata перед строками,
-  artifacts и rows в порядке resolved plan.
-- Writer владеет staging/final filesystem protocol и integrity validation, но
-  никогда не меняет ledger. Ledger не выполняет filesystem IO.
-- `tryStart` — единственная точка global single-flight; `transition` применяет
-  expected-state CAS; `finish` атомарно сохраняет progress и terminal status.
-- Operation guard удерживается вокруг recovery + formation. DB single-flight
-  остаётся durable authority, а OS lease различает crash и второй живой process.
-- `ExportObserver` не управляет flow и не должен бросать исключения: producer
-  вызывает его после соответствующего durable действия/ledger checkpoint.
-- Retention store получает `SliceDescriptor`, но обязан повторно проверить
-  manifest/hash-chain перед recursive delete: discovery не является разрешением
-  удалить изменившийся каталог.
-- Retention guard не удаляет срез. Он только даёт актуальный veto
-  непосредственно перед delete; standalone composition разрешает удаление,
-  будущий publish-ledger adapter сможет pin-ить недоставленные срезы.
+Resolve reusable export slots before callbacks; metadata/rows belong to the same snapshot. External slot identity is scoped to profile/artifact/slice, distinct from canonical IDs. The reader owns transaction/cursor cleanup for success, early exit and failure. The callback must not retain rows, call asynchronously or outlive the reader's scope.
 
-## Границы адаптеров
+The writer owns bytes/filesystem atomic visibility; it never advances saga ledger state itself. Recovery inspects exact manifest/marker/data evidence. The profile operation lease prevents crash recovery from consuming another live process's staging, complementing durable single-flight.
 
-- JDBC adapter реализует snapshot/revision/run/progress ports, но не форматирует CSV.
-- CSV/filesystem adapter реализует writer и manifest codec, но не открывает JDBC connection.
-- Delivery adapter позже реализует retention guard; formation saga не зависит
-  от remote transport.
+Progress completion and ledger terminal transition are one store operation; stale CAS does not grant another writer authority. The observer is operational and may run after durable effects. Retention operates on complete slices, never arbitrary leaf files; an immediate guard veto can leave count limits best-effort.
+
+[Capability internals](../../../../../../../../../../../docs/dev/artifact-export.md) owns the cross-module flow. [Module map](../../../../../../../../../README.md) owns dependencies and verification; exact member guarantees remain in Javadoc.

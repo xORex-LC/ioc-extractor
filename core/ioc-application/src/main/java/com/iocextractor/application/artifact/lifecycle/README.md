@@ -1,35 +1,29 @@
-# com.iocextractor.application.artifact.lifecycle
+# Canonical record lifecycle
 
-## Purpose
+## Purpose and boundary
 
-Framework-free language and orchestration for canonical record validity,
-lifecycle behavior and mutable projection ownership. It defines absolute
-validity decisions and half-open activity without depending on JDBC, Spring,
-CSV or scheduler APIs.
-
-**Layer rule:** this package owns application semantics. Storage and runtime
-implement them through inward-facing ports.
+Application semantics for fixed validity, one-way activation, bounded expiry/history, confirmation receipts and generation-owned mutable projection.
 
 ## Structure
 
-| Files | Responsibility |
+| Entry points / files | Responsibility |
 |---|---|
-| `RecordValidityPolicy.java` / `FixedRecordValidityPolicy.java` | Strategy seam and fixed V1 policy |
-| `EffectiveTime.java` / `LifecycleDeadline.java` / `ValidityDecision.java` | Explicit transaction time and absolute boundary |
-| `LifecycleTimeSource.java` | Injected UTC time boundary; runtime clock safety remains outside the model |
-| `LifecycleId.java` / `ObservationId.java` / `ConfirmationReceiptId.java` | Durable, non-interchangeable identities |
-| `RecordLifecycle.java` / `LifecycleCloseReason.java` | Active lifecycle invariants and close vocabulary |
-| `ProjectionGeneration.java` | Mutable-projection work version |
-| `Canonical*Confirmation.java` / `ConfirmationReceiptContext.java` / `LifecycleWriteResult.java` | Identity-resolved write command, bounded receipt facts and classified durable outcome |
-| `ActiveArtifact*.java` / `ExpiryBatchResult.java` | Active snapshot and bounded reconciliation results |
-| `LifecycleControlState.java` | One-way persisted activation model |
-| `ArtifactProjectionState.java` / `ProjectionAcknowledgement.java` | Required work and monotonic installed coverage |
-| `GenerationOwnedArtifactProjection.java` | Shared per-artifact snapshot/build/install/ack owner and bounded successful-result reuse |
-| `ArtifactProjectionConvergenceService.java` | Durable pending-work discovery and diagnostic emission through the owner |
+| [RecordValidityPolicy](RecordValidityPolicy.java), [FixedRecordValidityPolicy](FixedRecordValidityPolicy.java), [RecordLifecycle](RecordLifecycle.java), [LifecycleDeadline](LifecycleDeadline.java), [EffectiveTime](EffectiveTime.java) | Half-open active lifecycle and explicit effective UTC time. |
+| [LifecycleId](LifecycleId.java), [ObservationId](ObservationId.java), [ConfirmationReceiptId](ConfirmationReceiptId.java), [LifecycleWriteContext](LifecycleWriteContext.java) | Distinct durable lifecycle/delivery/receipt identities and write facts. |
+| [LifecycleAdmissionService](LifecycleAdmissionService.java), [CanonicalDataAdmissionState](CanonicalDataAdmissionState.java), [LifecycleActivationService](LifecycleActivationService.java), [LifecycleControlState](LifecycleControlState.java) | Serialized admission and resumable explicit legacy activation. |
+| [LifecycleReconciliationService](LifecycleReconciliationService.java), [LifecycleHistoryRetentionService](LifecycleHistoryRetentionService.java) | Bounded expiry cycle and independent history/receipt cleanup. |
+| [ConfirmationReceiptReplayService](ConfirmationReceiptReplayService.java), [ConfirmationReceiptSnapshot](ConfirmationReceiptSnapshot.java) | Complete, unexpired, policy-matching replay through the canonical writer. |
+| [GenerationOwnedArtifactProjection](GenerationOwnedArtifactProjection.java), [ArtifactProjectionConvergenceService](ArtifactProjectionConvergenceService.java), [ArtifactProjectionState](ArtifactProjectionState.java), [ProjectionAcknowledgement](ProjectionAcknowledgement.java) | Shared snapshot/build/install/ack owner and durable generation backstop. |
+| [LifecycleStatusSnapshot](LifecycleStatusSnapshot.java), [LifecycleClockPolicy](LifecycleClockPolicy.java), [LifecycleClockSnapshot](LifecycleClockSnapshot.java) | Safe read models and effective-clock confidence vocabulary. |
 
-## Dependencies
+## Contracts and maintenance
 
-**Depends on:** JDK, inward-facing application values/ports and platform
-diagnostic/error/event contracts.
+Active means `validUntil > asOf`; equality is expired. Fixed TTL is per canonical lifecycle. Before-deadline accepted confirmation renews it; later observation starts a new non-reused lifecycle/canonical identity. Public timestamps/export identity are separate contracts, not aliases for internal validity.
 
-**Must not import:** Spring, JDBC, SQL, CSV, filesystem or Actuator types.
+Admission resumes activation before opening canonical work and, when active, reconciles/converges durable pending state. Existing-record expiry cutover is explicit and one-way. Expiry changes active membership/projection generation, not insert-driven export revision. Events only request work; indexed deadlines, reconciliation checkpoints and generation state survive lost hints.
+
+Receipt replay requires complete current-policy evidence; absence returns the ordinary ETL fallback. A receipt lookup is not permission to reuse a later delivery's observation identity. History/receipt retention is independent of active row expiry.
+
+One process-local fair interruptible lock per configured artifact covers snapshot/build/install/ack. Canonical writes may advance required generation while building. Acknowledgement names the actually installed generation, and cached successful results retain advisory warnings. Lock order is artifact owner before short DB admission. Share one owner/raw-installer composition; separate processes must not share mutable output paths. This is not export's cross-process operation lease.
+
+[Capability internals](../../../../../../../../../../docs/dev/canonical-record-lifecycle.md) owns the cross-module flow. [Module map](../../../../../../../../README.md) owns dependencies and verification; exact member guarantees remain in Javadoc.

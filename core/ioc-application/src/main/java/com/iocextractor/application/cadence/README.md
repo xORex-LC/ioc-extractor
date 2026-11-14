@@ -1,25 +1,20 @@
-# application.cadence
+# Clock-injected cadence policies
 
-## Назначение
+## Purpose and boundary
 
-Framework-free политики, отвечающие только на вопрос «пора ли попытаться выполнить
-checkpointed workload». Они не читают хранилища, не запускают export и не знают о Spring.
+Pure interval and quiet-period decisions over caller-provided durable activity/checkpoint facts; no scheduler or worker ownership.
 
-**Правило слоя:** вызывающая сторона передаёт durable-факты `lastActivity` и
-`lastCheckpoint`; policy может хранить только локальное состояние текущего процесса.
+## Structure
 
-## Структура
-
-| Файл | Ответственность |
+| Entry points / files | Responsibility |
 |---|---|
-| `CadenceSource` | Контракт проверки due-state и подтверждения успешной попытки |
-| `IntervalCadenceSource` | Processing-time interval; после restart начинает новый интервал |
-| `QuietPeriodCadenceSource` | Debounce по durable activity с обязательным starvation `maxCap` |
-| `CadenceSources` | Реестр конфигурационных стратегий `interval`, `quiet-period` |
+| [CadenceSource](CadenceSource.java), [CadenceSources](CadenceSources.java) | Decision interface and supported policy registry. |
+| [IntervalCadenceSource](IntervalCadenceSource.java), [QuietPeriodCadenceSource](QuietPeriodCadenceSource.java) | Processing-time interval versus activity debounce with bounded pending latency. |
 
-## Инварианты
+## Contracts and maintenance
 
-- Повторное наблюдение одного `lastActivity` не сбрасывает quiet-period.
-- Новая activity переносит quiet deadline, но не `pendingSince`/max-cap deadline.
-- Failure не вызывает `completed()`, поэтому due-work повторяется на следующем poll.
-- `Clock` внедряется явно; wall-clock и scheduler API внутрь package не проникают.
+Each independent workload owns its cadence state. Quiet-period tracks the first pending activity and max-cap so continuous changes cannot postpone work forever. The caller owns actual attempt/success acknowledgement and storage progress; failed work must not be reported as a successful checkpoint.
+
+These policies do not discover canonical changes or guarantee wall-clock execution under blocked workers. Bootstrap owns scheduling/backoff, while export plan/revision policy can bypass ordinary cadence for initial or changed-plan formation.
+
+[Capability internals](../../../../../../../../../docs/dev/artifact-export.md) owns the cross-module flow. [Module map](../../../../../../../README.md) owns dependencies and verification; exact member guarantees remain in Javadoc.

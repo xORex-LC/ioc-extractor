@@ -1,69 +1,28 @@
-# application.sync
+# Remote fetch and publish coordination
 
-## Назначение
+## Purpose and boundary
 
-Framework-free модель синхронизации с внешними хранилищами. Пакет содержит только
-value objects и политики, которые одинаковы для SMB/SFTP/S3 и не знают о Spring,
-планировщиках, JDBC или конкретных transport-библиотеках.
+Transport-neutral values and application services for read-only remote fetch and completed-slice delivery. Concrete sessions/protocol mechanics remain behind ports; these services also perform existing JDK NIO local landing/marker IO.
 
-## Структура
+## Structure
 
-| Файл | Ответственность |
+| Entry points / files | Responsibility |
 |---|---|
-| `RemoteErrorKind` / `RemoteErrorDisposition` | Закрытая transport-neutral error axis и retry decision |
-| `RemoteTransportException` | Исключение, через которое adapters сообщают нейтральный remote error |
-| `RetryPolicy` / `Retrier` | Micro-retry executor для `RETRY_NOW` ошибок |
-| `SyncDiagnosticReporter` | Единое отображение final `RemoteErrorKind` в `SYNC.*` diagnostics |
-| `RemoteObject` / `RemoteObjectIdentity` | Metadata и fetch-ledger identity удалённого файла |
-| `RemoteFetchInFlightRegistry` | Process-local suppression повторной эмиссии уже поставленных в очередь identity |
-| `RemoteFetchSource` | Transport-neutral configured read-only source |
-| `RemoteWatchTarget` | Narrow source identity/location passed to optional transport push adapters |
-| `RemoteFetchRecord` / `RemoteFetchStatus` | Durable состояние read-only fetch idempotency |
-| `PublishRecord` / `PublishStatus` | Durable per-slice/per-target publish saga state |
-| `PublishLedgerStatusCounts` | Aggregated delivery state counts для hot publish loop |
-| `PublishTarget` | Transport-neutral configured delivery target для export profile |
-| `CompletedSlice` | Verified local slice descriptor для publish worklist |
-| `PublishAtomicallyRequest` / `PublishReceipt` | Контракт толстого write-intent для публикации slice-каталога |
-| `RemoteFetchService` | Use case: read-only remote list/get → atomic local inbox landing |
-| `ArtifactPublishService` | Use case: reconcile completed slices × targets, publish и slice-specific event fast-path через ledger |
-| `PublishLedgerSliceRetentionGuard` | Delivery-aware veto для slice retention |
+| [RemoteSourceMonitor](RemoteSourceMonitor.java), [RemoteFetchService](RemoteFetchService.java), [RemoteFetchSources](RemoteFetchSources.java) | Complete detection/filtering versus bounded execution of an already detected batch or explicit fetch cycle. |
+| [RemoteObject](RemoteObject.java), [RemoteObjectIdentity](RemoteObjectIdentity.java), [RemoteFetchRecord](RemoteFetchRecord.java), [RemoteFetchInFlightRegistry](RemoteFetchInFlightRegistry.java) | Current metadata identity, durable idempotency and process-local queue suppression. |
+| [ArtifactPublishService](ArtifactPublishService.java), [PublishRecord](PublishRecord.java), [PublishStatus](PublishStatus.java), [PublishTarget](PublishTarget.java), [CompletedSlice](CompletedSlice.java) | Verified local-slice worklist, pair-ledger delivery and target selection. |
+| [PublishLedgerSliceRetentionGuard](PublishLedgerSliceRetentionGuard.java), [PublishLedgerStatusCounts](PublishLedgerStatusCounts.java), [PublishLedgerHealthSummary](PublishLedgerHealthSummary.java) | Delivery pins and bounded status aggregates. |
+| [RemoteErrorKind](RemoteErrorKind.java), [RemoteErrorDisposition](RemoteErrorDisposition.java), [RemoteTransportException](RemoteTransportException.java), [Retrier](Retrier.java), [RetryPolicy](RetryPolicy.java), [RetrySleeper](RetrySleeper.java) | Typed failure axis, code-owned micro/macro retry decision and injectable waits. |
+| [RemoteChangeBatchDetected](RemoteChangeBatchDetected.java), [RemoteWatchTarget](RemoteWatchTarget.java), [PublishAtomicallyRequest](PublishAtomicallyRequest.java), [PublishReceipt](PublishReceipt.java), [SyncDiagnosticReporter](SyncDiagnosticReporter.java) | Control hints, thick publish intent/receipt and final failure diagnostics. |
 
-## Инварианты
+## Contracts and maintenance
 
-- Retryability не настраивается оператором: `RemoteErrorKind` сам несёт disposition.
-- `Retrier` повторяет только `RETRY_NOW`; `RETRY_LATER` остаётся macro-retry задачей scheduler.
-- Transport diagnostic эмитится один раз после исчерпания micro-retry; если операция
-  имеет durable state, сначала фиксируется `FAILED`, затем уходит diagnostic.
-- Diagnostic остаётся observational fact: он не заменяет fetch/publish ledger transition
-  и не попадает в payload control events.
-- Payload остаётся файловым (`Path`), но lifecycle потоков/соединений не попадает в application.
-- Commit marker name — один безопасный leaf segment; remote path остаётся transport path.
-- `PublishRecord` key = `(sliceId, targetId)`; profile/sliceName/manifest/endpoint/path — immutable binding.
-- `RemoteObjectIdentity` key = remote `path + size + modifiedAt`; источник остаётся read-only.
-- `CompletedSlice` уже прошёл локальную integrity-chain проверку и содержит normalized
-  physical path только как payload для transport adapter.
-- `ArtifactPublishService` не мутирует `export_run`: состояние доставки живёт только в
-  `PublishLedger`, а local slice catalog остаётся read-only.
-- Missing publish pairs materialize before remote write; `FAILED` remains retryable,
-  stale `IN_PROGRESS` is recoverable, `ABANDONED` and `SUCCEEDED` are terminal for retention.
-- Slice-specific publish validates event `sliceId` against verified catalog evidence
-  before touching the remote target.
-- Отдельная `reconcile`-операция materializes missing pairs без remote I/O: сначала
-  делает lightweight listing имён срезов, затем anti-join с `publish_ledger`, и
-  верифицирует только missing slice names. Dry-run только считает hypothetical/
-  существующие состояния и не пишет ledger.
-- Source/target filters позволяют daemon изолировать ошибку одного endpoint и продолжить
-  остальные элементы конфигурационного порядка.
-- Existing remote `_SUCCESS` with matching manifest hash is forward recovery to
-  `SUCCEEDED`; mismatched marker emits `SYNC.PUBLISH_VERIFY_FAILED`.
-- `RemoteFetchService` не делает remote claim/move/delete: источник read-only,
-  deduplication строится на identity `path + size + modifiedAt`.
-- Local landing выполняется через hidden `.sync-staging/*.part`, fsync best-effort
-  и atomic move в inbox; ledger `FETCHED` ставится только после final move.
-- Collision local file name решается stable suffix из remote identity, без overwrite.
+Monitor lists and filters; detected-batch fetch does not rediscover a directory. Ordinary fetch never claims/deletes producer input. The service downloads to private local staging, forces bytes and atomically lands a candidate before marking FETCHED. It is framework-free but not filesystem-free. Current `(path,size,mtime)` identity omits endpoint/source namespace ([OPS-11](../../../../../../../../../docs/KNOWN-ISSUES.md#ops-11)), and an existence check plus atomic move does not prevent concurrent input overwrite ([OPS-12](../../../../../../../../../docs/KNOWN-ISSUES.md#ops-12)). Polling cannot repair wrong identity. Coordinate distinct inbox names/writers until those issues are fixed.
 
-## Зависимости
+Publish reconciliation creates missing slice/target ledger pairs from verified completed local slices. Event hand-off and periodic reconciliation use the same endpoint-keyed execution in bootstrap. Remote commit-marker evidence determines idempotent delivery; conflicting markers are not permission to replace a committed slice. The service's temporary marker download/read is JDK NIO, while remote IO belongs to `FileTransport`.
 
-**Зависит от:** JDK, `application.export` manifest model.
+Only `RETRY_NOW` failures receive micro-retries; unreachable/resource pressure waits for the later reconcile policy, while authentication/permission/not-found/security-policy failures are terminal for that attempt. Interrupted retry waits preserve interruption and abort. In-flight sets and endpoint lanes are local accelerators, not cross-process correctness authority. Watch callbacks carry doorbells only; durable ledgers and periodic full detection/reconcile remain required.
 
-**Не импортируется:** Spring, JDBC, smbj/transport libraries, adapters, bootstrap.
+Publish pins protect undelivered slices but do not turn a local formation saga into remote transactionality. Source/target credentials, SMB policy and live server compatibility belong to outer configuration/adapters and qualification.
+
+[Capability internals](../../../../../../../../../docs/dev/sync.md) owns the cross-module flow. [Module map](../../../../../../../README.md) owns dependencies and verification; exact member guarantees remain in Javadoc.

@@ -1,32 +1,22 @@
-# com.iocextractor.application.dataframeimport.mapping
+# Import row mapping and merge decisions
 
-## Purpose
+## Purpose and boundary
 
-Pure deterministic mapping-policy logic applied before row-level atomicity and
-canonical persistence.
+Deterministic header/cell mapping before canonical persistence. One logical input row can produce authorized primary/related artifact branches.
 
 ## Structure
 
-| File | Purpose |
+| Entry points / files | Responsibility |
 |---|---|
-| `ImportHeaderPlan.java` | Exact alias-aware physical-to-canonical header plan |
-| `DataframeImportRowMapper.java` | Atomic multi-artifact mapping, transforms, tri-state cells, key material and staging-attempt session ownership |
-| `ImportRowMappingException.java` | Safe critical mapping failure and stable reason |
-| `ImportValueMappingException.java` | Safe input-dependent transform rejection |
-| `ImportRowMappingResult.java` | Accepted logical row with optional warnings, or safe rejection issues |
-| `ImportMergeResolver.java` | Resolves one tri-state cell against an active value |
-| `ImportMergeResult.java` | Storage-neutral set, clear, unchanged or conflict outcome |
+| [ImportHeaderPlan](ImportHeaderPlan.java) | Exact physical-to-canonical alias resolution. |
+| [DataframeImportRowMapper](DataframeImportRowMapper.java), [ImportRowMappingResult](ImportRowMappingResult.java) | Row-atomic mapping, transforms/validation, final keys and accepted warnings/rejected issues. |
+| [ImportMergeResolver](ImportMergeResolver.java), [ImportMergeResult](ImportMergeResult.java) | Tri-state field action: set/clear/preserve/conflict. |
+| [ImportRowMappingException](ImportRowMappingException.java), [ImportValueMappingException](ImportValueMappingException.java), [UncachedImportPreparationSession](UncachedImportPreparationSession.java) | Safe failure taxonomy and stateless preparation-session adapter. |
 
-## Dependencies
+## Contracts and maintenance
 
-**Depends on:** `dataframeimport.model`. **Must not depend on:** adapters,
-frameworks, storage or transport libraries.
+Preserve ABSENT, explicit NULL and VALUE until merge. Omitted input and explicit clear have different meanings. A logical row must not leave a partial artifact fan-out when one branch fails validation.
 
-The declarative mapper owns the `as-is` strategy. An explicit `processed`
-contract delegates admitted tri-state cells through `ProcessedImportRowPreparer`.
-The application then validates final row shape and computes canonical/match keys
-from final fields. The processed strategy cannot change artifact roles, requested
-slots or admitted merge policies. `as-is` retains its existing mapping order.
+As-is owns declarative order. Processed mode delegates admitted cells to the selected preparer, then validates final shape and resolves keys from final fields. It cannot enlarge source authority, change branch roles, requested-slot policy or merge permissions. A staging-attempt session scopes reusable preparation; close it on every exit before sealing. Uncached delegation is not permission to bypass validation or quota accounting.
 
-`UncachedImportPreparationSession` forwards stateless preparation and source authority
-without introducing durable state or bypassing any row validation.
+[Capability internals](../../../../../../../../../../docs/dev/dataframe-import.md) owns the cross-module flow. [Module map](../../../../../../../../README.md) owns dependencies and verification; exact member guarantees remain in Javadoc.

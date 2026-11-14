@@ -1,59 +1,81 @@
-# build-support/coverage-report
+# JaCoCo aggregate and coverage gates
 
-## Purpose
+## Purpose and boundary
 
-Non-production Maven report module that creates and verifies the authoritative
-reactor-wide JaCoCo HTML/XML report after all production dependencies have
-completed.
+Report-only Maven POM `ioc-coverage-report`: aggregate downstream test execution
+for the declared production universe and enforce coverage/test-report integrity.
+Its production dependencies establish report membership and reactor ordering;
+there is no runtime JAR or published library. Production and test-support projects
+must not depend on this POM or its verifier sources.
 
-**Layer rule:** dependencies exist only to define the coverage universe and
-reactor ordering. This module contains no runtime code and is not a published
-library.
+## Structure and sources of truth
 
-## Structure
-
-| File/output | Purpose |
+| File | Responsibility |
 |---|---|
-| `pom.xml` | Reactor ordering, aggregate generation, stale-output cleanup and late coverage/test gates |
-| `coverage-scope.tsv` | Fail-closed disposition for every one of the 31 reactor projects and local-report expectation |
-| `coverage-ratchets.tsv` | Aggregate and 25 production-module line/branch baselines plus absolute missed context |
-| `coverage-floors.tsv` | Explicit fixed-floor disposition for the aggregate and every production module |
-| `CoverageVerifier.java` | JDK-only universe, report-integrity, no-regression and fixed-floor gate |
-| `CoverageVerifierTest.java` | Synthetic-reactor happy/negative contract matrix |
-| `target/site/jacoco-aggregate/index.html` | Generated human-readable aggregate report |
-| `target/site/jacoco-aggregate/jacoco.xml` | Generated machine-readable aggregate report |
+| [pom.xml](pom.xml) | Aggregate dependencies/generation, stale-output cleanup and late test/coverage checks |
+| [coverage-scope.tsv](coverage-scope.tsv) | Complete reactor disposition plus required-local versus downstream-only report expectation |
+| [coverage-ratchets.tsv](coverage-ratchets.tsv) | Exact aggregate/module baseline counters, absolute-missed policy and rationale |
+| [coverage-floors.tsv](coverage-floors.tsv) | Explicit fixed-floor or ratchet-only disposition for every production group and aggregate |
+| [CoverageVerifier.java](CoverageVerifier.java) | JDK-only topology, report/counter integrity and exact floor/ratchet checks |
+| [CoverageVerifierTest.java](CoverageVerifierTest.java) | Standalone synthetic reactor/report contract matrix |
 
-## Dependencies
+Generated outputs are `target/site/jacoco-aggregate/index.html` and `jacoco.xml`.
+Module-local reports remain under each owner's `target/site/jacoco/`; execution
+data remains `target/jacoco.exec`. Never hand-edit those outputs or commit them
+as a replacement for the reviewed policy inputs.
 
-**Depends on:** all 25 production modules in `platform`, `core`, `adapters` and
-`bootstrap`.
+## Universe, lifecycle and comparison
 
-**Not imported by:** any production or test-support module.
+The current scope declares all 31 Maven projects, with 25 covered production
+groups. The TCK, root parent and report POMs are outside production denominators.
+There are no manual class/package exclusions. Twenty-four production modules
+require local XML/HTML plus execution data. `platform-errors` is explicitly
+aggregate-only because its bytecode is exercised downstream; absent local data
+there is intentional, not a missing-coverage exemption.
 
-## Notes
+Root `validate` compiles/runs the synthetic harness and reconciles the reactor,
+report dependencies, scope, local/aggregate topology, ratchets and floors.
+Root/child initialization removes stale test/coverage outputs for normal runs.
+The late `verify` phase generates the aggregate, invokes
+[TestLifecycleVerifier](../test-quality/README.md) and verifies current report
+pairs, exact production groups, expected counters and aggregate/module policy.
+Missing or unexpected output fails. Analyzer-only `-DskipTests` preservation is
+not fresh test or coverage evidence.
 
-`core/ioc-application-tck` is intentionally outside the production denominator.
-No class or package exclusion is accepted. The root `validate` phase reconciles
-the complete scope registry, report-module dependencies, report topology and
-ratchet scopes before child projects run. The late verifier then requires the
-aggregate XML/HTML, its exact 25-group production universe, 24 module-local
-XML/HTML pairs and one declared downstream-only group. Missing, stale or
-unexpected execution/report files fail the build.
+The aggregate includes downstream execution; a module's local HTML may show less
+coverage than its aggregate group. The complete local aggregate is authoritative.
+Codecov receives this verified XML as advisory reporting, not an alternative gate.
 
-Line and branch ratios are compared as exact integer fractions, without decimal
-rounding. Increased missed-branch counts also fail even when denominator growth
-would preserve the ratio. Small modules additionally ratchet absolute missed
-instructions; the snapshot preserves the same context diagnostically for larger
-modules. Independently, `coverage-floors.tsv` enforces `75% / 80%` line/branch
-coverage for the complete production aggregate and `85% / 90%` for both domain
-and application. All other production modules explicitly remain ratchet-only.
-Both ratchets and floors use exact integer-fraction comparisons.
+| Constraint | Enforcement |
+|---|---|
+| Ratios | Covered/total line and branch fractions cannot regress from the named baseline; comparisons use integer cross-products, not rounded HTML |
+| Branch misses | Absolute missed branches cannot increase even if denominator growth improves the ratio |
+| Instruction misses | Cannot increase where `absolute-instructions=enforced`; `observed` retains review context |
+| Counter universe | Appearance after a zero-denominator baseline or disappearance of a previously nonzero counter requires review |
+| Fixed floors | Aggregate 75% line / 80% branch; domain and application 85% / 90%; other groups explicitly ratchet-only |
 
-The module also runs the late `TestLifecycleVerifier` check after the production
-reactor so missing, duplicate or wrong-engine Surefire/Failsafe XML cannot be
-accepted as complete evidence.
+Both floors and ratchets apply where configured; `none` in the floor file does
+not remove the ratchet. Useful tests should exercise contract outcomes and
+failure/recovery boundaries. Assertions or exclusions added solely to raise a
+percentage defeat the policy; [TESTING.md](../../docs/TESTING.md) owns the detailed approach.
 
-SpotBugs aggregation and its own report-integrity validation belong to the
-sibling `spotbugs-report` module. The complete test and quality lifecycles are
-documented in [`docs/TESTING.md`](../../docs/TESTING.md) and
-[`docs/dev/build-quality.md`](../../docs/dev/build-quality.md).
+## Verification and maintenance
+
+Run from the repository root:
+
+```bash
+./mvnw -B -ntp -N validate
+make verify
+```
+
+Root-only validation proves configuration/source contracts, not a fresh aggregate.
+The full reactor is needed for downstream execution and the complete report union;
+a report-only or skipped-test invocation cannot establish complete release evidence.
+Use the Make/CI facade and `make context` for the workspace freshness receipt.
+
+A module/test/coverage change must reconcile all affected scope, dependency,
+report and policy inputs together. Inspect local reports to find missing behavior,
+then validate aggregate results. Ratchet improvements/universe changes require an
+explained reviewed update; never lower floors or refresh baselines automatically.
+See [build-quality internals](../../docs/dev/build-quality.md#coverage) and
+[Codecov script](../../tools/ci/codecov.sh) for report handoff.

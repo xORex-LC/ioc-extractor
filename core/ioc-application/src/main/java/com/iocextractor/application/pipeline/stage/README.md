@@ -1,43 +1,25 @@
-# com.iocextractor.application.pipeline.stage
+# IOC pipeline stages
 
-## Назначение
+## Purpose and boundary
 
-Concrete stages текущего ETL-конвейера. Каждый класс адаптирует один шаг
-use-case к контракту `Stage<I,O>`.
+One operation per stage, using inward domain/processing behavior and driven application ports. Assembly and order belong to the extraction service.
 
-**Правило слоя:** stage делает один шаг, не вызывает соседние stages и не знает
-порядок pipeline. Порядок задают `Pipeline`/`PipelineRunner`/use-case
-composition.
+## Structure
 
-## Структура
-
-| Файл | Назначение |
+| Entry points / files | Responsibility |
 |---|---|
-| `ReadSourceStage.java` | `SourceReader` → `SourceText`; `SOURCE.EMPTY_TEXT` через envelope |
-| `RefangStage.java` | `Refanger` → `RefangedText` |
-| `ExtractIndicatorsStage.java` | `IndicatorExtractor` → `ExtractedIndicators` + overlap diagnostics |
-| `AttributeSourceStage.java` | `SourceAttributor` → `AttributedIndicators` |
-| `PrepareRoutedArtifactsStage.java` | Обязательный план документа; учёт исходных наблюдений, routing/classification/mapping diagnostics и выбор по конечному ключу согласно плану |
-| `WriteArtifactsStage.java` | deferred-id materialization, canonical commit, projection / dry-run summary |
+| [ReadSourceStreamStage](ReadSourceStreamStage.java), [RefangSourceStreamStage](RefangSourceStreamStage.java), [ExtractSourceStreamStage](ExtractSourceStreamStage.java), [AttributeSourceStreamStage](AttributeSourceStreamStage.java) | Factory-built source-spool path; global extraction/attribution state belongs to source workspace. |
+| [ReadSourceStage](ReadSourceStage.java), [RefangStage](RefangStage.java), [ExtractIndicatorsStage](ExtractIndicatorsStage.java), [AttributeSourceStage](AttributeSourceStage.java) | Materialized batch seams retained for supported callers/tests; not an alternative factory-built document dispatcher. |
+| [PrepareRoutedArtifactsStage](PrepareRoutedArtifactsStage.java) | Run required plan, preserve original occurrence accounting, reduce/validate and seal before checkpoint. |
+| [WriteArtifactsStage](WriteArtifactsStage.java) | Dry-run summary or per-artifact canonical commit followed by mutable projection. |
+| [StageNames](StageNames.java), [ExtractionDecisionObserver](ExtractionDecisionObserver.java) | Stable stage IDs and shared observation vocabulary. |
 
-## Зависимости
+## Contracts and maintenance
 
-**Зависит от:** `application.pipeline`, application out-ports, domain services.
+Read/refang/extraction/attribution use the invocation source scratch, with priority/overlap decisions owned by the admitted workspace. Routing consumes ordered occurrences, not a whole-document list. Retained-observation versus mapped-key selection is explicit plan policy; all original occurrences still participate in required accounting/diagnostics.
 
-**Не импортируется:** соседние stage implementations, adapters, bootstrap,
-Spring, Logback/MDC.
+Preparation closes its processing session/cursor before sealing. The pipeline's failure-policy checkpoint occurs before `WriteArtifactsStage`; exact ERROR/FATAL totals cannot disappear when retained diagnostics reach the limit. Promotion marks the workspace, reserves canonical IDs and writes artifacts in sequence. Projection follows each canonical commit. This is per-artifact persistence, not document-wide atomic commit; earlier effects survive a later failure.
 
-## TRACE-контракт
+Per-item trace first checks the tracer gate and uses already-computed outcomes. No duplicate classification/extraction may run solely to render a log. The adapter owns logger/serialization/privacy mechanics.
 
-Per-item TRACE идёт через application-owned `PipelineDecisionTracer`: каждая
-стадия сначала проверяет затвор адаптера и затем строит compact decision из уже
-рассчитанного outcome. Повторный вызов domain services ради лога запрещён.
-
-Обычная diagnostic occurrence использует ровно один путь: stage либо прикрепляет
-её к возвращаемому envelope, либо бросает typed `DiagnosticException`, если
-валидный payload вернуть невозможно.
-
-Extraction и document preparation ограничивают diagnostic detail внутри циклов
-через per-invocation `BoundedDiagnosticCollector`. Его `DiagnosticBatch`
-передаёт точные severity counts в envelope отдельно от retained samples;
-поздние ERROR/FATAL достигают checkpoint даже при исчерпанном лимите.
+[Capability internals](../../../../../../../../../../docs/dev/processing.md) owns the cross-module flow. [Module map](../../../../../../../../README.md) owns dependencies and verification; exact member guarantees remain in Javadoc.

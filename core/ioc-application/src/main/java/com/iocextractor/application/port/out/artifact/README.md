@@ -1,29 +1,26 @@
-# com.iocextractor.application.port.out.artifact
+# Document workspace and canonical artifact ports
 
-## Назначение
+## Purpose and boundary
 
-Driven-порты для canonical artifact storage, artifact identity, CSV projection
-и run-ledger recovery.
+Separate side-effect-free preparation, private cursor-backed scratch, canonical commit, projection and identity/recovery concerns.
 
-## Структура
+## Structure
 
-| Файл | Назначение |
+| Entry points / files | Responsibility |
 |---|---|
-| `ArtifactPreparer.java` | Side-effect-free field mapping: classified indicators → write plan + diagnostics |
-| `DocumentProcessingPlan.java` / `DocumentProcessingSession.java` | Обязательный план документа и ограниченная сессия подготовки кандидатов через Router; без durable writes |
-| `CanonicalArtifactRepository.java` | Чтение/запись canonical artifacts; write возвращает actual inserts и revision |
-| `ArtifactIdentityResolver.java` | Artifact-specific row key extraction |
-| `ArtifactIdentityStore.java` | Guardrail-хранилище identity formula hash + epoch |
-| `CanonicalMatchPlanner.java` | Set-based active-only zero/one/multiple alias matching |
-| `ArtifactProjection.java` | Projection-порт для производных артефактов |
-| `ArtifactProjectionCommand.java` | Обязательные run/artifact identity одной projection operation |
-| `ArtifactProjectionResult.java` | Immutable row count + advisory diagnostics + покрытое поколение установленной проекции |
-| `CanonicalArtifactStreamReader.java` / `CanonicalArtifactStreamResult.java` | Поток строк и поколение из одного snapshot; без полной материализации |
-| `RunLedger.java` | Durable checkpoint store для write→project recovery |
-| `lifecycle/` | Lifecycle-aware canonical write/read, expiry, activation and projection-work ports |
+| [ArtifactPreparer](ArtifactPreparer.java), [ArtifactIdentityResolver](ArtifactIdentityResolver.java), [ArtifactIdentityStore](ArtifactIdentityStore.java), [ArtifactIdBaseline](ArtifactIdBaseline.java) | Prepare/filter rows and validate artifact identity/id floors. |
+| [DocumentPreparationWorkspaceFactory](DocumentPreparationWorkspaceFactory.java), [DocumentPreparationWorkspace](DocumentPreparationWorkspace.java), [DocumentSourceWorkspace](DocumentSourceWorkspace.java) | Quota-admitted invocation ownership, pinned source/scratch, append/seal/promotion state. |
+| [DocumentProcessingPlan](DocumentProcessingPlan.java), [DocumentProcessingPlanFactory](DocumentProcessingPlanFactory.java), [DocumentProcessingSession](DocumentProcessingSession.java) | Execute one admitted plan with per-run preparers and invocation-local semantic state. |
+| [RowSource](RowSource.java), [RowCursor](RowCursor.java), [CanonicalArtifactStreamReader](CanonicalArtifactStreamReader.java), [CanonicalArtifactRowConsumer](CanonicalArtifactRowConsumer.java), [CanonicalArtifactStreamResult](CanonicalArtifactStreamResult.java) | Repeatable prepared rows and reader-owned canonical streaming. |
+| [CanonicalArtifactRepository](CanonicalArtifactRepository.java), [CanonicalMatchPlanner](CanonicalMatchPlanner.java), [RunLedger](RunLedger.java) | Canonical writes/active matching and write-to-project saga checkpoints. |
+| [ArtifactProjection](ArtifactProjection.java), [ArtifactProjectionCommand](ArtifactProjectionCommand.java), [ArtifactProjectionResult](ArtifactProjectionResult.java), [lifecycle/README.md](lifecycle/README.md) | Derived installation/generation result and lifecycle transaction/work-store seams. |
 
-## Границы
+## Contracts and maintenance
 
-Порты не задают SQL/CSV-диалект или пути файлов. Эти детали принадлежат adapter
-layer. Projection hard failure выражается исключением; outcome допускает только
-advisory diagnostics, потому что canonical commit к этому моменту уже выполнен.
+Prepared descriptors are not canonical truth. Source scratch must be disposed before seal or on close; sealed rows remain inside workspace lifetime. Open/close each cursor explicitly, including early exit. `RowSource.snapshot()` is intentional finite materialization, not a bounded production fallback; an owner may permit only one live cursor at a time.
+
+Preparation itself does not reserve canonical IDs or write rows. Promotion pins private state before reservation and can retain recovery evidence after partial effects. Canonical commit and derived projection are separate calls. Expose the shared generation owner, not the raw installer, so concurrent callers cannot lose acknowledgement coverage.
+
+Streaming callbacks execute synchronously under reader-owned resources; consumers must not retain rows or move callbacks to background tasks. Store implementations own concrete quotas, connections, active snapshot/time rules and atomicity. See interface Javadoc before implementing a port or treating a no-op as production durability.
+
+[Capability internals](../../../../../../../../../../../docs/dev/processing.md) owns the cross-module flow. [Module map](../../../../../../../../../README.md) owns dependencies and verification; exact member guarantees remain in Javadoc.
