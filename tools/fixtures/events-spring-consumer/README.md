@@ -30,3 +30,24 @@ from matching translations alone. The
 [release record](../../../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md)
 retains the original core/adapter handoff and successful Central/GitHub evidence.
 Run `make library-publication-test` for extraction and parity guards.
+
+## Source map and ownership
+
+| Source | Responsibility |
+|---|---|
+| [pom.xml](pom.xml) | Standalone Java 21 compiler, packaged dependencies/repositories and executable entry point |
+| [src/main/java/LibraryConsumer.java](src/main/java/LibraryConsumer.java) | Independent consumer assertions and calls into prepared guide examples |
+
+The harness supplies `LocalEventsExample`, `SpringEventsExample`. Generated guide sources live only in the
+temporary copy; the tracked consumer remains an independent contract witness.
+
+The POM excludes main APIs from classifier dependencies and supplies mediation,
+missing/unavailable core/Context/SLF4J profiles. Core main classes must arrive
+transitively through the adapter; the direct core entries request documentation
+classifiers only. Independent Java assertions use real Spring contexts and an
+inline service-owned executor. They do not prove asynchronous task completion,
+thread-pool ordering or durable delivery.
+
+The [fixture overview](../README.md) owns preparation, caches, routing, cleanup
+and common evidence limits. The [tool test reference](../../tests/README.md)
+distinguishes offline harness contracts from actual packaged consumption.

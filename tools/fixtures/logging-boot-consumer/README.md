@@ -28,3 +28,24 @@ assertions/driver remain separate from the guide sources. The
 [permanent release record](../../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md)
 retains successful original Central/GitHub qualification for `0.3.0-rc.1`.
 Run `make library-publication-test` for extraction/parity guards.
+
+## Source map and ownership
+
+| Source | Responsibility |
+|---|---|
+| [pom.xml](pom.xml) | Standalone Java 21 compiler, packaged dependencies/repositories and executable entry point |
+| [src/main/java/LibraryConsumer.java](src/main/java/LibraryConsumer.java) | Independent consumer assertions and calls into prepared guide examples |
+
+The harness supplies `examples.logging` guide classes, `CollectorEcsEncoder`, `qualification.BootRecipeMain`. Generated guide sources live only in the
+temporary copy; the tracked consumer remains an independent contract witness.
+
+The POM owns Boot/Logback and Jackson for byte-level assertions. The harness adds
+plain logging examples, the Boot guide encoder, neutral driver and resources
+under `src/main/resources/recipe`. Independent checks inspect the five emitted
+JSON lines and status file with strict duplicate detection. Backend ownership and
+unsupported-input assertions remain in the guide/IOC recipe IT rather than in
+the reusable SLF4J library.
+
+The [fixture overview](../README.md) owns preparation, caches, routing, cleanup
+and common evidence limits. The [tool test reference](../../tests/README.md)
+distinguishes offline harness contracts from actual packaged consumption.

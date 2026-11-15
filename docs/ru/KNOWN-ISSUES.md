@@ -381,6 +381,24 @@ recovery identity, точная версия events family и потреблен
 См. [harness](../../tools/dev/lifecycle-smoke.sh) и
 [эксплуатацию lifecycle](../guides/ru/canonical-record-lifecycle.md).
 
+<a id="tool-11"></a>
+### TOOL-11 — Local deploy сравнивает Git status вместо содержимого
+
+**Open · владелец: local deployment/build identity.** `deploy-local.sh` сохраняет
+начальный commit и сравнивает только `git status --porcelain --untracked-files=all`
+до/после Maven. Повторная правка уже изменённого пути сохраняет status; commit
+может изменить `HEAD` без изменения итогового status. Изолированная Git-fixture
+2026-11-15 воспроизвела оба случая. Guard может принять неоднозначное дерево
+исходников; проверки checksum/staging JAR не подтверждают его source provenance.
+
+Не меняйте checkout во время verification и activation. `--allow-dirty` помечает
+артефакт как dirty, но не закрепляет входы. Закрытие: content fingerprints исходников
+и неизменный source commit на протяжении сборки, включая staged/unstaged/untracked
+входы, плюс регрессии для same-status edits и изменения HEAD. Точные immutable
+байты, переданные root activation, должны оставаться связаны с этим evidence.
+См. [local build](../../packaging/deploy-local.sh) и
+[packaging reference](../../packaging/README.md#deploy-localsh).
+
 ## Отложенные улучшения и расширения
 
 Эти пункты не обещают реализацию или дату выпуска. Само наличие порта, маленького

@@ -371,6 +371,24 @@ file, a regression fixture and a complete isolated smoke without retries;
 qualify load separately with its thresholds. Focused JUnit does not replace it.
 See [harness](../tools/dev/lifecycle-smoke.sh) and [lifecycle operations](guides/canonical-record-lifecycle.md).
 
+<a id="tool-11"></a>
+### TOOL-11 — Local deploy source guard compares status instead of contents
+
+**Open · owner: local deployment/build identity.** `deploy-local.sh` records the
+initial commit and compares only `git status --porcelain --untracked-files=all`
+before/after Maven. Editing an already-dirty path leaves the same status, and a
+commit can change `HEAD` without changing the final status. A 2026-11-15 isolated
+Git fixture reproduced both cases. The guard can therefore accept an ambiguous
+source tree; JAR checksum/staging checks do not establish its source provenance.
+
+Keep the checkout frozen throughout verification and activation. `--allow-dirty`
+labels an artifact as dirty but does not pin its inputs. Close with checked source
+content fingerprints and unchanged source commit across the build, including
+staged/unstaged/untracked inputs, plus regressions for same-status edits and HEAD
+changes. The exact immutable bytes passed to root activation must remain tied to
+that evidence. See [local build](../packaging/deploy-local.sh) and
+[packaging reference](../packaging/README.md#deploy-localsh).
+
 ## Deferred improvements and extension options
 
 These entries do not promise an implementation or a release date. A port, small

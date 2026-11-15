@@ -36,3 +36,24 @@ for bundle and repository options. No live collector service is started.
 The publication tool supplies the guide sources; running this fixture without
 that preparation is unsupported. Protected CI recovery for the published config
 release remains TOOL-8; a local consumer does not close that separate follow-up.
+
+## Source map and ownership
+
+| Source | Responsibility |
+|---|---|
+| [pom.xml](pom.xml) | Standalone Java 21 compiler, packaged dependencies/repositories and executable entry point |
+| [src/main/java/LibraryConsumer.java](src/main/java/LibraryConsumer.java) | Independent consumer assertions and calls into prepared guide examples |
+
+The harness supplies `examples.configuration.ConfigurationInspectionExample`, `CollectorConfigurationCheck`, `ConfigurationRecipeMain`. Generated guide sources live only in the
+temporary copy; the tracked consumer remains an independent contract witness.
+
+The POM declares independent Context/SnakeYAML dependencies and `application-bom`,
+`incompatible-spring` and `unavailable-boot` profiles. The harness supplies both
+extracted guide classes, the neutral driver from bootstrap test resources and
+recipe YAML, then runs closed-input checks in a separate JVM. These sources do
+not start the IOC service. Change the guide, driver, POM and harness graph/probe
+expectations together when their public contract changes.
+
+The [fixture overview](../README.md) owns preparation, caches, routing, cleanup
+and common evidence limits. The [tool test reference](../../tests/README.md)
+distinguishes offline harness contracts from actual packaged consumption.

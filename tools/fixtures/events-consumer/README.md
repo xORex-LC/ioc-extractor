@@ -19,3 +19,23 @@ Independent assertions remain separate from the extracted example. The
 [release record](../../../.github/release-notes/ioc-platform-events-0.3.0-rc.1.md)
 retains successful original repository qualification. Run
 `make library-publication-test` for extraction and translation guards.
+
+## Source map and ownership
+
+| Source | Responsibility |
+|---|---|
+| [pom.xml](pom.xml) | Standalone Java 21 compiler, packaged dependencies/repositories and executable entry point |
+| [src/main/java/LibraryConsumer.java](src/main/java/LibraryConsumer.java) | Independent consumer assertions and calls into prepared guide examples |
+
+The harness supplies `LocalEventsExample`. Generated guide sources live only in the
+temporary copy; the tracked consumer remains an independent contract witness.
+
+The independent source checks metadata validation, repeated references and
+shallow snapshot ownership, no-ops and absence of framework/IOC runtime classes.
+Its POM requests the main library plus sources/Javadoc. The harness separately
+asserts a one-library graph, runs outside the Maven plugin classloader and checks
+selected-target failure versus an unfiltered alternate-repository control.
+
+The [fixture overview](../README.md) owns preparation, caches, routing, cleanup
+and common evidence limits. The [tool test reference](../../tests/README.md)
+distinguishes offline harness contracts from actual packaged consumption.

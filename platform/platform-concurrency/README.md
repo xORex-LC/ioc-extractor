@@ -2,64 +2,85 @@
 
 ## Purpose and boundary
 
-JDK-only, in-process keyed execution. The module supplies asynchronous per-key
-FIFO and synchronous per-key exclusion; services own durable state and recovery.
-It has no Spring, events, IOC model, persistence or transport dependency.
+JDK-only, in-process keyed execution: asynchronous per-key FIFO and synchronous
+per-key exclusion. Services own durable work, business failure handling, idempotency
+and recovery. This library has no Spring, logging provider, event, IOC model,
+persistence or transport dependency. It does not provide distributed locking,
+deduplication, task coalescing or durable delivery.
 
-Release `io.github.xorex-lc:ioc-platform-concurrency:0.3.0-rc.1` is published to
-Maven Central and GitHub Packages. The reactor continues at `0.3.0-SNAPSHOT`.
-The consumer POM has no reactor parent or test dependencies. Publication details
-and historical qualification are in the
-[release record](../../.github/release-notes/ioc-platform-concurrency-0.3.0-rc.1.md).
+The Maven coordinate is `io.github.xorex-lc:ioc-platform-concurrency`. The
+[release record](../../.github/release-notes/ioc-platform-concurrency-0.3.0-rc.1.md) retains
+publication and isolated-consumption evidence for `0.3.0-rc.1`; the reactor remains
+at the shared development revision. Accepted independent-version ownership is not
+yet the Maven/CI implementation; see [TOOL-9](../../docs/KNOWN-ISSUES.md#tool-9).
+Public Javadoc owns exact API guarantees. The [English consumer guide](../../docs/guides/libraries/concurrency.md)
+and [Russian guide](../../docs/guides/ru/libraries/concurrency.md) own working integration examples.
 
-Start with the [English consumer guide](../../docs/guides/libraries/concurrency.md)
-or [Russian consumer guide](../../docs/guides/ru/libraries/concurrency.md) for
-working examples, key selection, capacity, errors, telemetry and shutdown.
-Public Javadoc is the exact API reference.
+## Structure and entry points
 
-## Public entry points
-
-All types are in `com.iocextractor.platform.concurrent`.
-
-| Types | Responsibility |
+| Source / directory | Responsibility |
 |---|---|
-| `KeyedSerialExecutor`, `BoundedKeyedSerialExecutor` | Async per-key FIFO, waiting-queue bound, admission and orderly shutdown |
-| `KeyedExecutionGuard`, `SynchronousKeyedExecutionGuard` | Calling-thread per-key exclusion with same-thread reentrancy |
-| `WorkKey` | Exact nonblank string identity |
-| `WorkAdmission`, `WorkAdmissionStatus` | Admission result and decision-time queue depth |
-| `KeyedSerialExecutorObserver`, `NoopKeyedSerialExecutorObserver` | Optional synchronous telemetry |
-| `KeyedSerialExecutorSnapshot`, `KeyedWorkSnapshot`, `KeyedExecutionGuardSnapshot` | Immutable telemetry values |
+| [pom.xml](pom.xml) | Ordinary JAR, publication metadata, flattened consumer POM and optional sources/Javadoc profile |
+| [Concurrent package](src/main/java/com/iocextractor/platform/concurrent/README.md) | Twelve public types, including two execution implementations, and package Javadoc |
+| [Tests](src/test/java/com/iocextractor/platform/concurrent/README.md) | Local ordering, exclusion, admission, telemetry, failure and cleanup contracts |
 
-The supplied worker pool belongs exclusively to the keyed executor and must
-execute asynchronously or throw on dispatch rejection. The queue bound excludes
-dispatched work and does not bound the number of keys. `close()` starts draining
-without waiting; joining is explicit. The synchronous guard uses a non-fair,
-non-interruptible lock and has no FIFO or timeout promise. These ownership and
-failure rules are explained with examples in the consumer guide.
+There are no module-local resource trees. The POM adds the repository license to
+`META-INF`. `KeyedSerialExecutor` / `BoundedKeyedSerialExecutor` supply async lanes;
+`KeyedExecutionGuard` / `SynchronousKeyedExecutionGuard` supply calling-thread
+exclusion. Admission and snapshot records expose observations, not completion
+handles or a coordination authority. The package reference maps each type.
 
-## Structure
+## Ownership and capacity
 
-| Path | Responsibility |
-|---|---|
-| `pom.xml` | Plain JAR, standalone consumer POM, sources and strict Javadoc archives |
-| `src/main/java/com/iocextractor/platform/concurrent/` | Twelve public types, two implementations and package Javadoc |
-| `src/test/java/com/iocextractor/platform/concurrent/` | Ordering, exclusion, admission, failure, telemetry and bounded cleanup contracts |
+Equal keys exclude only within the same coordinator instance. Async tasks preserve
+admission order per key; different keys can overlap when worker capacity permits.
+The synchronous guard has separate state, same-thread reentrancy, non-fair and
+non-interruptible acquisition, with no FIFO or timeout promise.
 
-## Dependencies and consumers
+The async executor exclusively owns a supplied worker service that must dispatch
+asynchronously or throw on rejection. Caller-runs/direct/discard policies are
+unsupported. The per-key waiting bound excludes the dispatched task and does not
+bound key cardinality or the backing worker queue. Services need a bounded key
+catalog or separate global admission. Accepted work can still be lost after dispatch
+rejection or process failure; reconcile must remain valid without observer delivery.
 
-Production dependencies: JDK 21 only. JUnit and AssertJ are test dependencies.
-No logging provider or framework is installed by this module.
+`close()` / `shutdown()` initiate draining without waiting. Join explicitly with
+`awaitTermination` from outside the owned workers. Timeout does not cancel work.
+Snapshot `running` includes work waiting in the pool; telemetry must not substitute
+for admission, task completion or durable state. See the package reference for
+failure callbacks and worker/guard lifecycle details.
 
-`ioc-application` uses the guard for ingestion and the async interface for managed
-import. `adapter-ingest` guards ledger transitions. `bootstrap/ioc-app` supplies
-dedicated pools for remote sync/import and bridges observations into health.
-[Event coordination](../../docs/dev/event-coordination.md) explains IOC's durable
-backstop; the [module map](../../docs/MODULARIZATION.md) defines dependency direction.
+## Dependencies and IOC consumers
 
-Run `make test-module MODULE=platform/platform-concurrency` for focused tests.
-The [standalone consumer](../../tools/fixtures/library-consumer/README.md) compiles
-and executes the guide examples against a resolved JAR. Packaging and isolated
-consumer commands are in the [publication guide](../../docs/guides/library-publication.md).
+Production dependencies: JDK 21 only. The parent supplies JUnit/AssertJ in test
+scope; the flattened consumer POM removes the reactor parent and test dependencies.
+The `library-publication` profile attaches sources and Javadoc, with doclint
+`all,-missing`. It prepares local archives, not a publication by itself.
+The runtime architecture suite guards framework/event/IOC outward imports.
+
+`ioc-application` uses synchronous exclusion for ingestion and async contracts for
+managed-import coordination. `adapter-ingest` uses its own guard for file-ledger
+transitions. Bootstrap owns dedicated pools, service observer/health bridges and
+bounded shutdown: remote fetch/publish share endpoint lanes; managed import uses
+source lanes plus its global drain lane. Service ledgers/reconcile remain authority.
+See [event coordination](../../docs/dev/event-coordination.md) and
+[managed import](../../docs/dev/dataframe-import.md) for those cross-module flows.
+
+## Verification and related docs
+
+Run from the repository root:
+
+```bash
+make test-module MODULE=platform/platform-concurrency
+```
+
+Local suites use Surefire. `make verify` checks the full deterministic reactor;
+these results are not deployment, throughput or repository-publication qualification.
+The [standalone consumer](../../tools/fixtures/library-consumer/README.md) runs public
+contracts and exact guide examples against resolved artifacts through the
+[publication tooling](../../docs/guides/library-publication.md). Distinguish a local
+packaged-JAR example run from an isolated repository-consumer qualification.
 [ADR 0028](../../docs/ADR/0028-pilot-library-publication.md) and
-[ADR 0029](../../docs/ADR/0029-release-branch-library-publication.md) record the
-accepted publication and compatibility decisions.
+[ADR 0029](../../docs/ADR/0029-release-branch-library-publication.md) retain publication
+rationale; [test policy](../../docs/TESTING.md) and [module map](../../docs/MODULARIZATION.md)
+own project-wide conventions.

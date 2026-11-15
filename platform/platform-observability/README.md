@@ -1,45 +1,95 @@
-# platform-observability
+# ioc-platform-observability
 
-IOC logging catalogs, compatibility facades and the ETL logging observer.
-`LogEvent`, `MdcScope` and `SensitiveLogValueSanitizer` delegate to
-[`platform-logging-slf4j`](../platform-logging-slf4j/README.md). This module keeps
-IOC vocabulary out of the reusable JAR and keeps existing producer imports.
+## Purpose and boundary
 
-**Layer rule:** no domain/application business rules, adapter I/O or runtime
-appender configuration. Bootstrap owns `logback-spring.xml` and the ECS encoder.
+IOC logging vocabulary and facades over the reusable SLF4J library, plus the
+ETL logging observer. The module keeps existing IOC producer imports and local
+field/action policy separate from generic logging mechanics.
+
+This is an internal product JAR, `com.iocextractor:ioc-platform-observability`,
+using the shared reactor version. It is separate from the published
+[platform-logging-slf4j](../platform-logging-slf4j/README.md) library.
+Domain/application business rules, adapter I/O, appenders, JSON encoding, health
+contributors and runtime backend configuration remain with their owners.
 
 ## Structure
 
-| Part | Responsibility |
+| Location | Responsibility |
 |---|---|
-| `LogField`, `EventAction`, `EventOutcome` | IOC field/action catalog and binding to shared descriptors/outcomes |
-| `MdcScope` | IOC field convenience; callback factory closes a partly populated scope on failure |
-| `SensitiveLogValueSanitizer` | Delegates lexical URL-component sanitation; diagnostic disclosure remains local |
-| `logging/` | Thin shared-builder facade and `LoggingPipelineObserver` |
-| `src/test` | Catalog generation, IOC descriptor binding, delegated emission, MDC and URL regressions |
+| [Base package](src/main/java/com/iocextractor/observability/README.md) | IOC field/action/outcome vocabulary, mode labels, MDC convenience and selected URL sanitization |
+| [logging](src/main/java/com/iocextractor/observability/logging/README.md) | IOC event-builder bindings and `LoggingPipelineObserver` |
+| [Tests](src/test/java/com/iocextractor/observability/README.md) | Catalog generation, taxonomy, bindings, emission, MDC callback cleanup and URL regressions |
+| [pom.xml](pom.xml) | Shared logging/ETL/SLF4J dependency family |
 
-## Dependencies
+The package references map all local types. Public Javadoc and `package-info.java`
+own exact member/package contracts. Cross-module operation and disclosure policy
+belongs to [observability](../../docs/dev/observability.md).
 
-Main dependencies: `ioc-platform-logging-slf4j`, `ioc-platform-etl`, SLF4J API.
-Logback is test-only. No reverse dependency from the generic library exists.
+## Dependencies and direction
 
-`LogField.spec()` binds each catalog entry to a shared `LogFieldSpec` and its
-`LogValueType`. New custom fields remain local catalog changes. The catalog is
-generated into [LOGGING-CATALOG](../../docs/LOGGING-CATALOG.md).
+Direct production dependencies are `ioc-platform-logging-slf4j`,
+`ioc-platform-etl` and `slf4j-api`, with parent-managed versions. ETL brings the
+shared diagnostics API and IOC diagnostics/error contracts. Logback classic/core,
+Jupiter and AssertJ support tests; the production closure selects no logging
+backend or Spring configuration.
 
-## Wire and ownership
+Keep business types, adapters and bootstrap out of this module. Bootstrap may
+compose these facades and observer. Its
+[ArchitectureTest](../../bootstrap/ioc-app/src/test/java/com/iocextractor/ArchitectureTest.java)
+checks observability packages against domain/adapter/bootstrap dependencies and
+separately protects the reusable logging API's JDK/SLF4J-only boundary. These
+checks do not turn catalog descriptions into runtime disclosure validation.
 
-The facade uses the shared scalar checks and ECS helper validation. Invalid
-values throw before level filtering. Event-local values override exact MDC keys
-for one log attempt. Workers reconstruct context explicitly; scopes restore only
-touched keys on the same thread. Acquire a scope before population, or use the
-callback factory when an observer must return an owned `AutoCloseable`.
-If initialization and cleanup fail, the original failure remains primary; only
-a distinct cleanup exception is suppressed. A provider reusing one exception
-cannot turn cleanup into a self-suppression error.
+## Entry points and wire ownership
 
-Control-event names use `ioc.event.type`; informational no-op records use
-`ioc.operation.disposition=skipped` without an ECS outcome. When a record carries
-a Throwable, the backend owns `error.*`. Type-only failures without a Throwable
-may use `error.type`. Query migration and diagnostic rendering policy are in
-[observability](../../docs/dev/observability.md).
+`LogField.spec()` binds IOC keys and scalar types to shared descriptors; the five
+standard fields reuse shared ECS declarations. `EventAction.value()` and
+`EventOutcome.value()` supply stable operational wire values. The event facade
+accepts `LogField` rather than arbitrary keys, delegates scalar checks/emission,
+and preserves the caller-selected logger category.
+
+Use action/outcome helpers for their intended wire semantics. Generic STRING
+field conversion uses `toString()` and can bypass that vocabulary. Descriptions
+such as TRACE-only value disclosure are producer obligations, not level-aware
+checks in `field`. Control-event names belong in `ioc.event.type`; informational
+no-op records can use `ioc.operation.disposition=skipped` without an ECS outcome.
+
+`MdcScope` binds catalogued STRING fields to same-thread restoring scopes. Its
+callback factory attempts cleanup if initialization fails and preserves the
+original failure, suppressing only a distinct cleanup failure. Scopes propagate
+nothing to workers. Null local omission differs from explicit ambient hiding.
+
+`LoggingPipelineObserver` reconstructs run/stage correlation and reports stage
+lifecycle through ETL callbacks. It is not a durable completion record or an
+exception-isolation layer. The [logging reference](src/main/java/com/iocextractor/observability/logging/README.md)
+owns the exact field/callback map. Sensitive-value sanitization is lexical and
+selected-value only; diagnostic fingerprint/severity policy remains in the
+[diagnostics logging bridge](../platform-diagnostics-logging/README.md).
+With a Throwable, the backend owns `error.*`; producers own safe exception text.
+
+## Catalog maintenance and verification
+
+[LOGGING-CATALOG.md](../../docs/LOGGING-CATALOG.md) is generated from `EventAction` and
+`LogField`; do not edit it by hand or maintain a competing field/action inventory.
+The [base package reference](src/main/java/com/iocextractor/observability/README.md)
+describes the generator and extension checks. Add an action with its first real
+producer, check emitted fields/types and disclosure, and regenerate after a
+catalog change. Catalog presence or a bytecode reference does not prove emission.
+
+From the repository root:
+
+```bash
+make test-module MODULE=platform/platform-observability
+make docs
+make verify
+```
+
+The [test reference](src/test/java/com/iocextractor/observability/README.md)
+separates local contracts from pipeline correlation, actual IOC JSON and Boot
+recipe qualification. [AppConfig](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java)
+composes the extraction observer and diagnostic delivery;
+[logback-spring.xml](../../bootstrap/ioc-app/src/main/resources/logback-spring.xml)
+and the [IOC ECS encoder](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/IocEcsStructuredLogEncoder.java)
+remain bootstrap-owned. Update affected references and tests with a contract
+change; keep generic API guarantees in the reusable library and durable
+completion/recovery evidence with the service.
