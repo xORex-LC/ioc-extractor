@@ -1,46 +1,50 @@
-# 0018 — Типизированные ECS structured logs: event fields вне MDC
+> English translation of the historical Russian record. Decision/status/dates are preserved. [Russian original](ru/0018-typed-ecs-structured-logging.md) (relative link addresses rebased on relocation).
 
-## Статус
+<a id="0018--типизированные-ecs-structured-logs-event-fields-вне-mdc"></a>
+# 0018 — Typed ECS structured logs: event fields outside MDC
 
-**Принято 2026-07-16, не реализовано.** Задаёт закрытие **OBS-D3** из
-[KNOWN-ISSUES](../KNOWN-ISSUES.md): числовые и boolean-поля operational logs
-должны сохранять JSON-типы до ECS-файла, а не превращаться в строки на границе
-SLF4J MDC.
+<a id="статус"></a>
+## Status
 
-> **Частично superseded 2026-07-21:** [ADR-0019](0019-spring-boot-4-nested-ecs.md)
-> заменяет только точную Spring Boot baseline, способ добавления статического
-> `event.dataset` и physical ECS JSON representation (flat dotted keys → nested
-> objects). Typed field taxonomy, MDC/event-local split, scalar types, actions,
-> outcomes, redaction и остальные решения этого ADR сохраняются.
+**Accepted 2026-07-16, not implemented.** Defines closure of **OBS-D3** in
+[KNOWN-ISSUES](../KNOWN-ISSUES.md): numeric and boolean operational-log fields
+must retain their JSON types through to the ECS file instead of becoming strings
+at the SLF4J MDC boundary.
 
-ADR уточняет и частично supersedes [0007](0007-logging-observability.md):
+> **Partially superseded 2026-07-21:** [ADR-0019](0019-spring-boot-4-nested-ecs.md)
+> replaces only the exact Spring Boot baseline, static `event.dataset` addition
+> and physical ECS JSON representation (flat dotted keys → nested objects).
+> Typed field taxonomy, MDC/event-local split, scalar types, actions, outcomes,
+> redaction and other decisions remain.
 
-- Решение 4 сохраняется для **ambient correlation context**, но больше не
-  распространяется на event-local structured fields;
-- следствие про `co.elastic.logging:logback-ecs-encoder` заменяется встроенным
-  Spring Boot ECS structured logging;
-- `event.dataset` остаётся полем события, не correlation key; для единственного
-  текущего dataset оно задаётся статически как `ioc-extractor`. Переход к
-  нескольким datasets потребует отдельного решения и удаления static member,
-  чтобы не получить duplicate key;
-- источник истины по run/source/stage correlation по-прежнему находится в
-  `Envelope.meta`/driving boundary, а MDC остаётся только его производным
-  transport-представлением.
+This ADR refines and partially supersedes [0007](0007-logging-observability.md):
 
-[0017](0017-diagnostics-first-class-outcome.md) не supersede'ится:
-diagnostics-first-class outcome, severity→level mapping, redaction и resilient
-delivery не меняются. Этот ADR реализует отложенный там typed logging channel.
+- Decision 4 remains for **ambient correlation context**, but no longer applies
+  to event-local structured fields.
+- The `co.elastic.logging:logback-ecs-encoder` consequence is replaced by built-in
+  Spring Boot ECS structured logging.
+- `event.dataset` remains an event field, not a correlation key; for the only
+  current dataset it is statically `ioc-extractor`. Multiple datasets require
+  a separate decision and removal of the static member to avoid duplicate keys.
+- Run/source/stage correlation truth remains in `Envelope.meta`/the driving
+  boundary; MDC remains only its derived transport representation.
 
-Связанные опубликованные документы:
+[0017](0017-diagnostics-first-class-outcome.md) is not superseded: diagnostics
+as first-class outcomes, severity→level mapping, redaction and resilient delivery
+are unchanged. This ADR implements the typed logging channel deferred there.
+
+Related published documents:
 
 - [observability.md](../dev/observability.md);
 - [LOGGING-CATALOG.md](../LOGGING-CATALOG.md);
 
-## Контекст
+<a id="контекст"></a>
+## Context
 
-### Текущая цепочка теряет тип
+<a id="текущая-цепочка-теряет-тип"></a>
+### The current chain loses types
 
-`LogEvent` принимает `Object`:
+`LogEvent` accepts `Object`:
 
 ```java
 LogEvents.info(log)
@@ -50,7 +54,7 @@ LogEvents.info(log)
         .log();
 ```
 
-На входе `58` является `Integer`, а duration — `Long`. Затем:
+At input, `58` is an `Integer` and duration a `Long`. Then:
 
 ```text
 LogEvent.fields: Map<String, Object>
@@ -61,7 +65,7 @@ LogEvent.fields: Map<String, Object>
   -> JSON string
 ```
 
-Итоговый daemon-файл содержит:
+The resulting daemon file contains:
 
 ```json
 {
@@ -71,90 +75,88 @@ LogEvent.fields: Map<String, Object>
 }
 ```
 
-Причина структурная, а не локальная ошибка одного encoder setting:
+The cause is structural, not a local encoder-setting mistake:
 
-1. контракт SLF4J MDC — `Map<String, String>`;
-2. текущий `logback-ecs-encoder 1.8.0` сериализует MDC через
-   `String.valueOf(...)` и JSON string;
-3. `additionalFields` encoder-а статичны на весь appender и не являются
-   per-event transport;
-4. собственный protected `addCustomFields(...)` hook потребовал бы
-   сопровождения framework-specific serializer-а.
+1. SLF4J MDC's contract is `Map<String, String>`.
+2. Current `logback-ecs-encoder 1.8.0` serializes MDC through `String.valueOf(...)`
+   and JSON strings.
+3. Encoder `additionalFields` are static for the whole appender, not per-event transport.
+4. A custom protected `addCustomFields(...)` hook would require maintaining a
+   framework-specific serializer.
 
-### Долг вырос после D1
+<a id="долг-вырос-после-d1"></a>
+### Debt grew after D1
 
-На момент регистрации OBS-D3 заметными были прежде всего `event.duration` и
-`ioc.rows`. После [0017](0017-diagnostics-first-class-outcome.md) terminal
-completion публикует diagnostic total/suppressed и шесть severity counts.
-Sync/export/storage также публикуют queue depth, file counts, revisions,
-schema versions и boolean admission outcomes.
+When OBS-D3 was recorded, `event.duration` and `ioc.rows` were the main visible
+fields. After [0017](0017-diagnostics-first-class-outcome.md), terminal completion
+publishes diagnostic total/suppressed and six severity counts. Sync/export/storage
+also publish queue depth, file counts, revisions, schema versions and boolean
+admission outcomes.
 
-В `LogField` сейчас 58 полей. Существенная часть имеет числовую либо boolean
-семантику:
+`LogField` currently has 58 fields, a substantial portion numeric or boolean:
 
 - `event.duration`;
 - `ioc.span.start`, `ioc.span.end`;
 - `ioc.rows`;
 - schema/migration/identity versions;
-- export revision и control-event version;
+- export revision and control-event version;
 - sync files/queue/abandoned counts;
-- diagnostic total/suppressed и per-severity counts;
+- diagnostic total/suppressed and per-severity counts;
 - `ioc.sync.shed_to_reconcile`.
 
-Дополнительно два JDBC producer-а обходят taxonomy через публичный
+Two JDBC producers additionally bypass taxonomy through public
 `LogEvent.field(String, Object)`:
 
 - `ioc.legacy_import.*`;
 - `ioc.storage.sqlite.*`.
 
-Следовательно, точечная правка известных на сегодня числовых ключей не
-закрывает класс проблемы: новый producer сможет снова опубликовать stringly
-numeric field.
+Fixing today's known numeric keys alone therefore does not close the class of
+problem: a new producer could publish another stringly numeric field.
 
-### Проявление на Elasticsearch boundary
+<a id="проявление-на-elasticsearch-boundary"></a>
+### Manifestation at the Elasticsearch boundary
 
-До появления Elasticsearch-потребителя строковое число почти незаметно:
-JSON корректен, Python-парсер читает значение, текстовый поиск работает.
+Before an Elasticsearch consumer exists, a string number is barely noticeable:
+JSON is valid, Python reads the value and text search works.
 
-После подключения Elasticsearch возможны два режима:
+After Elasticsearch integration, two modes are possible:
 
-1. При заранее установленном numeric mapping quoted number может быть coerced,
-   потому что Elasticsearch по умолчанию разрешает string→number coercion.
-   Это не контракт: coercion можно отключить, malformed value отвергает документ,
-   а `_source` всё равно сохраняет исходную форму.
-2. При dynamic mapping первый документ со строкой создаёт `keyword`/string
-   mapping. После этого numeric document конфликтует с существующим mapping,
-   а `avg`, `sum`, percentiles, numeric sort и range queries недоступны без
-   rollover/reindex.
+1. With a preinstalled numeric mapping, a quoted number may be coerced because
+   Elasticsearch enables string→number coercion by default. This is not a
+   contract: coercion can be disabled, a malformed value rejects the document,
+   and `_source` still preserves the original representation.
+2. With dynamic mapping, the first document containing a string creates a
+   `keyword`/string mapping. A later numeric document conflicts with it;
+   `avg`, `sum`, percentiles, numeric sorting and range queries remain unavailable
+   without rollover/reindex.
 
-Нельзя перекладывать исправление на ingest pipeline или runtime fields каждого
-потребителя. Producer обязан публиковать корректный JSON scalar type.
+Do not delegate correction to each consumer's ingest pipeline or runtime fields.
+The producer must emit the correct JSON scalar type.
 
-## Движущие силы и ограничения
+<a id="движущие-силы-и-ограничения"></a>
+## Drivers and constraints
 
-Решение обязано одновременно выполнить следующие требования:
+The decision must satisfy all of these requirements:
 
-1. Сохранить тип `String`/integral `long`/`boolean` от `LogEvent.field(...)` до
-   JSON без эвристического повторного парсинга.
-2. Оставить run/source/stage/correlation в MDC, чтобы поля попадали в обычные
-   Spring/JDBC/adapter logs, которые не используют `LogEvent`.
-3. Не переносить Spring Boot, Logback или JSON serializer в domain/application
-   и не добавлять framework dependency в `platform-observability`.
-4. Сделать тип поля частью generated taxonomy и failing-test контракта.
-5. Не допускать произвольные незарегистрированные structured keys.
-6. Не публиковать два одинаковых JSON key из MDC и event-local transport.
-7. Сохранить корректность при Logback `AsyncAppender`: event-local данные
-   должны быть частью `ILoggingEvent`, а не считываться encoder-ом из отдельного
-   `ThreadLocal`.
-8. Не увеличивать стоимость disabled DEBUG/TRACE за счёт formatter/JSON work.
-9. Сохранить rolling-file, redaction, diagnostic exactly-once и severity→level
-   контракты.
-10. Явно описать wire-format migration и судьбу уже созданных Elasticsearch
-    indices.
+1. Preserve `String`/integral `long`/`boolean` from `LogEvent.field(...)` to JSON
+   without heuristic reparsing.
+2. Keep run/source/stage/correlation in MDC so ordinary Spring/JDBC/adapter logs
+   not using `LogEvent` receive those fields.
+3. Keep Spring Boot, Logback and JSON serializers outside domain/application;
+   add no framework dependency to `platform-observability`.
+4. Make field type part of the generated taxonomy and failing-test contract.
+5. Disallow arbitrary unregistered structured keys.
+6. Do not emit duplicate JSON keys from MDC and event-local transport.
+7. Preserve correctness with Logback `AsyncAppender`: event-local data belongs
+   to `ILoggingEvent`, not a separate `ThreadLocal` read by the encoder.
+8. Do not add formatter/JSON work to disabled DEBUG/TRACE.
+9. Preserve rolling-file, redaction, diagnostic exactly-once and severity→level contracts.
+10. Explicitly describe wire-format migration and existing Elasticsearch indices.
 
-## Решение 1 — два канала с разной семантикой
+<a id="решение-1--два-канала-с-разной-семантикой"></a>
+## Decision 1 — two channels with different semantics
 
-Structured logging разделяется на **ambient context** и **event-local fields**:
+Split structured logging into **ambient context** and **event-local fields**:
 
 ```text
 Envelope/driving metadata                    Operation result
@@ -178,9 +180,10 @@ run/source/stage/correlation                 duration/rows/counts/outcome data
                            JSON strings/numbers/booleans
 ```
 
+<a id="ambient-context--mdc"></a>
 ### Ambient context — MDC
 
-MDC хранит только текстовые данные, принадлежащие всему execution scope:
+MDC stores only textual data belonging to the entire execution scope:
 
 - `ioc.run.id`;
 - `ioc.source.id`;
@@ -189,20 +192,21 @@ MDC хранит только текстовые данные, принадле�
 - `ioc.mode`;
 - `ioc.stage`;
 - control-event/correlation identifiers;
-- transport endpoint/target identity, если они описывают весь handler scope.
+- transport endpoint/target identity when it describes the entire handler scope.
 
-Это позволяет стороннему:
+This allows third-party:
 
 ```java
 logger.info("connection opened");
 ```
 
-получить run/source correlation без зависимости на project `LogEvent`.
+to receive run/source correlation without depending on project `LogEvent`.
 
+<a id="event-local-structured-fields--slf4j-keyvalue-pairs"></a>
 ### Event-local structured fields — SLF4J key/value pairs
 
-Длительности, counts, revisions, boolean outcomes и другие свойства одной
-log occurrence передаются через стандартный SLF4J 2 fluent API:
+Durations, counts, revisions, boolean outcomes and other properties of one log
+occurrence use the standard SLF4J 2 fluent API:
 
 ```java
 logger.atInfo()
@@ -212,17 +216,17 @@ logger.atInfo()
         .log("artifact projection written");
 ```
 
-`KeyValuePair.value` остаётся `Object` внутри `ILoggingEvent`. Поэтому
-Logback async hand-off переносит тип вместе с event snapshot и не зависит от
-состояния producer thread после возврата из logger call.
+`KeyValuePair.value` remains `Object` inside `ILoggingEvent`. Logback asynchronous
+handoff therefore carries the type with the event snapshot and does not depend
+on producer-thread state after the logger call returns.
 
-MDC не становится «legacy channel»: он остаётся правильным инструментом для
-ambient correlation, но перестаёт быть универсальным transport для всех
-structured values.
+MDC does not become a “legacy channel”: it remains the correct ambient
+correlation tool, but stops being universal transport for all structured values.
 
-## Решение 2 — `LogField` становится исполнимой схемой
+<a id="решение-2--logfield-становится-исполнимой-схемой"></a>
+## Decision 2 — `LogField` becomes an executable schema
 
-Добавляется минимальный закрытый словарь JSON scalar types:
+Add a minimal closed vocabulary of JSON scalar types:
 
 ```java
 public enum LogValueType {
@@ -232,11 +236,11 @@ public enum LogValueType {
 }
 ```
 
-`DOUBLE`, arrays и arbitrary objects не добавляются до первого реального
-producer/consumer contract. Текущие operational fields обходятся тремя
-типами; преждевременная универсальная JSON type system нарушила бы YAGNI.
+Do not add `DOUBLE`, arrays or arbitrary objects before the first real
+producer/consumer contract. Current operational fields need three types;
+a premature universal JSON type system would violate YAGNI.
 
-`LogField` получает обязательный `valueType`:
+`LogField` gains required `valueType`:
 
 ```java
 EVENT_ACTION("event.action", STRING, "..."),
@@ -246,47 +250,49 @@ IOC_SYNC_SHED_TO_RECONCILE(
         "ioc.sync.shed_to_reconcile", BOOLEAN, "...");
 ```
 
-Тип является такой же стабильной частью downstream contract, как key:
+Type is as stable a downstream contract component as the key:
 
-- смена `STRING → LONG` после публикации требует index rollover/reindex;
-- переименование key ломает сохранённые запросы;
-- новый field добавляется только вместе с первым production producer;
-- отсутствие типа запрещено structural test-ом.
+- Published `STRING → LONG` changes require index rollover/reindex.
+- Renaming a key breaks saved queries.
+- Add a field only with its first production producer.
+- A structural test forbids missing types.
 
-`LOGGING-CATALOG.md` получает колонку `JSON type`:
+`LOGGING-CATALOG.md` gains a `JSON type` column:
 
 ```text
 | Field | Namespace | JSON type | Description |
 ```
 
-### Нормализация значений
+<a id="нормализация-значений"></a>
+### Value normalization
 
-`LogField`/маленький package-private normalizer задаёт один контракт:
+`LogField`/a small package-private normalizer defines one contract:
 
-- `STRING`: принимаются `CharSequence`, enum, `Path`, UUID и другие
-  явно разрешённые textual values; в event попадает строковое представление;
-- `LONG`: принимаются только целые `Byte`, `Short`, `Integer`, `Long`;
-  в event всегда попадает `Long`;
-- `BOOLEAN`: принимается только `Boolean`;
-- `null`: field отсутствует;
-- fractional number, arbitrary `Map/List` или несовместимый value type —
-  programming defect, а не повод silently stringify.
+- `STRING`: accepts `CharSequence`, enum, `Path`, UUID and other explicitly
+  permitted textual values; the event receives their string representation.
+- `LONG`: accepts only integral `Byte`, `Short`, `Integer`, `Long`; the event
+  always receives `Long`.
+- `BOOLEAN`: accepts only `Boolean`.
+- `null`: field absent.
+- Fractional numbers, arbitrary `Map/List` or incompatible types are programming
+  defects, not reasons to silently stringify.
 
-Не вводится registry/Strategy по типам: closed switch из трёх вариантов проще,
-дешевле и честнее текущего масштаба. Новый JSON scalar type добавляется
-осознанным изменением enum, generator и tests.
+No per-type registry/Strategy: a closed three-way switch is simpler, cheaper and
+more honest at this scale. A new JSON scalar type requires an explicit enum,
+generator and test change.
 
-### Удаление string escape hatch
+<a id="удаление-string-escape-hatch"></a>
+### Remove the string escape hatch
 
-Публичный:
+Remove public:
 
 ```java
 LogEvent.field(String key, Object value)
 ```
 
-удаляется. Все production fields проходят через `LogField`.
+All production fields go through `LogField`.
 
-Добавляются зарегистрированные JDBC fields:
+Add registered JDBC fields:
 
 - `ioc.legacy_import.name`;
 - `ioc.legacy_import.scanned`;
@@ -299,20 +305,21 @@ LogEvent.field(String key, Object value)
 - `ioc.storage.sqlite.read_max`;
 - `ioc.storage.sqlite.busy_timeout_ms`.
 
-Producer audit перед реализацией удаляет либо подключает constants без
-production producer. На момент ADR подтверждены:
+The pre-implementation producer audit removes or wires constants lacking a
+production producer. Confirmed at ADR time:
 
 - `ioc.affected_rows`;
 - `ioc.sync.running`;
 - `ioc.sync.oldest_age`.
 
-`ioc.sync.oldest_age` не может оставаться опубликованным числом без единицы
-измерения. Если producer появится позже, key обязан явно зафиксировать unit
-либо использовать документированный ECS/custom unit contract.
+`ioc.sync.oldest_age` cannot remain a published number without units. If a
+producer appears later, the key must explicitly establish units or use a
+documented ECS/custom unit contract.
 
-## Решение 3 — `LogEvent` остаётся facade, transport меняется внутри
+<a id="решение-3--logevent-остаётся-facade-transport-меняется-внутри"></a>
+## Decision 3 — `LogEvent` remains a facade; transport changes internally
 
-Production call sites сохраняют текущий fluent project API:
+Production call sites retain the current fluent project API:
 
 ```java
 LogEvents.info(log)
@@ -324,527 +331,542 @@ LogEvents.info(log)
         .log();
 ```
 
-SLF4J fluent API не протекает по 20+ producer classes. `LogEvent` остаётся
-Facade/Builder с тремя обязанностями:
+SLF4J fluent API does not spread across 20+ producer classes. `LogEvent` remains
+a Facade/Builder with three responsibilities:
 
-1. проверить и нормализовать value по `LogField`;
-2. при enabled level построить `LoggingEventBuilder` и добавить typed pairs;
-3. выполнить один logger call с optional cause.
+1. Validate and normalize values through `LogField`.
+2. At an enabled level, build `LoggingEventBuilder` and add typed pairs.
+3. Make one logger call with an optional cause.
 
-Он не сериализует JSON, не знает ECS template и не зависит от Logback/Spring.
+It does not serialize JSON, know an ECS template or depend on Logback/Spring.
 
+<a id="disabled-level-behavior"></a>
 ### Disabled-level behavior
 
-Проверка `logger.isXEnabled()` выполняется до создания backend builder и до
-добавления key/value pairs. `LogEvent` по-прежнему держит маленький bounded
-`LinkedHashMap` полей, но disabled event:
+Check `logger.isXEnabled()` before creating the backend builder or adding
+key/value pairs. `LogEvent` still holds a small bounded `LinkedHashMap` of fields,
+but a disabled event:
 
-- не создаёт JSON;
-- не вызывает value suppliers/formatter;
-- не создаёт framework-specific structured arguments/markers.
+- creates no JSON;
+- invokes no value suppliers/formatter;
+- creates no framework-specific structured arguments/markers.
 
-Per-item TRACE уже имеет внешний двойной gate из [0017], поэтому typed transport
-не добавляет work при выключенном TRACE.
+Per-item TRACE already has the external double gate from [0017], so typed
+transport adds no work while TRACE is disabled.
 
-### Ошибка типа
+<a id="ошибка-типа"></a>
+### Type error
 
-Несовместимый value не превращается обратно в строку. Это programming defect,
-который должен быть пойман unit/architecture tests и fail fast при прямом
-вызове API. Попытка «сохранить лог любой ценой» создала бы schema corruption,
-ради устранения которой принят ADR.
+An incompatible value does not become a string again. It is a programming defect
+to catch through unit/architecture tests and fail fast on a direct API call.
+“Preserve the log at any cost” would recreate the schema corruption this ADR removes.
 
-Resilience `DiagnosticSink` не меняется: его внешний decorator по-прежнему
-изолирует failure observational bridge. Этот ADR не вводит общий swallow для
-всех SLF4J-вызовов и не скрывает ошибки программирования.
+`DiagnosticSink` resilience stays unchanged: its outer decorator still isolates
+observational-bridge failures. This ADR introduces no blanket swallowing of
+SLF4J failures and does not hide programming errors.
 
-## Решение 4 — MDC принимает только string-typed fields
+<a id="решение-4--mdc-принимает-только-string-typed-fields"></a>
+## Decision 4 — MDC accepts string-typed fields only
 
-`MdcScope.put(LogField, Object)` проверяет:
+`MdcScope.put(LogField, Object)` checks:
 
 ```text
 field.valueType == STRING
 ```
 
-и отказывает для `LONG`/`BOOLEAN`. Публичный `put(String, Object)` удаляется;
-raw-key запись остаётся только private implementation detail самого scope.
-Taxonomy нельзя обойти произвольным key.
+and rejects `LONG`/`BOOLEAN`. Remove public `put(String, Object)`; raw-key writes
+remain a private scope implementation detail. Arbitrary keys cannot bypass taxonomy.
 
-Для merge-протокола `LogEvent` добавляется узкая операция:
+Add a narrow operation for the `LogEvent` merge protocol:
 
 ```java
 MdcScope.hide(LogField field)
 ```
 
-Она временно удаляет уже существующий MDC key и восстанавливает его в
-`close()`, но не позволяет записать новое значение и не является обходом
-field-type проверки.
+It temporarily removes an existing MDC key and restores it in `close()`, but
+cannot write a new value or bypass field-type checks.
 
-Это делает разделение двух каналов исполнимым: новый numeric field невозможно
-случайно вернуть в string transport.
+This makes the channel separation executable: a new numeric field cannot
+accidentally return to string transport.
 
-Текущие numeric scope fields мигрируют:
+Migrate current numeric scope fields:
 
-- `ioc.event.version` перестаёт быть ambient MDC и добавляется к конкретным
-  `event_publish`/`event_dispatch` occurrences;
-- `ioc.sync.files` перестаёт жить во всём remote-change handler scope и
-  публикуется только событиями, где count действительно рассчитан и имеет
-  смысл.
+- `ioc.event.version` leaves ambient MDC and is added to specific
+  `event_publish`/`event_dispatch` occurrences.
+- `ioc.sync.files` leaves the entire remote-change handler scope and is emitted
+  only by events where that count is actually calculated and meaningful.
 
-Nested сторонние logs сохраняют event/run/correlation identity, но не получают
-случайные event-local counters. Это осознанное уточнение семантики, а не потеря
+Nested third-party logs retain event/run/correlation identity without accidental
+event-local counters. This deliberately refines semantics rather than losing
 observability.
 
-## Решение 5 — event-local field побеждает одноимённый MDC key
+<a id="решение-5--event-local-field-побеждает-одноимённый-mdc-key"></a>
+## Decision 5 — an event-local field wins over the same MDC key
 
-Одинаковый key не должен дважды появляться в JSON. Порядок JSON members у
-конкретного formatter-а не считается публичной merge-policy.
+A key must not occur twice in JSON. A formatter's member order is not public
+merge policy.
 
-Контракт:
+Contract:
 
 ```text
 event-local field > ambient MDC field
 ```
 
-Перед logger call `LogEvent` через `MdcScope.hide(...)` временно снимает из MDC
-только keys, которые присутствуют в event-local map, затем восстанавливает их
-через nested `MdcScope.close()`. В результате:
+Before the logger call, `LogEvent` temporarily removes only event-local-map keys
+from MDC using `MdcScope.hide(...)`, then restores them through nested
+`MdcScope.close()`. Consequently:
 
-- `ILoggingEvent` получает один key;
-- event-local typed value не деградирует до MDC string;
-- внешний MDC восстанавливается после log call;
-- при `AsyncAppender` уже созданный event snapshot содержит правильные MDC и
-  key/value pairs;
-- разные потоки не пересекаются, потому что MDC thread-local.
+- `ILoggingEvent` receives one key;
+- the typed event-local value does not degrade to an MDC string;
+- outer MDC is restored after the call;
+- with `AsyncAppender`, the existing snapshot contains correct MDC and key/value pairs;
+- threads do not interfere because MDC is thread-local.
 
-Это защитный механизм для boundary logs, которые явно повторяют `ioc.run.id`
-или другое ambient поле. Он не является приглашением дублировать context во
-всех producers.
+This protects boundary logs explicitly repeating `ioc.run.id` or another ambient
+field. It does not invite every producer to duplicate context.
 
-## Решение 6 — Spring Boot 3.4 built-in ECS formatter
+<a id="решение-6--spring-boot-34-built-in-ecs-formatter"></a>
+## Decision 6 — Spring Boot 3.4 built-in ECS formatter
 
-Parent обновляется с Spring Boot `3.3.5` до **`3.4.13`** отдельным
-behavior-neutral build commit. Переход сразу через две minor-линии не делается:
-3.4 — минимальный upgrade, который предоставляет нужный standard transport и
-снижает миграционный риск.
+Upgrade the parent from Spring Boot `3.3.5` to **`3.4.13`** in a separate
+behavior-neutral build commit. Do not jump two minor lines: 3.4 is the minimum
+upgrade supplying the required standard transport and reduces migration risk.
 
-После зелёного upgrade gate:
+After a green upgrade gate:
 
-- удаляется `co.elastic.logging:logback-ecs-encoder`;
-- `co.elastic.logging.logback.EcsEncoder` заменяется на
+- remove `co.elastic.logging:logback-ecs-encoder`;
+- replace `co.elastic.logging.logback.EcsEncoder` with
   `org.springframework.boot.logging.logback.StructuredLogEncoder`;
-- формат задаётся как `ecs`;
-- существующий `RollingFileAppender`, file name, size/time rotation,
-  `maxHistory` и `totalSizeCap` сохраняются;
-- console остается human-readable, если отдельное решение не переведёт его в
-  structured format.
+- select format `ecs`;
+- preserve `RollingFileAppender`, filename, size/time rotation, `maxHistory`
+  and `totalSizeCap`;
+- keep console human-readable unless a separate decision makes it structured.
 
-Spring Boot formatter выбран потому, что:
+The Spring Boot formatter is selected because it:
 
-- официально читает SLF4J fluent key/value pairs;
-- сохраняет Object values в JSON;
-- поддерживает ECS без собственного serializer-а;
-- входит в уже используемый framework baseline;
-- имеет documented JSON customization seam.
+- officially reads SLF4J fluent key/value pairs;
+- preserves Object values in JSON;
+- supports ECS without a custom serializer;
+- belongs to the framework baseline already in use;
+- has a documented JSON-customization seam.
 
-Logging system инициализируется до `ApplicationContext`. Поэтому encoder не
-является Spring bean, не получает application services и не настраивается
-через `AppConfig`. Его composition принадлежит `logback-spring.xml` и ранним
+The logging system initializes before `ApplicationContext`. The encoder is
+therefore not a Spring bean, receives no application services and is not configured
+through `AppConfig`. Its composition belongs to `logback-spring.xml` and early
 `logging.structured.*` properties.
 
+<a id="static-ecsservice-fields"></a>
 ### Static ECS/service fields
 
-Новый formatter обязан сохранить:
+The new formatter must preserve:
 
 - `service.name=ioc-extractor`;
-- service version из одного build/application property source;
+- service version from one build/application property source;
 - `event.dataset=ioc-extractor`;
 - daemon file path;
 - exception type/message/stack trace;
 - logger/thread identity.
 
-`event.dataset` задаётся через Boot structured JSON static member/customizer,
-а не через MDC. При единственном dataset это appender-level contract. Если
-появятся разные datasets, отдельное решение уберёт static member и передаст
-dataset через event-local typed channel; два источника одного key одновременно
-не допускаются.
+Set `event.dataset` through a Boot structured JSON static member/customizer,
+not MDC. With one dataset this is an appender-level contract. Multiple datasets
+need a separate decision removing the static member and sending dataset through
+the event-local typed channel; two simultaneous sources for one key are forbidden.
 
-## Решение 7 — wire-format migration является публичным изменением
+<a id="решение-7--wire-format-migration-является-публичным-изменением"></a>
+## Decision 7 — wire-format migration is a public change
 
-Переход encoder-а не считается внутренним рефакторингом. Меняются как минимум:
+Changing the encoder is not an internal refactor. At least these change:
 
 - numeric/boolean values: JSON strings → JSON numbers/booleans;
-- `ecs.version`: текущий Elastic encoder публикует `1.2.0`, Boot 3.4 formatter
-  публикует `8.11`;
-- formatter может добавить стандартные ECS members, например `process.pid`;
-- порядок JSON members не гарантируется;
-- downstream parser, ожидающий только strings, должен принять JSON scalar
-  types.
+- `ecs.version`: the Elastic encoder currently emits `1.2.0`; Boot 3.4 emits `8.11`;
+- the formatter may add standard ECS members such as `process.pid`;
+- JSON member order is not guaranteed;
+- downstream parsers expecting strings only must accept JSON scalar types.
 
-Стабильным контрактом считаются:
+Stable contracts are:
 
 - field names;
-- JSON scalar type из `LogField`;
+- JSON scalar type from `LogField`;
 - action/outcome values;
-- units и семантика поля;
-- presence rules, где они явно задокументированы.
+- field units and semantics;
+- explicitly documented presence rules.
 
-Порядок members и whitespace контрактом не являются. Тесты парсят JSON tree,
-а не сравнивают сырую строку целиком.
+Member order and whitespace are not contracts. Tests parse a JSON tree rather
+than comparing an entire raw string.
 
-## Решение 8 — `event.severity` не добавляется механически
+<a id="решение-8--eventseverity-не-добавляется-механически"></a>
+## Decision 8 — do not mechanically add `event.severity`
 
-Typed channel технически позволяет опубликовать ECS `event.severity: long`, но
-закрытие OBS-D3 не должно одновременно изобретать новую severity scale.
+The typed channel can technically publish ECS `event.severity: long`, but
+closing OBS-D3 must not simultaneously invent a new severity scale.
 
-ECS `event.severity` описывает числовую severity **по шкале event source** и не
-обязана совпадать с `log.level`. В текущем проекте:
+ECS `event.severity` is numeric severity **on the event source's scale** and need
+not equal `log.level`. In the current project:
 
-- diagnostics уже публикуют точную enum severity в
-  `ioc.diagnostic.severity`;
-- `LoggingDiagnosticSink` отображает её в `log.level`;
-- generic operational events не имеют отдельной source severity.
+- diagnostics already publish exact enum severity in `ioc.diagnostic.severity`;
+- `LoggingDiagnosticSink` maps it to `log.level`;
+- generic operational events have no separate source severity.
 
-Поэтому `event.severity` в рамках ADR не публикуется. Если появится запрос
-дашборда или внешний severity contract, отдельное решение задаст стабильную
-шкалу и область применения. Наличие typed transport не является достаточным
-основанием добавлять поле.
+Therefore this ADR does not publish `event.severity`. A dashboard request or
+external severity contract would require a separate decision defining a stable
+scale and scope. Typed transport alone does not justify adding a field.
 
-## Решение 9 — Elasticsearch template остаётся явным activation seam
+<a id="решение-9--elasticsearch-template-остаётся-явным-activation-seam"></a>
+## Decision 9 — Elasticsearch templates remain an explicit activation seam
 
-Корректный JSON type предотвращает создание нового неправильного dynamic
-mapping, но **не исправляет уже существующий index**:
+Correct JSON types prevent new incorrect dynamic mappings but **do not repair
+an existing index**:
 
-- field, уже созданный как `keyword`, не станет `long`;
-- первые numeric documents после producer fix получат mapping conflict;
-- требуется новый index/data stream generation, rollover либо reindex.
+- a field created as `keyword` does not become `long`;
+- the first numeric documents after the producer fix encounter a mapping conflict;
+- a new index/data-stream generation, rollover or reindex is required.
 
-В текущем проекте Elasticsearch не является supported deployment consumer.
-Поэтому OBS-D3 не добавляет неиспользуемый installer/API client и не притворяется,
-что template уже установлен.
+Elasticsearch is not currently a supported deployment consumer. OBS-D3 therefore
+adds no unused installer/API client and does not pretend a template is installed.
 
-При появлении первого поддерживаемого Elasticsearch consumer активируется
-зарегистрированный seam **OBS-5**:
+The first supported Elasticsearch consumer activates registered seam **OBS-5**:
 
-1. из `LogField` metadata генерируется project component template;
-2. project `STRING` fields маппятся как `keyword`, `LONG` — `long`,
-   `BOOLEAN` — `boolean`;
-3. ECS-owned fields не дублируются слепо, а валидируются против выбранной ECS
-   версии/template;
-4. numeric fields могут получить `meta.unit`/`meta.metric_type`, когда их
-   семантика действительно определена;
-5. template устанавливается **до** создания первого data stream/index;
-6. обновление несовместимого типа требует versioned template + rollover;
-7. для legacy indices публикуется reindex/runbook, producer не пытается
-   «исправить» mapping повторной отправкой.
+1. Generate a project component template from `LogField` metadata.
+2. Map project `STRING` to `keyword`, `LONG` to `long`, `BOOLEAN` to `boolean`.
+3. Validate ECS-owned fields against the selected ECS version/template instead
+   of blindly duplicating them.
+4. Numeric fields may gain `meta.unit`/`meta.metric_type` when their semantics
+   are actually established.
+5. Install the template **before** creating the first data stream/index.
+6. Incompatible type changes require a versioned template + rollover.
+7. Publish a reindex runbook for legacy indices; the producer does not attempt
+   to “repair” mapping by resending.
 
-Владение:
+Ownership:
 
-- `platform-observability` владеет schema metadata;
-- generator может жить рядом с logging catalog doc-sync;
-- Elasticsearch template/install/runbook принадлежит `packaging`/будущему
-  ingest adapter, не core и не `LogEvent`.
+- `platform-observability` owns schema metadata;
+- the generator may live beside logging-catalog doc sync;
+- Elasticsearch template/install/runbook belongs to `packaging`/a future ingest
+  adapter, not core or `LogEvent`.
 
-Этот seam фиксируется сейчас, чтобы типизация taxonomy не была спроектирована
-только под текущий JSON-файл и не потеряла будущую mapping boundary.
+Record this seam now so taxonomy typing is not designed solely for the current
+JSON file and does not lose the future mapping boundary.
 
-## Границы модулей и ответственности
+<a id="границы-модулей-и-ответственности"></a>
+## Module boundaries and responsibilities
 
-| Модуль | Ответственность |
+| Module | Responsibility |
 |---|---|
 | `platform-observability` | `LogValueType`, typed `LogField`, `LogEvent` facade, string-only `MdcScope`, taxonomy/catalog tests |
-| `platform-diagnostics-logging` | diagnostic→`LogEvent` bridge; severity/redaction contract без знания encoder-а |
-| adapters | только выбирают `LogField` и передают typed operational values |
+| `platform-diagnostics-logging` | Diagnostic→`LogEvent` bridge; severity/redaction contract without encoder knowledge |
+| adapters | Only select `LogField` and supply typed operational values |
 | `bootstrap/ioc-app` | Spring Boot version, `logback-spring.xml`, early structured logging properties, real encoder integration tests |
-| `docs/` | wire contract, generated field catalog, migration consequences |
-| future packaging/ES adapter | component template installation, rollover/reindex runbook |
+| `docs/` | Wire contract, generated field catalog, migration consequences |
+| future packaging/ES adapter | Component-template installation, rollover/reindex runbook |
 
-`ioc-domain`, `ioc-application`, `platform-etl`, diagnostics model и control-event
-contracts не получают Spring/Logback imports. Нового business port не вводится:
-SLF4J уже является platform-observability boundary, а formatter — bootstrap
-infrastructure detail.
+`ioc-domain`, `ioc-application`, `platform-etl`, the diagnostics model and
+control-event contracts gain no Spring/Logback imports. No business port is
+introduced: SLF4J already forms the platform-observability boundary, and the
+formatter is bootstrap infrastructure.
 
-Собственный `TypedEcsEncoder`, JSON serializer, `ThreadLocal<Map<String,Object>>`
-или Spring bean для logging initialization не создаются.
+Create no custom `TypedEcsEncoder`, JSON serializer,
+`ThreadLocal<Map<String,Object>>` or Spring logging-initialization bean.
 
-## Concurrency и performance
+<a id="concurrency-и-performance"></a>
+## Concurrency and performance
 
+<a id="concurrency"></a>
 ### Concurrency
 
-- MDC остаётся thread-local и закрывается LIFO через `MdcScope`.
-- Typed pairs принадлежат конкретному `ILoggingEvent`.
-- Async appender получает frozen event data, не читает producer ThreadLocal.
-- Collision scope восстанавливает только изменённые keys.
-- Два синхронных run на разных daemon threads не смешивают correlation.
-- Не обещается автоматическое распространение MDC через новые executor/reactive
-  boundaries; при их появлении нужен явный context propagation design.
+- MDC stays thread-local and closes LIFO through `MdcScope`.
+- Typed pairs belong to a specific `ILoggingEvent`.
+- Async appenders receive frozen event data, not producer ThreadLocal state.
+- Collision scopes restore only changed keys.
+- Two synchronous runs on different daemon threads do not mix correlation.
+- Automatic MDC propagation across new executor/reactive boundaries is not
+  promised; introduce explicit context-propagation design when needed.
 
+<a id="allocationruntime"></a>
 ### Allocation/runtime
 
-Для одного enabled event выполняется один проход по небольшому field map:
+One enabled event makes one pass over a small field map:
 
 ```text
 O(number of event fields)
 ```
 
-Обычно это 2–10 entries. Нет:
+Usually 2–10 entries. There is no:
 
-- повторного JSON parse;
+- JSON reparsing;
 - regex/type guessing;
-- глобального key registry lookup на каждый field;
-- дополнительной полной копии log message;
-- reflection в hot path.
+- global key-registry lookup per field;
+- additional full log-message copy;
+- hot-path reflection.
 
-`Long` boxing при `addKeyValue` неизбежен в Object-based SLF4J API и ничтожен
-относительно JSON formatting/I/O. Специальные primitive collections или
-code-generation не вводятся без профилированного bottleneck.
+`Long` boxing during `addKeyValue` is unavoidable in Object-based SLF4J API and
+negligible beside JSON formatting/I/O. Do not add special primitive collections
+or code generation without a profiled bottleneck.
 
-Не создаётся unstable timing gate. Allocation/runtime smoke выполняется на
-stage DEBUG events и enabled per-item TRACE synthetic input; оптимизация
-проводится только при измеренном regression.
+Create no unstable timing gate. Allocation/runtime smoke uses stage DEBUG events
+and synthetic input with enabled per-item TRACE; optimize only measured regressions.
 
-## Отклонённые варианты
+<a id="отклонённые-варианты"></a>
+## Rejected alternatives
 
-### 1. Оставить MDC и парсить известные keys в formatter-е
+<a id="1-оставить-mdc-и-парсить-известные-keys-в-formatter-е"></a>
+### 1. Keep MDC and parse known keys in the formatter
 
-Schema-aware `String → Long/Boolean` conversion мог бы исправить JSON с
-минимумом call-site изменений, но тип сначала уничтожается, затем
-восстанавливается. Это:
+Schema-aware `String → Long/Boolean` conversion could fix JSON with few call-site
+changes, but destroys the type and then reconstructs it. This:
 
-- скрывает transport defect;
-- переносит type error в поздний encoder lifecycle;
-- оставляет ambient и event-local semantics смешанными;
-- делает custom formatter обязательным навсегда.
+- hides the transport defect;
+- moves type errors into late encoder lifecycle;
+- keeps ambient and event-local semantics mixed;
+- permanently requires a custom formatter.
 
-Допустимо только как временный migration bridge, не как target architecture.
+Allowed only as a temporary migration bridge, not target architecture.
 
-### 2. Парсить любое numeric-looking MDC value
+<a id="2-парсить-любое-numeric-looking-mdc-value"></a>
+### 2. Parse every numeric-looking MDC value
 
-Отклонено: run/event/slice identifiers могут выглядеть числовыми, но являются
-`keyword`. Эвристика меняет schema в зависимости от значения первого документа.
+Rejected: run/event/slice identifiers may look numeric but are `keyword`.
+The heuristic changes schema based on the first document's value.
 
-### 3. Наследоваться от Elastic `EcsEncoder`
+<a id="3-наследоваться-от-elastic-ecsencoder"></a>
+### 3. Extend Elastic `EcsEncoder`
 
-Технически возможно через `addCustomFields(...)`, но требует:
+Technically possible through `addCustomFields(...)`, but requires:
 
-- отдельного adapter/module или Logback/Elastic dependency в platform;
-- собственного scalar JSON escaping/serialization;
-- collision policy с уже сериализованным MDC;
-- сопровождения при upgrade encoder-а.
+- a separate adapter/module or Logback/Elastic dependency in platform;
+- custom scalar JSON escaping/serialization;
+- collision policy with already serialized MDC;
+- maintenance across encoder upgrades.
 
-Это fallback только если Spring Boot upgrade окажется заблокированным
-подтверждённой несовместимостью.
+A fallback only if proven incompatibility blocks the Spring Boot upgrade.
 
-### 4. Перейти на `logstash-logback-encoder`
+<a id="4-перейти-на-logstash-logback-encoder"></a>
+### 4. Move to `logstash-logback-encoder`
 
-Библиотека умеет typed structured arguments/key-value pairs, но добавляет новую
-dependency family и требует вручную поддерживать ECS shape. При наличии
-встроенного Boot ECS formatter это лишняя инфраструктура.
+It supports typed structured arguments/key/value pairs but adds a dependency
+family and requires manual ECS-shape maintenance. Built-in Boot ECS makes it
+unnecessary infrastructure.
 
-### 5. Передавать typed map через отдельный ThreadLocal
+<a id="5-передавать-typed-map-через-отдельный-threadlocal"></a>
+### 5. Pass a typed map through a separate ThreadLocal
 
-Отклонено: encoder может работать на другом async thread, а скрытый context не
-является частью `ILoggingEvent`. Решение ломается при смене appender topology.
+Rejected: the encoder may run on another asynchronous thread, and hidden context
+is not part of `ILoggingEvent`. It breaks when appender topology changes.
 
-### 6. Добавить параллельные keys `ioc.rows_long`
+<a id="6-добавить-параллельные-keys-iocrows_long"></a>
+### 6. Add parallel keys such as `ioc.rows_long`
 
-Отклонено: создаёт вечный двойной wire contract, усложняет dashboards и не
-защищает новые fields.
+Rejected: creates a permanent dual wire contract, complicates dashboards and
+fails to protect new fields.
 
-### 7. Полностью отказаться от MDC
+<a id="7-полностью-отказаться-от-mdc"></a>
+### 7. Abandon MDC completely
 
-Отклонено: сторонние framework logs потеряют run/source correlation, а каждый
-adapter будет вынужден вручную повторять context в каждой occurrence.
+Rejected: third-party framework logs lose run/source correlation, forcing every
+adapter to repeat context manually in every occurrence.
 
-### 8. Переход на Micrometer Observation/OpenTelemetry logs
+<a id="8-переход-на-micrometer-observationopentelemetry-logs"></a>
+### 8. Move to Micrometer Observation/OpenTelemetry logs
 
-Metrics/tracing не заменяют operational event log и не решают текущую
-SLF4J→JSON типизацию сами по себе. Добавлять новый telemetry stack без
-consumer/SLO — нарушение YAGNI.
+Metrics/tracing neither replace operational event logs nor resolve current
+SLF4J→JSON typing themselves. A telemetry stack without a consumer/SLO violates YAGNI.
 
-## Обязательные инварианты и тесты
+<a id="обязательные-инварианты-и-тесты"></a>
+## Required invariants and tests
 
+<a id="taxonomyapi"></a>
 ### Taxonomy/API
 
-- каждый `LogField` имеет непустой key/description и `LogValueType`;
-- keys уникальны и проходят namespace rules;
-- `LOGGING-CATALOG.md` совпадает с generated catalog с колонкой JSON type;
-- public arbitrary-key overload отсутствует;
-- новый structured key без `LogField` не компилируется;
-- field без production producer удаляется либо явно регистрируется как
-  отдельный seam, но не остаётся seed constant.
+- Every `LogField` has a nonempty key/description and `LogValueType`.
+- Keys are unique and obey namespace rules.
+- `LOGGING-CATALOG.md` matches the generated catalog with its JSON-type column.
+- No public arbitrary-key overload exists.
+- A new structured key without `LogField` does not compile.
+- A field without a production producer is removed or explicitly registered
+  as a separate seam, not retained as a seed constant.
 
+<a id="value-contract"></a>
 ### Value contract
 
-- `LONG` принимает integral Java values и до JSON нормализуется в `Long`;
-- fractional number для `LONG` отвергается;
-- `BOOLEAN` принимает только boolean;
-- numeric-looking ID остаётся string;
-- null field отсутствует, а не сериализуется как строка `"null"`;
-- несовместимый value не получает silent `String.valueOf` fallback.
+- `LONG` accepts integral Java values and normalizes to `Long` before JSON.
+- Fractional numbers for `LONG` are rejected.
+- `BOOLEAN` accepts only boolean.
+- Numeric-looking IDs remain strings.
+- Null fields are absent, not serialized as `"null"`.
+- Incompatible values get no silent `String.valueOf` fallback.
 
+<a id="mdcevent-split"></a>
 ### MDC/event split
 
-- ordinary SLF4J log внутри run scope получает string correlation fields;
-- `MdcScope` отвергает numeric/boolean `LogField`;
-- `MdcScope.hide(...)` восстанавливает скрытый key и не записывает новое
-  значение;
-- event-local key побеждает одноимённый MDC key;
-- итоговый JSON содержит key ровно один раз;
-- pre-existing MDC восстанавливается после log call и exception;
-- два parallel run не смешивают MDC;
-- async appender сохраняет typed pairs после закрытия producer scope.
+- Ordinary SLF4J logs inside a run scope receive string correlation fields.
+- `MdcScope` rejects numeric/boolean `LogField`.
+- `MdcScope.hide(...)` restores a hidden key without writing a new value.
+- An event-local key wins over the same MDC key.
+- The final JSON contains the key exactly once.
+- Preexisting MDC is restored after logging and exceptions.
+- Two parallel runs do not mix MDC.
+- Async appenders retain typed pairs after producer-scope closure.
 
+<a id="encoderwire"></a>
 ### Encoder/wire
 
-Реальный Boot `StructuredLogEncoder` парсится как JSON tree, где:
+Parse the real Boot `StructuredLogEncoder` as a JSON tree where:
 
-- `event.duration` — integral number;
-- `ioc.rows` — integral number;
-- все diagnostic counts — integral numbers;
-- `ioc.sync.shed_to_reconcile` — boolean;
-- run/source/event IDs — strings;
-- `service.name` и `event.dataset` сохранены;
-- exception fields присутствуют;
-- `ecs.version` соответствует Boot formatter contract;
-- member order не проверяется.
+- `event.duration` is an integral number;
+- `ioc.rows` is an integral number;
+- every diagnostic count is an integral number;
+- `ioc.sync.shed_to_reconcile` is boolean;
+- run/source/event IDs are strings;
+- `service.name` and `event.dataset` are preserved;
+- exception fields exist;
+- `ecs.version` matches the Boot formatter contract;
+- member order is not checked.
 
+<a id="regression"></a>
 ### Regression
 
-- severity→log.level mapping OBS-1 не меняется;
-- redaction diagnostic/TRACE не меняется;
-- disabled gate не вызывает formatter/render;
-- logging failure isolation diagnostic sink сохраняется;
-- daemon rolling file и human-readable oneshot console сохраняются;
-- startup strict `ioc.*` preflight не затрагивается новыми `logging.*`
-  properties.
+- OBS-1 severity→log.level mapping is unchanged.
+- Diagnostic/TRACE redaction is unchanged.
+- Disabled gates invoke no formatter/rendering.
+- Diagnostic-sink logging-failure isolation is preserved.
+- Daemon rolling file and human-readable oneshot console are preserved.
+- New `logging.*` properties do not affect strict startup `ioc.*` preflight.
 
-## Нарезка реализации
+<a id="нарезка-реализации"></a>
+## Implementation slices
 
+<a id="1-spring-boot-34-baseline"></a>
 ### 1. Spring Boot 3.4 baseline
 
 **Commit:** `BUILD: upgrade Spring Boot to 3.4.13`
 
-- обновить parent baseline;
-- не менять encoder/LogEvent behavior в том же commit;
-- выполнить dependency convergence review, startup/config binding tests,
-  actuator, Spring Integration daemon tests и полный reactor verify;
-- зафиксировать только необходимые migration adjustments.
+- Update the parent baseline.
+- Do not change encoder/LogEvent behavior in the same commit.
+- Run dependency-convergence review, startup/config-binding tests, actuator,
+  Spring Integration daemon tests and full reactor verify.
+- Record only necessary migration adjustments.
 
 **Gate:** `./mvnw verify`, oneshot help/startup, daemon context + actuator,
-strict config regression.
+strict-configuration regression.
 
-### 2. Исполнимая logging schema
+<a id="2-исполнимая-logging-schema"></a>
+### 2. Executable logging schema
 
 **Commit:** `REFACTOR: classify structured log field types`
 
-- добавить `LogValueType` и metadata во все `LogField`;
-- добавить JDBC fields, убрать arbitrary string field API;
-- удалить/подключить unused constants;
-- расширить structural tests и generated catalog колонкой JSON type;
-- пока оставить текущий MDC transport, чтобы commit был behavior-preserving.
+- Add `LogValueType` and metadata to every `LogField`.
+- Add JDBC fields; remove arbitrary string-field API.
+- Remove/wire unused constants.
+- Extend structural tests and generated catalog with a JSON-type column.
+- Keep the current MDC transport for now, preserving behavior in this commit.
 
-**Модули:** `platform-observability`, `adapter-store-jdbc`, `docs/`.
+**Modules:** `platform-observability`, `adapter-store-jdbc`, `docs/`.
 
-**Gate:** taxonomy/doc-sync + affected adapter tests.
+**Gate:** taxonomy/doc sync + affected adapter tests.
 
-### 3. Typed event transport и Boot ECS formatter
+<a id="3-typed-event-transport-и-boot-ecs-formatter"></a>
+### 3. Typed event transport and Boot ECS formatter
 
 **Commit:** `FEATURE: emit typed ECS structured log fields`
 
-- перевести `LogEvent` на SLF4J `LoggingEventBuilder.addKeyValue`;
-- сделать `MdcScope` string-only и мигрировать numeric scope fields;
-- реализовать collision contract;
-- заменить Elastic encoder на Boot `StructuredLogEncoder`;
-- удалить `logback-ecs-encoder` dependency/version property;
-- сохранить rolling/service/dataset config;
-- переписать log capture tests с MDC event fields на key/value pairs;
-- добавить real JSON type matrix и async/concurrency regression;
-- обновить `LOGGING.md`, taxonomy, module READMEs и закрыть OBS-D3.
+- Move `LogEvent` to SLF4J `LoggingEventBuilder.addKeyValue`.
+- Make `MdcScope` string-only and migrate numeric scope fields.
+- Implement the collision contract.
+- Replace Elastic encoder with Boot `StructuredLogEncoder`.
+- Remove `logback-ecs-encoder` dependency/version property.
+- Preserve rolling/service/dataset configuration.
+- Rewrite log-capture tests from MDC event fields to key/value pairs.
+- Add the real JSON-type matrix and async/concurrency regressions.
+- Update `LOGGING.md`, taxonomy and module READMEs; close OBS-D3.
 
-**Модули:** `platform-observability`, `platform-diagnostics-logging`,
-затронутые adapters, `bootstrap`, `docs/`.
+**Modules:** `platform-observability`, `platform-diagnostics-logging`, affected
+adapters, `bootstrap`, `docs/`.
 
-**Gate:** targeted tests, полный `./mvnw verify`, `git diff --check`.
+**Gate:** targeted tests, full `./mvnw verify`, `git diff --check`.
 
+<a id="stand-verification--definition-of-done"></a>
 ## Stand verification / Definition of Done
 
-После сборки RC daemon разворачивается на тестовом стенде:
+After building the RC, deploy the daemon on a test stand:
 
-1. clean rolling file создаётся Boot ECS formatter-ом;
-2. extraction с diagnostics публикует numeric total/counts;
-3. sync admission публикует boolean `shed_to_reconcile`;
-4. stage completion публикует numeric `event.duration`;
-5. Python smoke проверяет `isinstance(value, int|bool)`, а IDs — `str`;
-6. обычный framework/adapter log внутри run scope содержит correlation MDC;
-7. parallel ingest двух файлов не смешивает run ids;
-8. redaction и terminal completion остаются прежними;
-9. saved queries/scripts стенда не предполагают строковые counts.
+1. A clean rolling file is created by the Boot ECS formatter.
+2. Extraction with diagnostics emits numeric totals/counts.
+3. Sync admission emits boolean `shed_to_reconcile`.
+4. Stage completion emits numeric `event.duration`.
+5. Python smoke checks `isinstance(value, int|bool)` and IDs as `str`.
+6. Ordinary framework/adapter logs inside the run scope contain correlation MDC.
+7. Parallel ingestion of two files does not mix run IDs.
+8. Redaction and terminal completion remain unchanged.
+9. Stand saved queries/scripts do not assume string counts.
 
-Если доступен disposable Elasticsearch, дополнительный smoke создаёт mapping с
-`coerce=false` и индексирует representative event. Elasticsearch dependency,
-container и timing gate не добавляются в обычный reactor только ради этого
-необязательного stand check.
+If disposable Elasticsearch is available, an extra smoke creates mapping with
+`coerce=false` and indexes a representative event. No Elasticsearch dependency,
+container or timing gate is added to the ordinary reactor solely for this
+optional stand check.
 
-OBS-D3 считается закрытым, когда:
+OBS-D3 is closed when:
 
-- full verify и stand smoke зелёные;
-- production JSON содержит корректные scalar types;
-- catalog публикует типы;
-- arbitrary field/MDC numeric escape paths удалены;
-- `logback-ecs-encoder` отсутствует в dependency tree;
-- dev/module docs описывают dual-channel contract;
-- OBS-5 зарегистрирован как будущий Elasticsearch activation seam, но не
-  выдан за реализованный template.
+- full verify and stand smoke are green;
+- production JSON contains correct scalar types;
+- the catalog publishes types;
+- arbitrary field/MDC numeric escape paths are gone;
+- `logback-ecs-encoder` is absent from the dependency tree;
+- dev/module docs describe the dual-channel contract;
+- OBS-5 is registered as a future Elasticsearch activation seam, without being
+  presented as an implemented template.
 
-## Следствия
+<a id="следствия"></a>
+## Consequences
 
-Положительные:
+Positive:
 
-- dashboards и aggregations получают числа/boolean без runtime conversion;
-- тип поля имеет единственный источник истины;
-- correlation остаётся доступной сторонним логам;
-- logging backend можно менять через standard SLF4J event contract;
-- новый field не может незаметно обойти generated taxonomy;
-- будущий Elasticsearch template может генерироваться из той же metadata.
+- Dashboards and aggregations receive numbers/booleans without runtime conversion.
+- Field type has one source of truth.
+- Correlation stays available to third-party logs.
+- Logging backend is replaceable through the standard SLF4J event contract.
+- New fields cannot silently bypass generated taxonomy.
+- A future Elasticsearch template can be generated from the same metadata.
 
-Отрицательные/операционные:
+Negative/operational:
 
-- Spring Boot minor upgrade расширяет regression surface;
-- ECS JSON wire format меняется, включая `ecs.version`;
-- существующий Elasticsearch keyword mapping потребует rollover/reindex;
-- Python/scripts, ожидающие все custom values как strings, нужно обновить;
-- numeric event properties больше не размазываются ambient MDC по каждому
-  вложенному framework log;
-- type mismatch становится fail-fast programming defect.
+- A Spring Boot minor upgrade broadens the regression surface.
+- ECS JSON wire format changes, including `ecs.version`.
+- Existing Elasticsearch keyword mappings require rollover/reindex.
+- Python/scripts expecting all custom values as strings need updating.
+- Numeric event properties no longer spread through ambient MDC into every
+  nested framework log.
+- Type mismatch becomes a fail-fast programming defect.
 
-## Открытые точки расширения
+<a id="открытые-точки-расширения"></a>
+## Open extension points
 
 1. **OBS-5:** generated Elasticsearch component template + installation/
-   rollover/reindex lifecycle при первом supported ES consumer.
-2. `event.severity` — только после согласования source-specific numeric scale.
-3. `DOUBLE`/arrays/objects — только с первым реальным field contract.
-4. Async/reactive context propagation — только при появлении реальной
-   executor/reactive stage boundary.
-5. Structured console output — отдельное операторское решение; OBS-D3
-   сохраняет human-readable oneshot console.
+   rollover/reindex lifecycle with the first supported Elasticsearch consumer.
+2. `event.severity` only after agreeing a source-specific numeric scale.
+3. `DOUBLE`/arrays/objects only with the first real field contract.
+4. Async/reactive context propagation only when a real executor/reactive stage
+   boundary appears.
+5. Structured console output is a separate operator decision; OBS-D3 keeps
+   human-readable oneshot console.
 
-## Реализация 2026-07-16
+<a id="реализация-2026-07-16"></a>
+## Implementation 2026-07-16
 
-Решение реализовано последовательностью:
+Implemented through this sequence:
 
-1. `da9ff3f` — принят и опубликован дизайн;
-2. `a8867f9` — Spring Boot baseline обновлён до 3.4.13;
-3. `e4e0ea5` — `LogField` стал исполнимой scalar schema, JDBC escape keys
-   зарегистрированы, generated catalog получил JSON type;
-4. `FEATURE: emit typed ECS structured log fields` — `LogEvent` переведён на
-   SLF4J key/value pairs, `MdcScope` ограничен строками, Elastic encoder удалён,
-   Boot ECS formatter и JSON/async/collision regressions включены.
+1. `da9ff3f`: design accepted and published.
+2. `a8867f9`: Spring Boot baseline upgraded to 3.4.13.
+3. `e4e0ea5`: `LogField` became an executable scalar schema, JDBC escape keys
+   registered, generated catalog gained JSON types.
+4. `FEATURE: emit typed ECS structured log fields`: `LogEvent` moved to SLF4J
+   key/value pairs, `MdcScope` restricted to strings, Elastic encoder removed,
+   Boot ECS formatter and JSON/async/collision regressions enabled.
 
-OBS-D3 закрыт. OBS-5 остаётся seam: текущая реализация исправляет producer
-wire types, но намеренно не устанавливает Elasticsearch templates и не меняет
-уже существующие mappings.
+OBS-D3 is closed. OBS-5 remains a seam: the implementation fixes producer wire
+types but deliberately does not install Elasticsearch templates or change
+existing mappings.
 
-## Источники
+<a id="источники"></a>
+## Sources
 
 - [Spring Boot 3.4 — Structured Logging](https://docs.spring.io/spring-boot/3.4/reference/features/logging.html#features.logging.structured)
 - [SLF4J 2 fluent logging API](https://www.slf4j.org/manual.html#fluent)

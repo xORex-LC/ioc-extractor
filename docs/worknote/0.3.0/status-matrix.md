@@ -27,7 +27,7 @@ language: "ru"
 | R030-RETIRE | planned | Сверить поддерживаемые/history surfaces и выполнить RETIRE-APP-11; DEP-9/10 уже устранены |
 | R030-ARCH | planned | Подтвердить module/package maps и boundaries; QUAL-BOOT-1 остаётся review scope |
 | R030-SEC | in-progress | Старый dependency repair квалифицирован отдельно; SRC-3 и repository/workflow/publication-security review ещё открыты |
-| R030-DOC | in-progress | Основные root/capability/guide комплекты пересмотрены; оставшаяся очередь и scope ниже |
+| R030-DOC | verified | Документационный baseline закрыт:196 in-scope задач verified,2 security docs исключены пользователем (N/A); последующие code/candidate изменения требуют same-change обновлений |
 | R030-REL | planned | Все обязательные prerequisites, fresh security, compatibility/performance, packaging/upgrade/rollback и final release evidence |
 
 ## Module hardening matrix
@@ -39,7 +39,7 @@ TEST и обновление документа не закрывают проч
 
 | Maven module | `R030-QUAL` | `R030-RETIRE` | `R030-ARCH` | `R030-TEST` | affected `R030-DOC` |
 |---|---|---|---|---|---|
-| `platform/platform-errors` | `planned` | `planned` | `planned` | `planned` | `planned` |
+| `platform/platform-errors` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `platform/platform-diagnostics-api` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `platform/platform-diagnostics` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `platform/platform-etl` | `planned` | `planned` | `planned` | `planned` | `verified` |
@@ -57,7 +57,7 @@ TEST и обновление документа не закрывают проч
 | `adapters/adapter-regex-re2j` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `adapters/adapter-psl` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `adapters/adapter-processing-camel` | `planned` | `planned` | `planned` | `planned` | `verified` |
-| `adapters/adapter-source-tika` | `planned` | `planned` | `planned` | `planned` | `planned` |
+| `adapters/adapter-source-tika` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `adapters/adapter-csv` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `adapters/adapter-manifest-json-jackson` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `adapters/adapter-store-jdbc` | `planned` | `planned` | `planned` | `planned` | `verified` |
@@ -75,7 +75,7 @@ TEST и обновление документа не закрывают проч
 | Supported/history retirement surfaces | RETIRE / owning modules | Сохранить migrations/ledger replay, engine fallback, SMB, maintenance, publish/TCK до принятого retirement; [контракт](goals/R030-RETIRE-retirement.md) |
 | Security: SRC-3 | SEC / dependency owners | Датированная affected-version матрица сохранена; reachability/owner disposition либо qualified remediation и fresh security evidence ещё нужны |
 | SEC-LOG-1 | SEC / observability | При отложенном аудите SECURITY-ENGINEERING сверить broad redaction statement с formatter-only structured-context contract; free message/Throwable/cause/suppressed требуют producer ownership; это не доказательство новой утечки |
-| DOC remaining paths | DOC / owning documents | [198 исходных задач](documentation/remaining-work.tsv): 49 ADR translations, 126 исходных README reviews (107 README verified (CLI/configuration/CSV/Spring events/ingest/manifest/Camel/PSL/regex/JDBC/SMB/bootstrap/build-support/core (application/domain/processing/TCK)/packaging/concurrency/IOC diagnostics/diagnostics API/diagnostics logging/ETL/events/SLF4J logging/IOC observability/tools), 19 pending), 2 отложенных security docs, 15 release records, 6 compatibility redirects; локальный частичный review не закрывает полный scope |
+| DOC baseline | DOC / owning documents | [198 исходных задач](documentation/remaining-work.tsv):49 ADR,126 README,15 release paths и6 compatibility entries verified;2 security docs N/A по решению пользователя. Результат не закрывает SEC/REL и не заменяет final-candidate qualification |
 | Publication follow-ups | LIB/SEC/REL | TOOL-6 API comparison, TOOL-7 provenance, TOOL-8 protected configuration CI recovery, TOOL-9 independent-version Maven/CI transition; не повторная публикация исходных RC |
 | External target qualification | DATA/REL / operators | OPS-8 H5 две identities; неподтверждённые server/platform claims остаются skips; source default disabled |
 | Operational/source findings | Owning capabilities / REL | OPS-10…15, OUT-4, ING-11/13/15/16, SRC-3 и TOOL-10 сохраняются в [KNOWN-ISSUES](../../KNOWN-ISSUES.md); retirement записок не закрывает их |
@@ -92,7 +92,7 @@ RETIRE-DEP-9 (application→platform-errors) и RETIRE-DEP-10 (CSV→commons-io)
 |---|---|---|
 | DATA-IMPORT-01 / ADR 0025 H5 / OPS-8 | Нет двухидентичного live fixture; это не pass и не расширение SMB support claim | Opt-in SmbManagedImportHardeningContractTest на конкретном family: denial, capability/namespace, claim, reconnect, disposition, exact purge |
 | Multi-daemon ingestion lease/fencing | 0.3.0 поддерживает single-daemon; process-local ING-10 guard не cross-process ownership | Реальный multi-daemon deployment requirement и отдельное durable fencing решение |
-| Security documents | Пользователь отложил SECURITY-ENGINEERING/THREAT-MODEL в отдельный комплект | Отдельный substantive audit/перевод; SEC и release closure до него не объявлять |
+| Security documents | По решению пользователя 2026-11-16 полный аудит/переработка/перевод SECURITY-ENGINEERING и THREAT-MODEL исключены из baseline 0.3.0 (N/A), не блокируют DOC/release closure | SDLC и модель угроз — отдельный scope одной из следующих версий; существующие security checks и отдельные findings не закрываются этим исключением |
 
 ## Обновление
 
@@ -675,3 +675,114 @@ publication contracts, make docs, recursive README links/source maps/English,
 provenance/preservation/command syntax и make verify; логи `.dev/tools-readme-audit/`.
 Runtime/load scenarios, cold/remote consumers, publication, PMD/security/PIT
 повторно не запускались.
+
+### README Tika source adapter и platform errors — 2026-11-16
+
+Рекурсивно пересмотрены 4 исходных README двух модулей, три русских
+переведены на English; добавлен test-package README Tika. Все 7 Java files
+(3 main,4 integration suites) и 2 POM связаны с local source maps.
+Убраны устаревшие обещания untyped IocExtractorException/одного Tika класса
+и будущего module extraction. Подтверждены inward dependencies и JDK-only
+errors; broad Tika standard-parser closure отделён от HTML/DOCX mechanisms.
+
+Описаны caller-owned writer и partial output на failure, String materialization,
+SOURCE unsupported/read-failed cause/reason boundary, forced charset versus
+binary formats, current bootstrap region units/default, repair-region pruning,
+characters/nodes/depth/embedded-input rejection, reader interruption versus
+wall-clock budget. Конечный previous-parser corpus и synthetic format sentinels
+не выданы за universal format/resource/security/concurrency qualification.
+SRC-2/SRC-3 сохранены открытыми; base exception не назначает retry/rollback/
+severity policy, typed payload принадлежит IOC diagnostics.
+
+4 original tasks verified;198 строк/input provenance сохранены;111/126 original
+README verified,15pending. Новый companion отмечен в owning note. Только две
+affected DOC cells закрыты; QUAL/RETIRE/ARCH/TEST и global DOC/SEC/REL не
+переоценены. Остались общие README/indexes и отдельные ADR/security/release/
+redirect scopes. Java/POM/tests/API/generated references/baselines unchanged.
+Проверки: doctor-core, selected upstream package+compile dependency tree,
+Tika integration cohort, make verify, make docs, recursive README links/English/
+source maps, command syntax/Make selectors и queue/provenance/scope checks.
+Логи `.dev/source-errors-readme-audit/`; PMD/security/PIT/capacity/live deployment
+повторно не запускались.
+
+
+### Перевод исторических ADR — 2026-11-16
+
+По запросу пользователя выполнен translation-only пакет ADR-0000–0048 без
+проверки решений на текущую реализацию.20RU originals получили EN canonical;
+29EN originals побайтово сохранены и получили RU translations.49 counterparts
+размещены в docs/ADR/ru/, переводы явно помечены; статусы, даты, альтернативы,
+последствия, планы внедрения и датированные уточнения оставлены историческими.
+Fenced examples/diagram labels сохранены verbatim, без исполнения старых команд.
+
+Пользователь явно согласовал citation-only исключение при переносе RU originals:
+114 href occurrences в18файлах пересчитаны к тем же English canonical targets,
+без изменения текста решения. Точная правка — docs/ADR/translation-link-rebases.tsv;
+baseline/migration/output paths+SHA256 — docs/ADR/translation-provenance.tsv.
+Сохранена отдельная identity ранее согласованного URL-only repair ADR0025.
+Якоря исходных заголовков оставлены в переводах для прежних fragment links.
+
+English ADR index теперь содержит все49пар, включая отсутствовавшие0035–0038;
+добавлен English-only ru/README companion.49ADR tasks и1README task verified;
+198original rows/order/input_ref/hash/language сохранены;112/126original README
+verified,14pending.26/26module DOC cells не менялись. Global R030-DOC остаётся
+in-progress:14README+2отложенных security docs+15release records+6redirect scopes.
+
+Проверки:49input/baseline Git snapshots,29unchanged EN originals,20RU copies
+с исключительно согласованными href edits,576heading structures,80verbatim fenced
+blocks,224historical href destinations,49provenance rows и5prior README hashes;
+make docs; recursive all-tracked Markdown + newRU fragment check (5623links,
+2105unique,0errors);git diff --check. Helpers/logs — .dev/adr-translation/ (ignored).
+Java/Javadoc/POM/tests/analyzer metadata/generated catalogs не менялись;
+Maven/PMD не перезапускались. Предыдущий verify passed на этомHEAD не является
+fresh для текущего dirtytree, PMD receipt также stale; это не новая release/runtime
+qualification. Commit/push не выполнялись.
+
+
+### Исключение двух security-документов из baseline — 2026-11-16
+
+Пользователь явно исключил полный аудит/переработку/перевод SECURITY-ENGINEERING
+и THREAT-MODEL из 0.3.0: SDLC и модель угроз планируются в одной из следующих
+версий. Две исходные строки очереди сохранены с input provenance, state = N/A и
+явным scope disposition. Это не выполненный аудит и не незавершённый blocker
+DOC/release.198 исходных задач = 196 в scope (161 verified, 35 planned) + 2 N/A;
+оставшаяся DOC работа:14 README, 15 release paths, 6 compatibility entries.
+R030-DOC/R030-SEC и release roadmap согласованы с этим исключением.
+Security docs, применимые gates и отдельные findings не изменялись.
+Пакеты release/redirect этим обновлением не проверены и остаются planned.
+
+
+### Завершение оставшихся документационных пакетов — 2026-11-16
+
+Проверены последние 35 задач: 14 общих README/индексов, 15 release paths и 6 старых
+адресов руководств. README переведены на English на месте, включая ru/indexes;
+русские руководства и записи выпуска сохраняют свой язык. Исправлены описания
+активной Camel-интеграции, IOC-specific platform-модулей, конфигурации, CSV,
+canonical/export identity и isolated developer commands. Старые heading anchors
+сохранены. Для redirect-страниц из последних полных Git-версий восстановлены
+section entry points, ведущие к maintained sections, без копий контракта.
+
+14 historical release records побайтово неизменны; EN/RU identities шести
+библиотек и local annotated tag→source проверены. 0.2.0 notes совпадают с тегом,
+0.1.0 сохраняет historical-import exception. Опубликованные hashes, даты,
+подписи, failed attempts и ограничения квалификации не обновлялись задним числом.
+Application draft 0.3.0 и RU companion переработаны вокруг operator impact:
+актуальные schema v12/v14, required routes/streaming/CSV, upgrade/rollback,
+known issues и различие historical evidence/final-candidate gates.
+
+Проверки: doctor-core; Maven ReleaseNotesContractTest+DocumentationConventionTest
+(3 tests, 0 failure/error/skip); synthetic fixture 1000/seed 42, version, isolated extract
+(1000 extracted/899 retained, COMPLETED_WITH_WARNINGS), reputation-lists export;
+manifest/root+data hashes и DB user_version 12/14 проверены. Smoke использовал
+существующий development JAR (build 2026-11-16T13:19:11.981Z), не final candidate.
+Link/fragment checks, EN/RU draft code+issue parity, 14 historical byte snapshots,
+80 prior dirty-file hashes, input provenance и diff checks passed. Логи/снимки:
+.dev/final-doc-packages/ (ignored); временный transcript не добавлялся в roadmap.
+
+Все 196 in-scope original tasks verified, 2 security docs N/A; 198 rows/order/
+input_ref/hash/language сохранены. R030-DOC verified в принятом baseline;
+остальные goals и 26 module cells не переоценены. Same-change documentation и
+окончательная курация notes продолжаются при изменении code/candidate.
+Java/Javadoc/POM/tests/analyzer metadata/generated catalogs не менялись;
+full verify/PMD/security/remote publication/deployment/load не повторялись,
+предыдущие verify/PMD receipts stale. Commit/push не выполнялись.

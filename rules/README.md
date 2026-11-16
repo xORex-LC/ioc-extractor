@@ -1,23 +1,25 @@
-# rules
+# External rule-data extension point
 
-## Назначение
+<a id="rules"></a>
+<a id="назначение"></a>
+<a id="структура"></a>
+<a id="заметки"></a>
 
-Зарезервировано под вынесенные наружу наборы правил (паттерны индикаторов,
-правила рефанга, политики матчинга), когда их потребуется хранить отдельными
-версионируемыми файлами, а не только в `application.yml`.
+## Purpose and boundary
 
-**Правило слоя:** только декларативные данные правил, без кода. Каталог пока не
-является runtime input; его включение потребует явного loader/config contract,
-при этом домен не должен знать формат внешних файлов.
+Reserved for future versioned rule files: indicator patterns, ordered refang
+replacements and classification policies. This directory currently contains
+only this README and is not a runtime configuration source.
 
-## Структура
+## Current ownership
 
-| Файл | Назначение |
-|---|---|
-| _(пусто)_ | точка расширения: напр. `ioc-patterns.yml`, `refang-rules.yml` |
+Rules are declared under `ioc.patterns`, `ioc.refang.rules` and `ioc.classify` in
+[packaged defaults](../bootstrap/ioc-app/src/main/resources/application.yml),
+with normal operator overrides. Creating a file such as `ioc-patterns.yml` here
+does not load it automatically.
 
-## Заметки
-
-Сейчас правила живут в `ioc.*` (`patterns`, `refang.rules`, `classify`). Этот
-каталог — зарезервированная точка расширения, а не поддерживаемый источник
-конфигурации.
+Externalizing rules requires an explicit loader, precedence and validation
+contract. File-format knowledge belongs outside the domain; keep domain rules
+and inward dependencies intact. Regex declarations must remain RE2-compatible.
+Use [configuration](../docs/guides/configuration.md) for supported settings and
+[processing](../docs/dev/processing.md) for execution semantics.

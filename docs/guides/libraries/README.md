@@ -1,6 +1,6 @@
 # Reusable libraries
 
-[Русская версия](../ru/libraries/README.md)
+[Russian-language guides](../ru/libraries/README.md)
 
 Use these libraries when a service needs the shared mechanics below. Each
 artifact has its own Maven coordinate under `io.github.xorex-lc`. Java packages
@@ -15,7 +15,9 @@ keep their existing `com.iocextractor` names. All listed releases require Java 2
 | `ioc-platform-events` | Local control-event metadata, publication contract and recording fixture | JDK only | [JDK contracts](events.md) |
 | `ioc-events-spring` | Explicit publication through a service-owned Spring publisher | Same-version events core, Spring Context and SLF4J API | [Spring adapter](events-spring.md) |
 
-All listed libraries have paired English/Russian guides here. Each page states
+All six artifacts have immutable `0.3.0-rc.1` release records and paired
+English/Russian guides here. [Publication records](../../../.github/release-notes/README.md)
+own the signed identities and historical repository results. Each page states
 its published version and qualification limits. ETL remains an internal module;
 extraction is deferred. Configuration's protected CI recovery is a separate open
 follow-up; see its guide and release record.

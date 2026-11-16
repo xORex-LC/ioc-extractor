@@ -88,6 +88,7 @@ claim. Общий release остаётся открытым до выполне�
 | DATA-AGGREGATE-01 | Многотипный aggregate artifact и порядок наблюдений; ADR 0030; не автоматический backfill |
 | DATA-IMPORT-H5-DEFER, 2026-09-01 | ADR 0025 H5 не пройден: target-specific two-identity qualification перенесена в OPS-8; default import disabled и ограниченный support claim сохраняются |
 | Библиотечные решения | Шесть RC опубликованы; независимые версии приняты ADR 0048, Maven/CI transition ещё TOOL-9; ETL остаётся внутренним |
+| DOC-SEC-OUT-OF-SCOPE, 2026-11-16 | По явному решению пользователя полный аудит, переработка и перевод SECURITY-ENGINEERING/THREAT-MODEL исключены из baseline 0.3.0; SDLC и модель угроз — отдельная работа одной из следующих версий. Две inventory строки сохраняются как N/A и не блокируют DOC/release closure; применимые security gates и отдельные findings не закрываются этим исключением |
 
 Изменение MUST-goal, compatibility/retirement, architecture, coverage, CI либо
 DoD оформляется review с причиной, affected goals, влиянием на evidence и новым

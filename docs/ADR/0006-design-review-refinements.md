@@ -1,43 +1,47 @@
-# 0006 — Уточнения по итогам дизайн-ревью
+> English translation of the historical Russian record. Decision/status/dates are preserved. [Russian original](ru/0006-design-review-refinements.md) (relative link addresses rebased on relocation).
 
-- **Статус:** принято (дизайн)
-- **Дата:** 2026-06-21
-- **Связано:** [ingestion](../dev/ingestion.md), [processing](../dev/processing.md),
+<a id="0006--уточнения-по-итогам-дизайн-ревью"></a>
+# 0006 — Refinements following design review
+
+- **Status:** accepted (design)
+- **Date:** 2026-06-21
+- **Related:** [ingestion](../dev/ingestion.md), [processing](../dev/processing.md),
   [architecture](../ARCHITECTURE.md),
   [0002-output-mapping-and-matching.md](0002-output-mapping-and-matching.md)
 
-## Контекст
+<a id="контекст"></a>
+## Context
 
-Ревью со стороны заказчика выявило ряд противоречий/недоопределённостей в
-спроектированных доках. Ниже — принятые разрешения (доки обновлены).
+Customer review identified contradictions/underspecified aspects in the design
+documents. The accepted resolutions follow (documents updated).
 
-## Решения
+<a id="решения"></a>
+## Decisions
 
-| # | Замечание | Разрешение |
+| # | Finding | Resolution |
 |---|---|---|
-| 1 | `SourceFeed` описан и как driven, и как driving | `adapter/in/watch` — inbound-адаптер, вызывает **driving-порт `IngestSourceUseCase`**; `SourceFeed` — **adapter-local** абстракция над SI, **не** порт ядра |
-| 2 | PSL/Guava затягивался в domain | Домен содержит **порт `HostClassifier`**; адаптер `PslHostClassifier` (Guava) — в `adapter-psl`. В домене **нет** `InternetDomainName` |
-| 3 | Идемпотентность инжеста требовала строгого автомата | Явные статусы юнита в `IngestionLedger`: `CLAIMED → PARTITION_WRITTEN → LEDGER_RECORDED → SOURCE_ARCHIVED → (AGGREGATED)` + **компенсации** при старте по последнему статусу |
-| 4 | Глобальные id в агрегаторе недоопределены | Устойчивый индекс **`dedupKey → id`** (в каноне или отдельном индексе агрегатора): известный ключ сохраняет id при повторной агрегации/смене порядка/удалении партиций/дедупе; новый → `max+1` |
-| 5 | «Новый формат без кода» переобещано | Уточнено: без кода — формат из **существующих** `ValueProvider`/`Transform`; новая семантика колонки = новый тонкий provider/transform (это код) |
-| 6 | Whole-file и tail имели одну модель идемпотентности | Разведено: whole-file — **content-hash**; tail — **checkpoint** (идентичность файла + offset + маркер ротации + id/hash записи) |
-| 7 | Риск, что `ConfigurableRowMapper` станет интерпретатором | DSL **ограничен**: `from`/`const`, `when-type`, упорядоченные `transform`; без вложенных выражений, условий сложнее `when-type` и вычислений в YAML |
-| 8 | `MatchPolicy` поверх строкового URL-парсинга в маппере | Введены доменные `IndicatorNormalizer` + `IndicatorFeatureExtractor`; `MatchPolicy`/предикаты работают над `IndicatorFeatures`; PSL-признак — через порт `HostClassifier` |
+| 1 | `SourceFeed` described as both driven and driving | `adapter/in/watch` is an inbound adapter calling the **driving port `IngestSourceUseCase`**; `SourceFeed` is an **adapter-local** abstraction over SI, **not** a core port |
+| 2 | PSL/Guava leaked into the domain | Domain contains the **`HostClassifier` port**; the `PslHostClassifier` adapter (Guava) lives in `adapter-psl`. Domain has **no** `InternetDomainName` |
+| 3 | Ingestion idempotency required a strict state machine | Explicit unit states in `IngestionLedger`: `CLAIMED → PARTITION_WRITTEN → LEDGER_RECORDED → SOURCE_ARCHIVED → (AGGREGATED)` + startup **compensations** based on the last state |
+| 4 | Global IDs in the aggregator were underspecified | Durable **`dedupKey → id`** index (in canonical storage or a separate aggregator index): a known key retains its ID across reaggregation/order changes/partition deletion/dedup; a new key gets `max+1` |
+| 5 | “New format without code” overpromised | Clarified: a format using **existing** `ValueProvider`/`Transform` needs no code; new column semantics require a new thin provider/transform (code) |
+| 6 | Whole-file and tail shared one idempotency model | Separated: whole-file uses **content-hash**; tail uses a **checkpoint** (file identity + offset + rotation marker + record ID/hash) |
+| 7 | Risk of `ConfigurableRowMapper` becoming an interpreter | The DSL is **bounded**: `from`/`const`, `when-type`, ordered `transform`; no nested expressions, conditions more complex than `when-type` or computations in YAML |
+| 8 | `MatchPolicy` built on URL-string parsing in the mapper | Introduced domain `IndicatorNormalizer` + `IndicatorFeatureExtractor`; `MatchPolicy`/predicates operate on `IndicatorFeatures`; PSL feature through the `HostClassifier` port |
 
-## Следствия
+<a id="следствия"></a>
+## Consequences
 
-- Новые/уточнённые порты: `IngestSourceUseCase` (in), `HostClassifier` (domain
-  port → `adapter-psl`); новые домен-сервисы `IndicatorNormalizer`,
-  `IndicatorFeatureExtractor` (актуальная карта — в
-  [ARCHITECTURE.md](../ARCHITECTURE.md)).
-- `IngestionLedger` хранит **статусы**, а не булево; восстановление —
-  компенсациями.
-- Агрегатор владеет устойчивым `dedupKey → id`.
-- DSL заполнения зафиксирован как ограниченный (не язык).
+- New/refined ports: `IngestSourceUseCase` (in), `HostClassifier` (domain port →
+  `adapter-psl`); new domain services `IndicatorNormalizer`,
+  `IndicatorFeatureExtractor` (current map in [ARCHITECTURE.md](../ARCHITECTURE.md)).
+- `IngestionLedger` stores **states**, not a boolean; recovery uses compensations.
+- The aggregator owns durable `dedupKey → id`.
+- The filling DSL is established as bounded (not a language).
 
-## Открытые вопросы
+<a id="открытые-вопросы"></a>
+## Open questions
 
-- Точная форма `dedupKey` (нормализованное значение + тип) и место индекса
-  id (внутри каноны vs отдельный файл) — при реализации агрегатора.
-- Формат checkpoint для tail (inode vs file-id на конкретной ФС) — при реализации
-  tail-режима.
+- Exact `dedupKey` form (normalized value + type) and ID-index location (inside
+  canonical storage versus separate file), during aggregator implementation.
+- Tail checkpoint format (inode versus filesystem-specific file ID), during tail-mode implementation.

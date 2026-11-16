@@ -56,7 +56,12 @@ SpotBugs не закрывает security control. Не вводятся слу�
 permissions или online scan как единственный gate. Локальная release publication
 и credentials в repository/examples не допускаются.
 
-Перевод и полный отдельный аудит двух security-документов отложены в `R030-DOC`;
-это не откладывает обязательный review применимых controls и `SRC-3/SEC-LOG-1`.
+По решению пользователя 2026-11-16 полный аудит, переработка и перевод
+`SECURITY-ENGINEERING.md`/`THREAT-MODEL.md` исключены из baseline 0.3.0 (N/A):
+SDLC и модель угроз будут прорабатываться отдельно в одной из следующих версий.
+Полнота этих двух документов не является blocker DOC/release closure.
+Применимые controls и отдельные `SRC-3/SEC-LOG-1` dispositions этим исключением
+не закрываются; существующие документы остаются reference для уже принятых
+правил, без требования завершить их новую модель в 0.3.0.
 Требуются `R030-BASE/BUILD`; goal участвует в publication admission и блокирует
 финальный go/no-go `R030-REL` до закрытия обязательств либо принятого scope change.

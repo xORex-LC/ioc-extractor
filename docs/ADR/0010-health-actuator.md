@@ -1,97 +1,104 @@
-# 0010 — Health / Actuator HTTP-контур демона
+> English translation of the historical Russian record. Decision/status/dates are preserved. [Russian original](ru/0010-health-actuator.md) (relative link addresses rebased on relocation).
 
-## Статус
+<a id="0010--health--actuator-http-контур-демона"></a>
+# 0010 — Daemon Health / Actuator HTTP boundary
 
-Реализовано (ING-3). Закрывает «health-indicators зарегистрированы, но не
-экспонированы (`web-application-type: none`)». Заодно — первый камень под web
-driving-adapter (ING-8).
+<a id="статус"></a>
+## Status
 
-## Контекст
+Implemented (ING-3). Resolves “health indicators registered but not exposed
+(`web-application-type: none`)”. Also lays the first foundation for a web driving
+adapter (ING-8).
 
-В демоне есть три `HealthIndicator` (`AggregationHealthIndicator`,
-`ArtifactStorageHealthIndicator`, `IngestionLedgerHealthIndicator`) и
-`spring-boot-starter-actuator` на classpath, но приложение запускалось как
-non-web (`spring.main.web-application-type=none`), поэтому HTTP-сервера не было и
-индикаторы **никто не опрашивал**. Снаружи (systemd/мониторинг) узнать состояние
-демона было нельзя.
+<a id="контекст"></a>
+## Context
 
-Ограничение топологии: **oneshot/CLI не должен поднимать веб-сервер** — это
-короткоживущая команда (`extract … → exit`), сервер бы только мешал и держал
-процесс. Значит web нужен **исключительно в daemon-режиме**.
+The daemon has three `HealthIndicator`s (`AggregationHealthIndicator`,
+`ArtifactStorageHealthIndicator`, `IngestionLedgerHealthIndicator`) and
+`spring-boot-starter-actuator` on the classpath, but started as non-web
+(`spring.main.web-application-type=none`). Therefore no HTTP server existed and
+**nothing queried** the indicators. External systems (systemd/monitoring) could
+not inspect daemon state.
 
-Дополнительная сложность: режим задаётся `ioc.runtime.mode`, а **не** Spring-профилем.
-systemd-юнит передаёт только `--ioc.runtime.mode=daemon` (профиль `daemon` для
-observability может не совпадать). Гейтить web по профилю — ненадёжно.
+Topology constraint: **oneshot/CLI must not start a web server**. It is a short-lived
+command (`extract … → exit`); a server would interfere and keep the process alive.
+Thus web is needed **exclusively in daemon mode**.
 
-## Решения
+Another complication: mode is set by `ioc.runtime.mode`, **not** a Spring profile.
+The systemd unit passes only `--ioc.runtime.mode=daemon` (the observability `daemon`
+profile may differ). Gating web by profile is unreliable.
 
-**1. Зависимость.** Добавлен `spring-boot-starter-web` (Tomcat). По умолчанию
-`spring.main.web-application-type=none` в `application.yml` — даже с web на
-classpath oneshot/CLI остаётся non-web.
+<a id="решения"></a>
+## Decisions
 
-**2. Гейт по `runtime.mode` через `EnvironmentPostProcessor`.**
-`DaemonWebEnvironmentPostProcessor` (зарегистрирован в
-`META-INF/spring.factories`)
-при `ioc.runtime.mode=daemon` добавляет property-source с
-`spring.main.web-application-type=servlet`.
-- Работает, потому что `spring.main.*` биндится из окружения **после** EPP;
-  `runtime.mode` из command-line args виден EPP (command-line property source
-  добавляется до EPP).
-- `Ordered.LOWEST_PRECEDENCE` — чтобы видеть и `runtime.mode`, заданный в
-  `application.yml` (после config-data processing).
-- Отклонено: гейт по Spring-профилю (систем­ный юнит профиль не ставит);
-  программная установка типа в `main()` (не видит yml-конфиг, только args).
+**1. Dependency.** Added `spring-boot-starter-web` (Tomcat). The default
+`spring.main.web-application-type=none` in `application.yml` keeps oneshot/CLI
+non-web even with web on the classpath.
 
-**3. Поверхность и безопасность.** Actuator на **основном** сервере (не отдельный
-management-порт — отдельный всё равно потянул бы основной). По умолчанию:
-- `server.address=127.0.0.1`, `server.port=8081` — **loopback-bind**;
+**2. Gate on `runtime.mode` through `EnvironmentPostProcessor`.**
+`DaemonWebEnvironmentPostProcessor` (registered in `META-INF/spring.factories`)
+adds a property source with `spring.main.web-application-type=servlet` when
+`ioc.runtime.mode=daemon`.
+- This works because `spring.main.*` binds from the environment **after** EPP;
+  command-line `runtime.mode` is visible to EPP (the command-line property source
+  is added before EPP).
+- `Ordered.LOWEST_PRECEDENCE` also sees `runtime.mode` set in `application.yml`
+  (after ConfigData processing).
+- Rejected: Spring-profile gate (system unit does not set a profile); setting the
+  type programmatically in `main()` (sees args, not YAML configuration).
+
+**3. Surface and security.** Actuator uses the **main** server, not a separate
+management port (which would still bring up the main server). Defaults:
+- `server.address=127.0.0.1`, `server.port=8081`: **loopback bind**;
 - `management.endpoints.web.exposure.include=health,info`, `health.show-details=always`;
-- **нет** `shutdown` и прочих мутирующих эндпоинтов.
+- **no** `shutdown` or other mutating endpoints.
 
-**4. Прижатый пул Tomcat.** `server.tomcat.threads.max=8`, `min-spare=1`,
-`accept-count=10`: сервер отдаёт только `/actuator/**`, дефолтные 200 потоков
-зря ели бы память и упирались в systemd `TasksMax`/`MemoryMax`.
+**4. Small Tomcat pool.** `server.tomcat.threads.max=8`, `min-spare=1`,
+`accept-count=10`: the server serves only `/actuator/**`; the default 200 threads
+would waste memory and collide with systemd `TasksMax`/`MemoryMax`.
 
-**5. systemd-hardening под сетевую поверхность.** В юните сделано явным
-`RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`; actuator остаётся привязан к
-loopback на уровне `server.address`. После реализации 0011 generic
-`IPAddressDeny=any` снят: daemon должен разрешать operator-configured исходящие
-SMB-соединения (обычно TCP/445), в том числе через DNS. Капабилити по-прежнему не
-нужны: actuator использует непривилегированный порт 8081, а SMB — обычный исходящий
-TCP socket. Host-specific egress allowlist остаётся задачей firewall/systemd drop-in.
+**5. systemd hardening for the network surface.** The unit explicitly sets
+`RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`; `server.address` keeps Actuator
+bound to loopback. After implementation of 0011, generic `IPAddressDeny=any` was
+removed: the daemon must allow operator-configured outbound SMB connections
+(usually TCP/445), including DNS. Capabilities remain unnecessary: Actuator uses
+unprivileged port 8081, and SMB uses an ordinary outbound TCP socket. A host-specific
+egress allowlist remains the responsibility of a firewall/systemd drop-in.
 
-## Следствия
+<a id="следствия"></a>
+## Consequences
 
-- Файлы: `DaemonWebEnvironmentPostProcessor` + `.imports`, блоки `server`/`management`
-  в `application.yml`, `spring-boot-starter-web` в `bootstrap/ioc-app/pom.xml`,
-  hardening в `packaging/templates/ioc-extractor.service`.
-- Тесты: oneshot-контексты (`ApplicationContextTest`, `GoldenPipelineTest`,
-  `DaemonRuntimeModeTest`) закреплены `webEnvironment=NONE`; `DaemonManagementEndpointTest`
-  (RANDOM_PORT) реально дёргает `/actuator/health`; `DaemonWebEnvironmentPostProcessorTest`
-  проверяет гейтинг.
-- **Тест-нюанс:** `@SpringBootTest` inlined-`properties` применяются **после** EPP,
-  поэтому в `DaemonManagementEndpointTest` web включается явным
-  `spring.main.web-application-type=servlet` в свойствах теста; в реальном запуске
-  это не нужно (mode приходит args). Гейтинг покрыт отдельным юнит-тестом EPP.
-- При старте демона `APP_START` логирует адрес health (`ApplicationLifecycleLogger`).
+- Files: `DaemonWebEnvironmentPostProcessor` + `.imports`, `server`/`management`
+  sections in `application.yml`, `spring-boot-starter-web` in
+  `bootstrap/ioc-app/pom.xml`, hardening in `packaging/templates/ioc-extractor.service`.
+- Tests: oneshot contexts (`ApplicationContextTest`, `GoldenPipelineTest`,
+  `DaemonRuntimeModeTest`) pin `webEnvironment=NONE`; `DaemonManagementEndpointTest`
+  (RANDOM_PORT) actually calls `/actuator/health`; `DaemonWebEnvironmentPostProcessorTest`
+  checks gating.
+- **Test nuance:** `@SpringBootTest` inline `properties` apply **after** EPP, so
+  `DaemonManagementEndpointTest` explicitly enables web with
+  `spring.main.web-application-type=servlet` in test properties. Real launches
+  do not need this (mode comes from args). A separate EPP unit test covers gating.
+- On daemon startup, `APP_START` logs the health address (`ApplicationLifecycleLogger`).
 
-## Как смотреть индикаторы
+<a id="как-смотреть-индикаторы"></a>
+## Inspecting indicators
 
-Сервер слушает **только loopback**, поэтому смотреть с того же хоста (или через
-SSH-туннель). Порт по умолчанию `8081` (`server.port`).
+The server listens **only on loopback**, so inspect it from the same host (or
+through an SSH tunnel). Default port: `8081` (`server.port`).
 
-**Через CLI (рекомендуется)** — подкоманда `health` того же бинаря рисует таблицу
-и берёт адрес из конфига (`server.*`); exit code = состоянию (`0` UP, `1` DOWN,
-`2` демон недоступен), т.е. годится и как probe:
+**Through CLI (recommended):** the same binary's `health` subcommand renders a
+component table and obtains its address from configuration (`server.*`); its exit
+code reflects state (`0` UP, `1` DOWN, `2` daemon unreachable), making it a probe:
 ```bash
 ioc health                 # цветная таблица компонентов
 ioc health --json          # сырой JSON для скриптов
 ioc health --host h --port 9090   # или --url http://…/actuator/health
 ```
-Реализация — `HealthCommand` (picocli), HTTP через JDK `HttpClient`, без веб-стека
-на стороне CLI. Подробности рендера — Javadoc команды.
+Implementation: `HealthCommand` (picocli), HTTP through JDK `HttpClient`, no web
+stack on the CLI side. Command Javadoc describes rendering.
 
-**Через curl** (если CLI недоступен), сводный health (детали — `show-details: always`):
+**Through curl** (if CLI is unavailable), aggregate health (details: `show-details: always`):
 ```bash
 curl -s http://127.0.0.1:8081/actuator/health | jq
 ```
@@ -108,38 +115,39 @@ curl -s http://127.0.0.1:8081/actuator/health | jq
 }
 ```
 
-**Отдельный компонент** (имя = бин минус суффикс `HealthIndicator`):
+**Individual component** (name = bean minus the `HealthIndicator` suffix):
 ```bash
 curl -s http://127.0.0.1:8081/actuator/health/aggregation     | jq
 curl -s http://127.0.0.1:8081/actuator/health/artifactStorage | jq
 curl -s http://127.0.0.1:8081/actuator/health/ingestionLedger | jq
 ```
 
-| Компонент | Бин | UP когда | DOWN когда |
+| Component | Bean | UP when | DOWN when |
 |---|---|---|---|
-| `aggregation` | `AggregationHealthIndicator` | последний прогон агрегации успешен (или ещё не было) | последний прогон упал (`error` в details) |
-| `artifactStorage` | `ArtifactStorageHealthIndicator` | каталоги партиций/артефактов доступны на запись | каталог недоступен |
-| `ingestionLedger` | `IngestionLedgerHealthIndicator` | каталог ledger существует и доступен на запись | не создаётся/не доступен |
+| `aggregation` | `AggregationHealthIndicator` | Last aggregation run succeeded (or no run yet) | Last run failed (`error` in details) |
+| `artifactStorage` | `ArtifactStorageHealthIndicator` | Partition/artifact directories writable | Directory unavailable |
+| `ingestionLedger` | `IngestionLedgerHealthIndicator` | Ledger directory exists and is writable | Cannot be created / unavailable |
 
-**Семантика HTTP-кода:** `UP` → `200`, любой `DOWN` → `503` (тело с деталями
-есть в обоих случаях). Удобно для liveness/readiness-проб.
+**HTTP status semantics:** `UP` → `200`, any `DOWN` → `503` (body contains details
+in both cases). Useful for liveness/readiness probes.
 
 **info:**
 ```bash
 curl -s http://127.0.0.1:8081/actuator/info | jq
 ```
 
-> Где живёт адрес: при старте демона `ApplicationLifecycleLogger` пишет в лог
-> строку `application started; health at http://127.0.0.1:8081/actuator/health`.
-> Экспонируются только `health,info` (`management.endpoints.web.exposure.include`);
-> `shutdown` и мутирующие эндпоинты намеренно закрыты.
+> Address location: on daemon startup, `ApplicationLifecycleLogger` logs
+> `application started; health at http://127.0.0.1:8081/actuator/health`.
+> Only `health,info` are exposed (`management.endpoints.web.exposure.include`);
+> `shutdown` and mutating endpoints are deliberately closed.
 
-## Открытые вопросы
+<a id="открытые-вопросы"></a>
+## Open questions
 
-- **ING-8:** REST-эндпоинты (ингест/запросы/TAXII) живут в отдельном `adapter-web`
-  и **обязаны** открывать `MdcScope` (run-id), как CLI/демон, иначе теряется
-  корреляция логов. Тогда же — пересмотр bind/IP-ограничений и, возможно, auth.
-- Метрики Prometheus (`/actuator/prometheus`) — не включены; добавить при
-  появлении внешнего мониторинга.
-- HTTP-health для не-loopback потребителей (контейнерный orchestrator) —
-  решение по bind/сети на стороне деплоя.
+- **ING-8:** REST endpoints (ingest/queries/TAXII) live in a separate `adapter-web`
+  and **must** open `MdcScope` (run ID), like CLI/daemon, or log correlation is lost.
+  Revisit bind/IP restrictions and possibly auth at that point.
+- Prometheus metrics (`/actuator/prometheus`) are disabled; add when external
+  monitoring appears.
+- HTTP health for non-loopback consumers (container orchestrator): deployment
+  owns the bind/network decision.

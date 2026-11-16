@@ -1,44 +1,30 @@
-# Переиспользуемые библиотеки
+# Russian reusable-library guides
 
-[English version](../../libraries/README.md)
+<a id="переиспользуемые-библиотеки"></a>
+<a id="где-искать-подробности"></a>
+<a id="как-поддерживать-руководства"></a>
 
-Эти библиотеки предоставляют общие механизмы для сервисов проекта. У каждого
-артефакта отдельные Maven coordinates в группе `io.github.xorex-lc`. Имена
-Java-пакетов сохраняют префикс `com.iocextractor`. Всем перечисленным выпускам
-нужна Java 21.
+This English-only navigation page links Russian translations of the maintained
+[canonical catalog](../../libraries/README.md). All six listed artifacts require
+Java 21 and use group io.github.xorex-lc; package names remain com.iocextractor.
+The canonical catalog owns their dependency boundaries and release-record links.
 
-| Библиотека | Для чего применять | Граница production-зависимостей | Руководство |
-|---|---|---|---|
-| `ioc-platform-concurrency` | Последовательные задачи или синхронное исключение по ключу | Только JDK | [Concurrency](concurrency.md) |
-| `ioc-platform-diagnostics-api` | Структурированные диагностики, политика ошибок и ограниченный объём подробностей | Только JDK | [Diagnostics](diagnostics.md) |
-| `ioc-platform-logging-slf4j` | Типизированные SLF4J-записи, восстанавливающие MDC scopes и явное маскирование | SLF4J API; провайдер выбирает сервис | [Logging](logging-slf4j.md), [рецепт Boot ECS](logging-slf4j-boot.md) |
-| `ioc-config-spring-boot` | Проверка имён свойств по record-схеме и наблюдение миграций | Spring Boot и Spring Core; источники и политику определяет сервис | [Конфигурация](config-spring-boot.md), [ограниченный контекст](config-spring-boot-check.md) |
-| `ioc-platform-events` | Метаданные локальных событий, контракт публикации и запись событий для проверок | Только JDK | [JDK-контракты](events.md) |
-| `ioc-events-spring` | Явная публикация через Spring publisher сервиса | Events core той же версии, Spring Context и SLF4J API | [Spring-адаптер](events-spring.md) |
+| Artifact / recipe | Russian guide |
+|---|---|
+| ioc-platform-concurrency | [Keyed execution and exclusion](concurrency.md) |
+| ioc-platform-diagnostics-api | [Diagnostics, policies and bounded detail](diagnostics.md) |
+| ioc-platform-logging-slf4j | [SLF4J API](logging-slf4j.md), [Boot ECS recipe](logging-slf4j-boot.md) |
+| ioc-config-spring-boot | [Name inspection](config-spring-boot.md), [restricted-context recipe](config-spring-boot-check.md) |
+| ioc-platform-events | [JDK control-event contracts](events.md) |
+| ioc-events-spring | [Explicit Spring adapter](events-spring.md) |
 
-Для всех перечисленных библиотек здесь есть парные руководства EN/RU.
-Каждое указывает опубликованную версию и границы проверки. ETL остаётся
-внутренним модулем; выделение отложено. Protected CI recovery configuration
-остаётся отдельным открытым пунктом — см. её руководство и запись выпуска.
+Read [development](development.md) before adding a mechanism or changing API.
+[Publication](../library-publication.md) covers a new release and recovery from
+original signed files. Independent versions are accepted policy, with Maven/CI
+activation still tracked as TOOL-9; configuration's protected CI recovery remains
+TOOL-8. ETL is internal and not another published library.
 
-## Где искать подробности
-
-- Перед созданием нового механизма или изменением общего API прочитайте
-  [правила разработки и версионирования](development.md). Независимые версии
-  приняты как целевая схема; техническая активация Maven/CI остаётся TOOL-9.
-- Руководство библиотеки описывает подключение, рабочие примеры, ошибки и
-  владение ресурсами. README модуля содержит карту пакетов, Javadoc — точные
-  контракты публичного API.
-- ADR объясняют принятые решения, а документы способностей в `docs/dev/` —
-  интеграцию с IOC. Проверка синтетического потребителя не подтверждает работу
-  второго развёрнутого сервиса или другой версии фреймворка.
-- [Процедура публикации](../library-publication.md) описывает новый выпуск
-  и восстановление публикации из исходного неизменяемого комплекта.
-
-## Как поддерживать руководства
-
-Английская и русская страницы описывают один контракт и ссылаются друг на друга.
-Исполняемые блоки Java/YAML/XML одинаковы; комментарии в них — на английском.
-При изменении поведения обновляйте обе страницы и проверяйте примеры на
-упакованном публичном API. Различия между текущим кодом и ранее опубликованной
-версией нужно обозначать явно. Worknotes остаются временными материалами.
+Guide pairs describe the same contract. Runnable Java/YAML/XML stays identical,
+with English code comments. Update both languages and test against the packaged
+API, distinguishing new source behavior from older released content. Synthetic
+consumer checks do not qualify a second deployed service or another framework.

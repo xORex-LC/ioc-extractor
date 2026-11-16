@@ -1,48 +1,54 @@
-# 0019 — Spring Boot 4 baseline и nested ECS wire format
+> English translation of the historical Russian record. Decision/status/dates are preserved. [Russian original](ru/0019-spring-boot-4-nested-ecs.md) (relative link addresses rebased on relocation).
 
-## Статус
+<a id="0019--spring-boot-4-baseline-и-nested-ecs-wire-format"></a>
+# 0019 — Spring Boot 4 baseline and nested ECS wire format
 
-**Принято и реализовано 2026-07-21.** Для release `0.1.1` поддерживаемой
-framework line является Spring Boot `4.0.x`; текущий candidate baseline —
-`4.0.7`.
+<a id="статус"></a>
+## Status
 
-ADR частично supersede'ит [0018](0018-typed-ecs-structured-logging.md) только в
-трёх местах:
+**Accepted and implemented on 2026-07-21.** For release `0.1.1`, the supported
+framework line is Spring Boot `4.0.x`; current candidate baseline: `4.0.7`.
 
-- точная Spring Boot baseline меняется с `3.4.13` на `4.0.x`;
-- physical ECS JSON representation становится nested, а не flat dotted-key;
-- статический `event.dataset` добавляется узким bootstrap encoder adapter-ом,
-  а не конфигурацией formatter-а.
+This ADR partially supersedes [0018](0018-typed-ecs-structured-logging.md) only
+in three places:
 
-Остальные решения ADR-0018 сохраняются: typed event-local fields, string-only
-ambient MDC, `event.action`/`event.outcome`, collision semantics, redaction,
-generated catalog и OBS-5 seam.
+- exact Spring Boot baseline changes from `3.4.13` to `4.0.x`;
+- physical ECS JSON representation becomes nested instead of flat dotted-key;
+- static `event.dataset` is added by a narrow bootstrap encoder adapter rather
+  than formatter configuration.
 
-## Контекст
+Other ADR-0018 decisions remain: typed event-local fields, string-only ambient
+MDC, `event.action`/`event.outcome`, collision semantics, redaction, generated
+catalog and the OBS-5 seam.
 
+<a id="контекст"></a>
+## Context
+
+<a id="framework-remediation"></a>
 ### Framework remediation
 
-Dependency scan baseline выявил findings в старой Spring/Tomcat линии. Сначала
-проект был переведён на последнюю `3.5.x` как рекомендованный migration bridge,
-затем — на Boot 4. Такая последовательность позволила отделить изменения Spring
-Framework 6.2/Boot 3.5 от модульных и API-изменений Boot 4.
+The dependency-scan baseline found issues in the older Spring/Tomcat line.
+The project first moved to the latest `3.5.x` as the recommended migration
+bridge, then to Boot 4. This separated Spring Framework 6.2/Boot 3.5 changes
+from Boot 4 module/API changes.
 
-Полный reactor `verify`, golden e2e и последующие CI-прогоны на `4.0.7` зелёные.
-Возврат на `3.5.x` снова потребовал бы отдельного security disposition и полного
-повтора release gates; поэтому он не является более консервативным изменением
-в уже стабилизированном кандидате.
+The full reactor `verify`, golden E2E and subsequent CI runs on `4.0.7` are green.
+Returning to `3.5.x` would require separate security disposition and repeating
+all release gates; it is therefore not a more conservative change in an already
+stabilized candidate.
 
+<a id="ecs-representation-changed-in-boot-35"></a>
 ### ECS representation changed in Boot 3.5
 
-Spring Boot 3.5 изменил built-in ECS rendering: dotted logical paths теперь
-материализуются вложенными JSON objects. Логический контракт поля не изменился,
-но изменился наблюдаемый wire format:
+Spring Boot 3.5 changed built-in ECS rendering: dotted logical paths now
+materialize as nested JSON objects. The logical field contract stayed the same,
+but the observable wire format changed:
 
 ```json
 {"ecs.version":"8.11","event.action":"app_start","event.outcome":"success"}
 ```
 
-стал:
+became:
 
 ```json
 {
@@ -51,143 +57,155 @@ Spring Boot 3.5 изменил built-in ECS rendering: dotted logical paths те
 }
 ```
 
-Следовательно, прежний consumer query `jq '.["event.action"]'` больше не
-читает значение; его nested-эквивалент — `jq '.event.action'`.
+Thus the former consumer query `jq '.["event.action"]'` no longer reads the value;
+its nested equivalent is `jq '.event.action'`.
 
-`event.outcome` не является новым полем релиза `0.1.1`: оно существовало ранее.
-Изменилась только его physical representation вместе с другими dotted paths.
+`event.outcome` is not a new field in release `0.1.1`: it existed before.
+Only its physical representation changed, together with other dotted paths.
 
+<a id="static-dataset-collision"></a>
 ### Static dataset collision
 
-После перехода к nested representation независимое добавление
-`event.dataset` поверх уже существующих `event.action`/`event.outcome` может
-создать два top-level объекта `event`. Поэтому dataset должен попадать в тот же
-context-pair stream до стандартной ECS-сериализации.
+After moving to nested representation, independently adding `event.dataset`
+alongside existing `event.action`/`event.outcome` can create two top-level `event`
+objects. Dataset must therefore enter the same context-pair stream before
+standard ECS serialization.
 
-## Решения
+<a id="решения"></a>
+## Decisions
 
-### 1. Поддерживаемая линия — Spring Boot 4.0.x
+<a id="1-поддерживаемая-линия--spring-boot-40x"></a>
+### 1. The supported line is Spring Boot 4.0.x
 
-Release `0.1.1` остаётся на `4.0.x`, с candidate baseline `4.0.7`. Версия в
-parent POM является источником истины. До обновления Boot BOM допустимы только
-явные parent-owned patch overrides для уже проверяемой линии зависимостей
-(сейчас Tomcat, Jackson 2 и Log4j 2); их наличие и причина должны оставаться
-видимыми в dependency management и security evidence.
+Release `0.1.1` stays on `4.0.x`, with candidate baseline `4.0.7`. The parent POM
+version is authoritative. Before updating the Boot BOM, only explicit
+parent-owned patch overrides for the already qualified dependency line are
+allowed (currently Tomcat, Jackson 2 and Log4j 2); their presence and rationale
+must remain visible in dependency management and security evidence.
 
-Переход на `4.1.x` или другую feature line в ходе стабилизации запрещён. Он
-требует отдельного upgrade-среза после релиза.
+Moving to `4.1.x` or another feature line during stabilization is forbidden.
+It requires a separate post-release upgrade slice.
 
-### 2. Boot 3.5 остаётся migration bridge, а не supported baseline
+<a id="2-boot-35-остаётся-migration-bridge-а-не-supported-baseline"></a>
+### 2. Boot 3.5 remains a migration bridge, not a supported baseline
 
-Версия `3.5.x` использовалась для поэтапной миграции, но не является второй
-поддерживаемой runtime line. Проект проверяет и выпускает один framework
-baseline.
+Version `3.5.x` was used for incremental migration, not as a second supported
+runtime line. The project qualifies and releases one framework baseline.
 
-Возврат к `3.5.x` допустим только как plan B при воспроизводимом блокере exact
-candidate smoke на Boot 4. Такой rollback требует повторного dependency scan,
-полного `verify`, packaging contract и стендового smoke; прошлые evidence на
-Boot 4 к нему неприменимы.
+Returning to `3.5.x` is allowed only as plan B for a reproducible Boot 4 blocker
+in exact-candidate smoke. Such rollback requires a new dependency scan, full
+`verify`, packaging contract and stand smoke; prior Boot 4 evidence does not apply.
 
-### 3. Публичный ECS wire format — nested JSON
+<a id="3-публичный-ecs-wire-format--nested-json"></a>
+### 3. Public ECS wire format is nested JSON
 
-Имена в Java-каталоге и ECS vocabulary остаются логическими dotted paths
-(`event.action`, `ecs.version`, `ioc.run.id`). Физическое представление daemon
-JSON — вложенные objects (`event.action`, `ecs.version`, `ioc.run.id` читаются
-как `.event.action`, `.ecs.version`, `.ioc.run.id`).
+Java catalog names and ECS vocabulary remain logical dotted paths
+(`event.action`, `ecs.version`, `ioc.run.id`). Physical daemon JSON uses nested
+objects (`event.action`, `ecs.version`, `ioc.run.id` are read as
+`.event.action`, `.ecs.version`, `.ioc.run.id`).
 
-Это observable compatibility break для jq-запросов, ingest pipelines и
-дашбордов, даже если логическое имя и JSON scalar type поля не изменились.
-Release notes обязаны показать before/after payload и миграцию consumer query.
+This is an observable compatibility break for jq queries, ingest pipelines and
+dashboards even when the field's logical name and JSON scalar type do not change.
+Release notes must show before/after payloads and consumer-query migration.
 
-### 4. Encoder остаётся узким bootstrap adapter-ом
+<a id="4-encoder-остаётся-узким-bootstrap-adapter-ом"></a>
+### 4. The encoder remains a narrow bootstrap adapter
 
-`IocEcsStructuredLogEncoder` только добавляет статический `event.dataset` в тот
-же key/value stream и делегирует итоговую сериализацию стандартному Spring Boot
-ECS formatter-у. Он не становится общей JSON-библиотекой, не владеет ECS schema
-и не проникает в domain/application.
+`IocEcsStructuredLogEncoder` only adds static `event.dataset` to the same
+key/value stream and delegates final serialization to the standard Spring Boot
+ECS formatter. It does not become a general JSON library, own ECS schema or
+enter domain/application.
 
-Regression contract обязан проверять:
+The regression contract must check:
 
-- один nested объект `event` без duplicate keys;
-- nested `ecs`, `service`, `event` и `ioc` paths;
-- сохранение number/boolean JSON scalar types;
-- наличие `event.action`, `event.outcome` и `event.dataset` в одном объекте.
+- one nested `event` object without duplicate keys;
+- nested `ecs`, `service`, `event` and `ioc` paths;
+- preserved number/boolean JSON scalar types;
+- `event.action`, `event.outcome` and `event.dataset` in one object.
 
-### 5. SemVer disposition для 0.1.1
+<a id="5-semver-disposition-для-011"></a>
+### 5. SemVer disposition for 0.1.1
 
-Nested representation и typed scalar migration являются публичным wire-break.
-Для текущего pre-`1.0.0` релиза сохраняется версия `0.1.1`, потому что проект не
-объявлял поддерживаемого внешнего ECS consumer-а и не имеет production
-Elasticsearch integration. Исключение должно быть явно раскрыто в release
-notes.
+Nested representation and typed scalar migration are a public wire break.
+Keep version `0.1.1` for the current pre-`1.0.0` release because the project
+has declared no supported external ECS consumer and has no production
+Elasticsearch integration. Explicitly disclose the exception in release notes.
 
-Если до тега будет обнаружен поддерживаемый consumer, решение пересматривается:
-нужна либо совместимость/переходный период, либо релиз `0.2.0`.
+If a supported consumer is found before the tag, reconsider: compatibility/
+a transition window or release `0.2.0` is required.
 
-### 6. Exact-candidate evidence нельзя наследовать от миграционных коммитов
+<a id="6-exact-candidate-evidence-нельзя-наследовать-от-миграционных-коммитов"></a>
+### 6. Exact-candidate evidence cannot be inherited from migration commits
 
-Перед тегом проверяется именно собранный candidate с финальными version/config/
-packaging inputs. Минимальный стендовый контракт:
+Before tagging, check the actual built candidate with final version/config/
+packaging inputs. Minimum stand contract:
 
-1. clean `verify` и packaging contract;
-2. запуск packaged daemon с production-like logging configuration;
-3. валидность JSON и representative nested ECS assertions;
-4. `/actuator/health`, `/actuator/info` и `ioc --version`;
+1. clean `verify` and packaging contract;
+2. start the packaged daemon with production-like logging configuration;
+3. valid JSON and representative nested ECS assertions;
+4. `/actuator/health`, `/actuator/info` and `ioc --version`;
 5. graceful shutdown;
 6. dependency security scan;
-7. representative operator queries для новых nested paths.
+7. representative operator queries for new nested paths.
 
-Evidence фиксирует commit, version, artifact digest, effective config и дату.
-Любое изменение этих входов после прогона инвалидирует стендовый результат.
+Evidence records commit, version, artifact digest, effective configuration and
+date. Any subsequent change to these inputs invalidates the stand result.
 
-## Следствия
+<a id="следствия"></a>
+## Consequences
 
-- Проект имеет одну поддерживаемую Spring Boot line, без двойной матрицы 3.5/4.0.
-- Потребители daemon ECS JSON должны мигрировать с bracket-access dotted keys на
-  nested paths.
-- ADR-0018 остаётся источником typed logging semantics; этот ADR владеет
-  framework baseline и physical representation.
-- Финальный стендовый smoke остаётся release gate, а не историческим аргументом
-  в пользу выбранной версии.
-- Кастомный encoder намеренно мал и должен быть удалён, если стандартный Boot
-  configuration сможет безопасно выразить тот же dataset contract.
+- The project has one supported Spring Boot line, without a dual 3.5/4.0 matrix.
+- Daemon ECS JSON consumers must migrate from bracket access to dotted keys
+  to nested paths.
+- ADR-0018 remains authoritative for typed logging semantics; this ADR owns the
+  framework baseline and physical representation.
+- Final stand smoke remains a release gate, not a historical argument for the
+  selected version.
+- The custom encoder is deliberately small and should be removed if standard
+  Boot configuration can safely express the same dataset contract.
 
-## Отклонённые варианты
+<a id="отклонённые-варианты"></a>
+## Rejected alternatives
 
-### Вернуться на Boot 3.5 перед релизом только ради меньшего номера
+<a id="вернуться-на-boot-35-перед-релизом-только-ради-меньшего-номера"></a>
+### Return to Boot 3.5 before release merely for a lower version number
 
-Отклонено без фактического Boot 4 blocker-а: это новая миграция, возврат security
-surface и полная инвалидизация уже полученных build/security evidence.
+Rejected without an actual Boot 4 blocker: this is a new migration, restoration
+of security surface and full invalidation of existing build/security evidence.
 
-### Поддерживать одновременно Boot 3.5 и Boot 4
+<a id="поддерживать-одновременно-boot-35-и-boot-4"></a>
+### Support Boot 3.5 and Boot 4 simultaneously
 
-Отклонено: удваивает runtime/test matrix и не даёт ценности небольшому
-приложению с одним deployable artifact.
+Rejected: doubles the runtime/test matrix without value for a small application
+with one deployable artifact.
 
-### Восстановить flat dotted-key JSON собственным formatter-ом
+<a id="восстановить-flat-dotted-key-json-собственным-formatter-ом"></a>
+### Restore flat dotted-key JSON with a custom formatter
 
-Отклонено: проект стал бы владельцем полной ECS-сериализации ради сохранения
-pre-release physical shape. Явная миграция consumers дешевле и прозрачнее.
+Rejected: the project would own complete ECS serialization merely to preserve
+a pre-release physical shape. Explicit consumer migration is cheaper and clearer.
 
-## Связанные документы и источники
+<a id="связанные-документы-и-источники"></a>
+## Related documents and sources
 
-- [ADR-0018](0018-typed-ecs-structured-logging.md) — typed logging semantics;
-- [observability.md](../dev/observability.md) — текущий runtime contract;
-- [RELEASE-PROCESS.md](../RELEASE-PROCESS.md) — release evidence и notes;
+- [ADR-0018](0018-typed-ecs-structured-logging.md): typed logging semantics;
+- [observability.md](../dev/observability.md): current runtime contract;
+- [RELEASE-PROCESS.md](../RELEASE-PROCESS.md): release evidence and notes;
 - [Spring Boot 3.5 Release Notes](https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-3.5-Release-Notes);
 - [Spring Boot 4.0 Migration Guide](https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-4.0-Migration-Guide);
 - [Spring Boot structured logging reference](https://docs.spring.io/spring-boot/reference/features/logging.html#features.logging.structured).
 
-## Дополнение 2026-07-21: retarget релиза на 0.2.0
+<a id="дополнение-2026-07-21-retarget-релиза-на-020"></a>
+## Addendum 2026-07-21: retarget release to 0.2.0
 
-До создания финального candidate и tag релиз retargeted с `0.1.1` на `0.2.0`.
-Причина — совокупный scope после `v0.1.0`: новые storage, export/sync и
-event-coordination capabilities, strict configuration contract, diagnostics
-outcome contract и публичное изменение ECS wire format являются minor-релизом
-по принятой project SemVer policy, а не совместимым patch-набором.
+Before the final candidate and tag, the release was retargeted from `0.1.1`
+to `0.2.0`. Rationale: the cumulative scope after `v0.1.0` — new storage,
+export/sync and event-coordination capabilities, strict configuration contract,
+diagnostics outcome contract and public ECS wire-format change — is a minor
+release under the project's accepted SemVer policy, not a compatible patch set.
 
-Это дополнение заменяет только version disposition раздела 5: финальный
-candidate, release notes и evidence этого ADR относятся к `0.2.0`. Выбор одной
-supported Spring Boot line `4.0.x`, nested ECS representation, plan B и все
-остальные решения ADR остаются без изменений. Упоминания `0.1.1` выше
-сохраняются как исторический контекст решения до retarget.
+This addendum supersedes only section 5's version disposition: the final
+candidate, release notes and evidence for this ADR concern `0.2.0`. The one
+supported Spring Boot line `4.0.x`, nested ECS representation, plan B and all
+other ADR decisions remain unchanged. Mentions of `0.1.1` above remain as
+historical context before retargeting.

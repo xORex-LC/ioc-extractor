@@ -1,26 +1,25 @@
-# Гайды — русские версии
+# Russian operator and integration guides
 
-Русские переводы operator/integration-руководств из [../](../). При изменении
-поведения или конфигурации обе языковые версии обновляются вместе.
+<a id="гайды--русские-версии"></a>
 
-| Гайд | О чём |
+This English-only index links the Russian counterparts of the
+[canonical guides](../README.md). Guide prose remains Russian; contract changes
+must update both language versions.
+
+| Russian guide | Purpose |
 |---|---|
-| [libraries/](libraries/README.md) | Каталог всех опубликованных библиотек с парными руководствами EN/RU |
-| [libraries/development.md](libraries/development.md) | Поиск готового API, доработка библиотеки вместе с фичей, совместимость и переход на независимые версии |
-| [library-publication.md](library-publication.md) | Local bundles, protected signing/validation, публикация и проверка двух репозиториев, immutable recovery |
-| [libraries/diagnostics.md](libraries/diagnostics.md) | Коды сервиса, результаты и политики, точные счётчики, ограниченные выборки и синхронная доставка диагностик |
-| [libraries/logging-slf4j.md](libraries/logging-slf4j.md) | Типизированные записи SLF4J, MDC, ECS helpers, маскирование и границы ответственности |
-| [libraries/logging-slf4j-boot.md](libraries/logging-slf4j-boot.md) | Синхронный Boot ECS-рецепт, dataset/error ownership и проверка реального JSON |
-| [libraries/events.md](libraries/events.md) | Метаданные и publish-only порт локальных управляющих событий, no-ops и recorder |
-| [libraries/events-spring.md](libraries/events-spring.md) | Явный Spring-адаптер с границами ошибок, частичной доставкой и настройками сервиса |
-| [libraries/config-spring-boot.md](libraries/config-spring-boot.md) | Проверка имён и миграций, полнота покрытия и границы решений сервиса |
-| [libraries/config-spring-boot-check.md](libraries/config-spring-boot-check.md) | Проверка одного явного YAML без imports/profiles в ограниченном контексте |
-| [configuration.md](configuration.md) | Полный операторский справочник поддерживаемой конфигурации, допустимых значений и рекомендаций |
-| [ioc-processing-routes.md](ioc-processing-routes.md) | Планы документа и processed-импорта, выбор ветвей, полная конфигурация, проверка и восстановление |
-| [deployment.md](deployment.md) | Установка, обновление, reconciliation конфигурации, backup, rollback, restore и uninstall |
-| [daemon-operations.md](daemon-operations.md) | Эксплуатация daemon: подача документов, health, blocked/failed work, остановка и согласованный backup |
-| [bulk-resource-sizing.md](bulk-resource-sizing.md) | Подбор ресурсов массовой обработки, независимые бюджеты, наблюдение памяти/диска/очередей и завершение квалификации |
-| [canonical-record-lifecycle.md](canonical-record-lifecycle.md) | Fresh-install TTL, двухэтапная activation, health, retention и rollback boundary |
-| [ioc-aggregate.md](ioc-aggregate.md) | Контракт IOC aggregate, empty-start activation, ordered names, health и coordinated rollback |
-| [dataframe-import.md](dataframe-import.md) | Настройка и эксплуатация contract-driven local/SMB CSV import, preview, status, replay и recovery |
-| [remote-storage-sync.md](remote-storage-sync.md) | SMB fetch/publish: handoff, identity/landing limits, конфигурация, CLI, recovery и серверные права |
+| [configuration](configuration.md) | Supported configuration and operator choices |
+| [deployment](deployment.md) | Installation, upgrade, configuration reconciliation and rollback |
+| [daemon-operations](daemon-operations.md) | Intake, health, failed work, stopping and backup |
+| [bulk-resource-sizing](bulk-resource-sizing.md) | Independent resource budgets and qualification limits |
+| [canonical-record-lifecycle](canonical-record-lifecycle.md) | Fresh validity preset and explicit existing-DB activation |
+| [ioc-aggregate](ioc-aggregate.md) | Aggregate feed, population, identity and rollback |
+| [dataframe-import](dataframe-import.md) | Managed local/SMB CSV contracts, preview, status and replay |
+| [ioc-processing-routes](ioc-processing-routes.md) | Document/processed-import plans and branch selection |
+| [remote-storage-sync](remote-storage-sync.md) | SMB fetch/publish setup, ownership and recovery |
+| [library-publication](library-publication.md) | Bundle preparation, protected publication and immutable recovery |
+
+The [Russian library guide index](libraries/README.md) links all six artifacts
+and their recipes. [Library development](libraries/development.md) explains
+reuse and version ownership. [Project documentation](../../README.md) maps
+capabilities, policies, generated references and historical decisions.

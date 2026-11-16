@@ -1,326 +1,339 @@
-# 0013 — Гибридная модель координации: control-plane события + edge-IO + ETL-ядро
+> English translation of the historical Russian record. Decision/status/dates are preserved. [Russian original](ru/0013-event-driven-coordination.md) (relative link addresses rebased on relocation).
 
-## Статус
+<a id="0013--гибридная-модель-координации-control-plane-события--edge-io--etl-ядро"></a>
+# 0013 — Hybrid coordination: control-plane events + edge IO + ETL core
 
-**Принято, не реализовано.** Design-решение зафиксировано по итогам дизайн-диалога
-поверх эксплуатации [0011](0011-remote-sync.md) (delivery/SMB) и
-[0012](0012-streaming-dataframe-emission.md) (export-срезы). Документ вводит **трёх-плановую
-модель координации** и инфраструктурный каркас событий (новый платформенный модуль
-`platform-events`). Он **реализует и заменяет** раздел 0011 «Post-v1 уточнение модели:
-detection и execution должны быть разделены» и техдолг **OPS-4**, обобщая их с частного
-hardening sync до переиспользуемого application-каркаса. Кода ещё нет; ниже — обоснование,
-модель, применимость, отклонённые альтернативы и план реализации по срезам.
+<a id="статус"></a>
+## Status
 
-**Hardening-проход после ревью свёрнут в документ (находки R0–R6):** **R0** —
-`@TransactionalEventListener(AFTER_COMMIT)` не сработает без обрамляющей use-case-транзакции
-(транзакции замкнуты внутри JDBC-адаптеров) → publish-after-commit по **program order** +
-reconcile-backstop (реш. 8); **R1** — база называется `ControlEvent`, не `DomainEvent`
-(DDD-терминология, реш. 2); **R2** — порт **publish-only**, `EventSubscriber`-SPI **не вводим**
-(consume-seam = команда; уточнено R29) (реш. 2/2a); **R3** — publish fast-path **slice-specific** (`PublishCompletedSliceCommand` +
-`CompletedSliceCatalog.find`, реш. 5); **R4** — fetch executor = **command handler**, детекция в
-`RemoteSourceMonitor` (реш. 5); **R5** — **metadata-конверт** события (реш. 6); **R6** —
-**`KeyedSerialExecutor`** вместо общего `@Async`-пула (реш. 9).
+**Accepted, not implemented.** Design recorded after a discussion informed by operating
+[0011](0011-remote-sync.md) (delivery/SMB) and
+[0012](0012-streaming-dataframe-emission.md) (export slices). Introduces a **three-plane
+coordination model** and event infrastructure (new `platform-events` module).
+It **implements and replaces** 0011's “Post-v1 clarification: detection and execution must
+be separated” and technical debt **OPS-4**, generalizing sync hardening into a reusable
+application foundation. No code yet; rationale, model, applicability, rejected alternatives
+and implementation slices follow.
 
-**Второй проход ревью (R7–R13):** **R7** — контракт `publish` **fire-and-observe**: producer не
-падает из-за сбоя dispatch'а, ошибки → diagnostics/observer, корректность → reconcile (реш. 2);
-**R8** — `eventId` ≠ ключ бизнес-идемпотентности (Idempotent Receiver по `(sliceId,targetId)` /
-`RemoteObjectIdentity`, реш. 6); **R9** — `eventVersion` закладываем сразу (реш. 6); **R10** —
-keyed executor: **FIFO/coalescing без потери факта работы** (не drop) + bounded-очередь и
-shutdown/rejection-политика с reconcile-backstop (реш. 9); **R11** — fingerprint-кэш монитора —
-latency-оптимизация, не source of truth; re-emit на рестарте безопасит ledger (реш. 5); **R12** —
-единый `SpringControlEventPublisher` (bridge-bean), никто не дёргает `ApplicationEventPublisher` напрямую
-(реш. 2/6); **R13** — `SliceCompleted` эмитится только в ветке `AVAILABLE→COMPLETED`, не через общий
-`ExportObserver.completed` (который зовётся и на `SKIPPED`) (реш. 5).
+**Post-review hardening incorporated (R0–R6):** **R0**:
+`@TransactionalEventListener(AFTER_COMMIT)` cannot work without an enclosing use-case
+transaction (transactions stay inside JDBC adapters); publish-after-commit by **program
+order** + reconcile backstop (decision 8). **R1**: base type `ControlEvent`, not
+`DomainEvent` (DDD terminology, decision 2). **R2**: **publish-only** port, no
+`EventSubscriber` SPI (consume seam = command, clarified R29), decisions 2/2a.
+**R3**: **slice-specific** publish fast path (`PublishCompletedSliceCommand` +
+`CompletedSliceCatalog.find`, decision 5). **R4**: fetch executor is a **command handler**,
+detection belongs in `RemoteSourceMonitor` (decision 5). **R5**: event **metadata envelope**
+(decision 6). **R6**: **`KeyedSerialExecutor`**, rather than general `@Async` pool (decision 9).
 
-**Третий проход ревью (R14–R23):** **R14** — порт переименован `EventBus`→**`ControlEventPublisher`**
-(publish-only, in-process, non-durable; README-дисклеймер), bridge-bean = `SpringControlEventPublisher`
-(реш. 2); **R15** — правило **событие=факт / команда=намерение**, запрет `*Requested`-псевдособытий
-(реш. 6); **R16** — **MDC/correlation-проброс** через keyed-executor (`MdcScope`, реш. 9); **R17** —
-**health очереди** (depth/oldest-age/rejected/running keys, реш. 10); **R18** — ключ executor'а = по
-**внешнему ресурсу** (`endpoint+remotePath` при пересечении), не просто id (реш. 9); **R19** —
-**bounded batch** `RemoteChangeBatchDetected(…, hasMore)`, не жирный payload (реш. 5–6); **R20** —
-**startup reconcile** — обязательная фаза до fast-path (реш. 7); **R21** — **single-instance v1**;
-multi-instance = leases/fencing seam (реш. 13); **R22** — **consumer-failure/poison**: bounded retry →
-ledger `FAILED` → снятие с ключа → reconcile (**operator-visible failed state, не своя DLQ**,
-реш. 9); **R23** — **TCK-style контракт-тесты** модуля для
-`ControlEventPublisher`/`KeyedSerialExecutor` (E0/E1); **R24** — зафиксирована **архитектурная
-граница**: `platform-events` = event model + publishing contract, доставка = адаптеры; **брокер
-внутри ядра не строим** (реш. 2/11).
+**Second review (R7–R13):** **R7**: `publish` is **fire-and-observe**; dispatch failure does
+not fail producer, errors go to diagnostics/observer, correctness to reconcile (decision 2).
+**R8**: `eventId` is not business idempotency key (Idempotent Receiver by
+`(sliceId,targetId)` / `RemoteObjectIdentity`, decision 6). **R9**: include `eventVersion`
+from the outset (decision 6). **R10**: executor **FIFO/coalescing retains the fact of work**,
+no dropping; bounded queue and shutdown/rejection policy backed by reconcile (decision 9).
+**R11**: monitor fingerprint cache improves latency, not source of truth; ledger protects
+restart re-emission (decision 5). **R12**: one `SpringControlEventPublisher` bridge; no direct
+`ApplicationEventPublisher` calls (decisions 2/6). **R13**: emit `SliceCompleted` only in
+`AVAILABLE→COMPLETED`, not general `ExportObserver.completed`, also called for `SKIPPED`
+(decision 5).
 
-**Четвёртый проход — reference-grounded review + anti-broker инвариант (R25–R35):** **R25** —
-зафиксирован несущий **anti-broker** инвариант: `platform-events` = event model + publish contract,
-**не** механизм доставки; линейка «ядро даёт / не реализует / отдаёт адаптеру» + diff «при приходе
-брокера = ядро 0 изменений» (реш. 2a); **R26** — `KeyedSerialExecutor` **вынесен из**
-`platform-events` (общий примитив конкуренции, не события; cohesion/SRP) — реш. 9; **R27** — реш. 9
-расщеплён на три концерна: (1) per-key single-flight (перманентно), (2) admission/queue (заменяемый
-seam), (3) redelivery/durability/DLQ (**не строим**: reconcile сейчас, брокер потом); **R28** — ключ
-executor'а = **endpoint** (реальная единица сериализации транспорта; per-path параллелизм на одном
-endpoint в v1 недостижим — single-writer); **R29** — consume-side seam = **команда** (use-case input
-port), не `EventSubscriber`-SPI: брокер-listener = тонкий транслятор в ту же команду; **R30** —
-reconcile может стать **DB-driven** (ledger в SQLite приехал с ING-4), а не filesystem-rehash;
-**R31** — явный **retention-инвариант**: не выкашивать срез с не-`SUCCEEDED` парой (TOCTOU
-`SliceCompleted`→`find`); **R32** — **admission-control** на насыщенном ключе (без livelock
-bounded-queue↔reconcile); **R33** — **Spring Modulith Event Publication Registry** зафиксирован как
-delivery-адаптер за портом / отклонён по **гранулярности**: ретрай частичного отказа по targets
-держит **только** ledger-reconcile (он же добивает потерянный триггер) → Modulith **аддитивен, не
-заменяющий** (деталь — «Отклонённые»); **R34** — проставлены reference-опоры: реш. 8 ← Spring docs, реш. 6 ←
-Fowler (Event Notification), реш. 5 ← EIP, реш. 9 ← Akka/single-writer; **R35** — имя события
-унифицировано `RemoteChangeDetected`→`RemoteChangeBatchDetected`, уточнены порядок E2 (C2) и
-`correlationId` cross-run (C3).
+**Third review (R14–R23):** **R14**: rename `EventBus` to **`ControlEventPublisher`**
+(publish-only, in-process, non-durable; README disclaimer), bridge
+`SpringControlEventPublisher` (decision 2). **R15**: **event=fact / command=intent**;
+ban `*Requested` pseudo-events (decision 6). **R16**: **MDC/correlation propagation** through
+keyed executor (`MdcScope`, decision 9). **R17**: **queue health** (depth/oldest-age/rejected/
+running keys, decision 10). **R18**: executor key by **external resource**
+(`endpoint+remotePath` for overlap), not just ID (decision 9). **R19**: **bounded batch**
+`RemoteChangeBatchDetected(…, hasMore)`, no large payload (decisions 5–6). **R20**:
+mandatory **startup reconcile before fast path** (decision 7). **R21**: **single-instance
+v1**; multi-instance requires leases/fencing seam (decision 13). **R22**: **consumer
+failure/poison**: bounded retry → ledger `FAILED` → release key → reconcile
+(**operator-visible failed state, no custom DLQ**, decision 9). **R23**: **TCK-style
+contract tests** for `ControlEventPublisher`/`KeyedSerialExecutor` (E0/E1).
+**R24**: architectural boundary: `platform-events` = event model + publishing contract;
+delivery = adapters; **no broker inside the core** (decisions 2/11).
 
-**Пятый проход — резолюции открытых вопросов + verification (R36):** закрыты Q4–Q9 —
-**Q9** монитор на `PeriodicDaemonCycle` (CHANGE_NOTIFY/SI не вводим; латентность = короткий
-`fetch.interval`); **Q6** reconcile DB-driven по `publish_ledger` (O(pending)) + discovery
-dir-listing/анти-join/rehash-once (F3 сохранён); **Q7** admission high/low-water с гистерезисом,
-no-op-shedding в reconcile, per-key, правило в коде; **Q4** fingerprint = `(path,size,mtime)`-set +
-set-diff (= ключ fetch-ledger), без агрегированного хэша; **Q5** tx-границу не поднимаем (saga +
-reconcile-backstop; outbox адаптер-локален) — **зазор «commit↔event» verified покрытым по коду**
-(`_SUCCESS` durable атомарным rename раньше COMPLETED+события; discovery читает ФС, не событие).
-**R36** — найдено при verification: `listCompleted` бросает на первом битом дочернем каталоге →
-требование к E5: discovery **resilient** (skip+quarantine+diagnose, не abort).
+**Fourth pass — reference-grounded review + anti-broker invariant (R25–R35):**
+**R25**: fundamental **anti-broker** invariant: `platform-events` = model + publish
+contract, **not** delivery mechanism; “core provides / does not implement / delegates”
+checklist and “broker arrival = zero core changes” diff (decision 2a).
+**R26**: move `KeyedSerialExecutor` **out of** events (general concurrency primitive,
+cohesion/SRP), decision 9. **R27**: split decision 9 into (1) permanent per-key
+single-flight, (2) replaceable admission/queue seam, (3) redelivery/durability/DLQ
+(**not built**: reconcile now, broker later). **R28**: executor key = **endpoint**, the
+actual transport serialization unit; per-path parallelism within an endpoint is not
+available in single-writer v1. **R29**: consume seam = **command** (use-case input port),
+not subscriber SPI; broker listener translates to the same command.
+**R30**: reconcile can be **DB-driven** (SQLite ledger arrived with ING-4), avoiding
+filesystem rehash. **R31**: explicit **retention invariant**: retain a slice with any
+non-`SUCCEEDED` pair (`SliceCompleted`→`find` TOCTOU). **R32**: **admission control** on
+saturated keys, avoiding bounded-queue↔reconcile livelock. **R33**: **Spring Modulith Event
+Publication Registry** is a delivery adapter behind the port, rejected on **granularity**:
+only ledger reconcile retries partial target failures and lost triggers; Modulith is
+**additive, not replacing** (Rejected alternatives). **R34**: references: decision 8 ←
+Spring docs, 6 ← Fowler (Event Notification), 5 ← EIP, 9 ← Akka/single-writer.
+**R35**: unify `RemoteChangeDetected` as `RemoteChangeBatchDetected`, clarify E2 ordering
+(C2) and cross-run `correlationId` (C3).
 
-Грунт — текущий код: `platform-etl` (Pipes-and-Filters: `Stage`/`Envelope`/`PipelineRunner`/
-`PipelineObserver`), `application/sync` (`Retrier`/`RetryPolicy`, fetch/publish use-cases),
-JDBC-леджеры (`RemoteFetchLedger`, `PublishLedger`), `adapter-ingest`
-(единственное место Spring Integration в проде), `DiagnosticSink`/ECS-observability,
-`DaemonFetchScheduler`/`DaemonPublishScheduler`.
+**Fifth pass — open-question resolutions + verification (R36):** Q4–Q9 closed.
+**Q9**: monitor uses `PeriodicDaemonCycle` (no CHANGE_NOTIFY/SI; short `fetch.interval`
+provides latency). **Q6**: DB-driven `publish_ledger` reconcile O(pending) + discovery
+directory listing/anti-join/rehash-once (F3 retained). **Q7**: per-key high/low-water
+admission hysteresis, no-op shedding in reconcile, code-owned rule. **Q4**: fingerprint
+is `(path,size,mtime)` set + set-diff, same fetch-ledger key, no aggregate hash.
+**Q5**: do not lift transaction boundary (saga + reconcile backstop; adapter-local
+outbox); **commit↔event gap verified covered in code** (atomic rename makes `_SUCCESS`
+durable before COMPLETED+event; discovery reads filesystem, not events).
+**R36**, found in verification: `listCompleted` throws on the first corrupt child
+directory; E5 requires **resilient discovery** (skip+quarantine+diagnose, not abort).
 
-## Контекст
+Grounded in current code: `platform-etl` (Pipes-and-Filters:
+`Stage`/`Envelope`/`PipelineRunner`/`PipelineObserver`), `application/sync`
+(`Retrier`/`RetryPolicy`, fetch/publish use cases), JDBC ledgers (`RemoteFetchLedger`,
+`PublishLedger`), `adapter-ingest` (only production Spring Integration),
+`DiagnosticSink`/ECS observability, `DaemonFetchScheduler`/`DaemonPublishScheduler`.
 
-### Триггер — реальный прогон 0011 на хосте
+<a id="контекст"></a>
+## Context
 
-Sync доставляет данные корректно, но обнажил структурный изъян: **детекция изменений не
-отделена от исполнения**, и каждая зона ответственности, работающая с удалённым хранилищем,
-сама инициирует удалённую операцию на каждом тике своего таймера.
+<a id="триггер--реальный-прогон-0011-на-хосте"></a>
+### Trigger — a real 0011 host run
 
-Из лога установившегося режима (оба планировщика тикают ~раз в 10 с при пустом хранилище):
+Sync delivers correctly but exposes a structural defect: **detection is not separated
+from execution**. Each responsibility working with remote storage initiates an operation
+on every tick of its own timer.
+
+Steady-state log (both schedulers tick about every 10 seconds with empty storage):
 
 - **Fetch** ([`DaemonFetchScheduler`](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/DaemonFetchScheduler.java)
   → [`RemoteFetchService.fetch`](../../core/ioc-application/src/main/java/com/iocextractor/application/sync/RemoteFetchService.java))
-  на каждом тике первым делом зовёт `transport.list(endpoint, remotePath)` — **удалённый
-  SMB-вызов**. Этот `list` одновременно является и проверкой «что-то изменилось?», и началом
-  работы. При пустом источнике — `fetched=0, skipped=7` и две INFO-строки в лог.
+  starts every tick with `transport.list(endpoint, remotePath)`, a **remote SMB call**
+  serving both “did something change?” and execution. Empty source:
+  `fetched=0, skipped=7` and two INFO lines.
 - **Publish** ([`DaemonPublishScheduler`](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/DaemonPublishScheduler.java)
   → [`ArtifactPublishService.publish`](../../core/ioc-application/src/main/java/com/iocextractor/application/sync/ArtifactPublishService.java))
-  на каждом тике делает **локальный** `sliceCatalog.listCompleted(profile)` —
-  скан `var/export` + пере-декод манифеста + **пере-хеш всех файлов среза** + `ensurePending`
-  по каждой паре `(slice, target)`, даже когда все пары уже `SUCCEEDED`. SMB не трогается, но
-  это дорогая идемпотентная работа вхолостую плюс две INFO-строки.
+  performs **local** `sliceCatalog.listCompleted(profile)` every tick: `var/export`
+  scan + manifest decoding + **rehash of every slice file** + `ensurePending` for every
+  `(slice, target)`, even if all are already `SUCCEEDED`. No SMB call, but expensive
+  idempotent no-op IO and two INFO lines.
 
-### Что НЕ является проблемой (сверено с кодом)
+<a id="что-не-является-проблемой-сверено-с-кодом"></a>
+### What is NOT a problem (checked against code)
 
-- **Транспорт thread-safe и хорошо сделан.** [`SmbFileTransport`](../../adapters/adapter-transport-smb/src/main/java/com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java)
-  держит per-endpoint `synchronized` + `ConcurrentHashMap`-кэш клиентов, эвикцию на
-  transient-сбое и честный `closeIdle()` по `idle-timeout`. Соединение в установившемся режиме
-  **тёплое и переиспользуется** (трогается каждые ~10 с → idle 5m не наступает). Реконнект в
-  логе — **разовая** stale-session история (сервер уронил idle-сессию: `Read timed out`), а не
-  системный thrash.
-- Значит «постоянно дёргает удалёнку» относится только к fetch и только в виде дешёвого `list`;
-  publish удалёнку при пустой работе вообще не трогает. Источник боли — **холостая детекция,
-  вшитая в исполнение** (fetch — по сети, publish — по локальному IO), и **лог-спам** на no-op
-  циклах.
+- **Transport is thread-safe and well implemented.**
+  [`SmbFileTransport`](../../adapters/adapter-transport-smb/src/main/java/com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java)
+  has per-endpoint `synchronized`, a `ConcurrentHashMap` client cache, transient-failure
+  eviction and real idle-timeout `closeIdle()`. Steady-state connections are **warm and
+  reused** (touched every ~10s, never reach idle 5m). The logged reconnect is a
+  **one-off** stale session (server dropped it: `Read timed out`), not systemic thrashing.
+- “Constant remote calls” therefore means only cheap fetch `list`; idle publish makes
+  no remote call. The pain is **no-op detection embedded in execution** (network for
+  fetch, local IO for publish) and **no-op log spam**.
 
-### Индустриальная опора
+<a id="индустриальная-опора"></a>
+### Industry foundations
 
-- **EIP** (Hohpe & Woolf, *Enterprise Integration Patterns*): Message/Channel/Endpoint, **Polling
-  Consumer vs Event-Driven Consumer**, **Channel Adapter**, **Idempotent Receiver**, Dead Letter
-  Channel. Конвейерная часть — **Pipes-and-Filters**.
-- **Spring `ApplicationEventPublisher`** — встроенный in-process Observer/pub-sub; с 4.2 событие
-  — любой POJO; `@TransactionalEventListener(AFTER_COMMIT)`, `@Async`, `@Order`, SpEL-`condition`,
-  настраиваемый `ErrorHandler` у `ApplicationEventMulticaster`. **Не несёт** retry/DLQ/
-  сериализации/durability — это примитив доставки, не каркас.
-- **Transactional Outbox** (Richardson, microservices.io) — именованный ответ на durable
-  at-least-once, **если** in-process событий недостаточно. Классический outbox решает dual-write
-  **«БД + брокер»**; у нас брокера нет → классический outbox YAGNI (реш. 11). Под-проблему
-  «атомарность state-change + dispatch при краше» **могли бы** закрыть Registry/outbox, но в этом ADR
-  она закрывается **reconcile-over-ledgers** (реш. 7/8, зазор verified — Q5); Registry рассмотрен и
-  **отклонён** ниже (Отклонённые альтернативы).
-- **Spring Modulith — Event Publication Registry** — фреймворковый durable-журнал публикаций
-  (`PUBLISHED→PROCESSING→COMPLETED/FAILED`, staleness-монитор, republish-on-restart, JDBC-стартер):
-  каноничный «in-process outbox». Для нас — **кандидат-адаптер доставки за портом**, не часть ядра;
-  отклонён в пользу reconcile-over-ledgers (реш. 7/11, Отклонённые).
-- **Event Notification vs Event-Carried State Transfer** (Fowler, «The Many Meanings of EDA») — наши
-  события **тонкие** (Event Notification: id + конверт, не данные); потребитель дочитывает состояние
-  callback'ом к продюсеру (`CompletedSliceCatalog.find`). Жирный payload (ECST) — отвергнут (реш. 6/R19).
-- **Data-plane оркестраторы** (Beam, NiFi, Airflow) — про движение/трансформацию **данных**, а не
-  про координацию внутренних сервисов. Конфляция этих двух планов — категориальная ошибка,
-  которую модель ниже разводит явно.
+- **EIP** (Hohpe & Woolf, *Enterprise Integration Patterns*): Message/Channel/Endpoint,
+  **Polling Consumer vs Event-Driven Consumer**, **Channel Adapter**, **Idempotent
+  Receiver**, Dead Letter Channel. Pipeline: **Pipes-and-Filters**.
+- **Spring `ApplicationEventPublisher`**: built-in in-process Observer/pub-sub;
+  arbitrary POJO events since 4.2; `@TransactionalEventListener(AFTER_COMMIT)`,
+  `@Async`, `@Order`, SpEL condition, configurable `ApplicationEventMulticaster` `ErrorHandler`.
+  **No** retry/DLQ/serialization/durability: a delivery primitive, not a foundation.
+- **Transactional Outbox** (Richardson, microservices.io): named durable at-least-once
+  solution **if** in-process events are insufficient. Classic outbox solves **DB +
+  broker** dual writes; no broker here, so YAGNI (decision 11). Registry/outbox **could**
+  close state-change+dispatch crash atomicity, but this ADR uses **reconcile over
+  ledgers** (decisions 7/8, gap verified Q5); Registry considered and **rejected** below.
+- **Spring Modulith Event Publication Registry**: durable publication journal
+  (`PUBLISHED→PROCESSING→COMPLETED/FAILED`, staleness monitoring, restart republish,
+  JDBC starter), canonical in-process outbox. A **candidate delivery adapter** behind
+  our port, not core; rejected in favor of ledger reconciliation (decisions 7/11).
+- **Event Notification vs Event-Carried State Transfer** (Fowler, “The Many Meanings
+  of EDA”): **thin** events (ID + envelope, not data); consumer calls producer to read
+  state (`CompletedSliceCatalog.find`). Large ECST payload rejected (decision 6/R19).
+- **Data-plane orchestrators** (Beam, NiFi, Airflow) move/transform **data**, rather
+  than coordinate internal services. Confusing the planes is a category error,
+  explicitly separated below.
 
-### Сквозной принцип проекта (несущая стена)
+<a id="сквозной-принцип-проекта-несущая-стена"></a>
+### Cross-cutting project principle (load-bearing)
 
-`core/ioc-domain` и `core/ioc-application` — **framework-free** (Spring/SI забанены ArchUnit'ом;
-фреймворки только в adapters + bootstrap). Любое решение про события обязано это сохранить.
+`core/ioc-domain` and `core/ioc-application` are **framework-free** (ArchUnit bans
+Spring/SI; frameworks only in adapters + bootstrap). All event decisions must preserve this.
 
-## Решения
+<a id="решения"></a>
+## Decisions
 
-### 1. Три плана координации, каждый в родной роли
+<a id="1-три-плана-координации-каждый-в-родной-роли"></a>
+### 1. Three coordination planes, each in its native role
 
-Система разделяется на три ортогональных плана. Это центральное решение ADR; остальные его
-детализируют.
+Three orthogonal planes are the central ADR decision; the rest supplies details.
 
-| План | Назначение | Инструмент | Где живёт |
+| Plane | Purpose | Tool | Location |
 |---|---|---|---|
-| **Control-plane** | Координация сервисов: **факты и сигналы**, не данные | **`ControlEventPublisher` port** (current adapter: Spring `ApplicationEventPublisher`) | порт в `platform-events`, адаптер в `bootstrap` |
-| **Transformation** | Бизнес-ETL над одним источником: refang/extract/classify/dedup/write | **`platform-etl`** (Pipes-and-Filters как **библиотека**) | `core` (framework-free) |
-| **Edge-IO** | Двигать **байты через границу системы** | **Spring Integration** (Channel Adapter/Polling Consumer) | adapters |
+| **Control-plane** | Service coordination: **facts/signals**, not data | **`ControlEventPublisher` port** (current adapter: Spring `ApplicationEventPublisher`) | port in platform-events, adapter in bootstrap |
+| **Transformation** | Business ETL for one source: refang/extract/classify/dedup/write | **`platform-etl`** (Pipes-and-Filters as **library**) | framework-free core |
+| **Edge-IO** | Move **bytes across the system boundary** | **Spring Integration** (Channel Adapter/Polling Consumer) | adapters |
 
-**Обоснование.** Каждый план имеет разную природу управления: control-plane — событийная
-развязка (IoC к нашему коду через порт), transformation — синхронная композиция функций (мы
-владеем control flow), edge-IO — фреймворк-владелец поллинга на кромке. Смешение планов и есть
-исходный дефект (детекция в исполнении) и соблазн (ETL на SI). Разнеся их, получаем единый
-**ментальный** каркас координации, не жертвуя framework-free ядром.
+**Rationale.** Different control models: control-plane decouples events (IoC into our
+code through a port), transformation composes functions synchronously (we own control
+flow), edge IO delegates boundary polling to a framework. Mixing planes caused the
+original defect (detection within execution) and temptation (SI-based ETL). Separation
+provides one **mental** coordination framework while preserving framework-free core.
 
-### 2. Control-plane — `ApplicationEventPublisher` за **publish-only** портом `ControlEventPublisher` (новый `platform-events`)
+<a id="2-control-plane--applicationeventpublisher-за-publish-only-портом-controleventpublisher-новый-platform-events"></a>
+### 2. Control-plane — ApplicationEventPublisher behind publish-only ControlEventPublisher (new platform-events)
 
-> **Архитектурная граница (несущая для всего ADR):**
-> **`platform-events` задаёт *модель события приложения* и *контракт публикации*. Механизмы
-> доставки — адаптеры.** (*“`platform-events` defines the application event model and publishing
-> contract. Delivery mechanisms are adapters.”*)
+> **Architectural boundary fundamental to this ADR:**
+> **`platform-events` defines the application event model and publishing contract.
+> Delivery mechanisms are adapters.**
 >
-> Это **не** «наш RabbitMQ/Kafka»: модуль — маленькое **EIP-ядро терминов и контрактов** (опора), а
-> **не** реализация брокера. Spring-события сегодня, outbox / RabbitMQ / Kafka завтра — всё это
-> **подключаемые адаптеры доставки за тем же портом**, не переписывание ядра. Это и есть OCP-точка:
-> новая доставка = новый adapter, а не правка `core`. Любой соблазн завести внутри `platform-events`
-> очередь/redelivery/DLQ/сериализацию/роутинг — **признак съезда в «мини-RMQ»** и должен
-> отвергаться (durable-механика живёт в адаптере доставки, реш. 11).
+> This is not our RabbitMQ/Kafka: a small **EIP vocabulary/contract core**, **not** a
+> broker implementation. Spring events today, outbox/RabbitMQ/Kafka tomorrow are
+> **pluggable delivery adapters behind the same port**, without core rewrites.
+> This is the OCP seam: new delivery = new adapter, no core change. Adding queue/
+> redelivery/DLQ/serialization/routing inside platform-events indicates drift into a
+> homemade mini-RMQ and **must be rejected** (durable machinery in delivery adapters,
+> decision 11).
 
-Control-события циркулируют через **framework-free порт**, а Spring-события — **деталь
-адаптера**. Прецедент в репозитории: `DiagnosticSink` → `LoggingDiagnosticSink`,
-`CanonicalArtifactRepository` → Hikari-адаптер. Тот же приём.
+Control events use a **framework-free port**; Spring events are an **adapter detail**.
+Same repository pattern as `DiagnosticSink` → `LoggingDiagnosticSink` and
+`CanonicalArtifactRepository` → Hikari adapter.
 
-- Новый платформенный модуль **`platform-events`** (рядом с `platform-etl`/`platform-diagnostics`):
-  - **`ControlEvent`** — базовый тип события (НЕ `DomainEvent`: по DDD `DomainEvent` — это факт
-    доменной модели/агрегата, а наши `SliceCompleted`/`RemoteChangeBatchDetected`/`PublishCompleted` —
-    application/control-plane факты; терминологию не размываем). Несёт **минимальный
-    metadata-конверт** (реш. 6), идентификаторы и счётчики — **без business data / bytes / rows**
-    (bounded work-references / identities допускаются, напр. `RemoteChangeBatchDetected.items`, реш. 6/R19);
-  - порт **`ControlEventPublisher` — publish-only** (имя честнее `EventBus`: это **не** durable
-    message bus, не broker, не routing-framework — `platform-events/README` обязан это прямо
-    зафиксировать, чтобы имя не обещало больше, чем даёт). Метод `publish(ControlEvent)`. Подписка в
-    v1 — Spring `@EventListener`-бины в bootstrap, переводящие событие в **команду** (use-case input
-    port). Framework-free `EventSubscriber`-SPI **не вводим вообще** (а не «откладываем»): стабильный
-    consume-seam — это **команда**, и broker-listener потом транслирует сообщение в **ту же команду**
-    (реш. 2a/R29). `EventSubscriber` был бы преждевременным куском брокера;
-  - тестовые дублёры порта — **`NoopControlEventPublisher`**, **`RecordingControlEventPublisher`**;
-  - bootstrap-реализация порта = **`SpringControlEventPublisher`** (единый bridge-bean, реш. 2 ниже);
-  - `ControlEventObserver` — наблюдаемость публикации (мост к existing ECS, не новый стек).
-- **Контракт `publish` — fire-and-observe, producer-нейтральный.** `publish(...)` **не
-  пробрасывает** сбой доставки/постановки события в producer'а: исход бизнес-операции **не зависит**
-  от dispatch'а события. Ошибки публикации/диспетчеризации идут в **diagnostics + `ControlEventObserver`**,
-  корректность восстанавливает **reconcile** (реш. 7). Иначе получаем плохой UX: export уже durable
-  COMPLETED, а CLI/daemon падает из-за сбоя постановки fast-path-события.
-- Конкретные события — **рядом с bounded area** в `core/ioc-application`, не общей свалкой в
-  `platform-events`.
-- **Единый `SpringControlEventPublisher` (bridge-bean) в bootstrap** — единственная точка публикации:
-  через него идёт и реализация framework-free порта `ControlEventPublisher` (для core-издателей), и
-  adapter-originated события (inbox SI-flow / `RemoteSourceMonitor` на `PeriodicDaemonCycle`). Никто **не дёргает `ApplicationEventPublisher`
-  напрямую** — иначе `ControlEventObserver` обходится и теряется единообразие наблюдаемости. Spring в
-  core всё равно не попадает (core видит только порт).
-- Подписчики — Spring-бины `@EventListener` (driving-адаптеры, зовущие use-case-команды).
-  `@TransactionalEventListener`/`@Async` — только где это технически корректно (см. реш. 8–9).
+- New **`platform-events`** module, alongside platform-etl/diagnostics:
+  - **`ControlEvent`** base, NOT DomainEvent: in DDD a domain event is a domain-model/
+    aggregate fact; SliceCompleted/RemoteChangeBatchDetected/PublishCompleted are
+    application/control-plane facts. Preserve terminology. Minimal **metadata envelope**
+    (decision 6), IDs/counts, **no business data/bytes/rows**; bounded work references/
+    identities allowed, e.g. `RemoteChangeBatchDetected.items` (decision 6/R19).
+  - **Publish-only `ControlEventPublisher`**, more accurate than EventBus: **not** durable
+    bus/broker/routing framework; README must state this. `publish(ControlEvent)`.
+    V1 subscribers are bootstrap Spring `@EventListener` beans translating events to
+    **commands** (use-case input ports). **Never introduce** framework-free
+    `EventSubscriber` SPI, rather than merely deferring it: stable consume seam is
+    the **command**; a broker listener later translates to **the same command**
+    (decision 2a/R29). Subscriber SPI would be premature broker infrastructure.
+  - Test doubles **`NoopControlEventPublisher`**, **`RecordingControlEventPublisher`**.
+  - Bootstrap implementation **`SpringControlEventPublisher`**, the single bridge below.
+  - `ControlEventObserver` publication observability bridges existing ECS, no new stack.
+- **Fire-and-observe, producer-neutral `publish` contract.** Dispatch/admission errors
+  **do not propagate** to producer; business outcome **does not depend** on dispatch.
+  Failures go to **diagnostics + `ControlEventObserver`**, correctness recovers through
+  **reconcile** (decision 7). Otherwise durable completed export could still fail CLI/
+  daemon merely because its fast-path hint could not be queued.
+- Concrete events live **beside their bounded area** in core/ioc-application, not in
+  a platform-events dumping ground.
+- **One bootstrap bridge bean** `SpringControlEventPublisher` is the sole publication
+  point for framework-free core publishers and adapter-originated events (inbox SI
+  flow / PeriodicDaemonCycle monitor). **No direct ApplicationEventPublisher calls**,
+  which bypass observers and consistent observability. Core still sees only the port.
+- Subscribers are `@EventListener` driving beans calling use-case commands.
+  Transactional listeners/async only where technically correct (decisions 8–9).
 
-**Почему не SI-`MessageChannel` для шины событий.** SI сейчас — *inbound channel adapter* (см.
-реш. 4), а не шина доменных событий. Гонять control-события через SI-каналы = **новая поверхность
-SI**, а развязка producer/consumer в одном JVM — прямое назначение `ApplicationEventPublisher`.
-30-строчный адаптер на Spring-событиях проще SI-каналов. SI достаём только при появлении durable
-queue / multi-step routing (реш. 11).
+**Why not SI MessageChannel as event bus?** SI is currently an inbound channel adapter
+(decision 4), not a domain event bus. Control events through SI add another SI surface;
+in-JVM producer/consumer decoupling is precisely ApplicationEventPublisher's role.
+A 30-line Spring adapter is simpler. Use SI only for durable queues/multi-step routing
+(decision 11).
 
-### 2a. Anti-broker boundary — несущий инвариант платформы
+<a id="2a-anti-broker-boundary--несущий-инвариант-платформы"></a>
+### 2a. Anti-broker boundary — the platform's load-bearing invariant
 
-> **`platform-events` — это контракт-ядро (event model + publish contract), а НЕ механизм
-> доставки.** Всё, что закрывает собой внешний брокер, ядро **не реализует**: оно либо живёт за
-> портом как адаптер (сейчас), либо приходит вместе с брокером (потом). **Приход брокера = новый
-> адаптер за тем же портом; ядро не трогается.** Любой PR в `platform-events` проверяется по линейке
-> ниже — это защита от сползания в самодельный «мини-RMQ».
+> **platform-events is a contract core (event model + publish contract), NOT delivery.**
+> It **does not implement** external-broker concerns: these live behind the port in
+> adapters now or arrive with a broker later. **Broker arrival = new adapter behind
+> the same port, unchanged core.** Check every platform-events PR against the table
+> below to prevent a homemade mini-RMQ.
 
-| | Концерн | Где живёт |
+| | Concern | Location |
 |---|---|---|
-| ✅ **ядро ДАёт** | `ControlEvent` + неизменяемый конверт (`eventId/eventType/eventVersion/occurredAt/correlationId/causationId?`) — это и есть **интеграционный контракт** (брокер маппит конверт в message headers) | `platform-events` |
-| | publish-only порт `ControlEventPublisher`; `ControlEventObserver`; тест-дублёры | `platform-events` |
-| | дисциплина «событие = тонкий факт» (Event Notification) | `platform-events` |
-| ❌ **ядро НЕ реализует** (это и есть брокер) | durable-очередь · redelivery / ack-nack / retry **доставки** · Dead Letter Channel · сериализация / wire-format · routing / matching подписок · ordering и competing-consumers **между процессами** | — (broker) |
-| 🔌 **снаружи сейчас → заменит брокер** | in-JVM dispatch | `SpringControlEventPublisher` (bootstrap) |
-| | исполнение + per-key single-flight | `KeyedSerialExecutor` (вне `platform-events`, реш. 9) |
-| | at-least-once | reconcile-over-ledgers (остаётся **и** при брокере) |
+| ✅ **Core provides** | `ControlEvent` + immutable envelope (`eventId/eventType/eventVersion/occurredAt/correlationId/causationId?`), the **integration contract** (broker maps envelope to headers) | platform-events |
+| | publish-only ControlEventPublisher, ControlEventObserver, test doubles | platform-events |
+| | thin-fact Event Notification discipline | platform-events |
+| ❌ **Core does NOT implement** (broker concerns) | durable queue · redelivery / ack-nack / delivery retry · Dead Letter Channel · serialization/wire format · routing/subscription matching · interprocess ordering/competing consumers | — (broker) |
+| 🔌 **External now, replaced by broker later** | in-JVM dispatch | SpringControlEventPublisher (bootstrap) |
+| | execution + per-key single-flight | KeyedSerialExecutor, outside events (decision 9) |
+| | at-least-once | ledger reconcile, retained **with** broker |
 
-**Consume-side seam = команда, НЕ subscription-SPI.** Стабильная граница на приёме — это **use-case
-input port (команда)**, а не `EventSubscriber`. Сейчас тонкий `@EventListener`-бин переводит событие
-в `PublishCompletedSliceCommand`/`RemoteFetchWork` и зовёт command handler; с брокером рядом встаёт
-`@BrokerListener`, переводящий сообщение в **ту же команду**. Меняется только тонкий транслятор —
-handler и use-case не вырезаются. Поэтому отсрочка `EventSubscriber`-SPI (реш. 2) — **соблюдение**
-инварианта, а не недоделка (иначе SPI = преждевременный кусок брокера).
+**Consume seam = command, NOT subscription SPI.** Stable receiving boundary is a
+**use-case input port**, not EventSubscriber. A thin EventListener translates to
+PublishCompletedSliceCommand/RemoteFetchWork and invokes the handler; a future
+BrokerListener translates to **the same command**. Only the translator changes;
+handler/use case stay. Deferring subscriber SPI (decision 2) therefore **preserves**
+the invariant rather than leaving incomplete work: otherwise premature broker SPI.
 
-**Diff «в день интеграции брокера» (проверка не-вырезаемости):**
-- `ControlEventPublisher` ← новая реализация-адаптер (broker-backed); порт тот же.
-- consumer: рядом с `@EventListener` встаёт `@BrokerListener` → **те же команды**.
-- bounded in-memory queue исполнителя ← заменяется broker-queue (admission-seam, реш. 9).
-- reconcile-over-ledgers ← **остаётся** (теперь belt-and-suspenders поверх broker at-least-once).
-- per-key single-flight ← **остаётся** (или переезжает в partitioning брокера по ключу).
-- **`platform-events` — 0 изменений** (конверт уже = headers, порт уже publish-only).
+**Broker integration day diff (replaceability check):**
+- New broker-backed implementation of the same ControlEventPublisher port.
+- `@BrokerListener` beside `@EventListener` → **same commands**.
+- Bounded in-memory executor queue replaced by broker queue (admission seam, decision 9).
+- Ledger reconciliation **remains**, belt-and-suspenders over broker at-least-once.
+- Per-key single-flight **remains**, or moves into broker key partitioning.
+- **Zero platform-events changes**: envelope already maps to headers, port already publish-only.
 
-ArchUnit-стражи инварианта: в `platform-events` запрещены зависимости на очереди/брокеры/сериализацию;
-`KeyedSerialExecutor` **не** в `platform-events`; `ControlEvent` **не** `Serializable` до появления
-брокера (сериализация активируется только адаптером доставки).
+ArchUnit guards: no queue/broker/serialization dependencies in events; executor
+**outside** events; ControlEvent **not Serializable** before a broker (serialization
+activated only by delivery adapter).
 
-### 3. `platform-etl` остаётся ядром трансформации; SI в ядро не вносим
+<a id="3-platform-etl-остаётся-ядром-трансформации-si-в-ядро-не-вносим"></a>
+### 3. platform-etl remains the transformation core; no SI in core
 
-Pipes-and-Filters — паттерн; SI — один из его движков; **мы этот паттерн уже реализовали**
-framework-free и по своим границам. «Перестроить ETL на SI» имеет ровно два исхода, и оба плохи:
+Pipes-and-Filters is a pattern; SI is one engine; **we already implemented the pattern**
+framework-free within our boundaries. Rebuilding ETL on SI has two bad outcomes:
 
-- **(a)** стейджи остаются POJO, SI лишь связывает их service-activator'ами → `Stage`/`Envelope`
-  не удаляются, а оборачиваются; выигрыш ≈ 0, зависимость в пути оркестрации +1;
-- **(b)** стейджи становятся SI-эндпоинтами (`@Transformer`/`@Splitter`) → доменная логика
-  (refang, RE2, PSL, match-policy) импортирует `org.springframework.integration.*`, теряет
-  переносимость и framework-free тестируемость, ArchUnit падает.
+- **(a)** POJO stages wired by SI service activators: Stage/Envelope stay wrapped,
+  gain ≈0, orchestration-path dependency +1;
+- **(b)** SI endpoint stages (`@Transformer`/`@Splitter`): domain logic (refang, RE2,
+  PSL, match-policy) imports `org.springframework.integration.*`, losing portability and
+  framework-free testability, failing ArchUnit.
 
-Единственная чистая версия (a) бесполезна; полезная (b) ломает несущую стену.
+The clean version (a) is useless; useful version (b) breaks the load-bearing boundary.
 
-**Главная причина — Library vs Framework / направление IoC.** `platform-etl` — **библиотека/SPI**:
-control flow у нас (`runner.run(stages, envelope)`). SI — **фреймворк**: оркестрацию владеет он.
-Смысл гексагона — не отдавать control flow ядра фреймворку. Это тот же аргумент, по которому в
-0011 отвергнут Camel, а в 0012 — Spark («Dataflow-модель без тяжёлого фреймворка»).
+**Primary reason: Library vs Framework / IoC direction.** platform-etl is a **library/SPI**:
+we own `runner.run(stages, envelope)`. SI is a **framework** owning orchestration.
+Hexagonal architecture keeps core control flow out of framework ownership. Same rationale
+as rejecting Camel in 0011 and Spark in 0012: Dataflow model without a heavy framework.
 
-**Бонусы SI ядру не нужны** (поток линейный, один файл за раз, демон однопоточный): retry уже
-есть (`Retrier`), error-channel дублировал бы `DiagnosticSink`, splitter/aggregator/backpressure/
-message-store/wiretap решают проблемы, которых нет; observability уже закрыта `PipelineObserver`
-+ ECS; framework-free стейджи тестируются чистым JUnit без контекста.
+**Core needs none of SI's extras** (linear flow, one file at a time, single-thread daemon):
+Retrier already exists; error channel duplicates DiagnosticSink; splitter/aggregator/
+backpressure/message store/wiretap solve absent problems; PipelineObserver + ECS already
+cover observability; pure JUnit tests stages without context.
 
-**Условия пересмотра** (когда ETL-на-SI станет оправдан): много-маршрутность (N источников →
-роутинг → M синков); параллелизм/backpressure между стадиями; durable рестарт с середины
-конвейера (а не «перезапуск файла целиком»); распределение стадий по процессам. Сейчас не
-выполнено ни одно.
+**Reconsider when:** many routes (N sources → routing → M sinks), stage parallelism/
+backpressure, durable mid-pipeline restart rather than whole-file retry, or distribution
+across processes. None applies now.
 
-### 4. SI остаётся и расширяется только на edge-IO (Channel Adapter)
+<a id="4-si-остаётся-и-расширяется-только-на-edge-io-channel-adapter"></a>
+### 4. SI remains and expands only at edge IO (Channel Adapter)
 
-Текущая роль SI в проде — единственный узел [`IngestFlowConfiguration`](../../adapters/adapter-ingest/src/main/java/com/iocextractor/adapter/in/ingest/IngestFlowConfiguration.java):
-`FileReadingMessageSource` (входной Channel Adapter) + опциональный `WatchService` +
-`IngestFileListFilter` (stability quiet-period) + `Pollers.fixedDelay(reconcileInterval)` +
-`.handle()` (Service Activator → `IngestSourceUseCase`). Байты строк он **не трогает** — отдаёт
-`File`-ссылку в доменный конвейер.
+The sole production SI node is
+[`IngestFlowConfiguration`](../../adapters/adapter-ingest/src/main/java/com/iocextractor/adapter/in/ingest/IngestFlowConfiguration.java):
+FileReadingMessageSource (inbound adapter), optional WatchService, IngestFileListFilter
+(stability quiet-period), Pollers.fixedDelay(reconcileInterval), `.handle()` (Service Activator
+→ IngestSourceUseCase). It **does not touch row bytes**; passes a File reference into the pipeline.
 
-Этот inbox-flow — **эталон** модели «WatchService (событие) + reconcileInterval-поллер (backstop
-корректности)», то есть «события = латентность, поллинг = надёжность» уже в коде. Поэтому SI
-расширяем строго на кромке IO:
+This inbox flow **exemplifies** WatchService event + reconcileInterval correctness
+backstop: events for latency, polling for reliability already exists. Extend SI only at IO edges:
 
-- **inbox-детект** — уже есть;
-- **`RemoteSourceMonitor`** для fetch — **удалённый близнец** inbox-flow (поллинг + fingerprint за
-  SMB-портом). Это IO через границу системы, не доменная трансформация.
+- existing inbox detection;
+- **RemoteSourceMonitor**, fetch's **remote twin** (polling + fingerprint behind SMB port),
+  crossing the system boundary rather than transforming domain data.
 
-> **Уточнение (A3):** существующий remote-fetch сейчас **не на SI** (`DaemonFetchScheduler` =
-> обычный `ScheduledExecutorService`), а реш. 12 вводит общий `PeriodicDaemonCycle`. Чтобы не
-> плодить **два** механизма поллинга, выбор «монитор на SI vs на `PeriodicDaemonCycle`» **решён (Q9)
-> в пользу `PeriodicDaemonCycle`**: SI здесь не даёт реального переиспользования
-> (`FileReadingMessageSource` не говорит по SMB → всё равно кастомный `MessageSource`), а второй
-> механизм поллинга не нужен. SI оправдан только в паре с CHANGE_NOTIFY-push (не вводим, реш. 11).
-> И терминологически: монитор **двигает метаданные и рождает
-> control-факт** — он ближе к детектору на стыке edge-IO/control-plane, чем к чистому edge-IO;
-> таксономия реш. 1 здесь сознательно нестрогая.
+> **Clarification A3:** existing remote fetch is **not SI-based** (DaemonFetchScheduler
+> uses ScheduledExecutorService); decision 12 introduces shared PeriodicDaemonCycle.
+> To avoid **two polling mechanisms**, Q9 **chooses PeriodicDaemonCycle**: SI offers no
+> real reuse (FileReadingMessageSource cannot speak SMB, still needs custom MessageSource).
+> SI is justified only paired with CHANGE_NOTIFY push, not introduced (decision 11).
+> Terminologically the monitor moves metadata and emits a control fact: a detector
+> at edge-IO/control-plane boundary, so decision 1 taxonomy is deliberately not strict here.
 
-### 5. Detection ⊥ Execution — единый каркас (реализует OPS-4)
+<a id="5-detection--execution--единый-каркас-реализует-ops-4"></a>
+### 5. Detection ⊥ Execution — unified foundation (implements OPS-4)
 
-Детекция работы выносится из исполнителей. **Channel Adapters** (источники событий) питают шину;
-**Event-Driven Consumers** (исполнители) реагируют. Единообразие достигается на уровне
-**шины + контракта потребителя**, а не «все источники пушат».
+Move detection out of executors. **Channel Adapters** feed events to the bus;
+**Event-Driven Consumers** execute. Uniformity lives in **bus + consumer contract**,
+without requiring all sources to push.
 
 ```text
 [export-сага]            --emit SliceCompleted (after durable finish / program-order after commit)-->  ┐
@@ -331,334 +344,298 @@ message-store/wiretap решают проблемы, которых нет; obse
                                                                                        ├─ best-effort: metrics / cleanup / notify
 ```
 
-- **Исполнители — command handlers, НЕ polling consumers.** Каждый исполнитель получает
-  **конкретную единицу работы**, а не «иди разберись, что делать»:
-  - **publish** — источник изменения **локальный, в том же JVM** (export-сага формирует срез с
-    `_SUCCESS`). Настоящий event-driven, **бесплатно**: `SliceCompleted` → команда
-    **`PublishCompletedSliceCommand(profile, sliceId, sliceName, manifestSha256)`** → исполнитель
-    публикует **ровно один срез**. Никакого `publish(profile)` со сканом всех completed slices на
-    fast-path — иначе выгода размывается. Для адресной выборки нужен порт-метод
-    **`CompletedSliceCatalog.find(profile, sliceId)`** (find + верификация цепочки
-    `_SUCCESS→manifest→files` одной единицы, не доверяем вслепую). Reconcile остаётся scan-based,
-    но это **медленный backstop**, а не fast-path (и его стоит удешевить — DB-driven, реш. 7/R30).
-    **Retention-инвариант (TOCTOU fast-path).** Между эмиссией `SliceCompleted` и `find` срез могла
-    бы выкосить slice-retention, и тогда publish тихо потеряется (reconcile тоже сканирует уже
-    пустую ФС). Поэтому жёстко: **retention НЕ выкашивает срез, у которого в `publish_ledger` есть
-    хоть одна не-`SUCCEEDED` пара** (delivery-aware retention поверх ledger, а не по возрасту/
-    счётчику). `PublishLedgerSliceRetentionGuard` обязан проверять именно это (R31).
-    **Точка эмиссии строго специфична:** `SliceCompleted` поднимается **только при реально
-    доступном новом срезе** — в ветке `AVAILABLE → COMPLETED` `ExportService` (после `ledger.finish`),
-    **не** через общий `ExportObserver.completed(...)`. Тот зовётся и на **`SKIPPED`** (staging
-    отброшен, нового slice нет — `ExportService` строки ~127/140), поэтому эмиссия события через
-    lifecycle-observer без фильтрации дала бы ложный publish-триггер. Control-событие и
-    lifecycle-observer **не смешиваем**.
-  - **fetch** — источник изменения **на удалённом сервере**, который не пушит. Дешёвого
-    event-driven не существует → **`RemoteSourceMonitor` = детектор**: `list` + include/exclude +
-    **fingerprint-diff**, эмитит `RemoteChangeBatchDetected` с **конкретными work-items**
-    (identities). `RemoteFetchService` перестаёт делать `list`/фильтрацию внутри и становится
-    **command handler «скачай вот эти объекты»** (`RemoteFetchWork`). Транспортно-нейтрально
-    (работает и для будущего S3/SFTP).
-    **Состояние fingerprint-кэша монитора — latency-оптимизация, НЕ source of truth.** Форма (Q4) —
-    in-memory **set of `RemoteObjectIdentity(path,size,mtime)`** (= ключ fetch-ledger, нового identity
-    не вводим); detection = **set-diff** → bounded-батчи; без агрегированного хэша листинга. В v1 это
-    **in-flight registry**, общий для monitor и listener: identity атомарно claim-ится listener-ом
-    непосредственно перед admission в keyed executor, а monitor исключает claimed identity из
-    следующих тиков. Claim ставится не до publish, иначе потерянный dispatch подавил бы повторную
-    детекцию. После success/failure/rejection identity освобождается; `FETCHED` окончательно отсекает
-    durable ledger. Registry — in-memory (durable monitor state — отложенный seam). На рестарте
-    монитор вправе **переэмитить** уже известные identities; безопасность повторной эмиссии обязан
-    обеспечить **ledger как Idempotent Receiver**. Корректность держится на ledger, не на registry.
+- **Executors are command handlers, NOT polling consumers.** Each receives **specific work**,
+  rather than “go discover what to do”:
+  - **Publish:** change is **local, in the same JVM**, from export's completed slice.
+    Genuine event-driven behavior is **free**: SliceCompleted →
+    **`PublishCompletedSliceCommand(profile, sliceId, sliceName, manifestSha256)`** →
+    exactly **one slice**. No fast-path publish(profile) scanning all slices. Need
+    **`CompletedSliceCatalog.find(profile, sliceId)`**, verifying that unit's
+    `_SUCCESS→manifest→files` chain rather than trusting it. Scan reconcile remains
+    a **slow backstop**, worth making DB-driven (decision 7/R30).
+    **Retention invariant (fast-path TOCTOU):** retention could delete a slice between
+    event and find, silently losing publish (reconcile would also see empty FS).
+    Therefore **retain any slice with at least one non-SUCCEEDED publish-ledger pair**;
+    `PublishLedgerSliceRetentionGuard` must enforce this, not mere age/count (R31).
+    **Precise emission point:** emit only for a genuinely available new slice, in
+    ExportService **AVAILABLE→COMPLETED after ledger.finish**. **Not** general
+    `ExportObserver.completed(...)`, also called for **SKIPPED** (discarded staging, no new
+    slice; ExportService ~127/140). Unfiltered lifecycle-observer publication would
+    falsely trigger publish. Keep control events separate from lifecycle observation.
+  - **Fetch:** change occurs **on a non-pushing remote server**, so no cheap push.
+    **RemoteSourceMonitor detects**: list + include/exclude + fingerprint diff, emits
+    RemoteChangeBatchDetected with **specific work identities**. RemoteFetchService
+    stops listing/filtering; becomes **“download these objects” command handler**
+    (RemoteFetchWork), transport-neutral for future S3/SFTP too.
+    **Fingerprint cache is a latency optimization, NOT truth.** Q4 shape: in-memory
+    **RemoteObjectIdentity(path,size,mtime) set**, same ledger key; set-diff into bounded
+    batches, no aggregate listing hash. V1 uses an **in-flight registry** shared by
+    monitor/listener. Listener atomically claims identities immediately before keyed
+    admission; monitor excludes claims next tick. Do not claim before publish: lost
+    dispatch would suppress redetection. Release on success/failure/rejection; durable
+    FETCHED removes completed work. Registry is in-memory, durable monitor state deferred.
+    Restart may **re-emit** known identities; **ledger Idempotent Receiver** ensures
+    safety. Correctness rests on ledger, not registry.
 
-**Асимметрия осознанная.** «Держать открытую сессию-watcher» отвергнуто: именно простаивающая
-открытая SMB-сессия и протухает (тот самый `Read timed out`). Smart-poll переиспользует и
-оздоровляет соединение, а не ждёт на мёртвом. Истинный push (CHANGE_NOTIFY) — реш. 11 (отложен).
+**Deliberate asymmetry.** Reject holding an open watcher session: idle SMB sessions
+are precisely what expire (Read timed out). Smart polling reuses/heals connections,
+rather than waiting on dead ones. True CHANGE_NOTIFY push deferred (decision 11).
 
-### 6. Словарь control-событий, metadata-конверт и правило размещения издателя
+<a id="6-словарь-control-событий-metadata-конверт-и-правило-размещения-издателя"></a>
+### 6. Control-event vocabulary, metadata envelope and publisher placement
 
-**Metadata-конверт (`ControlEvent`).** Каждое событие несёт минимальный неизменяемый конверт —
-**не** брокерные заголовки и **не** сериализацию, а опору для tracing/идемпотентности/будущего
-outbox:
+**ControlEvent metadata envelope.** Each event has minimal immutable metadata,
+**not** broker headers/serialization; foundation for tracing/idempotency/future outbox:
 
-| Поле | Назначение |
+| Field | Purpose |
 |---|---|
-| `eventId` | уникальный id **самого события** (event-level tracing/дедуп, ключ будущего outbox-relay). **НЕ** бизнес-ключ идемпотентности |
-| `eventType` | стабильный тип (роутинг/фильтрация/метрики) |
-| `eventVersion` | версия схемы события — **закладываем сразу** (дёшево), чтобы будущая сериализация/outbox мигрировали упорядоченно, а не хаотично |
-| `occurredAt` | момент факта (`Clock`-инъекция, как везде в проекте) |
-| `correlationId` | сквозная корреляция — **переиспользуем `ioc.run.id`** (0011 уже растянул его на pipeline/fetch/publish-цикл), не вводим новый |
-| `causationId?` | опционально: какое событие/команда породило это (run→slice→publish-цепочка) |
+| eventId | Unique event identity (event tracing/dedup, future outbox relay key), **NOT business idempotency** |
+| eventType | Stable type for routing/filtering/metrics |
+| eventVersion | Schema version included **immediately**, cheaply, for orderly future serialization/outbox migration |
+| occurredAt | Fact time, injected Clock as elsewhere |
+| correlationId | End-to-end correlation, **reuse ioc.run.id** already extended by 0011 to pipeline/fetch/publish cycles |
+| causationId? | Optional parent event/command, run→slice→publish chain |
 
-**`eventId` ≠ ключ бизнес-идемпотентности.** Идемпотентность исполнения держат **Idempotent
-Receivers по бизнес-ключам**, не по `eventId`: publish — `(sliceId, targetId)` в `PublishLedger`;
-fetch — `RemoteObjectIdentity` в fetch-ledger. `eventId` — для трассировки и event-level дедупа
-(будущий outbox), повторная доставка одного факта с тем же бизнес-ключом всё равно безопасна.
-При желании событие может нести явный `deduplicationKey` (бизнес-ключ) как seam — но это **не**
-заменяет ledger.
+**eventId is not business idempotency.** Receivers deduplicate by **business keys**:
+publish `(sliceId, targetId)` in PublishLedger, fetch RemoteObjectIdentity in fetch
+ledger. eventId traces/deduplicates events for future outbox; repeating a fact with
+the same business key stays safe. Optional explicit deduplicationKey is a seam,
+never a ledger replacement.
 
-Граница YAGNI: конверт держим **минимальным**; разрастание в broker-метаданные — только вместе с
-реальным брокером/outbox (реш. 11).
+YAGNI: keep envelope **minimal**, add broker metadata only with a real broker/outbox (decision 11).
 
-**Уточнение `correlationId` для cross-run событий (R35/C3).** `SliceCompleted` рождается под
-`ioc.run.id` **export-прогона**, а publish, который он триггерит, — отдельная операция. Правило:
-consumer **наследует** `correlationId` события (тянет цепочку run→slice→publish в одном следе), а
-`causationId` несёт `eventId`/команду-предка. Новый `run.id` на стороне publish **не** заводим —
-иначе след «факт→команда» рвётся.
+**Cross-run correlation clarification (R35/C3).** SliceCompleted inherits the **export
+run's ioc.run.id**, while publish is a separate operation. Consumer **inherits event
+correlationId**, keeping run→slice→publish in one trace; causationId holds parent
+ eventId/command. Do **not** invent another publish run.id and break fact→command tracing.
 
-**Словарь** — факты с идентификаторами, не данные (та же дисциплина, что manifest-coverage в
-0012). Стартовый, расширяемый набор:
+**Vocabulary:** facts with identifiers, not data, like 0012 coverage metadata.
+Initial extensible set:
 
-| Событие | Когда | Несёт | Издатель |
+| Event | When | Carries | Publisher |
 |---|---|---|---|
-| `IngestionFinished` | файл извлечён в canonical + спроецирован (после commit) | `run_id`, `source.id`, counts | adapter (ingest-сага) → напрямую |
-| `SliceCompleted` | export-сага закрыла срез (`_SUCCESS`, после commit) | `profile`, `slice_id`, `revision` | use-case → **через порт** |
-| `RemoteChangeBatchDetected` | монитор зафиксировал дельту листинга | `endpoint`, `source.id`, `batchId`, **bounded** `items`, `hasMore` | adapter (монитор) → bridge |
-| `PublishCompleted` | пара `(slice, target)` доведена до `SUCCEEDED` | `profile`, `slice_id`, `target_id` | use-case → **через порт** |
+| IngestionFinished | File extracted into canonical + projected, after commit | run_id, source.id, counts | adapter (ingest saga), directly |
+| SliceCompleted | Export closes slice (_SUCCESS, after commit) | profile, slice_id, revision | use case **through port** |
+| RemoteChangeBatchDetected | Monitor detects listing delta | endpoint, source.id, batchId, **bounded** items, hasMore | adapter monitor → bridge |
+| PublishCompleted | (slice,target) reaches SUCCEEDED | profile, slice_id, target_id | use case **through port** |
 
-**Событие = факт (past tense), команда = намерение (imperative).** Тонкое событие = **Event
-Notification** по Фаулеру (id + конверт, не данные; потребитель дочитывает состояние через `find`).
-Жёсткое правило, чтобы шина не
-выродилась в command-bus под видом event-bus: имена событий — **свершившиеся факты**
-(`SliceCompleted`, `RemoteChangeBatchDetected`, `PublishCompleted`, `IngestionFinished`); имена
-команд — **повелительные** (`PublishCompletedSliceCommand`, `RemoteFetchWork`). В v1 **запрещены**
-«события»-намерения вида `PublishSliceRequested`/`FetchRequested`, если за ними нет реально
-зафиксированного факта. Поток всегда: *факт-событие* → подписчик решает → *команда* исполнителю.
+**Event = past-tense fact; command = imperative intent.** Thin **Fowler Event
+Notification**: ID + envelope, consumer rereads through find. Prevent a disguised
+command bus: events are accomplished facts (SliceCompleted, RemoteChangeBatchDetected,
+PublishCompleted, IngestionFinished), commands imperative (PublishCompletedSliceCommand,
+RemoteFetchWork). V1 **bans** intent pseudo-events PublishSliceRequested/FetchRequested
+without a recorded fact. Always: *fact event* → subscriber decides → executor *command*.
 
-**Bounded batch для remote-дельты (НЕ жирный payload).** Если на удалёнке внезапно тысячи файлов,
-одно событие со списком всех identities превратится в data-payload (нарушает «событие = факт+id, не
-данные»). Поэтому монитор эмитит **ограниченные батчи**: `RemoteChangeBatchDetected(sourceId,
-batchId, items, hasMore)` с `maxWorkItemsPerEvent`; `hasMore=true` означает «будут ещё батчи». Это
-держит и память события, и keyed-executor под контролем.
+**Bounded remote-delta batch, NOT large payload.** Thousands of remote files must not
+become one data payload, violating thin-fact discipline. Emit bounded
+`RemoteChangeBatchDetected(sourceId, batchId, items, hasMore)` with maxWorkItemsPerEvent;
+hasMore=true means more batches follow. Bounds event memory and keyed execution.
 
-**Правило размещения `publish()`** (определяет, нужен ли порт):
+**publish() placement determines port need:**
 
-- издатель **внутри use-case** (доменный факт, напр. `SliceCompleted`) → публикуем через
-  framework-free порт `ControlEventPublisher` (Spring в core нельзя);
-- издатель **в адаптерной обвязке** (напр. SI-flow закончил перенос → `IngestionFinished`;
-  монитор → `RemoteChangeBatchDetected`) → адаптер уже в bootstrap, публикует через **единый
-  `SpringControlEventPublisher` (bridge-bean)** (реш. 2), а **не** raw `ApplicationEventPublisher` — чтобы
-  `ControlEventObserver` не обходился. Framework-free порт тут не обязателен (издатель уже в bootstrap),
-  но точка публикации — одна.
+- Publisher **inside use case** (domain fact, e.g. SliceCompleted): framework-free
+  ControlEventPublisher, since Spring is forbidden in core.
+- Publisher **in adapter wiring** (SI transfer → IngestionFinished, monitor → batch
+  detected): already in bootstrap, use the **same SpringControlEventPublisher bridge**,
+  never raw ApplicationEventPublisher bypassing observer. Framework-free port optional
+  here, but one publication point.
 
-Не «портируем» всё подряд — framework-free порт только там, где издатель доменный; точка публикации
-(bridge-bean) — общая для всех.
+Do not port everything indiscriminately: framework-free port where publisher is domain-side;
+shared bridge for all.
 
-### 7. Классификация подписчиков: correctness-bearing vs best-effort
+<a id="7-классификация-подписчиков-correctness-bearing-vs-best-effort"></a>
+### 7. Subscriber classes: correctness-bearing vs best-effort
 
-Подписчики **не равны**, и это определяет требования к надёжности:
+Subscribers **differ**, determining reliability requirements:
 
-- **correctness-bearing** (напр. триггер publish от `SliceCompleted`) — пропуск недопустим.
-  Durability держит **не событие**, а **reconcile-over-ledgers**: событие — быстрый путь,
-  периодический reconcile поверх durable `publish_ledger`/`remote_fetch_ledger` — надёжный
-  backstop (at-least-once после крэша/потерянного события). Это прямое следствие 0011
-  («события — оптимизация латентности, корректность на ledgers + reconcile»).
-- **best-effort** (метрики/Prometheus, cleanup временных файлов, уведомления/Telegram) — потеря
-  при крэше терпима; durable-шина не нужна.
+- **Correctness-bearing**, e.g. SliceCompleted publish trigger: cannot lose work.
+  **Ledger reconcile**, not event, holds durability. Event fast path + periodic
+  durable publish_ledger/remote_fetch_ledger reconcile provides at-least-once after
+  crashes/lost events. Direct consequence of 0011 latency-hint doctrine.
+- **Best-effort** (Prometheus metrics, temp cleanup, Telegram notifications): crash
+  loss acceptable, no durable bus needed.
 
-Следствие: соблазн тащить outbox/DLQ ради метрик снимается — durable инфраструктура нужна только
-correctness-носителям, а у них backstop уже есть (reconcile). Reconcile-цикл при этом понижается
-до **редкого** safety-net (минуты), а не остаётся основным двигателем.
+No outbox/DLQ just for metrics: correctness consumers already have reconcile.
+Reduce reconciliation to a **rare** safety net (minutes), rather than the main engine.
 
-**Reconcile должен стать дешёвым, а не только редким — ING-4 это разблокировал (R30).** Сейчас и
-`publish`, и `reconcile` идут через `CompletedSliceCatalog.listCompleted` → пере-декод манифеста +
-**пере-хеш всех файлов** каждого среза (filesystem-scan). После прихода storage-слоя (SQLite-ледгеры,
-ING-4) `export_run`/`publish_ledger` **уже хранят durable slice-metadata** (`slice_name`,
-`manifest_sha256`) — основа для DB-driven reconcile есть, но **готового DB-backed `CompletedSliceCatalog`
-ещё нет**: **E5 добавляет read-model/queries**. С ними reconcile-backstop **= DB-driven** (запрос
-pending-пар по `publish_ledger`, O(pending)), а не filesystem-rehash
-(O(срезы×файлы)). **Discovery** новых срезов (без пар в ledger) — дешёвый dir-listing + анти-join,
-с **rehash-once** только новых; export-таблицы 0012 НЕ читаем (граница F3 — ФС). Так
-«дорогая идемпотентная работа вхолостую» из OPS-4 убирается и с fast-path, и **с медленного пути**:
-per-tick rehash исчезает, остаётся «раз на срез при обнаружении» (Q6 закрыт).
+**Make reconcile cheap, not merely infrequent — enabled by ING-4 (R30).** Both publish
+and reconcile currently use listCompleted, decoding manifests and **rehashing all
+files** of every slice. SQLite export_run/publish_ledger **already retain durable
+slice metadata** (slice_name, manifest_sha256), enabling DB-driven reconcile, but
+**no DB-backed CompletedSliceCatalog exists yet**: **E5 adds read models/queries**.
+Backstop becomes **DB-driven**, pending-pair query O(pending), rather than
+O(slices×files) rehash. New-slice **discovery** uses cheap directory listing + anti-join,
+**rehashing only once** for newcomers; never read 0012 export tables (F3 filesystem
+boundary). Removes expensive no-op IO on **both** paths, leaving one rehash per
+slice at discovery (Q6 closed).
 
-**Почему не Spring Modulith Event Publication Registry.** Фреймворк уже даёт ровно этот каркас
-(durable-журнал публикаций, at-least-once, staleness-reconcile, republish-on-restart, JDBC-стартер).
-Мы его **не берём**, осознанно: бизнес-**ледгеры уже являются Idempotent Receiver по бизнес-ключу**
-(`(sliceId,targetId)`, `RemoteObjectIdentity`, реш. 6/R8), то есть at-least-once + reconcile-субстрат
-**уже есть**; Modulith-журнал по `eventId` поверх них — **избыточная вторая durability**. И в любом
-исходе Registry — это **delivery-адаптер за `ControlEventPublisher`**, а не часть `platform-events`
-(реш. 2a). Зафиксировано в «Отклонённых альтернативах».
+**Why not Spring Modulith Event Publication Registry?** It supplies durable publication
+journal, at-least-once, staleness reconcile, restart republish, JDBC starter. Deliberately
+**not adopted**: existing **business-key Idempotent Receiver ledgers** already supply
+at-least-once/reconcile (`(sliceId,targetId)`, RemoteObjectIdentity, decision 6/R8).
+An eventId journal adds **a redundant second durability layer**. Either way Registry
+would be a **ControlEventPublisher delivery adapter**, outside platform-events
+(decision 2a). Recorded under Rejected alternatives.
 
-**Startup reconcile — обязательная фаза, не только фоновый backstop.** При старте демона порядок
-строгий: сначала **синхронный reconcile/backfill** (verified slices × targets → `publish_ledger`;
-remote-fetch backlog), и **только потом** включаются fast-path listeners/monitors. Это закрывает
-downtime-window: накопленная за простой работа добивается сразу, а не ждёт следующего длинного
-интервала. Прецедент уже есть — `DaemonPublishScheduler.start()` в 0011 делает reconcile перед
-periodic-loop; обобщаем это правило на обе стороны и фиксируем как инвариант жизненного цикла
-(совместимо с phase-ordering export→publish→retention).
+**Startup reconcile is mandatory, not just background backstop.** Strict startup:
+**synchronous reconcile/backfill** (verified slices × targets → publish_ledger;
+remote-fetch backlog), **then** fast-path listeners/monitors. Work accumulated during
+downtime runs immediately rather than waiting a long interval. Generalizes existing
+DaemonPublishScheduler.start() reconcile-before-loop to both directions; compatible
+with export→publish→retention phase order.
 
-### 8. Транзакционная привязка — publish строго после commit **по program order**, НЕ `@TransactionalEventListener`
+<a id="8-транзакционная-привязка--publish-строго-после-commit-по-program-order-не-transactionaleventlistener"></a>
+### 8. Transaction binding — publish strictly after commit by program order, NOT TransactionalEventListener
 
-**Важная техническая поправка (риск-находка ревью).** `@TransactionalEventListener(AFTER_COMMIT)`
-срабатывает, только если в момент `publish` на потоке есть **активная Spring-транзакция**
-([подтверждено Spring-документацией](https://docs.spring.io/spring-framework/reference/data-access/transaction/event.html):
-без активной tx событие отбрасывается, если не задан `fallbackExecution`; а `fallbackExecution=true`
-+ async может сработать **до** commit). В
-проекте транзакции замкнуты **внутри JDBC-адаптеров** (`TransactionTemplate.execute(...)` в
-`JdbcExportRunLedger.finish()` и т.п.), **вокруг use-case транзакции нет**. Значит к моменту
-`controlEventPublisher.publish(...)` коммит уже произошёл, активной транзакции нет, и
-`@TransactionalEventListener` без `fallbackExecution=true` событие **не обработает вовсе** (а с
-`fallbackExecution=true` — выполнит немедленно, обессмыслив фазу). Поэтому:
+**Important technical review correction.** `@TransactionalEventListener(AFTER_COMMIT)`
+requires an **active Spring transaction** at publication
+([Spring documentation](https://docs.spring.io/spring-framework/reference/data-access/transaction/event.html)):
+without one, events are discarded unless fallbackExecution is enabled; fallbackExecution=true
++ async may run **before commit**. Here transactions stay **inside JDBC adapters**
+(`TransactionTemplate.execute(...)` in `JdbcExportRunLedger.finish()` etc.), **without enclosing
+use-case transactions**. By `controlEventPublisher.publish(...)` time commit has returned and no transaction
+exists: listener without fallback executes **never**, with fallback executes immediately,
+making phase meaningless. Therefore:
 
-- **Правило корректности — program order, а не фаза транзакции:** use-case публикует событие
-  **строго после возврата** из `ledger.finish(...)`/проекции — то есть факт по построению уже
-  «after commit». Подписчик — **обычный `@EventListener`** (синхронный hand-off на потоке
-  издателя), затем тяжёлый IO уходит на keyed-executor (реш. 9).
-- **`@TransactionalEventListener(AFTER_COMMIT)` применяем ТОЛЬКО там, где реальная Spring-tx
-  оборачивает publish** (сейчас — нигде; появится, если транзакцию поднимут на уровень use-case).
-- **Атомарность «state change + event publication»** (краш между commit и publish) закрывает **не**
-  фаза слушателя, а **reconcile-over-ledgers** (реш. 7): потерянное событие восстанавливает
-  следующий reconcile-тик. **Зазор verified покрытым** (Q5): `_SUCCESS` среза durable атомарным
-  rename (`makeAvailable`) **раньше** COMPLETED-commit и события → discovery (`listCompleted`, ФС) на
-  рестарте находит срез независимо от события. Истинный atomic-outbox / Spring-Modulith-подобный
-  publication-registry — **отложенный seam** (реш. 11), и даже он **адаптер-локален** (outbox-row в
-  той же tx ledger'а), use-case-tx не требует (Q5).
-- Дисциплина «publish после успешной записи, не до» совпадает с DDD-правилом
-  (publish-after-save).
+- **Program order provides correctness**: publish **strictly after** `ledger.finish(...)`/
+  projection returns, intrinsically after commit. Ordinary **EventListener** performs
+  synchronous publisher-thread handoff, then keyed executor handles heavy IO (decision 9).
+- **TransactionalEventListener only where a real Spring transaction wraps publish**:
+  nowhere now, potentially if transaction moves to use-case level.
+- **State-change + publication crash atomicity** comes from **ledger reconcile**,
+  not listener phase. Next reconcile repairs lost hints. **Gap verified covered** (Q5):
+  atomic makeAvailable rename durably publishes `_SUCCESS` **before** COMPLETED commit/
+  event; restart filesystem discovery finds it independently. True outbox/Modulith-like
+  registry is a **deferred adapter-local seam** (outbox row in ledger transaction),
+  not requiring use-case transactions (Q5, decision 11).
+- “Publish after successful write” follows DDD publish-after-save discipline.
 
-### 9. Исполнение — **keyed single-flight executor**, не «просто `@Async`»
+<a id="9-исполнение--keyed-single-flight-executor-не-просто-async"></a>
+### 9. Execution — keyed single-flight executor, rather than just Async
 
-`ApplicationEventPublisher` лишь делает hand-off к multicaster'у — он **не обещает** ни
-асинхронности, ни немедленности, ни порядка. Для publish/fetch важны две вещи, которых общий
-`@Async`-пул не гарантирует: **порядок** и **отсутствие overlap по ключу работы**. Поэтому вводим
-явную абстракцию, а не надеемся на пул:
+ApplicationEventPublisher hands off to multicaster; it **promises neither asynchronous
+nor immediate nor ordered execution**. Publish/fetch need **order** and **no overlap
+per work key**, which a general async pool does not guarantee. Use an explicit abstraction.
 
-**Расщепление трёх концернов (защита от брокер-creep, реш. 2a/R27).** `KeyedSerialExecutor` несёт
-**только** (1) per-key single-flight (защита локального ресурса — нужна **и при брокере**); (2)
-admission/очередь — **заменяемый seam** (in-memory сейчас, broker-queue потом, поэтому источник
-работы — инъектируемая граница, а не зашитый `LinkedBlockingQueue`); (3) redelivery/durability/DLQ —
-**не строим вообще** (reconcile сейчас, брокер потом). Сам executor — **общий примитив конкуренции,
-а не события**: живёт **вне `platform-events`** (`platform-concurrency` или application-порт +
-bootstrap-реализация), иначе платформенное ядро событий распухает в исполнителя (cohesion/SRP).
+**Three concerns (anti-broker protection, decision 2a/R27).** KeyedSerialExecutor owns
+only (1) permanent per-key single-flight, protecting resources **even with a broker**;
+(2) replaceable admission/queue seam, in-memory now/broker later, so work source is
+injected, not hardcoded LinkedBlockingQueue; (3) **no redelivery/durability/DLQ**,
+reconcile now/broker later. Executor is a **general concurrency primitive, not events**:
+**outside platform-events**, either platform-concurrency or application port + bootstrap
+implementation, preventing event-core execution creep (cohesion/SRP).
 
-- **`KeyedSerialExecutor`/`SingleFlightWorkExecutor`** — контракт: «по каждому ключу работа
-  исполняется последовательно и **без перекрытия**; разные ключи — параллельно».
-- **Ключ = реальная единица конкуренции транспорта, а не «просто id сущности» (R28/B1).**
-  `SmbFileTransport` уже сериализует **все операции per-endpoint** (`synchronized` по
-  endpoint-монитору), поэтому единица overlap'а — **endpoint**, а не `endpoint + remotePath`: два
-  work-item по одному endpoint всё равно сериализуются в транспорте, и более тонкий ключ дал бы
-  **иллюзию** параллелизма. Стартовая раскладка: publish → `endpoint` (за ним `targetId`-метаданные),
-  fetch → `endpoint`. Cross-path параллелизм на одном endpoint в v1 **недостижим** и помечен как seam
-  (когда транспорт научится мультиплексировать). Правило (single-writer): ключ = ресурс, конкурентная
-  запись которого ломает инвариант. Обобщает текущий **глобальный** `running`-CAS планировщиков в
-  **per-key single-flight**.
-- **Single-flight защищает boundary исполнения, а не только event-listener.** Все локальные пути,
-  которые могут выполнить remote publish для endpoint — event fast-path, periodic reconcile/publish,
-  manual/ops bridge если он появится в daemon graph — должны входить через один и тот же
-  `KeyedSerialExecutor`. Иначе появляется обход single-flight: fast-path и scheduler могут
-  одновременно вести одну `(slice,target)` пару, ledger CAS сохранит данные, но telemetry/health
-  увидят ложный conflict. Reconcile/discovery без remote write может оставаться синхронным только до
-  hand-off и выполняется **один раз на export profile**, а не per target; execution retryable work
-  идёт через keyed boundary.
-- **НЕ «drop при занятом ключе».** Сигнал нельзя терять: второй `SliceCompleted` по тому же
-  `targetId` — это **новый slice**, не дубль. Контракт: *«no overlap per key; сигналы либо
-  **FIFO-очередь** по ключу, либо coalescing **с гарантированным rerun** — но без потери факта,
-  что есть ещё работа»*. Для **slice-specific publish — предпочтительно FIFO** (каждый slice —
-  отдельная единица). Coalescing допустим только для «refresh»-сигналов с идемпотентным повтором
-  (напр. reconcile-tick).
-- **Shutdown / rejection policy (часть delivery-semantics, не мелочь):** очередь по ключу —
-  **bounded** (backpressure, а не безграничный рост); при остановке демона — **graceful drain** с
-  таймаутом (как нынешний `STOP_TIMEOUT`), затем `shutdownNow`; **недослитая/rejected работа НЕ
-  теряется по корректности** — её переэмитит **reconcile** поверх ledgers (реш. 7), а сам факт
-  отказа/недослива логируется и идёт в диагностику. Bounded-очередь + reconcile-backstop = ровно
-  та же модель «fast path можно потерять, медленный путь добивает». **Admission при насыщении
-  (R32/B4, Q7 закрыт):** **high/low-water с гистерезисом** (триггер `depth ≥ high-water` **ИЛИ**
-  `oldest-age ≥ max-age`, сигналы — health реш. 10). Выше high-water fast-path-enqueue по ключу =
-  **no-op** (DEBUG «shed to reconcile», без rejection-churn), ключ дренирует **reconcile** (DB-driven,
-  Q6) в ledger-порядке; ниже low-water admission возобновляется. **Per-key** (медленный endpoint не
-  глушит другие); water-marks/queue-size — конфиг, **правило сброса — в коде**; сброс **наблюдаем**
-  (health-флаг + диагностика). Под насыщением slice-специфичность всё равно бесполезна — деградация в
-  «reconcile дренирует все pending-пары endpoint» естественна (load-shedding на durable backstop).
-- Контракт — framework-free, но **в `platform-concurrency` / application-порт, НЕ в `platform-events`**
-  (реш. 2a/R26 — это примитив конкуренции, не события); реализация (`java.util.concurrent`) — в bootstrap.
-- Подписчик-`@EventListener` только **ставит work-item в keyed-executor** и сразу возвращает поток
-  издателя (export-сага/нотификатор не блокируются тяжёлым SMB-IO).
-- Внутри work-item — **переиспользуем существующий `Retrier`/`RetryPolicy`**, не плодим новый
-  retry-механизм.
-- **MDC/correlation-проброс через hand-off.** При переходе на поток keyed-executor'а MDC теряется.
-  Требование: work-wrapper **восстанавливает** `ioc.run.id` (=`correlationId`), `event.id`,
-  `event.type`, `causation.id?` в MDC на время обработки (переиспускаем existing `MdcScope` из
-  `platform-observability`), и чистит после. Иначе ECS-логи исполнителя теряют корреляцию
-  факт→команда.
-- **Consumer failure / poison-policy (operator-visible failed state, НЕ своя DLQ).** Падение
-  work-item **не крутится вечно** в петле executor'а и **не блокирует ключ навсегда**: внутри —
-  bounded retry (`Retrier`, max-attempts), затем item переводит ledger в **`FAILED`/retryable**,
-  факт идёт в диагностику, item **снимается с ключа** (FIFO двигается дальше), а повтор отдаётся
-  **reconcile**/ручному ops. Так «отравленное» событие не подвешивает очередь. **Важно — это не
-  message dead-letter:** ledger `FAILED` — это **operator-visible failed state саги** (виден в
-  health/диагностике, добивается reconcile'ом), а не наша собственная DLQ-инфраструктура. Настоящий
-  dead-letter-channel появится только вместе с durable-доставкой (broker/outbox) и будет её
-  адаптерным seam'ом (реш. 11), а не частью `platform-events`.
+- **KeyedSerialExecutor/SingleFlightWorkExecutor**: sequential work **without overlap**
+  per key, parallel across keys.
+- **Key = actual transport contention unit, not entity ID (R28/B1).** SMB transport
+  synchronizes **all operations per endpoint**; key is **endpoint**, not endpoint+path.
+  Two paths still serialize, so finer keys suggest false parallelism. Publish → endpoint
+  with targetId metadata; fetch → endpoint. Per-path parallelism is **unavailable in v1**,
+  deferred until transport multiplexes. Single-writer rule: key identifies resource
+  whose concurrent mutation breaks invariants. Generalizes global scheduler running CAS.
+- **Protect execution boundary, not just listeners.** All local remote-publish paths
+  (event, periodic reconcile/publish, possible manual/ops daemon bridge) use **one same
+  executor**. Otherwise scheduler/fast path can overlap a pair: ledger CAS protects
+  data, but false conflicts pollute health/telemetry. Read-only discovery may stay
+  synchronous until handoff, runs **once per export profile**, not per target;
+  retryable execution crosses the keyed boundary.
+- **Never drop merely because key is busy.** Another SliceCompleted for targetId can
+  mean **a new slice**. Contract: no overlap; **FIFO** or coalescing **with guaranteed
+  rerun**, preserving work existence. Prefer **FIFO for slice-specific publish**;
+  coalescing only for idempotent refresh hints such as reconcile ticks.
+- **Shutdown/rejection is delivery semantics**: **bounded** per-key queue, graceful
+  timed drain (existing STOP_TIMEOUT), then shutdownNow. Undrained/rejected work stays
+  correct through **ledger reconcile**; log/diagnose rejection. Same discardable-fast-
+  path/durable-backstop model. **Saturation admission (R32/B4, Q7): high/low-water
+  hysteresis**, trigger `depth ≥ high-water` **OR** `oldest-age ≥ max-age` (decision 10 health).
+  Above high-water, fast-path enqueue is **no-op**, DEBUG “shed to reconcile”, avoiding
+  rejection churn. DB-driven reconcile drains ledger order; below low-water resumes.
+  **Per key**, so a slow endpoint does not suppress others. Watermarks/queue size are
+  configuration; **shedding rule code-owned**, observable in health/diagnostics.
+  Slice specificity has little value under saturation; pending endpoint drain is
+  natural durable-backstop load shedding.
+- Framework-free contract in **platform-concurrency/application port, NOT events**
+  (2a/R26); java.util.concurrent implementation in bootstrap.
+- EventListener only **enqueues work and returns**; heavy SMB IO never blocks export/notifier.
+- Work reuses existing **Retrier/RetryPolicy**, no new retry mechanism.
+- **Propagate MDC/correlation** across executor thread handoff. Wrapper restores
+  `ioc.run.id` (=correlationId), `event.id`, `event.type`, optional `causation.id?`
+  during work through existing platform-observability MdcScope, then cleans up.
+  Otherwise executor ECS loses fact→command correlation.
+- **Consumer failure / poison policy: operator-visible failed saga state, NOT DLQ.**
+  Never infinite retry or permanent key blockage. Bounded Retrier attempts, then ledger
+  **FAILED/retryable**, diagnostic, **release item/key** so FIFO advances; reconcile/
+  manual ops retries. This is saga state visible in health, **not message dead-letter**
+  infrastructure. True Dead Letter Channel only with broker/outbox durability, an
+  adapter seam (decision 11), never part of platform-events.
 
-Это закрывает и прежний открытый вопрос про гранулярность executor'ов: ответ — keyed single-flight
-(FIFO per key) с bounded-очередью, MDC-пробросом, poison→ledger-FAILED и reconcile-backstop, а не
-shared pool.
+This resolves executor granularity: keyed FIFO, bounded queue, MDC propagation,
+poison→ledger FAILED, reconcile backstop, rather than shared pool.
 
-### 10. Наблюдаемость и диагностика шины — переиспользуем стек
+<a id="10-наблюдаемость-и-диагностика-шины--переиспользуем-стек"></a>
+### 10. Bus observability and diagnostics — reuse the stack
 
-- `ControlEventObserver` логирует **publication / dispatch / admission** через existing
-  `LogEvents`/ECS (термин «delivery» резервируем за broker/outbox-адаптерами — у in-process-шины
-  гарантии доставки нет, реш. 2). No-op-сигналов нет по определению — событие = факт изменения, поэтому **лог-спам
-  снимается структурно**: INFO только на реальные факты/сбои, рутинные no-op детект-тики уходят
-  на DEBUG.
-- Диагностика сбоев **публикации/диспетчеризации** — через `DiagnosticSink` (возможна категория `EVENTS`/переиспользование
-  `SYNC`); `event.action` (`event_publish`/`event_dispatch`) и `ioc.*`-поля заводятся **вместе с
-  producer'ом** (дисциплина полноты, как в 0011/0003).
-- **Health/readiness для keyed-executor'а — operator-facing сигнал** (в `ioc health`/sync-health,
-  реш. 9): **queue depth per key**, **oldest-work age**, **rejected count**, **running keys**. Без
-  этого зависший SMB-publish даёт ложное «демон жив», пока очередь тухнет. Эти метрики дополняют
-  существующий `SyncHealthIndicator` (последний fetch/publish, pending/failed пары).
+- ControlEventObserver records **publication / dispatch / admission** through existing
+  LogEvents/ECS. Reserve “delivery” for broker/outbox adapters; in-process has no delivery
+  guarantee (decision 2). Events are changes, not no-ops, so **remove log spam structurally**:
+  INFO only real facts/failures, routine detection no-ops DEBUG.
+- Publication/dispatch errors through DiagnosticSink (possible `DiagnosticCategory.EVENTS` category or SYNC);
+  event_publish/event_dispatch actions and ioc fields added **with producers**
+  (completeness discipline, 0011/0003).
+- **Operator-facing keyed-executor health/readiness** in ioc health/sync-health:
+  **per-key queue depth**, **oldest-work age**, **rejected count**, **running keys**.
+  Otherwise a stuck SMB publish looks like a live daemon while queue rots. Complements
+  SyncHealthIndicator (last fetch/publish, pending/failed pairs).
 
-### 11. YAGNI-seam'ы: сериализация, DLQ, durable outbox, CHANGE_NOTIFY — зарезервированы, не строим
+<a id="11-yagni-seamы-сериализация-dlq-durable-outbox-change_notify--зарезервированы-не-строим"></a>
+### 11. YAGNI seams: serialization, DLQ, durable outbox, CHANGE_NOTIFY — reserved, not built
 
-> **Superseded note (2026-07-03):** часть про SMB2 `CHANGE_NOTIFY` больше не является
-> текущим состоянием реализации. После отдельного spike `CHANGE_NOTIFY` приземлён как
-> optional SMB adapter capability (`RemoteChangeSignalSource`) и latency accelerator для
-> fetch. Это не меняет базовое решение ADR: `platform-events` не стал брокером, polling/
-> reconcile остаётся correctness backstop, а delivery/watch lifecycle живёт за adapter/
-> bootstrap границей.
+> **Superseded note (2026-07-03):** the SMB2 CHANGE_NOTIFY part no longer describes
+> current implementation. After a separate spike it landed as optional SMB adapter
+> capability (RemoteChangeSignalSource) and fetch latency accelerator. The underlying
+> ADR decision remains: events never became a broker, polling/reconcile remains the
+> correctness backstop, delivery/watch lifecycle stays behind adapter/bootstrap boundaries.
 
-Сознательно **не реализуем** сейчас. Ключевое: все они — **концерны адаптера доставки за
-границей `ControlEventPublisher`** (реш. 2), а **не** внутренности `platform-events`. Когда
-понадобятся — добавляем adapter (outbox / RabbitMQ / Kafka), ядро событий не трогаем (OCP). Порт/
-модель проектируем так, чтобы это подключалось локально:
+Deliberately **not implemented now**. All are **delivery-adapter concerns outside
+ControlEventPublisher**, not platform-events internals. Add an outbox/RabbitMQ/Kafka
+adapter when needed, leaving event core unchanged (OCP). Design local port/model seams:
 
-- **Сериализация событий** — нужна только при пересечении границы процесса или persist. In-process
-  Spring-события — обычные объекты. Активировать с брокером/outbox.
-- **DLQ** — имеет смысл только при durable queue с redelivery. In-process sync-событие при сбое
-  просто бросает. Зарезервировать dead-letter-sink как seam.
-- **Durable outbox-шина** — активировать, если reconcile-латентность/стоимость станут проблемой
-  для correctness-носителей. Сейчас backstop = reconcile (реш. 7).
-- **SMB2 CHANGE_NOTIFY** (истинный push для fetch) — **не вводим** (Q9). Латентность входа в v1
-  регулируется **коротким `fetch.interval`** (smart-poll на тёплом соединении), чего достаточно без
-  sub-second SLA. CHANGE_NOTIFY **строго аддитивен** (поллинг/reconcile остаётся — push теряет
-  события при server-side overflow), SMB-специфичен, тащит хрупкий watch-lifecycle (срыв → re-arm +
-  reconcile) + keepalive против rot открытой сессии (та же протухающая сессия, что отвергнута в
-  реш. 5), и **smbj-поддержку надо сперва проверить**. Когда/если приземлим — хостится через SI
-  `@InboundChannelAdapter` (тогда же пересматривается Q9). Критерий входа: измеренный latency-SLA,
-  который поллинг доказуемо не вытягивает.
+- **Serialization** only across process/persistence boundaries; in-process Spring events
+  are objects. Activate with broker/outbox.
+- **DLQ** only with durable queue/redelivery; failed in-process synchronous events simply
+  throw. Reserve dead-letter-sink seam.
+- **Durable outbox bus** if reconcile latency/cost becomes problematic for correctness
+  consumers. Reconcile is current backstop (decision 7).
+- **SMB2 CHANGE_NOTIFY**, true fetch push: **not introduced (Q9)**. Short fetch.interval
+  smart polling on warm connection suffices without subsecond SLA. Push is **strictly
+  additive** (server overflow loses events, polling stays), SMB-specific, adds fragile
+  watch lifecycle (rearm+reconcile after failure) and keepalive against idle-session
+  rot (same rejected watcher problem, decision 5). **Verify smbj support first**.
+  If landed, host through SI `@InboundChannelAdapter` and revisit Q9. Entry criterion:
+  measured latency SLA demonstrably impossible with polling.
 
-### 12. Границы и устранение дублирования
+<a id="12-границы-и-устранение-дублирования"></a>
+### 12. Boundaries and deduplication
 
-- **ArchUnit:** `org.springframework.context.ApplicationEvent*`/`ApplicationEventPublisher` и
-  `@EventListener` **не видны из `core`**; порт `ControlEventPublisher` в `platform-events` — framework-free
-  (как `platform-etl`/`platform-diagnostics`). Spring-мост — только в bootstrap.
-- **DRY:** общий `PeriodicDaemonCycle`/каркас исполнителя (композиция, **не наследование** —
-  lifecycle не наследуем) гасит ~95% дублирования между `DaemonFetchScheduler` и
-  `DaemonPublishScheduler` (CAS-guard, single-thread executor, `closeIdle` в finally, stop/phase,
-  start/complete-логи). Исполнители поставляют только work-`Runnable`.
+- **ArchUnit:** no `org.springframework.context.ApplicationEvent*`/ApplicationEventPublisher/EventListener in
+  core; framework-free events port as with ETL/diagnostics. Spring bridge bootstrap-only.
+- **DRY:** shared **PeriodicDaemonCycle**/executor scaffold via composition, **not
+  lifecycle inheritance**, removes ~95% duplication between fetch/publish schedulers:
+  CAS guard, single-thread executor, closeIdle finally, stop/phase, start/complete logs.
+  Executors supply only work Runnable.
 
-### 13. Область применимости — **single-instance v1** (multi-instance = leases/fencing, seam)
+<a id="13-область-применимости--single-instance-v1-multi-instance--leasesfencing-seam"></a>
+### 13. Applicability — single-instance v1 (multi-instance leases/fencing seam)
 
-Явная enterprise-оговорка: `KeyedSerialExecutor` гарантирует single-flight **только внутри одного
-JVM**, не между процессами. Поэтому **v1 рассчитан на один экземпляр демона**. Если когда-нибудь
-запустим несколько экземпляров (HA/масштабирование), понадобятся **ledger leases / fencing tokens /
-claim-семантика** на уровне service-DB, иначе два процесса возьмут одну (slice,target)/identity
-параллельно. Частичный задел уже есть в 0012 (DB-backed global single-flight через partial unique
-index + OS file-lease для recovery-ownership), но fetch/publish-исполнители на него пока не
-опираются. **Cross-process координация — отложенный seam**, не v1; в доке фиксируем как известную
-границу, чтобы её не приняли молча за «работает в кластере».
+Explicit enterprise limit: executor guarantees single-flight **inside one JVM only**.
+**V1 assumes one daemon instance.** Future HA/scaling needs service-DB **ledger leases /
+fencing tokens / claims**, otherwise processes take the same pair/identity concurrently.
+0012 partly prepares this (global DB partial index + OS recovery lease), but fetch/publish
+do not yet use it. Cross-process coordination is **deferred**, not v1, documented to
+avoid assuming cluster support.
 
-## Модель в сборе
+<a id="модель-в-сборе"></a>
+## Combined model
 
 ```text
                  ┌──────────────────────── bootstrap (Spring) ────────────────────────┐
@@ -676,659 +653,578 @@ index + OS file-lease для recovery-ownership), но fetch/publish-испол�
  └───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Карта переиспользования** (DRY на уровне репозитория):
+**Reuse map** (repository-level DRY):
 
-| Потребность | Что уже есть | Берём как |
+| Need | Existing component | Use |
 |---|---|---|
-| retry/backoff | `Retrier`/`RetryPolicy` (`application/sync`) | исполнитель зовёт существующий |
-| идемпотентный приём | `RemoteFetchLedger`/`PublishLedger` | Idempotent Receiver + reconcile backstop |
-| трансформация | `platform-etl` стейджи | ядро, не трогаем |
-| наблюдаемость | `LogEvents`/ECS/`PipelineObserver` | `ControlEventObserver` поверх |
-| диагностика | `DiagnosticSink` | сбои доставки |
-| edge-poll эталон | inbox `FileReadingMessageSource` | шаблон `RemoteSourceMonitor` |
+| retry/backoff | Retrier/RetryPolicy (application/sync) | executor invokes existing |
+| idempotent receive | RemoteFetchLedger/PublishLedger | Idempotent Receiver + reconcile |
+| transformation | platform-etl stages | unchanged core |
+| observability | LogEvents/ECS/PipelineObserver | ControlEventObserver over existing |
+| diagnostics | DiagnosticSink | delivery failures |
+| edge polling example | inbox FileReadingMessageSource | RemoteSourceMonitor template |
 
-## Применимость
+<a id="применимость"></a>
+## Applicability
 
-1. **Hardening sync (немедленная цель, = OPS-4).** Fetch → `RemoteSourceMonitor` (smart-poll +
-   fingerprint) emits `RemoteChangeBatchDetected`; `FetchExecutor` качает только дельту. Publish →
-   `SliceCompleted` от export-саги триггерит `PublishExecutor`; reconcile понижен до редкого
-   backstop; пере-хеш каждый тик исчезает. Лог-спам снят структурно (реш. 10).
-2. **Переиспользуемость (главный мотив ADR).** Любой новый кросс-каттинг-потребитель (метрики,
-   cleanup, Telegram-отчёт админам) подвешивается как **независимый best-effort подписчик** без
-   правки конвейера — это и есть «инфраструктурный каркас, чтобы не изобретать подписку/логирование/
-   обработку ошибок заново». Коннекторы — каждый своим адаптером, по потребности (YAGNI: строим
-   seam, не коннекторы).
-3. **Будущие саги** (STIX/OpenIOC export sink из бэклога) садятся на тот же контракт событий и
-   reconcile-backstop.
+1. **Immediate sync hardening = OPS-4.** Monitor smart polling/fingerprint emits batches;
+   FetchExecutor downloads only delta. Export SliceCompleted triggers PublishExecutor;
+   reconcile becomes rare backstop, no per-tick rehash. Structurally quiet logs (decision 10).
+2. **Reuse, the main motivation.** New cross-cutting consumers (metrics, cleanup,
+   administrator Telegram report) become **independent best-effort subscribers**,
+   without pipeline changes: no reinvention of subscription/logging/error handling.
+   Each connector has its own adapter only when needed; build seams, not connectors (YAGNI).
+3. **Future sagas**, such as backlog STIX/OpenIOC export sink, reuse events and reconcile.
 
-## Следствия
+<a id="следствия"></a>
+## Consequences
 
-- Новый модуль **`platform-events`**: `ControlEvent` (+ metadata-конверт), **publish-only** порт
-  `ControlEventPublisher`, `NoopControlEventPublisher`/`RecordingControlEventPublisher`, `ControlEventObserver`,
-  package-info/README (дисклеймер «не durable bus/broker/routing»). Версия в parent
-  `dependencyManagement` — событий-only, без внешних библиотек (framework-free). **`KeyedSerialExecutor`
-  — НЕ здесь** (отдельный `platform-concurrency` или application-порт, реш. 2a/9). `EventSubscriber`-SPI
-  **не вводим** (consume-seam = команда, реш. 2a).
-- **bootstrap:** `ApplicationEventPublisher`-адаптер порта, `@EventListener`-driving-бины,
-  `KeyedSerialExecutor`-реализация (`java.util.concurrent`), `RemoteSourceMonitor` (poll+fingerprint
-  за SMB-портом, **на `PeriodicDaemonCycle`** — Q9), общий `PeriodicDaemonCycle`.
-  `@TransactionalEventListener` — **только** где реальная Spring-tx (сейчас нигде).
-- **application:** use-cases публикуют control-факты через порт **после** возврата из
-  ledger/проекции (реш. 8); `RemoteFetchService`/`ArtifactPublishService` становятся **command
-  handlers** (одна единица работы), а не polling consumers; reconcile-методы остаются scan-based
-  safety-net; новый порт-метод `CompletedSliceCatalog.find(profile, sliceId)`; конкретные события —
-  record-факты рядом с bounded area.
-- **Наблюдаемость/диагностика:** `event.action` (`event_publish`/`event_dispatch`), `ioc.*`-поля,
-  возможная `DiagnosticCategory.EVENTS`; регенерация diagnostic-catalog при появлении кодов.
-- **ArchUnit:** правило «Spring events не видны из core»; `platform-events` остаётся framework-free
-  **и anti-broker** (нет зависимостей на очереди/брокеры/сериализацию; `KeyedSerialExecutor` не в
-  `platform-events`; `ControlEvent` не `Serializable` до появления брокера).
-- **Доки:** обновить `architecture.md` (три плана), `ingestion.md`/`sync.md` (event-driven контур),
-  `logging.md`/`diagnostics.md` (event-таксономия); строка в `docs/dev/README.md`; закрыть/
-  пере-адресовать **OPS-4** на этот ADR в `techdebt.md`.
-- `DaemonFetchScheduler`/`DaemonPublishScheduler` схлопываются в общий каркас + тонкие
-  исполнители-подписчики.
+- New **platform-events**: ControlEvent envelope, publish-only publisher, Noop/Recording
+  doubles, observer, package-info/README disclaimer (not durable bus/broker/routing).
+  Parent dependencyManagement; events-only, no external libraries. **Executor outside**
+  events, platform-concurrency or application port (2a/9). **No EventSubscriber SPI**:
+  consume seam = command.
+- **Bootstrap:** ApplicationEventPublisher adapter, listener driving beans, executor
+  implementation, RemoteSourceMonitor on **PeriodicDaemonCycle** (Q9), shared cycle.
+  TransactionalEventListener only with real Spring tx (now nowhere).
+- **Application:** publish facts through port **after** ledger/projection returns
+  (decision 8). Fetch/publish become **single-work command handlers**, not polling
+  consumers; scan reconcile remains safety net. Add CompletedSliceCatalog.find;
+  record facts beside bounded areas.
+- **Observability/diagnostics:** `event.action` values event_publish/event_dispatch, `ioc.*` fields,
+  possible `DiagnosticCategory.EVENTS` category; regenerate catalog when codes appear.
+- **ArchUnit:** no Spring events in core; events remains framework-free **and anti-broker**:
+  no queue/broker/serialization, no executor, no Serializable until broker exists.
+- **Docs:** architecture (three planes), ingestion/sync (event flow), logging/diagnostics
+  (taxonomy), dev index; close/redirect **OPS-4** to this ADR in techdebt.
+- Fetch/publish schedulers collapse into shared scaffold + thin subscriber executors.
 
-## План реализации по срезам
+<a id="план-реализации-по-срезам"></a>
+## Implementation plan by slice
 
-Каждый срез — отдельный коммит, обновление directory README затронутых каталогов и тесты на новую
-логику/инварианты. Порядок: сначала framework-free каркас, затем мост и наблюдаемость, потом
-перевод sync-сторон, в конце — edge-монитор и финальный гейт.
+Each slice is a commit with affected directory READMEs and invariant/logic tests.
+Order: framework-free foundation, bridge/observability, migrate sync directions,
+edge monitor and final gate.
 
-- **E0 — `platform-events` контракт.** `ControlEvent` + metadata-конверт, **publish-only** порт
-  `ControlEventPublisher`, `NoopControlEventPublisher`/`RecordingControlEventPublisher`, `ControlEventObserver`, ArchUnit-правила: framework-free **и anti-broker** (нет зависимостей на
-  очереди/сериализацию; `ControlEvent` не `Serializable`), README-дисклеймер. **`KeyedSerialExecutor`-
-  контракт сюда НЕ входит** — общий примитив конкуренции, выносится в E0a (реш. 2a/9). **TCK-style
-  контракт-тесты** (как `IngestionLedger` TCK в `ioc-application-tck`): `ControlEventPublisher` —
-  fire-and-observe, observer-called-on-failure. **БЕЗ** `EventSubscriber`-SPI (consume-seam = команда,
-  реш. 2a). Коммит: `ARCH: introduce control event publisher port`.
-- **E0a — `platform-concurrency` (keyed single-flight).** `KeyedSerialExecutor`/
-  `SingleFlightWorkExecutor`-контракт (per-key FIFO no-overlap, admission-seam, **ключ = endpoint**),
-  framework-free, TCK: no-overlap per key, FIFO per key, different keys parallel, shutdown-drain,
-  rejection-observed. **БЕЗ** durable redelivery/DLQ (реш. 2a/9). Коммит:
-  `ARCH: introduce keyed single-flight executor`.
-- **E1 — Spring-мост в bootstrap.** Единый **`SpringControlEventPublisher` (bridge-bean)** (реализация
-  порта + точка для adapter-originated событий), `@EventListener`-driving-бины → use-case-команды,
-  `KeyedSerialExecutor`-реализация (FIFO per key, bounded-очередь, graceful drain),
-  `ControlEventObserver`→ECS. **`SpringControlEventPublisher` гоняет E0-TCK; реализация
-  `KeyedSerialExecutor` гоняет E0a-TCK**; плюс тесты: publish-after-commit по program order, hand-off
-  без блокировки издателя, **MDC/correlation-проброс** через keyed-executor,
-  poison→`FAILED`+снятие-с-ключа, health-сигналы очереди. **НЕ** `@TransactionalEventListener` (нет
-  обрамляющей tx). Коммит: `FEATURE: bridge event bus to Spring`.
-- **E2 — общий каркас исполнителя.** `PeriodicDaemonCycle` (composition) + перенос overlap-guard/
-  closeIdle/stop/phase; рефактор обоих планировщиков без смены поведения. Коммит:
-  `REFACTOR: extract periodic daemon cycle`. **Sequencing (C2):** E2 извлекает периодический цикл, а
-  E3/E4 тут же выхолащивают периодический fast-path в редкий reconcile-backstop — поэтому общую
-  абстракцию проектируем **сразу под конечную роль** (`ReconcileCycle` отдельно от
-  keyed-executor-driver), а не под «периодический-всё».
-- **E3 — publish event-driven (slice-specific).** `SliceCompleted` эмитится **только в ветке
-  `AVAILABLE→COMPLETED`** `ExportService` (не через `ExportObserver.completed`, который зовётся и на
-  `SKIPPED`), publish после commit (реш. 8) → `PublishCompletedSliceCommand(profile, sliceId, …)` →
-  `CompletedSliceCatalog.find(profile, sliceId)` → публикация одного среза через keyed-executor;
-  убрать пере-хеш каждый тик (fast-path трогает один срез). Тесты: SKIPPED **не**
-  триггерит publish; потерянное событие добивает reconcile. Коммит:
-  `FEATURE: drive publish by slice-completed events`.
-- **E4 — fetch detection/execution split.** `RemoteSourceMonitor` (monitor poll + include/exclude +
-  fingerprint) emits `RemoteChangeBatchDetected` с work-items; `RemoteFetchService` → command handler
-  «скачай эти identities» (перестаёт сам делать `list`/фильтр); ledger — backstop. Коммит:
-  `FEATURE: split remote fetch detection from execution`. **Ключ executor'а = endpoint** (реш. 9/B1);
-  **монитор на `PeriodicDaemonCycle`** (Q9 закрыт), CHANGE_NOTIFY/SI не вводим (реш. 11).
-- **E5 — DB-driven reconcile, наблюдаемость, лог-альтитуда, доки, гейт.** **DB-driven
-  reconcile-backstop** (гон пар по `publish_ledger`, O(pending); discovery новых срезов =
-  dir-listing + анти-join + rehash-once; F3-граница сохранена, реш. 7/R30/Q6).
-  **Discovery resilient к битому срезу (R36):** один corrupt/partial/leftover каталог в
-  `root/<profile>/` НЕ должен ронять discovery всех срезов профиля — **skip + quarantine +
-  diagnose**, не abort. (Сейчас `FileSystemCompletedSliceCatalog.listCompleted` **бросает** на первом
-  невалидном дочернем каталоге → один битый срез блокирует backstop профиля; backstop обязан
-  переживать «грязные» состояния.) `event.action`/поля/диагностика, INFO→DEBUG на рутинных тиках,
-  обновление published docs, закрытие OPS-4; e2e: событие→command handler,
-  потеря-события→reconcile-восстановление, publish-after-commit корректность, keyed single-flight,
-  **reconcile без per-tick rehash**, **битый срез не блокирует reconcile профиля**. Коммит:
-  `TEST: gate event-driven coordination end to end`.
+- **E0: platform-events contract.** ControlEvent envelope, publish-only port,
+  Noop/Recording publishers, observer, framework-free/anti-broker ArchUnit (no queues/
+  serialization/Serializable), README disclaimer. **No executor contract here**: general
+  concurrency goes to E0a (2a/9). **TCK-style contracts**, like IngestionLedger TCK in `ioc-application-tck`:
+  fire-and-observe, observer-called-on-failure. **No subscriber SPI**, consume seam is
+  command. Commit: `ARCH: introduce control event publisher port`.
+- **E0a: platform-concurrency.** KeyedSerialExecutor/SingleFlightWorkExecutor contract:
+  per-key FIFO/no-overlap, admission seam, **endpoint key**, framework-free. TCK checks
+  same-key no-overlap/FIFO, different-key parallelism, shutdown drain, observed rejection.
+  **No durable redelivery/DLQ**. Commit: `ARCH: introduce keyed single-flight executor`.
+- **E1: bootstrap Spring bridge.** Single SpringControlEventPublisher for core/adapter
+  events; EventListener → commands; bounded FIFO executor/graceful drain; observer→ECS.
+  **Bridge runs E0 TCK, executor runs E0a TCK**. Test program-order after-commit,
+  nonblocking handoff, MDC/correlation, poison→FAILED+release, queue health.
+  **No TransactionalEventListener**, no enclosing tx.
+  Commit: `FEATURE: bridge event bus to Spring`.
+- **E2: shared execution scaffold.** PeriodicDaemonCycle composition, overlap/closeIdle/
+  stop/phase extraction; no behavioral change. Commit:
+  `REFACTOR: extract periodic daemon cycle`. **Sequencing C2:** E3/E4 immediately
+  reduce periodic fast path to rare reconcile; design abstraction **for its final role**,
+  separate ReconcileCycle from keyed-executor driver, not periodic-everything.
+- **E3: slice-specific event-driven publish.** Emit SliceCompleted **only in
+  AVAILABLE→COMPLETED**, not shared observer called for skipped; after commit → command →
+  find → one slice through keyed executor. Fast path touches one slice, no per-tick rehash.
+  Test skipped does not publish, lost event repaired by reconcile.
+  Commit: `FEATURE: drive publish by slice-completed events`.
+- **E4: fetch detection/execution split.** Monitor polling/filter/fingerprint emits
+  bounded batches; fetch handler downloads supplied identities without list/filter;
+  ledger backstop. Commit: `FEATURE: split remote fetch detection from execution`.
+  **Endpoint key**, **PeriodicDaemonCycle** monitor (Q9); no CHANGE_NOTIFY/SI (decision 11).
+- **E5: DB-driven reconcile, observability, log levels, docs, gate.** Pending ledger
+  queries O(pending); discovery listing+anti-join+rehash-once; retain F3 boundary
+  (7/R30/Q6). **Resilient discovery (R36):** one corrupt/partial/leftover child under
+  `root/<profile>/` must **not abort** the profile. Skip+quarantine+diagnose; current `FileSystemCompletedSliceCatalog.listCompleted`
+  throws on first invalid child, blocking backstop, which must survive dirty states.
+  Actions/fields/diagnostics, routine INFO→DEBUG, published docs, OPS-4 closure.
+  E2E: event→handler, lost-event recovery, after-commit, keyed single-flight,
+  **no per-tick reconcile rehash**, **corrupt child cannot block profile reconcile**.
+  Commit: `TEST: gate event-driven coordination end to end`.
 
-**Финальный гейт:**
+**Final gate:**
 
 ```bash
 ./mvnw -B -ntp -T 1C verify
 ```
 
-## Открытые вопросы
+<a id="открытые-вопросы"></a>
+## Open questions
 
-1. ✅ **Где живёт словарь событий** — РЕШЕНО (реш. 2): базовый `ControlEvent` + инфраструктура в
-   `platform-events`, конкретные record-факты — рядом с bounded area в `application`.
-2. ✅ **Reuse `SYNC` в v1** — РЕШЕНО (CODE-дисциплина «код заводится с producer'ом»): реальных кодов
-   сбоя доставки сейчас нет (`publish` — fire-and-observe, реш. 2; ошибки исполнителя ложатся на
-   `SYNC.*` — события обслуживают ровно sync-контур fetch/publish). Отдельную
-   `DiagnosticCategory.EVENTS` заводим **только** при первом кросс-доменном (не-sync) потребителе шины
-   со своими кодами, не укладывающимися в `SYNC`. До тех пор — `EVENTS` это seam, не категория.
-3. ✅ **Гранулярность/ключ executor'а** — РЕШЕНО (реш. 9/R28): `KeyedSerialExecutor` (single-flight),
-   **ключ = `endpoint` в v1** (реальная единица сериализации транспорта — `SmbFileTransport`
-   сериализует per-endpoint); более тонкий ключ (`endpoint+remotePath`) — только если транспорт
-   научится мультиплексировать. Не shared `@Async`-пул.
-4. ✅ **Fingerprint = `(path,size,mtime)`-set + set-diff** — РЕШЕНО (реш. 5): in-memory набор
-   `RemoteObjectIdentity(path,size,mtime)` — **тот же ключ, что у fetch-ledger** (нового identity не
-   вводим); detection = set-diff → bounded-батчи work-items (R19); ledger — backstop-дедуп.
-   **Без** агрегированного хэша листинга (negligible выгода — `list` и так делаем каждый тик,
-   set-diff тривиален). Content-hash change-detection — **seam** (SMB не даёт дешёвый server-side
-   хэш, то же ограничение, что в `publishAtomically`-верификации 0011). Cap/LRU кэша — seam на случай
-   огромных каталогов.
-5. ✅ **Tx-границу НЕ поднимаем на use-case** — РЕШЕНО (реш. 7–8): (1) подъём конфликтует с
-   saga-моделью (пошаговые CAS-коммиты + recovery, не одна большая tx — регресс); (2) atomicity даёт
-   лишь скорость восстановления редкого crash-window, который **reconcile уже покрывает** (YAGNI);
-   (3) даже будущий outbox **адаптер-локален** (терминальный статус + outbox-row в одной tx ledger'а +
-   relay), use-case-tx не требует. **Зазор «commit ↔ event» verified покрытым по коду:** `_SUCCESS`
-   среза становится durable атомарным rename в `makeAvailable` — **раньше** COMPLETED-commit и
-   события; reconnect/restart → `listCompleted` (ФС) → `ensurePending` → publish (discovery читает
-   диск, не событие). Пересмотр — только если появится потребитель с истинной exactly-once на
-   НЕ-идемпотентный сайд-эффект, невыразимый идемпотентным receiver'ом по бизнес-ключу.
-6. ✅ **DB-driven reconcile** — РЕШЕНО (реш. 7/R30): reconcile-backstop = **DB-driven по
-   `publish_ledger`** для гона известных пар (`status NOT IN (SUCCEEDED, ABANDONED)`, O(pending), без
-   касания ФС). **Discovery** новых срезов (crash-window: событие потеряно И упали до `ensurePending`)
-   — дешёвый **dir-listing + анти-join** с `publish_ledger`, и **rehash-once** только новых,
-   незаведённых срезов; **НЕ** чтение export-таблиц 0012 — граница F3 (formation↔delivery = файловая
-   система) сохранена. Per-tick rehash убран **с медленного пути полностью**, а не «реже»: rehash
-   остаётся только «раз на срез при обнаружении». Вводим: fast-path `find` — E3, DB-driven
-   reconcile + discovery-by-listing — E5. Рассинхрон БД↔ФС держит retention-инвариант R31.
-7. ✅ **Admission насыщенного ключа** — РЕШЕНО (реш. 9/R32): **high/low-water с гистерезисом**,
-   триггер `depth ≥ high-water` **ИЛИ** `oldest-age ≥ max-age`. Выше high-water fast-path-enqueue по
-   ключу = **no-op** (событие наблюдается на DEBUG «shed to reconcile», без rejection-churn) — ключ
-   дренирует **reconcile** (DB-driven, Q6) в ledger-порядке; ниже low-water admission возобновляется.
-   **Per-key** (медленный endpoint не глушит другие). Water-marks/queue-size — конфиг; **правило
-   сброса — в коде** (корректность). Сам сброс **наблюдаем** (health-флаг «key shed to reconcile» +
-   диагностика), иначе тихая деградация спрячет залипший таргет.
-8. ✅ **Buy-vs-build Spring Modulith** — РЕШЕНО (реш. 7, Отклонённые): не берём, ледгеры уже дают
-   business-level at-least-once; Registry — потенциальный delivery-адаптер за портом, не часть ядра.
-9. ✅ **Монитор на `PeriodicDaemonCycle`** — РЕШЕНО: монитор сидит на общем `PeriodicDaemonCycle`
-   (один механизм поллинга, не два). SI здесь не даёт реального переиспользования
-   (`FileReadingMessageSource` не говорит по SMB → всё равно кастомный `MessageSource`). Латентность
-   входа регулируется **коротким `fetch.interval`** (5–15s; `list` на тёплом соединении дёшев) —
-   достаточно без жёсткого sub-second SLA. **SI и CHANGE_NOTIFY связаны и отложены вместе** (реш. 11):
-   SI как `@InboundChannelAdapter` оправдан только если/когда приземлим CHANGE_NOTIFY-push.
+1. ✅ **Event vocabulary placement resolved (decision 2).** Base ControlEvent/infrastructure
+   in platform-events; concrete records beside application bounded areas.
+2. ✅ **Reuse SYNC in v1**, producer-with-code discipline. No actual delivery-failure
+   codes now (publish fire-and-observe; executor failures SYNC, since only sync consumers).
+   Introduce **EVENTS only with first cross-domain non-sync consumer** needing codes
+   outside SYNC. Until then EVENTS is a seam, not category.
+3. ✅ **Executor granularity/key resolved (9/R28).** Keyed single-flight, **endpoint v1**,
+   real SMB serialization unit; endpoint+remotePath only after transport multiplexing.
+   Not general Async pool.
+4. ✅ **Fingerprint path/size/mtime set + set-diff** (decision 5). In-memory
+   RemoteObjectIdentity matches fetch ledger; no new identity. Bounded batches (R19),
+   durable ledger dedup. **No aggregate listing hash**: negligible gain while listing
+   every tick and trivial set diff. Content-hash detection is a **seam** (no cheap SMB
+   server hash, same 0011 verification limit). Cap/LRU deferred for huge directories.
+5. ✅ **Do NOT raise tx to use case** (7–8): conflicts with stepwise CAS saga/recovery
+   rather than one large tx; only speeds rare crash recovery **already covered by
+   reconcile** (YAGNI); future outbox is **adapter-local**, terminal+outbox row in same
+   ledger tx + relay. **Code verifies commit↔event gap**: makeAvailable atomic rename
+   durably publishes marker **before** completed commit/event; restart listCompleted
+   (filesystem) → ensurePending → publish, independent of event. Reconsider only for
+   genuine exactly-once **non-idempotent side effects** impossible to represent by
+   business-key Idempotent Receiver.
+6. ✅ **DB-driven reconcile** (7/R30): known pairs from publish_ledger,
+   `status NOT IN (SUCCEEDED, ABANDONED)`, O(pending), no FS access. Discovery for a
+   lost event + crash before ensurePending: cheap listing/anti-join, rehash only newly
+   unregistered slices; **no export-table reads**, retain F3 filesystem boundary.
+   Remove rehash **entirely from periodic slow path**, not merely reduce frequency.
+   E3 adds find, E5 adds DB reconcile/listing discovery. R31 retention handles DB↔FS drift.
+7. ✅ **Saturated-key admission** (9/R32): high/low-water hysteresis, depth≥high-water
+   **OR** oldest-age≥max-age. Above high, no-op enqueue with DEBUG shed-to-reconcile,
+   no rejection churn; DB reconcile drains ledger order; below low resumes. **Per key**,
+   no endpoint-wide suppression of others. Configured thresholds/size, **code-owned
+   shedding rule**, observable health flag + diagnostic, avoiding hidden stuck targets.
+8. ✅ **Modulith buy-vs-build** (7/Rejected): not adopted; ledgers already provide
+   business at-least-once. Registry is potential delivery adapter, never core.
+9. ✅ **PeriodicDaemonCycle monitor**: one polling mechanism. SI cannot reuse local
+   FileReadingMessageSource for SMB, still needs custom MessageSource. **Short
+   fetch.interval, 5–15s**, cheap warm listing, sufficient without strict subsecond SLA.
+   **SI and CHANGE_NOTIFY deferred together** (11); InboundChannelAdapter justified
+   only when/if push lands.
 
-## Отклонённые альтернативы (сводно)
+<a id="отклонённые-альтернативы-сводно"></a>
+## Rejected alternatives (collected)
 
-- **ETL-ядро на Spring Integration** — реш. 3: library-vs-framework (инверсия IoC к фреймворку в
-  центре), пробой dependency rule в варианте (b), бесполезность варианта (a), бонусы SI не нужны
-  линейному однопоточному потоку. Консистентно с отказом от Camel (0011) и Spark (0012).
-- **SI-`MessageChannel` как шина доменных событий** — реш. 2: новая поверхность SI ради того, что
-  `ApplicationEventPublisher` делает «из коробки» проще.
-- **Spring-события прямо в `application`** — реш. 12: пробивает framework-free ядро; решается
-  портом + bootstrap-адаптером.
-- **Держать открытую SMB-сессию-watcher** — реш. 5: простаивающая сессия протухает; smart-poll
-  надёжнее, CHANGE_NOTIFY — отдельная честная опция (реш. 11).
-- **Durable outbox/DLQ/сериализация сейчас** — реш. 7/11: correctness держит reconcile-over-ledgers;
-  durable-инфраструктура — YAGNI до реальной потребности, seam зарезервирован.
-- **Истинный push (CHANGE_NOTIFY) в v1** — реш. 11: SMB-специфичный хрупкий watch-lifecycle;
-  оптимизация латентности, не основа корректности. **Superseded 2026-07-03:** реализован
-  отдельным optional SMB adapter capability после spike; polling/reconcile остались backstop.
-- **Самодельный брокер внутри `platform-events`** («мини-RMQ»: своя durable-очередь, redelivery,
-  DLQ, сериализация, роутинг) — реш. 2/11: ядро задаёт только event model + publishing contract;
-  доставочная механика — адаптер за `ControlEventPublisher`. Строить брокер внутри — переусложнение
-  и нарушение OCP-границы.
-- **Spring Modulith Event Publication Registry как наш durable-слой** — реш. 2a/7. Рассмотрено
-  всерьёз (после ING-4 JDBC-стартер дёшев, framework-free-граница не страдает — Registry жил бы в
-  bootstrap за портом), но отклонено по **гранулярности at-least-once**:
-  - единица гарантии Modulith — **событие** (`eventId`; `COMPLETED` = «листенер вернул управление»);
-    наша единица корректности — **пара `(slice, target)`** (бизнес-ключ; `SUCCEEDED` = сверка remote
-    `_SUCCESS`-маркера). Одно `SliceCompleted` разворачивается в **N пар**;
-  - при **частичном отказе по targets** (A — успех, B — недоступен) листенер вернул управление →
-    событие `COMPLETED` → Modulith пару B **не передоставит**. Ретрай `(slice, B)` возможен **только**
-    через reconcile-over-`publish_ledger` (`ArtifactPublishService.publishRetryable`);
-  - значит **reconcile-over-ledgers обязателен в любом случае** (единственный путь ретрая частичного
-    отказа), и он же **как побочный эффект** восстанавливает потерянный триггер (срез `COMPLETED` на
-    диске → reconcile подберёт). Поэтому event-durability Modulith **избыточна**, а не «не нужна»;
-  - итог: Modulith был бы **аддитивным, не заменяющим** — пришлось бы держать event-registry **плюс**
-    тот же ledger-reconcile. Больше машинерии, не меньше.
+- **Spring Integration ETL core** (3): library-vs-framework IoC, dependency violation
+  in (b), useless wrapping in (a), unused extras in linear single-thread flow.
+  Consistent with Camel (0011)/Spark (0012) rejection.
+- **SI MessageChannel domain bus** (2): extra SI surface for simpler built-in Spring publication.
+- **Spring events directly in application** (12): violates framework-free core; port + bootstrap adapter.
+- **Open SMB watcher session** (5): idle rot; smart polling more robust, true push a separate option (11).
+- **Durable outbox/DLQ/serialization now** (7/11): ledger reconcile holds correctness;
+  YAGNI until real need, seams reserved.
+- **True CHANGE_NOTIFY push v1** (11): fragile SMB-specific lifecycle, latency optimization
+  not correctness. **Superseded 2026-07-03:** separate optional SMB capability implemented
+  after spike; polling/reconcile retained.
+- **Homemade platform-events mini-RMQ** with durable queue/redelivery/DLQ/serialization/
+  routing (2/11): core defines model/publish contract, delivery mechanics live behind
+  publisher adapter; building broker overcomplicates and breaks OCP.
+- **Modulith Registry as durability layer** (2a/7), seriously considered (cheap JDBC
+  starter after ING-4, framework-free boundary intact with bootstrap adapter), rejected
+  for **at-least-once granularity**:
+  - Modulith guarantees an **event** (eventId; COMPLETED = listener returned); our
+    correctness unit is **(slice,target)** with SUCCEEDED = remote marker verified.
+    One SliceCompleted expands into **N pairs**.
+  - **Partial target failure**: A succeeds, B unavailable; listener returns, event
+    completed, Modulith **does not redeliver B**. Only ledger reconcile
+    (ArtifactPublishService.publishRetryable) can retry `(slice, B)`.
+  - **Ledger reconcile is mandatory anyway** for partial failures; it **also** repairs
+    lost triggers via completed on-disk slices. Event durability is **redundant**, not
+    simply unnecessary in isolation.
+  - Thus Modulith is **additive, not replacing**: registry **plus** same reconcile,
+    more machinery.
 
-  Плюс два побочных минуса: **(1) не drop-in** — Registry требует publish **внутри обрамляющей tx**,
-  а у нас транзакции замкнуты в JDBC-адаптерах (реш. 8) → форс смены границы tx на use-case (откр.
-  вопрос 5); **(2)** `@ApplicationModuleListener` диспетчит на **общем async-пуле без per-key
-  сериализации** → overlap по endpoint не решает, `KeyedSerialExecutor` (реш. 9) остаётся всё равно
-  (Modulith скорее усугубил бы overlap). **Пересмотр — только если** перевернётся Q5 (нужна истинная
-  атомарность, а не at-least-once) или Q6 (reconcile дорог несмотря на DB-driven); заходит тогда за
-  `ControlEventPublisher` как delivery-адаптер (anti-broker, реш. 2a).
-- **Вообще без шины — прямые порты-слушатели (`SliceCompletionListener`/`RemoteChangeListener`)** —
-  рассмотрено и отвергнуто: detection⊥execution и async hand-off достижимы прямыми портами +
-  keyed-executor **без** `ApplicationEventPublisher`. Но это убирает **платформенный seam**, который
-  должен быть broker-ready и не вырезаться при интеграции брокера (реш. 2a), и единую точку
-  наблюдаемости/расширяемости (метрики/cleanup/notify через OCP). Async/decoupling оправдывают
-  **executor**; шину-как-контракт оправдывает **broker-readiness + fan-out**. Поэтому платформу
-  держим, но дисциплинированно тонкой (реш. 2a).
+  Two extra drawbacks: **(1) not drop-in**: Registry requires publication inside an
+  enclosing tx, currently adapter-local (8), forcing use-case tx changes (Q5).
+  **(2)** `@ApplicationModuleListener` uses **shared async pool without per-key order**,
+  does not solve endpoint overlap, still needs executor (9), potentially worsens it.
+  **Reconsider only if Q5 changes** (true atomicity needed) **or Q6 changes** (DB-driven
+  reconcile still costly); then delivery adapter behind publisher (2a).
+- **No bus, direct listener ports** (SliceCompletionListener/RemoteChangeListener):
+  detection/execution separation and async handoff possible with ports + executor
+  alone, but remove the **broker-ready platform seam** that should survive broker
+  integration (2a), and shared observability/extensibility for metrics/cleanup/notify.
+  Async/decoupling justify **executor**; **broker readiness + fan-out** justify bus
+  contract. Keep platform, disciplined and thin (2a).
 
-> Связанные документы: [0011](0011-remote-sync.md) (реализует его «Post-v1 уточнение модели» и
-> OPS-4), [0012](0012-streaming-dataframe-emission.md) (источник `SliceCompleted`),
-> [0005](0005-services-and-pipeline.md) (ETL-конвейер), [0007](0007-logging-observability.md)
+> Related: [0011](0011-remote-sync.md) (implements Post-v1 clarification and OPS-4),
+> [0012](0012-streaming-dataframe-emission.md) (SliceCompleted source),
+> [0005](0005-services-and-pipeline.md) (ETL), [0007](0007-logging-observability.md)
 > (ECS/observability), [../techdebt.md](../KNOWN-ISSUES.md) (OPS-4).
 
-## Операционный план реализации
+<a id="операционный-план-реализации"></a>
+## Operational implementation plan
 
-Этот раздел фиксирует практический план для реализации ADR. Цель плана — вести изменения
-маленькими проверяемыми состояниями, с коммитами между срезами, не смешивая платформенный каркас,
-publish/fetch-поведение и финальную документацию. Если несколько срезов выполняются в одном run,
-коммиты всё равно ставятся между срезами.
+Practical execution plan: small verifiable states, commits between slices; keep
+platform foundation, publish/fetch behavior and final docs separate. Multiple slices
+in one run still require intervening commits.
 
-Перед началом реализации нужно зафиксировать состояние ADR: либо отдельным doc-коммитом, либо
-явно оставить ADR вне staged area и коммитить код точечным списком файлов. Реализационные коммиты
-не должны случайно подтягивать незавершённые правки дизайн-проекта.
+Before implementation, freeze ADR in a separate doc commit or explicitly exclude it
+from staging and commit code via explicit paths. Implementation commits must not
+accidentally absorb unfinished design edits.
 
+<a id="s0--module-skeleton-and-guardrails"></a>
 ### S0 — module skeleton and guardrails
 
-**Цель:** завести места для платформенных примитивов и сразу поставить архитектурные предохранители.
+**Goal:** introduce platform locations and immediate architectural guardrails.
 
-**Изменения:**
+**Changes:**
 
-- добавить Maven-модули `platform/platform-events` и `platform/platform-concurrency` в parent `pom.xml`;
-- добавить `README.md`/`package-info.java` в новые модули;
-- обновить `platform/README.md`;
-- расширить `bootstrap/ioc-app/.../ArchitectureTest.java` правилами:
-  - `platform-events` framework-free;
-  - `platform-events` anti-broker: нет зависимостей на Spring, очереди, брокеры, сериализацию/wire
-    format, routing-framework;
-  - `KeyedSerialExecutor`/single-flight primitives не находятся в `platform-events`;
-  - `ControlEvent` не `Serializable` до появления настоящего delivery/broker adapter;
-  - Spring event types не видны из `core`.
+- Add platform-events and platform-concurrency Maven modules to parent `pom.xml`.
+- New module `README.md`/`package-info.java`; update `platform/README.md`.
+- Extend `bootstrap/ioc-app/.../ArchitectureTest.java`:
+  - framework-free events;
+  - anti-broker: no Spring, queue, broker, serialization/wire-format or routing framework;
+  - executor/single-flight primitives outside events;
+  - no Serializable ControlEvent until real delivery/broker adapter;
+  - no Spring event types in core.
 
-**Проверки:**
+**Checks:**
 
 ```bash
 ./mvnw -pl bootstrap/ioc-app -Dtest=ArchitectureTest test
 ```
 
-**Коммит:** `ARCH: add event coordination platform modules`.
+**Commit:** `ARCH: add event coordination platform modules`.
 
+<a id="s1--platform-events-contract"></a>
 ### S1 — platform-events contract
 
-**Цель:** реализовать thin event model + publish-only port без механики доставки.
+**Goal:** thin model + publish-only port, no delivery mechanics.
 
-**Изменения в `platform-events`:**
+**Changes in platform-events:**
 
-- `ControlEvent` — минимальный маркер/контракт события приложения;
-- `ControlEventMetadata` — immutable envelope:
-  - `eventId`;
-  - `eventType`;
-  - `eventVersion`;
-  - `occurredAt`;
-  - `correlationId`;
-  - optional `causationId`;
-- `ControlEventPublisher` — publish-only порт;
-- `ControlEventObserver` — наблюдение за publish/dispatch без превращения observer в handler;
-- `NoopControlEventPublisher` и `RecordingControlEventPublisher` для тестов и default wiring.
+- ControlEvent minimal application event marker/contract;
+- immutable ControlEventMetadata: eventId, eventType, eventVersion, occurredAt,
+  correlationId, optional causationId;
+- ControlEventPublisher publish-only;
+- ControlEventObserver observes publication/dispatch without becoming handler;
+- Noop/Recording publishers for tests/default wiring.
 
-**Не делать в этом срезе:**
+**Excluded from this slice:**
 
-- `EventSubscriber` SPI;
+- EventSubscriber SPI;
 - durable queue;
 - retry/redelivery/DLQ;
-- routing/matching subscriptions;
+- routing/subscription matching;
 - serialization/wire format;
-- любые Spring-типы.
+- all Spring types.
 
-**Тесты:**
+**Tests:**
 
-- metadata validation;
-- immutability/required fields;
-- `NoopControlEventPublisher` не падает;
-- `RecordingControlEventPublisher` сохраняет порядок опубликованных событий;
-- observer-failure не должен ломать бизнес-поток, если контракт будет fire-and-observe.
+- metadata validation, immutability/required fields;
+- noop does not fail;
+- recording preserves publication order;
+- observer failure cannot break business flow if fire-and-observe contract chosen.
 
-**Проверки:**
+**Checks:**
 
 ```bash
 ./mvnw -pl platform/platform-events -am test
 ./mvnw -pl bootstrap/ioc-app -Dtest=ArchitectureTest test
 ```
 
-**Коммит:** `ARCH: introduce control event publisher port`.
+**Commit:** `ARCH: introduce control event publisher port`.
 
+<a id="s2--platform-concurrency-keyed-single-flight"></a>
 ### S2 — platform-concurrency keyed single-flight
 
-**Цель:** вынести конкуренцию/очередность из event-модели в отдельный общий примитив.
+**Goal:** separate concurrency/ordering from event model into a general primitive.
 
-**Изменения в `platform-concurrency`:**
+**Changes in platform-concurrency:**
 
-- контракт `KeyedSerialExecutor` или `SingleFlightWorkExecutor`;
-- value-типы для ключа/результата admission, если они реально нужны;
-- framework-free реализация на `java.util.concurrent` либо контракт + bootstrap-реализация.
+- KeyedSerialExecutor or SingleFlightWorkExecutor contract;
+- key/admission-result value types only if needed;
+- framework-free java.util.concurrent implementation, or contract + bootstrap implementation.
 
-Рекомендация для реализации: держать чистую `java.util.concurrent` реализацию в
-`platform-concurrency`, потому что это не adapter к внешней библиотеке и её легче покрыть тестами.
-`bootstrap` в таком варианте только конфигурирует lifecycle и параметры очередей. Если при
-реализации окажется, что lifecycle слишком Spring-зависим, реализацию можно оставить в `bootstrap`,
-но контракт всё равно не должен переезжать в `platform-events`.
+Recommendation: pure JDK implementation in platform-concurrency is not an external-library
+adapter and is easier to test. Bootstrap only configures lifecycle/queue parameters.
+If lifecycle proves too Spring-dependent, implementation may remain bootstrap-side;
+contract must still never move into events.
 
-**Семантика:**
+**Semantics:**
 
-- no-overlap per key;
-- FIFO внутри одного key;
-- разные key могут выполняться параллельно;
+- same-key no-overlap and FIFO;
+- different keys parallel;
 - bounded admission;
 - high/low-water seam;
 - graceful shutdown/drain;
-- отсутствие durable redelivery/DLQ.
+- no durable redelivery/DLQ.
 
-**Ключ v1:** `endpoint`. Более тонкий ключ (`endpoint + remotePath`) откладывается до транспорта,
-который реально умеет мультиплексировать.
+**V1 key:** endpoint; endpoint+remotePath deferred until actual transport multiplexing.
 
-**Тесты:**
+**Tests:**
 
-- две задачи с одним key не пересекаются;
-- порядок задач внутри key сохраняется;
-- разные key могут идти параллельно;
-- saturated key уходит в admission/no-op path, не ломая другие key;
-- shutdown не оставляет running-задачи без завершения/наблюдения.
+- same-key tasks never overlap and retain order;
+- different keys can run concurrently;
+- saturated key uses admission/no-op without affecting other keys;
+- shutdown leaves no uncompleted/unobserved running task.
 
-**Проверки:**
+**Checks:**
 
 ```bash
 ./mvnw -pl platform/platform-concurrency -am test
 ./mvnw -pl bootstrap/ioc-app -Dtest=ArchitectureTest test
 ```
 
-**Коммит:** `ARCH: introduce keyed single-flight executor`.
+**Commit:** `ARCH: introduce keyed single-flight executor`.
 
+<a id="s3--spring-bridge-in-bootstrap"></a>
 ### S3 — Spring bridge in bootstrap
 
-**Цель:** дать текущий delivery adapter за `ControlEventPublisher`, не протаскивая Spring в core.
+**Goal:** current delivery adapter behind publisher without Spring in core.
 
-**Изменения в `bootstrap`:**
+**Bootstrap changes:**
 
-- `SpringControlEventPublisher` поверх `ApplicationEventPublisher`;
-- bean-конфигурация в composition root;
-- `ControlEventObserver` bridge в ECS/diagnostics;
-- тестовый wiring с `RecordingControlEventPublisher`/noop для режимов, где события не нужны;
-- `@EventListener` допускается только в bootstrap-facing beans.
+- SpringControlEventPublisher over ApplicationEventPublisher;
+- composition-root bean configuration;
+- observer bridge to ECS/diagnostics;
+- recording/noop test wiring for modes without events;
+- EventListener only in bootstrap-facing beans.
 
-**Инварианты:**
+**Invariants:**
 
-- `core/ioc-application` зависит от `platform-events`, но не от Spring;
-- события публикуются как факты, а не как команды с бизнес-данными;
-- ошибки observer не должны ломать use-case;
-- listener вызывает use-case command handler, а не содержит бизнес-логику.
+- application depends on events, never Spring;
+- events are facts, not commands with business data;
+- observer failures cannot break use case;
+- listeners invoke command handlers, contain no business logic.
 
-**Тесты:**
+**Tests:**
 
-- Spring bridge публикует событие;
-- observer получает publish/dispatch telemetry;
-- core не видит Spring event types через ArchUnit;
-- hand-off не блокирует publisher дольше, чем требуется выбранной delivery-механике.
+- bridge publishes;
+- observer sees publication/dispatch telemetry;
+- ArchUnit no core Spring types;
+- handoff blocks publisher no longer than delivery mechanism requires.
 
-**Проверки:**
+**Checks:**
 
 ```bash
 ./mvnw -pl bootstrap/ioc-app -am test
 ```
 
-**Коммит:** `FEATURE: bridge control events to Spring`.
+**Commit:** `FEATURE: bridge control events to Spring`.
 
-**Заметки после реализации S0–S3:**
+**Post-implementation S0–S3 notes:**
 
-- Spring bridge обязан оставаться **fire-and-observe**: сбой `ApplicationEventPublisher`/синхронного
-  listener hand-off наблюдается через `ControlEventObserver`, но не пробрасывается producer'у.
-- `publishFailed`/`dispatchFailed` — операторский сигнал уровня **ERROR/WARN**, не DEBUG. Иначе после
-  проглатывания dispatch-сбоя событие становится тихо потерянным до следующего reconcile.
-- `KeyedSerialExecutor` уже имеет telemetry seam (`rejected`, `failed`, `dispatchRejected`), но
-  **high/low-water hysteresis ещё не реализован как политика**. До подключения S5/S7 к executor нужно
-  явно решить admission policy: когда ключ уходит в shed-to-reconcile, как снимается shed state ниже
-  low-water, какие сигналы попадают в health/logs.
-- `REJECTED`/`dispatchRejected` не должны быть тупиком: caller/listener обязан route'ить их в
-  reconcile/backstop path и operator-visible state. Executor остаётся in-memory primitive, а не
-  durable delivery.
-- Future `@EventListener`/enqueue beans должны быть **daemon-gated** или no-op в режимах, где
-  background delivery не должен стартовать. Нельзя подключать listener так, чтобы `oneshot`/manual
-  `ioc export` внезапно создавал publish/fetch work.
+- Bridge remains **fire-and-observe**: publisher/synchronous listener handoff errors
+  observed, not propagated to producer.
+- publishFailed/dispatchFailed are operator **ERROR/WARN**, never DEBUG; swallowed
+  dispatch must not become silently lost until reconcile.
+- Executor already has rejected/failed/dispatchRejected telemetry, but **high/low-water
+  hysteresis policy is not implemented yet**. Before S5/S7, decide shed entry/recovery
+  and health/log signals.
+- REJECTED/dispatchRejected cannot dead-end: caller routes to backstop and visible
+  state; executor remains in-memory, not durable delivery.
+- Future listener/enqueue beans **daemon-gated or no-op** where background delivery
+  must not start. Oneshot/manual export must not unexpectedly enqueue fetch/publish.
 
+<a id="s4--periodicreconcile-cycle-extraction"></a>
 ### S4 — periodic/reconcile cycle extraction
 
-**Цель:** убрать дублирование lifecycle-кода из fetch/publish schedulers до перевода fast-path на события.
+**Goal:** remove duplicated lifecycle before event fast path.
 
-**Текущий код:**
+**Current code:**
 
-- `DaemonFetchScheduler` содержит fixed-delay, `AtomicBoolean` overlap guard, `closeIdle`, stop timeout;
-- `DaemonPublishScheduler` содержит почти тот же lifecycle-каркас.
+- Fetch scheduler fixed-delay, AtomicBoolean overlap guard, closeIdle, stop timeout.
+- Publish scheduler nearly identical.
 
-**Изменения:**
+**Changes:**
 
-- выделить `PeriodicDaemonCycle` или более узкий `ReconcileCycle`;
-- оставить phase/health/logging на тонких fetch/publish исполнителях;
-- сохранить текущее поведение до event-driven изменений;
-- не проектировать абстракцию как «универсальный scheduler всего»: после E3/E4 она должна быть
-  backstop/reconcile-механизмом, а не основным fast-path.
+- Extract PeriodicDaemonCycle or narrower ReconcileCycle.
+- Keep phase/health/logging in thin executors.
+- Preserve behavior before event migration.
+- Avoid universal scheduler: after E3/E4, backstop/reconcile rather than fast path.
 
-**Тесты:**
+**Tests:**
 
-- non-overlap preserved;
-- closeIdle вызывается после цикла;
-- ошибка одного source/target не останавливает остальные;
-- stop корректно завершает executor.
+- preserve non-overlap;
+- closeIdle after cycle;
+- source/target failure does not stop others;
+- stop terminates executor correctly.
 
-**Проверки:**
+**Checks:**
 
 ```bash
 ./mvnw -pl bootstrap/ioc-app -am test
 ```
 
-**Коммит:** `REFACTOR: extract periodic daemon cycle`.
+**Commit:** `REFACTOR: extract periodic daemon cycle`.
 
-### S5 — publish fast-path by `SliceCompleted`
+<a id="s5--publish-fast-path-by-slicecompleted"></a>
+### S5 — publish fast-path by SliceCompleted
 
-**Цель:** перевести нормальный publish path с полного scan на адресный event-driven запуск.
+**Goal:** targeted event publish replaces normal full scan.
 
-**Текущий код:**
+**Current code:**
 
-- `ExportService` вызывает `ExportObserver.completed(terminal)` и при `COMPLETED`, и при `SKIPPED`;
-- `ArtifactPublishService.publish()` проходит `selectedProfiles -> listCompleted(profile) -> targets`;
-- `CompletedSliceCatalog` умеет только `listCompleted(profile)`.
+- `ExportObserver.completed(terminal)` invoked for both completed and skipped;
+- `ArtifactPublishService.publish()` traverses `selectedProfiles -> listCompleted(profile) -> targets`;
+- catalog only supports listCompleted.
 
-**Изменения:**
+**Changes:**
 
-- добавить конкретное событие `SliceCompleted` рядом с bounded area в `core/ioc-application`;
-- внедрить `ControlEventPublisher` в `ExportService`;
-- публиковать `SliceCompleted` только после durable перехода `AVAILABLE -> COMPLETED`;
-- не публиковать событие для `SKIPPED`;
-- добавить command handler уровня application:
-  - `PublishCompletedSliceCommand(profile, sliceId, correlationId/causationId...)`;
-  - метод use-case для публикации одного среза;
-- расширить `CompletedSliceCatalog` методом `find(profile, sliceId)`;
-- реализовать `find` в `FileSystemCompletedSliceCatalog` без полного scan профиля;
-- listener в bootstrap принимает `SliceCompleted`, разворачивает targets профиля и ставит работу в
-  keyed executor по `endpoint`;
-- periodic publish path использует **тот же** keyed executor по `endpoint`, что и listener fast-path;
-  scheduler может синхронно ждать completion work-item, но не имеет права вызывать remote publish
-  use-case в обход single-flight;
-- listener/worker wiring включается только в daemon-capable runtime path; в `oneshot`/manual export
-  событие может публиковаться как факт, но background enqueue должен быть no-op;
-- обработать `WorkAdmission.REJECTED` и `dispatchRejected` как shed-to-reconcile signal:
-  - не retry loop в listener;
-  - operator-visible health/log state;
-  - correctness через S6 reconcile по ledger.
+- Concrete SliceCompleted beside application bounded area.
+- Inject publisher into ExportService.
+- Emit only after durable AVAILABLE→COMPLETED; none for skipped.
+- Application command handler: PublishCompletedSliceCommand(profile, sliceId,
+  correlationId/causationId...), use-case method for one slice.
+- Add catalog find(profile,sliceId), `FileSystemCompletedSliceCatalog` implementation without profile scan.
+- Bootstrap listener expands profile targets, enqueues by endpoint.
+- Periodic publish uses **same endpoint executor**; may synchronously await work
+  completion, never bypass single-flight for remote publish.
+- Daemon-capable wiring only; oneshot/manual export may emit facts, background enqueue no-op.
+- Handle WorkAdmission.REJECTED/dispatchRejected as shed-to-reconcile:
+  - no listener retry loop;
+  - operator-visible health/log;
+  - S6 ledger reconcile holds correctness.
 
-**Инварианты:**
+**Invariants:**
 
-- событие не несёт rows/bytes/business payload;
-- событие несёт только identity/reference среза;
-- publish handler идемпотентен через `publish_ledger.ensurePending`;
-- потерянное событие не критично: reconcile подберёт срез позже.
+- no rows/bytes/business payload, only slice identity/reference;
+- idempotency via `publish_ledger.ensurePending`;
+- lost event recovered later.
 
-**Тесты:**
+**Tests:**
 
-- `COMPLETED` export emits `SliceCompleted`;
-- `SKIPPED` export does not emit `SliceCompleted`;
-- listener создаёт publish work для targets профиля;
-- listener не активен в runtime modes, где background publish запрещён;
-- saturated/rejected key не теряет correctness и помечается как shed-to-reconcile;
-- повторное событие не создаёт дублей из-за ledger;
-- `CompletedSliceCatalog.find` валидирует конкретный срез и не сканирует весь профиль.
+- COMPLETED emits SliceCompleted;
+- SKIPPED does not;
+- listener creates work for profile targets;
+- listener inactive where background publish forbidden;
+- saturated/rejected key preserves correctness, shows shedding;
+- repeat event deduplicated by ledger;
+- find validates one slice, no full scan.
 
-**Проверки:**
+**Checks:**
 
 ```bash
 ./mvnw -pl core/ioc-application,adapters/adapter-sink-csv,bootstrap/ioc-app -am test
 ```
 
-**Коммит:** `FEATURE: drive publish by slice completed events`.
+**Commit:** `FEATURE: drive publish by slice completed events`.
 
+<a id="s6--db-driven-publish-reconcile"></a>
 ### S6 — DB-driven publish reconcile
 
-**Цель:** сделать reconcile страховочной петлёй по ledger state, а не регулярным filesystem rehash.
+**Goal:** ledger-state safety loop instead of regular filesystem rehash.
 
-**Текущий код:**
+**Current code:**
 
-- `ArtifactPublishService.reconcile()` идёт через `CompletedSliceCatalog.listCompletedSliceNames`
-  один раз на profile и делает anti-join по `publish_ledger`; `publish()` гонит retryable ledger rows;
-- `JdbcPublishLedger.findRetryable()` уже умеет выбирать `PENDING`/`FAILED`;
-- discovery новых срезов пока завязан на полный scan catalog.
+- `ArtifactPublishService.reconcile()` calls `CompletedSliceCatalog.listCompletedSliceNames` once per profile and anti-joins ledger;
+  publish runs retryable rows;
+- `JdbcPublishLedger.findRetryable()` selects `PENDING`/`FAILED`;
+- new-slice discovery still depends on full catalog scan.
 
-**Изменения:**
+**Changes:**
 
-- разделить fast-path publish одного среза и backstop reconcile;
-- reconcile известных пар вести DB-driven по `publish_ledger`:
-  - `PENDING`;
-  - `FAILED`;
-  - при необходимости зависшие `IN_PROGRESS` через отдельное recovery-правило;
-- discovery новых срезов оставить как редкий/дешёвый проход:
-  - dir-listing;
-  - anti-join с `publish_ledger`;
-  - verify/rehash только новых незаведённых срезов;
-- не читать export-таблицы 0012: граница formation/delivery остаётся файловой;
-- доработать `FileSystemCompletedSliceCatalog` так, чтобы один corrupt/partial каталог не блокировал
-  весь профиль:
-  - skip;
-  - diagnostic;
-  - опционально quarantine/marker в рамках согласованной политики.
+- Separate single-slice fast path from backstop.
+- DB-driven known-pair reconcile: pending, failed, and optionally stale `IN_PROGRESS`
+  under a separate recovery rule.
+- Rare/cheap discovery: directory listing, ledger anti-join, verify/rehash only new slices.
+- No 0012 export-table reads; filesystem boundary retained.
+- One corrupt/partial directory must not block profile: skip, diagnostic, optional
+  quarantine/marker under agreed policy.
 
-**Тесты:**
+**Tests:**
 
-- retryable records выбираются из DB без чтения всех срезов;
-- discovery заводит missing `(slice, target)` пары;
-- corrupt slice не валит discovery всего профиля;
-- reconcile восстанавливает потерянное `SliceCompleted`;
-- per-tick rehash отсутствует для уже известных ledger pairs.
+- retryables queried without reading every slice;
+- discovery fills missing slice/target pairs;
+- corrupt slice does not abort profile;
+- lost SliceCompleted recovered;
+- no per-tick rehash for known ledger pairs.
 
-**Проверки:**
+**Checks:**
 
 ```bash
 ./mvnw -pl core/ioc-application,adapters/adapter-store-jdbc,adapters/adapter-sink-csv,bootstrap/ioc-app -am test
 ```
 
-**Коммит:** `FEATURE: reconcile publish from ledger state`.
+**Commit:** `FEATURE: reconcile publish from ledger state`.
 
+<a id="s7--fetch-detectionexecution-split"></a>
 ### S7 — fetch detection/execution split
 
-**Цель:** разорвать смешение monitor/detection и execution в `RemoteFetchService`.
+**Goal:** separate monitor/detection from RemoteFetchService execution.
 
-**Текущий код:**
+**Current code:**
 
-- `RemoteFetchService.fetch()` делает `transport.list`, include/exclude filtering и скачивание;
-- `DaemonFetchScheduler` периодически вызывает fetch по source;
-- correctness держится `RemoteFetchLedger`, но detection и execution не разделены.
+- `RemoteFetchService.fetch()` lists, filters include/exclude, downloads;
+- scheduler invokes fetch per source;
+- ledger holds correctness, responsibilities remain mixed.
 
-**Изменения:**
+**Changes:**
 
-- добавить `RemoteSourceMonitor`:
-  - `transport.list`;
-  - include/exclude;
-  - fingerprint set по `RemoteObjectIdentity(path,size,mtime)`;
-  - set-diff;
-  - bounded batch;
-  - событие `RemoteChangeBatchDetected`;
-- добавить command handler в application:
-  - `FetchRemoteObjectsCommand`;
-  - список work-items/identities;
-- `RemoteFetchService` должен уметь скачивать переданные identities/work-items без собственного
-  `list`;
-- текущую CLI/manual команду сохранить как reconcile/manual path или адаптировать через новый monitor
-  без регресса поведения;
-- listener в bootstrap принимает `RemoteChangeBatchDetected` и ставит work в keyed executor по
-  `endpoint`;
-- общий process-local in-flight registry claim-ит identity перед admission и освобождает после
-  success/failure/rejection, чтобы медленный endpoint не получал дубли каждого monitor tick;
-- монитор запускается через `PeriodicDaemonCycle`, не через Spring Integration;
-- до включения listener'а реализовать per-key high/low-water policy поверх `KeyedSerialExecutorObserver`:
-  `depth >= high-water` или `oldest-age >= max-age` переводит key в shed-to-reconcile, ниже low-water
-  admission возобновляется.
+- RemoteSourceMonitor: list, include/exclude, path/size/mtime fingerprint set,
+  set-diff, bounded batch, RemoteChangeBatchDetected.
+- Application FetchRemoteObjectsCommand handler with work identities.
+- Fetch service downloads supplied work without listing.
+- Preserve CLI/manual behavior as reconcile/manual path or adapt through monitor.
+- Bootstrap listener enqueues by endpoint.
+- Shared process-local registry claims identities before admission, releases on
+  success/failure/rejection, preventing slow-endpoint duplicates each tick.
+- PeriodicDaemonCycle monitor, no SI.
+- Before enabling listener, high/low-water policy over `KeyedSerialExecutorObserver`:
+  `depth >= high-water` or `oldest-age >= max-age` sheds; below low-water resumes.
 
-**Инварианты:**
+**Invariants:**
 
-- событие не несёт содержимое файлов;
-- ledger остаётся idempotent receiver/backstop;
-- CHANGE_NOTIFY/SI push не вводится в v1;
-- насыщенный endpoint может shed-to-reconcile без потери correctness.
+- no file contents in event;
+- ledger remains Idempotent Receiver/backstop;
+- no CHANGE_NOTIFY/SI push v1;
+- saturated endpoint can shed without correctness loss.
 
-**Тесты:**
+**Tests:**
 
-- monitor emits только новые/изменённые identities;
-- include/exclude сохраняет прежнюю семантику;
-- bounded batch режет большую пачку;
-- повторный detection не скачивает уже `FETCHED`;
-- listener serializes work per endpoint;
-- saturated endpoint уходит в shed-to-reconcile без busy retry и без потери ledger correctness.
+- only new/changed identities emitted;
+- existing filter semantics;
+- bounded split of large batch;
+- repeated detection never redownloads FETCHED;
+- per-endpoint listener serialization;
+- saturation sheds without busy retry or lost ledger correctness.
 
-**Проверки:**
+**Checks:**
 
 ```bash
 ./mvnw -pl core/ioc-application,bootstrap/ioc-app -am test
 ```
 
-**Коммит:** `FEATURE: split remote fetch detection from execution`.
+**Commit:** `FEATURE: split remote fetch detection from execution`.
 
+<a id="s8--observability-health-docs-and-final-gate"></a>
 ### S8 — observability, health, docs and final gate
 
-**Цель:** закрыть эксплуатационные швы и зафиксировать новую модель в опубликованных документах.
+**Goal:** close operational seams, publish the new model.
 
-**Изменения:**
+**Changes:**
 
-- добавить/уточнить ECS actions:
-  - event publish;
-  - event dispatch;
-  - keyed executor admission/shed;
-  - reconcile recovery;
-- рутинные пустые тики перевести с INFO на DEBUG, если они не несут операторского сигнала;
-- health/actuator state:
-  - queue depth per key;
-  - running keys;
-  - oldest age;
-  - shed-to-reconcile flag;
-  - last dispatch failure;
-- связать `KeyedSerialExecutorObserver` с ECS/health так, чтобы `rejected`, `failed` и
-  `dispatchRejected` были видны без DEBUG-логов;
-- diagnostics:
-  - использовать `SYNC` для sync-событий v1;
-  - не заводить `EVENTS`, пока нет кросс-доменного потребителя с собственными кодами;
-- обновить опубликованные docs:
-  - `docs/architecture.md`;
-  - `docs/ingestion.md`/sync-разделы;
-  - `docs/logging.md`;
-  - `docs/diagnostics.md`;
-  - `docs/dev/README.md`;
-  - `docs/techdebt.md` / OPS-4.
+- ECS actions for publication, dispatch, keyed admission/shedding, reconcile recovery.
+- Routine empty ticks INFO→DEBUG unless meaningful to operator.
+- Health/actuator: per-key queue depth, running keys, oldest age, shed flag,
+  last dispatch failure.
+- Observer rejected/failed/dispatchRejected visible through ECS/health without DEBUG.
+- SYNC diagnostics for v1; no EVENTS until non-sync consumer with its own codes.
+- Published docs: `docs/architecture.md`, `docs/ingestion.md`/sync sections,
+  `docs/logging.md`, `docs/diagnostics.md`, `docs/dev/README.md`, `docs/techdebt.md`/OPS-4.
 
 **E2E/regression checks:**
 
-- событие `SliceCompleted` приводит к publish command handler;
-- потерянное событие восстанавливается через reconcile;
-- `SKIPPED` export не запускает publish;
-- keyed executor не допускает overlap per endpoint между event fast-path и periodic publish path;
-- corrupt slice не блокирует reconcile профиля;
-- core остаётся framework-free;
-- `platform-events` остаётся anti-broker.
+- SliceCompleted → publish command handler;
+- reconcile repairs lost event;
+- skipped does not publish;
+- no event/periodic overlap per endpoint;
+- corrupt slice cannot block profile;
+- framework-free core;
+- anti-broker events.
 
-**Финальный гейт:**
+**Final gate:**
 
 ```bash
 ./mvnw -B -ntp -T 1C verify
 ```
 
-**Коммит:** `TEST: gate event-driven coordination end to end`.
+**Commit:** `TEST: gate event-driven coordination end to end`.
 
-### Рекомендуемое разбиение
+<a id="рекомендуемое-разбиение"></a>
+### Recommended grouping
 
-- **Run 1:** S0–S3. Каркас, event-contract, single-flight и Spring bridge. Риск бизнес-регрессии
-  низкий, но важно сразу закрепить ArchUnit.
-- **Run 2:** S4–S6. Publish-контур: extraction cycle, `SliceCompleted`, slice-specific publish,
-  DB-driven reconcile. Это самый чувствительный run, потому что затрагивает export completion,
-  filesystem catalog и `publish_ledger`.
-- **Run 3:** S7–S8. Fetch split, observability/health, опубликованные docs и полный `verify`.
+- **Run 1: S0–S3.** Foundation, events, single-flight, Spring bridge. Low business
+  regression risk, establish ArchUnit immediately.
+- **Run 2: S4–S6.** Publish: cycle extraction, SliceCompleted, targeted publish,
+  DB reconcile. Most sensitive: export completion, filesystem catalog, publish ledger.
+- **Run 3: S7–S8.** Fetch split, observability/health, docs, full verify.
 
-Внутри одного run допускается выполнять несколько срезов подряд, но коммиты ставятся строго по
-границам S-состояний. Если на середине run появляется архитектурное отклонение от ADR, сначала
-обновляется ADR/план, затем код — не наоборот.
+Multiple slices may execute in one run; commits follow S-state boundaries strictly.
+If architecture diverges mid-run, update ADR/plan first, then code, never reverse.
