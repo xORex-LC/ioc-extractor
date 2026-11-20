@@ -16,7 +16,24 @@ packaged application.yml
 
 Фактический winner определяет Spring Environment. После refresh и до runners
 `IocConfigurationOverrideReporter` один раз сообщает только
-`ioc.key <- source`; значения никогда не логируются.
+`ioc.key <- source`; значения никогда не логируются. Это первое объявление
+параметра во внешнем источнике, а не доказательство того, что Binder использовал
+его значение: для списков и null-объявлений результаты могут различаться.
+
+Общая проверка имён и обход источников выделены в
+[адаптер конфигурации](configuration-inspection.md). Bootstrap сохраняет строгие
+правила написания IOC, собственные преобразования, отказ запуска и выбор
+отображаемых источников. Неподдерживаемые общей библиотекой формы проходят
+локальную проверку совместимости; более широкое распознавание relaxed names в
+библиотеке не расширяет автоматически контракт `ioc.*`.
+
+Наблюдения для существующего alias `smb.encrypt` вычисляются общей библиотекой
+по тому же снимку деклараций. В подсказке сохраняется индекс endpoint, например
+`ioc.sync.endpoints[3].smb.encryption`. Решение вывести предупреждение принимает
+локальная политика IOC, включая прежнюю поддержку нестандартных имён источников
+окружения. Преобразование Boolean, отказ при конфликте связанных полей после
+binding и окно rollback-совместимости остаются в сервисе. Подсказки для уже
+удалённых ключей по-прежнему принадлежат локальному анализатору ошибок.
 
 Breaking rename через operator-owned config следует bounded expand/contract из
 ADR-0027. Явно помеченный compatibility alias входит в typed shape только на
@@ -29,6 +46,13 @@ presence сохраняется до semantic preflight: одновременн�
 границы слов, поэтому schema-aware matcher восстанавливает только известную
 форму `IocProperties`; неизвестный `IOC_*` является startup failure, а не
 неиспользованной переменной.
+
+Списки при обычной загрузке Boot заменяются целиком из источника с более высоким
+приоритетом. Например, overlay с единственным `ioc.refang.rules[0].from` убирает
+остальные правила и не наследует `to` из defaults; проверка отклоняет такой
+неполный элемент. Чтобы заменить список, задайте все поля всех нужных элементов.
+Наблюдения об объявлениях в нижних источниках не означают, что их значения
+сохранились после binding. Карты имеют отдельные правила объединения.
 
 ## Startup validation
 
@@ -49,12 +73,13 @@ Environment prepared
 - Spring binder владеет shape, conversion и bean validation;
 - `IocYamlSyntaxCheck` предоставляет side-effect-free синтаксическую проверку
   candidate-файла до Spring startup, SQLite и transport initialization;
-- `IocSemanticConfigurationCheck` загружает classpath defaults, один явный YAML
-  overlay и external overrides в минимальный Spring context только с
+- `IocSemanticConfigurationCheck` загружает classpath defaults, явный YAML
+  overlay, разрешённые Boot imports и external overrides в минимальный Spring context только с
   `IocProperties` и config-preflight infrastructure; runtime components не
   сканируются, а controlled output не содержит property values;
 - `IocYamlConfigurationFailureAnalyzer` переводит ранний SnakeYAML failure в
-  value-free `CONFIG.YAML_INVALID` с line/column без вывода самой строки;
+  `CONFIG.YAML_INVALID` с line/column без parser text, самой строки и исходного
+  throwable в `FailureAnalysis`;
 - `IocUnknownConfigurationPreflight` проверяет неизвестные keys по reflection
   shape typed model, включая YAML overlay, CLI, system properties и env;
 - `IocConfigPreflight` собирает межсекционные инварианты: artifact identity,
@@ -67,6 +92,34 @@ Environment prepared
 
 Validation constructors не должны бросать на operator mistakes: иначе binder
 остановится на первой ошибке и скроет collect-all report.
+
+Минимальный состав бинов не ограничивает источники конфигурации. Semantic check
+сохраняет обычные Boot imports, активные профили и внешние overrides, включая
+JSON; обязательный отсутствующий import является ошибкой, optional import
+может отсутствовать. Classpath defaults также импортируют
+`./configs/application.yml`, если он существует. Это проверка итоговой
+конфигурации окружения, а не только изолированного candidate-файла.
+
+Команда сама задаёт корневые locations и отклоняет CLI-настройки
+`spring.config.location`, `additional-location`, `import`, `name`, включая
+индексные и relaxed формы. Объявления `spring.main.sources` и их индексные
+варианты отклоняются во всех загруженных каналах до создания дополнительных
+бинов. Checker принудительно отключает lazy initialization, keep-alive,
+регистрацию shutdown hook и startup-info; короткоживущий контекст закрывается
+после проверки. Imports остаются доверенным входом deployment: ограничений
+путей или сетевых адресов этот режим не обещает.
+
+Для другого сервиса доступен
+[пример с закрытым набором входов](../guides/configuration-library-check.md):
+один явный YAML и явные literal overrides, без ambient environment, imports
+и профилей. Правила источников и семантические проверки принадлежат сервису,
+а общая библиотека получает уже подготовленные источники.
+
+Контракт [контролируемых отчётов](configuration-failure-reports.md) сохраняет
+пути объявленных полей и `CONFIG.*`, но исключает exception/default messages,
+rejected values и arguments. Ошибка binding не означает, что semantic и registry
+проверки выполнились; неизвестный failure получает `CONFIG.CHECK_FAILED`.
+Это граница наших отчётов, а не гарантия для всех Spring DEBUG-логов и appenders.
 
 Для packaged systemd deployment unit запускает semantic configuration check
 через `ExecCondition`. При exit code `78` systemd пропускает activation и не

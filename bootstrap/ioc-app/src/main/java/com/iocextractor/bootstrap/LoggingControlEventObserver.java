@@ -63,7 +63,7 @@ public final class LoggingControlEventObserver implements ControlEventObserver {
         LogEvent enriched = logEvent.action(action)
                 .outcome(outcome)
                 .field(LogField.IOC_EVENT_ID, metadata.eventId())
-                .field(LogField.EVENT_TYPE, metadata.eventType())
+                .field(LogField.IOC_EVENT_TYPE, metadata.eventType())
                 .field(LogField.IOC_EVENT_VERSION, metadata.eventVersion())
                 .field(LogField.IOC_EVENT_CORRELATION_ID, metadata.correlationId());
         metadata.causation().ifPresent(causation ->

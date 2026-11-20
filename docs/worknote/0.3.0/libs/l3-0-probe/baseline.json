@@ -1,0 +1,39 @@
+{
+  "source_head": "662aa880587e11cea08204c250d89894abf1834c",
+  "expected_tests": 62,
+  "sources": {
+    "platform/platform-observability/src/main/java/com/iocextractor/observability/MdcScope.java": "753cb21258d68b6f2bb5590e2098cd4b8f79688f87ad93cd206fb24b43364424",
+    "platform/platform-observability/src/main/java/com/iocextractor/observability/LogValueType.java": "bda7aa86c9e9aefc6ab87254ae31ee743b165d373ac8780c28f697f6a1faf060",
+    "platform/platform-observability/src/main/java/com/iocextractor/observability/EventOutcome.java": "a4e7860c053070bb704e7290dc533e70439194243d0ff95d5ab6015ae0dcddb3",
+    "platform/platform-observability/src/main/java/com/iocextractor/observability/SensitiveLogValueSanitizer.java": "e5d47e21ac3e684def45192524d94d2fab75d4bf496e768993f9d976d2d2df4a",
+    "platform/platform-observability/src/main/java/com/iocextractor/observability/logging/LogEvent.java": "44a05f02413161fc52c85110f956159911253e99d72a006460e7df50cee7c7fb",
+    "platform/platform-observability/src/main/java/com/iocextractor/observability/logging/LogEvents.java": "eebad95c975716aef62a279e07fcb0bafb6217e33f5fdd596ca291bc5b632b37",
+    "platform/platform-observability/src/main/java/com/iocextractor/observability/logging/LogValueNormalizer.java": "6135721e53cddf955650988536f69d026c323f5555fac4c448f9aebca0617cda",
+    "bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/IocEcsStructuredLogEncoder.java": "a78ad2af02b41a6796b18840774fafdd77ab10adf987f8774c6eebfe800e9cf8"
+  },
+  "dependencies": {
+    "jspecify-1.0.1.jar": "070d75f261fe4c5b8202508366715f7f2d4660f88c8ef7e6d3575e48c9683b66",
+    "jackson-databind-2.21.5.jar": "507418c0fafd38b2b2cfb704521630da613a8e4cc8381195a6f418017883e2c0",
+    "jackson-core-2.21.5.jar": "b64b5874162b503a0e58a8f7758266e8dd9f91bf49e3a59ae0b5f47589a231b7",
+    "jackson-annotations-2.21.jar": "53ca085f4a150f703f49e1aabd935bd03b43e1ea3d55d135438292af22cef56b",
+    "spring-aop-7.0.9.jar": "b8c5d6bfcb1f4993f2cc124f7ab7fac40edf5256b9e43c2f7250a733cb5510e9",
+    "spring-context-7.0.9.jar": "7552a2fcfa30cea53eb14d7a65a7a8e1b1dd82e832a7164fb7e6fb105f438858",
+    "spring-beans-7.0.9.jar": "ff218b827a25c9e8929b0cd56dfb56916cea9d5b669ed97dc7cb262508ff548b",
+    "spring-boot-4.0.8.jar": "ef1a4917ff5dfd41de20b7441a7830eaeae0a01229998c3aa2f471b96bc2b38f",
+    "spring-expression-7.0.9.jar": "046434c40f43819729b9b1db0e6c659dfa68184c1c2c2efa5f7b3a5b27c4e2e2",
+    "slf4j-api-2.0.18.jar": "44508fd1576500688c790b190acdd16fec4f8c79a3e0b900afd70503cf055f55",
+    "logback-classic-1.5.38.jar": "afb439c61fa287c9e1925523b13baab03617e724406a389d48b61c2c3e46b700",
+    "logback-core-1.5.38.jar": "a855a0fc97b1d06f4efb1c3bba5ebd0eb508d8b58e68e89e4bbc23a85135c883",
+    "spring-core-7.0.9.jar": "5195f4722699b39878d99a832549fe65df2890b159d063b88fff31b1ca65ae36",
+    "commons-logging-1.3.6.jar": "f8ead8943401081dea0aa824b5b1ba40a0e4ed297a572a0f02258150a0b62357",
+    "junit-jupiter-api-6.0.3.jar": "d655d7e6f0c7ae07f10a2f3bbaaebb6d30e9b26204a068ad9e9b3950aa28792c",
+    "opentest4j-1.3.0.jar": "48e2df636cab6563ced64dcdff8abb2355627cb236ef0bf37598682ddf742f1b",
+    "junit-platform-commons-6.0.3.jar": "39f262d09c3d52719fe0b77f080e90a3695e285d779a41b232e17963ae5da200",
+    "apiguardian-api-1.1.2.jar": "b509448ac506d607319f182537f0b35d71007582ec741832a1f111e5b5b70b38",
+    "junit-jupiter-params-6.0.3.jar": "cf2947e2302b9f8c8a059259a277881c1cadae8fbc2514c16a925cfeb7beb2e5",
+    "junit-jupiter-engine-6.0.3.jar": "1e2fab61ad27ea08fc7c70dd9677cf8c6d1ae5434d42dcfdd633b12c7e7c04d0",
+    "junit-platform-engine-6.0.3.jar": "491e9e4f745f161b8a8e4186a1a7c6a450ea12c70930c9aedae427215301d947",
+    "assertj-core-3.27.7.jar": "c4a445426c3c2861666863b842cc4ec7bbb1c4226fefd370b6d2fe83d6c4ff0f",
+    "junit-platform-launcher-6.0.3.jar": "315608372e4dc44bca0ccb3ae8a07ecc206b3367033fa05748a03ccd563f1301"
+  }
+}

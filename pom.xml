@@ -60,12 +60,15 @@
         <module>platform/platform-etl</module>
         <module>platform/platform-events</module>
         <module>platform/platform-concurrency</module>
+        <module>platform/platform-logging-slf4j</module>
         <module>platform/platform-observability</module>
         <module>platform/platform-diagnostics-logging</module>
         <module>core/ioc-domain</module>
         <module>core/ioc-processing</module>
         <module>core/ioc-application</module>
         <module>core/ioc-application-tck</module>
+        <module>adapters/adapter-config-spring-boot</module>
+        <module>adapters/adapter-events-spring</module>
         <module>adapters/adapter-regex-re2j</module>
         <module>adapters/adapter-psl</module>
         <module>adapters/adapter-source-tika</module>
@@ -497,6 +500,11 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>io.github.xorex-lc</groupId>
+                <artifactId>ioc-events-spring</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <!-- Internal modules: version aligned with the reactor. -->
             <dependency>
                 <groupId>com.iocextractor</groupId>
@@ -519,7 +527,7 @@
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.iocextractor</groupId>
+                <groupId>io.github.xorex-lc</groupId>
                 <artifactId>ioc-platform-events</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -527,6 +535,11 @@
                 <groupId>io.github.xorex-lc</groupId>
                 <artifactId>ioc-platform-concurrency</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.xorex-lc</groupId>
+                <artifactId>ioc-platform-logging-slf4j</artifactId>
+                <version>${revision}</version>
             </dependency>
             <dependency>
                 <groupId>com.iocextractor</groupId>
@@ -557,6 +570,11 @@
                 <groupId>com.iocextractor</groupId>
                 <artifactId>ioc-application-tck</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.xorex-lc</groupId>
+                <artifactId>ioc-config-spring-boot</artifactId>
+                <version>${revision}</version>
             </dependency>
             <dependency>
                 <groupId>com.iocextractor</groupId>
@@ -715,6 +733,11 @@
                 <groupId>com.google.guava</groupId>
                 <artifactId>guava</artifactId>
                 <version>${guava.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.tngtech.archunit</groupId>
+                <artifactId>archunit</artifactId>
+                <version>${archunit.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.tngtech.archunit</groupId>

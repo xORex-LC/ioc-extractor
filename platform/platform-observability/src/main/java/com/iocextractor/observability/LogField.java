@@ -1,5 +1,9 @@
 package com.iocextractor.observability;
 
+import com.iocextractor.platform.logging.LogFieldSpec;
+import com.iocextractor.platform.logging.LogValueType;
+import com.iocextractor.platform.logging.ecs.EcsFields;
+
 /**
  * Stable ECS and project-specific log field names.
  *
@@ -7,12 +11,13 @@ package com.iocextractor.observability;
  * fields belong under the {@code ioc.*} namespace.
  */
 public enum LogField {
-    EVENT_ACTION("event.action", LogValueType.STRING, "Stable machine-readable action of the event."),
-    EVENT_TYPE("event.type", LogValueType.STRING, "ECS event type classification."),
-    EVENT_OUTCOME("event.outcome", LogValueType.STRING, "Stable success, failure, or unknown outcome."),
-    EVENT_DURATION("event.duration", LogValueType.LONG, "Event duration in nanoseconds."),
-    ERROR_TYPE("error.type", LogValueType.STRING, "Exception class associated with a failed operation."),
-    FILE_PATH("file.path", LogValueType.STRING, "Input or output file path."),
+    EVENT_ACTION(EcsFields.EVENT_ACTION, "Stable machine-readable action of the event."),
+    EVENT_OUTCOME(EcsFields.EVENT_OUTCOME, "Stable success, failure, or unknown outcome."),
+    EVENT_DURATION(EcsFields.EVENT_DURATION, "Event duration in nanoseconds."),
+    ERROR_TYPE(EcsFields.ERROR_TYPE, "Exception class associated with a failed operation."),
+    FILE_PATH(EcsFields.FILE_PATH, "Input or output file path."),
+    IOC_OPERATION_DISPOSITION("ioc.operation.disposition", LogValueType.STRING,
+            "Informational operation disposition, such as skipped; independent of ECS outcome."),
     IOC_RUN_ID("ioc.run.id", LogValueType.STRING, "Unique pipeline run identifier."),
     IOC_SOURCE_ID("ioc.source.id", LogValueType.STRING, "Logical source identifier."),
     IOC_MODE("ioc.mode", LogValueType.STRING, "Runtime mode: oneshot or daemon."),
@@ -197,18 +202,28 @@ public enum LogField {
     IOC_DIAGNOSTIC_SEVERITY("ioc.diagnostic.severity", LogValueType.STRING,
             "Diagnostic severity independent of log level.");
 
-    private final String key;
-    private final LogValueType valueType;
+    private final LogFieldSpec spec;
     private final String description;
 
     LogField(String key, LogValueType valueType, String description) {
-        this.key = key;
-        this.valueType = valueType;
+        this(new LogFieldSpec(key, valueType), description);
+    }
+
+    LogField(LogFieldSpec spec, String description) {
+        this.spec = spec;
         this.description = description;
     }
 
+    /**
+     * Returns the descriptor used by the shared logging library.
+     * @return this IOC catalog entry's key and scalar type
+     */
+    public LogFieldSpec spec() {
+        return spec;
+    }
+
     public String key() {
-        return key;
+        return spec.key();
     }
 
     /**
@@ -217,7 +232,7 @@ public enum LogField {
      * @return JSON scalar type
      */
     public LogValueType valueType() {
-        return valueType;
+        return spec.valueType();
     }
 
     /**

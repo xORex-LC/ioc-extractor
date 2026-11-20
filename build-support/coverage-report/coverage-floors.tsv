@@ -1,16 +1,18 @@
 # scope	line-percent	branch-percent	rationale
-reactor	75	80	Release floor for the complete 22-module production aggregate.
+reactor	75	80	Release floor for the complete 25-module production aggregate.
 ioc-platform-errors	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-platform-diagnostics-api	none	none	JDK-only library; per-module ratchet.
 ioc-platform-diagnostics	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-platform-etl	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-platform-events	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-platform-concurrency	none	none	Per-module ratchet only; no release-wide fixed floor.
+ioc-platform-logging-slf4j	none	none	SLF4J library; measured per-module ratchet.
 ioc-platform-observability	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-platform-diagnostics-logging	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-domain	85	90	Decision-heavy domain release floor.
 ioc-processing	none	none	Pure module participates in the measured per-module ratchet; no separate fixed floor in P2.
 ioc-application	85	90	Decision-heavy application release floor.
+ioc-config-spring-boot	none	none	Reusable Spring Boot configuration adapter; measured per-module ratchet.
 ioc-adapter-regex-re2j	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-adapter-psl	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-adapter-source-tika	none	none	Per-module ratchet only; no release-wide fixed floor.
@@ -22,3 +24,4 @@ ioc-adapter-transport-smb	none	none	Per-module ratchet only; no release-wide fix
 ioc-adapter-ingest	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-adapter-cli-picocli	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-app	none	none	Per-module ratchet only; no release-wide fixed floor.
+ioc-events-spring	none	none	Explicit Spring event adapter; measured per-module ratchet.

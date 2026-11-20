@@ -84,7 +84,7 @@ public final class RemoteChangeFetchListener {
     }
 
     private MdcScope mdc(RemoteChangeBatchDetected event) {
-        return MdcScope.open()
+        return MdcScope.open(scope -> scope
                 .put(LogField.IOC_RUN_ID, event.metadata().correlationId())
                 .put(LogField.IOC_EVENT_ID, event.metadata().eventId())
                 .put(LogField.IOC_EVENT_TYPE, event.metadata().eventType())
@@ -92,6 +92,6 @@ public final class RemoteChangeFetchListener {
                 .put(LogField.IOC_EVENT_CAUSATION_ID, event.metadata().causationId())
                 .put(LogField.IOC_EVENT_HANDLER, HANDLER)
                 .put(LogField.IOC_SOURCE_ID, event.sourceId())
-                .put(LogField.IOC_SYNC_ENDPOINT, event.endpoint());
+                .put(LogField.IOC_SYNC_ENDPOINT, event.endpoint()));
     }
 }

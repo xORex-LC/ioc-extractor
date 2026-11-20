@@ -1,6 +1,10 @@
 package com.iocextractor.bootstrap;
 
+import org.springframework.core.env.CompositePropertySource;
+import org.springframework.core.env.PropertySource;
+
 import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
@@ -9,6 +13,15 @@ import java.util.List;
 final class IocConfigurationPropertyShape {
 
     private IocConfigurationPropertyShape() {
+    }
+
+    static boolean skipInspection(PropertySource<?> source) {
+        if ("configurationProperties".equals(source.getName())) {
+            return true;
+        }
+        // IOC has always required a composite to enumerate all of its children.
+        // Keep that failure policy here; the reusable inspector reports partial coverage.
+        return source instanceof CompositePropertySource composite && composite.getPropertyNames().length == 0;
     }
 
     static List<String> tokens(String canonical) {
@@ -61,6 +74,43 @@ final class IocConfigurationPropertyShape {
             }
         }
         return result.toString();
+    }
+
+    /** Stops at the last declared field; dynamic map keys never enter a failure report. */
+    static String diagnosticPath(String path) {
+        List<String> parts = tokens(path);
+        StringBuilder result = new StringBuilder("ioc");
+        if (parts.isEmpty() || !"ioc".equals(parts.getFirst())) {
+            return result.toString();
+        }
+        Type type = IocProperties.class;
+        for (int index = 1; index < parts.size(); index++) {
+            String token = parts.get(index);
+            Class<?> raw = rawClass(type);
+            if (raw != null && raw.isRecord()) {
+                RecordComponent component = diagnosticComponent(raw, token);
+                if (component == null) {
+                    break;
+                }
+                result.append('.').append(token);
+                type = component.getGenericType();
+            } else if (raw != null && List.class.isAssignableFrom(raw) && isIndex(token)) {
+                result.append(token);
+                type = listElementType(type);
+            } else {
+                break;
+            }
+        }
+        return result.toString();
+    }
+
+    private static RecordComponent diagnosticComponent(Class<?> record, String token) {
+        for (RecordComponent component : record.getRecordComponents()) {
+            if (token.equals(component.getName()) || token.equals(kebabCase(component.getName()))) {
+                return component;
+            }
+        }
+        return null;
     }
 
     private static List<String> tokens(String canonical, boolean numericSegmentsAreIndexes) {

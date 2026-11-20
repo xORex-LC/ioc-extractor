@@ -1076,7 +1076,8 @@ class IocPropertiesBindingIT {
     }
 
     private ApplicationContextRunner contextRunner(String... overrides) {
-        // TestPropertyValues merges indexed lists over application.yml; it cannot shorten default YAML lists.
+        // TestPropertyValues uses its own source adapter. Qualify deployment list replacement through
+        // real ConfigData sources in IocConfigurationContextIT rather than infer it from this fixture.
         return new ApplicationContextRunner()
                 .withInitializer(IocPropertiesBindingIT::addDefaultApplicationYaml)
                 .withUserConfiguration(TestConfig.class)

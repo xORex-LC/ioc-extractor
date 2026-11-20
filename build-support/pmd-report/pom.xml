@@ -27,6 +27,10 @@
     <dependencies>
         <dependency>
             <groupId>io.github.xorex-lc</groupId>
+            <artifactId>ioc-events-spring</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.xorex-lc</groupId>
             <artifactId>ioc-platform-diagnostics-api</artifactId>
         </dependency>
 
@@ -44,12 +48,16 @@
             <artifactId>ioc-platform-etl</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.iocextractor</groupId>
+            <groupId>io.github.xorex-lc</groupId>
             <artifactId>ioc-platform-events</artifactId>
         </dependency>
         <dependency>
             <groupId>io.github.xorex-lc</groupId>
             <artifactId>ioc-platform-concurrency</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.xorex-lc</groupId>
+            <artifactId>ioc-platform-logging-slf4j</artifactId>
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>
@@ -75,6 +83,10 @@
         </dependency>
 
         <!-- Adapter production universe. -->
+        <dependency>
+            <groupId>io.github.xorex-lc</groupId>
+            <artifactId>ioc-config-spring-boot</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>
             <artifactId>ioc-adapter-regex-re2j</artifactId>
@@ -182,17 +194,20 @@
 
                                     <!-- Positive scope: checked-in production Java only. -->
                                     <compileSourceRoots>
+                                        <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-events-spring/src/main/java</compileSourceRoot>
                                         <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-errors/src/main/java</compileSourceRoot>
                                         <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-diagnostics-api/src/main/java</compileSourceRoot>
                                         <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-diagnostics/src/main/java</compileSourceRoot>
                                         <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-etl/src/main/java</compileSourceRoot>
                                         <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-events/src/main/java</compileSourceRoot>
                                         <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-concurrency/src/main/java</compileSourceRoot>
+                                        <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-logging-slf4j/src/main/java</compileSourceRoot>
                                         <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-observability/src/main/java</compileSourceRoot>
                                         <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-diagnostics-logging/src/main/java</compileSourceRoot>
                                         <compileSourceRoot>${maven.multiModuleProjectDirectory}/core/ioc-domain/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/core/ioc-processing/src/main/java</compileSourceRoot>
                                         <compileSourceRoot>${maven.multiModuleProjectDirectory}/core/ioc-application/src/main/java</compileSourceRoot>
+                                        <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-config-spring-boot/src/main/java</compileSourceRoot>
                                         <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-regex-re2j/src/main/java</compileSourceRoot>
                                         <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-psl/src/main/java</compileSourceRoot>
                                         <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-source-tika/src/main/java</compileSourceRoot>

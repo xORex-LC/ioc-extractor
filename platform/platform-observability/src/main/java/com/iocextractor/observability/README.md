@@ -1,39 +1,22 @@
 # com.iocextractor.observability
 
-## Назначение
+IOC field/action/outcome catalogs and conveniences that bind them to the shared
+logging library. JSON formatting and appender selection remain in bootstrap.
 
-Framework-free контракты operational observability: typed field schema,
-action/outcome taxonomy и string-only `MdcScope`. Пакет задаёт стабильный
-logging contract, но не форматирует JSON и не выбирает appenders.
+**Layer rule:** depend on the generic logging API, never business packages,
+adapters or bootstrap. The diagnostics logging bridge is a separate module.
 
-**Правило слоя:** observability может знать о SLF4J MDC как о logging boundary,
-но не содержит бизнес-правил IOC, adapter IO деталей или diagnostics core logic.
+## Structure
 
-## Структура
-
-| Файл / подпапка | Назначение |
+| Part | Responsibility |
 |---|---|
-| `LogField.java` | Stable ECS/custom field names with JSON scalar type |
-| `LogValueType.java` | Closed `STRING|LONG|BOOLEAN` schema |
-| `EventAction.java` | Stable `event.action` values |
-| `EventOutcome.java` | Stable `event.outcome` values |
-| `ObservabilityMode.java` | Runtime mode: `oneshot` / `daemon` |
-| `MdcScope.java` | Try-with-resources MDC scope with restore-on-close |
-| `logging/` | Thin SLF4J event helper and pipeline observer |
-| `diagnostics/` | Diagnostic-to-log bridge |
+| `LogField` | IOC key, description and shared scalar descriptor |
+| `EventAction`, `EventOutcome`, `ObservabilityMode` | Operational vocabulary |
+| `MdcScope` | Bind catalogued correlation fields to the shared restoring scope |
+| `SensitiveLogValueSanitizer` | Delegate URL-component preparation before local diagnostic rendering |
+| `logging/` | IOC builder facade and ETL logging observer |
 
-Artifact emission расширяет стабильную taxonomy actions
-`export_start|export_slice_write|export_complete|export_recover` и fields
-`ioc.export.profile`, `ioc.export.slice.id`, `ioc.export.revision`. Конкретный
-producer adapter находится в bootstrap, чтобы generic observability module не
-зависел от application export model.
+## Dependencies
 
-Remote sync расширяет taxonomy actions
-`sync_fetch_start|sync_fetch_complete|sync_publish_start|sync_publish_complete`
-и fields `ioc.sync.endpoint`, `ioc.sync.files`, `ioc.sync.target`. Transport-specific
-details и credentials в observability core не попадают.
-
-## Зависимости
-
-**Зависит от:** SLF4J API/MDC.  
-**Не импортируется:** adapters, bootstrap, domain business packages.
+Main dependencies: shared logging API and SLF4J; the logging observer also uses
+ETL contracts. No dependency on domain, application, adapters or backend encoders.

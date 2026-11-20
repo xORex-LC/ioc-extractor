@@ -31,7 +31,7 @@ class ArchitectureTest {
     static final ArchRule layers_point_inward = layeredArchitecture().consideringOnlyDependenciesInLayers()
             .layer("domain").definedBy("..domain..")
             .layer("application").definedBy("..application..")
-            .layer("adapter").definedBy("..adapter..")
+            .layer("adapter").definedBy("..adapter..", "com.iocextractor.config.boot..")
             .layer("bootstrap").definedBy("..bootstrap..")
             .whereLayer("bootstrap").mayNotBeAccessedByAnyLayer()
             .whereLayer("adapter").mayOnlyBeAccessedByLayers("bootstrap")
@@ -44,14 +44,14 @@ class ArchitectureTest {
             .should().dependOnClassesThat().resideInAnyPackage(
                     "org.springframework..", "org.apache..", "com.google.re2j..",
                     "info.picocli..", "com.google.common..", "org.slf4j..",
-                    "ch.qos.logback..");
+                    "ch.qos.logback..", "..platform.logging..", "com.iocextractor.observability..");
 
     @ArchTest
     static final ArchRule application_depends_only_inward = noClasses()
             .that().resideInAPackage("..application..")
             .should().dependOnClassesThat().resideInAnyPackage(
                     "..adapter..", "..bootstrap..", "org.springframework..",
-                    "org.slf4j..", "ch.qos.logback..");
+                    "org.slf4j..", "ch.qos.logback..", "..platform.logging..", "com.iocextractor.observability..");
 
     @ArchTest
     static final ArchRule camel_is_confined_to_adapters_and_bootstrap = noClasses()
@@ -85,6 +85,25 @@ class ArchitectureTest {
                     "java..", "com.iocextractor.platform.diagnostics..");
 
     @ArchTest
+    static final ArchRule reusable_logging_depends_only_on_itself_jdk_and_slf4j = classes()
+            .that().resideInAPackage("com.iocextractor.platform.logging..")
+            .should().onlyDependOnClassesThat().resideInAnyPackage(
+                    "java..", "com.iocextractor.platform.logging..", "org.slf4j..");
+
+    @ArchTest
+    static final ArchRule reusable_configuration_depends_only_on_itself_jdk_and_spring = classes()
+            .that().resideInAPackage("com.iocextractor.config.boot..")
+            .should().onlyDependOnClassesThat().resideInAnyPackage(
+                    "java..", "com.iocextractor.config.boot..", "org.springframework..");
+
+    @ArchTest
+    static final ArchRule configuration_inspection_stays_outside_framework_free_layers = noClasses()
+            .that().resideInAnyPackage(
+                    "..domain..", "..processing..", "..application..", "..platform..",
+                    "..diagnostics..", "..observability..")
+            .should().dependOnClassesThat().resideInAPackage("com.iocextractor.config.boot..");
+
+    @ArchTest
     static final ArchRule domain_does_not_depend_on_diagnostics_delivery = noClasses()
             .that().resideInAPackage("..domain..")
             .should().dependOnClassesThat().resideInAnyPackage(
@@ -95,7 +114,7 @@ class ArchitectureTest {
             .that().resideInAPackage("..platform.etl..")
             .should().dependOnClassesThat().resideInAnyPackage(
                     "..domain..", "..application..", "..adapter..", "..bootstrap..",
-                    "..observability..", "org.springframework..", "org.slf4j..",
+                    "..observability..", "..platform.logging..", "org.springframework..", "org.slf4j..",
                     "ch.qos.logback..", "info.picocli..", "org.apache.tika..",
                     "org.apache.commons.csv..");
 
@@ -104,12 +123,20 @@ class ArchitectureTest {
             .that().resideInAPackage("..platform.events..")
             .should().dependOnClassesThat().resideInAnyPackage(
                     "..domain..", "..application..", "..adapter..", "..bootstrap..",
-                    "..platform.concurrent..", "org.springframework..", "org.slf4j..",
+                    "..platform.concurrent..", "..platform.logging..", "..observability..",
+                    "org.springframework..", "org.slf4j..",
                     "ch.qos.logback..", "java.io..", "com.fasterxml.jackson..",
                     "org.springframework.integration..", "org.springframework.amqp..",
                     "org.apache.kafka..", "com.rabbitmq..", "jakarta.jms..",
                     "javax.jms..", "org.apache.camel..")
             .allowEmptyShould(true);
+
+    @ArchTest
+    static final ArchRule events_spring_depends_only_on_contracts_jdk_spring_and_slf4j = classes()
+            .that().resideInAPackage("com.iocextractor.adapter.out.events.spring..")
+            .should().onlyDependOnClassesThat().resideInAnyPackage(
+                    "java..", "com.iocextractor.adapter.out.events.spring..",
+                    "com.iocextractor.platform.events..", "org.springframework.context..", "org.slf4j..");
 
     @ArchTest
     static final ArchRule control_events_are_not_serializable = noClasses()
@@ -129,7 +156,8 @@ class ArchitectureTest {
             .that().resideInAPackage("..platform.concurrent..")
             .should().dependOnClassesThat().resideInAnyPackage(
                     "..domain..", "..application..", "..adapter..", "..bootstrap..",
-                    "..platform.events..", "org.springframework..", "org.slf4j..",
+                    "..platform.events..", "..platform.logging..", "..observability..",
+                    "org.springframework..", "org.slf4j..",
                     "ch.qos.logback..", "com.fasterxml.jackson..",
                     "org.springframework.integration..", "org.springframework.amqp..",
                     "org.apache.kafka..", "com.rabbitmq..", "jakarta.jms..",

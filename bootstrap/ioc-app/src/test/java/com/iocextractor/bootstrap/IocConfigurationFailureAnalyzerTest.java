@@ -43,7 +43,8 @@ class IocConfigurationFailureAnalyzerTest {
     @Test
     void showsRawEnvironmentNameWithoutChangingLegacyClassification() {
         ConfigurationProperty property = new ConfigurationProperty(
-                ConfigurationPropertyName.of("ioc.lookup.deduplicate"), "IOC_LOOKUP_DEDUPLICATE", null);
+                ConfigurationPropertyName.of("ioc.lookup.deduplicate"),
+                new IocConfigurationFailureAnalyzer.EnvironmentName("IOC_LOOKUP_DEDUPLICATE"), null);
         FailureAnalysis analysis = new IocConfigurationFailureAnalyzer()
                 .analyze(new UnboundConfigurationPropertiesException(Set.of(property)));
 
@@ -55,11 +56,22 @@ class IocConfigurationFailureAnalyzerTest {
     void recognizesLegacySmbTimeoutFromRawEnvironmentName() {
         ConfigurationProperty property = new ConfigurationProperty(
                 ConfigurationPropertyName.of("ioc.sync.endpoints[0].smb.read.timeout"),
-                "ioc_sync_endpoints_0_smb_read_timeout", null);
+                new IocConfigurationFailureAnalyzer.EnvironmentName("ioc_sync_endpoints_0_smb_read_timeout"), null);
         FailureAnalysis analysis = new IocConfigurationFailureAnalyzer()
                 .analyze(new UnboundConfigurationPropertiesException(Set.of(property)));
 
         assertThat(analysis.getAction()).contains("CONFIG.LEGACY_SYNC_TIMEOUT");
+    }
+
+    @Test
+    void neverInterpretsAnArbitraryRejectedValueAsAnEnvironmentName() {
+        ConfigurationProperty property = new ConfigurationProperty(
+                ConfigurationPropertyName.of("ioc.unknown"), "synthetic_secret_7d96", null);
+        FailureAnalysis analysis = new IocConfigurationFailureAnalyzer()
+                .analyze(new UnboundConfigurationPropertiesException(Set.of(property)));
+
+        assertThat(analysis.getDescription()).contains("ioc.unknown").doesNotContain("synthetic_secret_7d96");
+        assertThat(analysis.getCause()).isNull();
     }
 
     @Test

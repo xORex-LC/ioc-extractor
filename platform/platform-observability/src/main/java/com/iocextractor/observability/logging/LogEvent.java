@@ -3,109 +3,83 @@ package com.iocextractor.observability.logging;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
-import com.iocextractor.observability.MdcScope;
-import org.slf4j.Logger;
-import org.slf4j.spi.LoggingEventBuilder;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Objects;
-
-/** Builder for one SLF4J log call with typed event-local structured fields. */
+/**
+ * Binds the IOC field and action catalogs to the shared logging builder.
+ * The delegate owns validation, typed values, MDC collisions and emission.
+ */
 public final class LogEvent {
+    private final com.iocextractor.platform.logging.LogEvent delegate;
 
-    enum Level {
-        TRACE,
-        DEBUG,
-        INFO,
-        WARN,
-        ERROR
+    LogEvent(com.iocextractor.platform.logging.LogEvent delegate) {
+        this.delegate = delegate;
     }
 
-    private final Logger logger;
-    private final Level level;
-    private final Map<LogField, Object> fields = new LinkedHashMap<>();
-    private String message;
-
-    LogEvent(Logger logger, Level level) {
-        this.logger = Objects.requireNonNull(logger, "logger");
-        this.level = Objects.requireNonNull(level, "level");
-    }
-
+    /**
+     * Adds the IOC action's stable wire value.
+     * @param action catalogued operation
+     * @return this event
+     */
     public LogEvent action(EventAction action) {
-        return field(LogField.EVENT_ACTION, action.value());
+        delegate.action(action.value());
+        return this;
     }
 
+    /**
+     * Adds the shared ECS success, failure or unknown outcome.
+     * @param outcome observed operation outcome
+     * @return this event
+     */
     public LogEvent outcome(EventOutcome outcome) {
-        return field(LogField.EVENT_OUTCOME, outcome.value());
+        delegate.outcome(outcome.ecs());
+        return this;
     }
 
+    /**
+     * Adds a non-negative ECS duration in nanoseconds.
+     * @param durationNanos elapsed time
+     * @return this event
+     * @throws IllegalArgumentException if the duration is negative
+     */
     public LogEvent durationNanos(long durationNanos) {
-        return field(LogField.EVENT_DURATION, durationNanos);
+        delegate.durationNanos(durationNanos);
+        return this;
     }
 
+    /**
+     * Adds a catalogued scalar using the shared representation checks. Null omits
+     * the event-local value; it does not hide an ambient MDC value.
+     * @param field IOC field declaration
+     * @param value supported scalar, or null for omission
+     * @return this event
+     * @throws IllegalArgumentException if value does not match the declaration
+     */
     public LogEvent field(LogField field, Object value) {
-        Objects.requireNonNull(field, "field");
-        var normalized = LogValueNormalizer.normalize(field, value);
-        if (normalized == null) {
-            fields.remove(field);
-        } else {
-            fields.put(field, normalized);
-        }
+        delegate.field(field.spec(), value);
         return this;
     }
 
+    /**
+     * Sets the human-readable message without changing structured fields.
+     * @param message non-null message
+     * @return this event
+     */
     public LogEvent message(String message) {
-        this.message = Objects.requireNonNull(message, "message");
+        delegate.message(message);
         return this;
     }
 
+    /** Attempts one log call at the selected level, without a Throwable. */
     public void log() {
-        log(null);
+        delegate.log();
     }
 
+    /**
+     * Attempts one log call, temporarily hiding exact MDC collisions. A Throwable
+     * record lets the backend supply error.*; do not also add error.type.
+     * @param throwable optional cause; null emits without exception metadata
+     */
     public void log(Throwable throwable) {
-        if (!enabled()) {
-            return;
-        }
-        try (var ignored = collisionScope()) {
-            write(builder(), throwable);
-        }
-    }
-
-    private MdcScope collisionScope() {
-        var scope = MdcScope.open();
-        fields.keySet().forEach(scope::hide);
-        return scope;
-    }
-
-    private boolean enabled() {
-        return switch (level) {
-            case TRACE -> logger.isTraceEnabled();
-            case DEBUG -> logger.isDebugEnabled();
-            case INFO -> logger.isInfoEnabled();
-            case WARN -> logger.isWarnEnabled();
-            case ERROR -> logger.isErrorEnabled();
-        };
-    }
-
-    private LoggingEventBuilder builder() {
-        return switch (level) {
-            case TRACE -> logger.atTrace();
-            case DEBUG -> logger.atDebug();
-            case INFO -> logger.atInfo();
-            case WARN -> logger.atWarn();
-            case ERROR -> logger.atError();
-        };
-    }
-
-    private void write(LoggingEventBuilder builder, Throwable throwable) {
-        for (var entry : fields.entrySet()) {
-            builder = builder.addKeyValue(entry.getKey().key(), entry.getValue());
-        }
-        if (throwable != null) {
-            builder = builder.setCause(throwable);
-        }
-        builder.log(message != null ? message : "");
+        delegate.log(throwable);
     }
 }

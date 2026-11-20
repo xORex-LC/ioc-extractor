@@ -6,28 +6,24 @@ import org.yaml.snakeyaml.error.MarkedYAMLException;
 /**
  * Value-free operator diagnostic extracted from a SnakeYAML parser failure.
  *
- * <p>The source line itself is deliberately omitted because configuration may contain
- * secret placeholders or, on a misconfigured host, literal credentials.</p>
+ * <p>Only numeric coordinates cross this boundary. Parser problem text can contain
+ * aliases, scalar values or source fragments, even when the source line is omitted.</p>
  */
 final class IocYamlFailureDetails {
 
-    private static final int MAX_PROBLEM_LENGTH = 200;
-
     private final int line;
     private final int column;
-    private final String problem;
 
-    private IocYamlFailureDetails(int line, int column, String problem) {
+    private IocYamlFailureDetails(int line, int column) {
         this.line = line;
         this.column = column;
-        this.problem = problem;
     }
 
     static IocYamlFailureDetails from(MarkedYAMLException failure) {
         Mark mark = failure.getProblemMark();
         int line = mark == null ? -1 : mark.getLine() + 1;
         int column = mark == null ? -1 : mark.getColumn() + 1;
-        return new IocYamlFailureDetails(line, column, sanitize(failure.getProblem()));
+        return new IocYamlFailureDetails(line, column);
     }
 
     String description(String source) {
@@ -37,8 +33,7 @@ final class IocYamlFailureDetails {
         return String.join(System.lineSeparator(),
                 "CONFIG.YAML_INVALID",
                 "YAML configuration is not syntactically valid.",
-                "Location: " + location,
-                "Parser: " + problem);
+                "Location: " + location);
     }
 
     static String action() {
@@ -46,14 +41,5 @@ final class IocYamlFailureDetails {
                 "Correct the YAML syntax before restarting the service.",
                 "For an installed service, validate and atomically apply a candidate with:",
                 "  sudo <prefix>/bin/ioc-config apply <candidate.yml>");
-    }
-
-    private static String sanitize(String value) {
-        String normalized = value == null || value.isBlank()
-                ? "YAML parser rejected the document"
-                : value.replaceAll("[\\r\\n\\t]+", " ").trim();
-        return normalized.length() <= MAX_PROBLEM_LENGTH
-                ? normalized
-                : normalized.substring(0, MAX_PROBLEM_LENGTH) + "...";
     }
 }

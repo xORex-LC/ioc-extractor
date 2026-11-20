@@ -5,11 +5,17 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.context.event.ApplicationEnvironmentPreparedEvent;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.context.properties.source.ConfigurationPropertyName;
+import org.springframework.boot.context.properties.source.ConfigurationPropertySources;
+import org.springframework.boot.context.properties.source.IterableConfigurationPropertySource;
 import org.springframework.boot.diagnostics.FailureAnalysis;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.env.MapPropertySource;
 
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -21,14 +27,17 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.OptionalInt;
 
 /**
- * Side-effect-free strict binding and semantic preflight for one IOC YAML file.
+ * Strict binding and semantic preflight using an explicit IOC YAML candidate.
  *
  * <p>The check starts a deliberately minimal Spring context containing only the
  * configuration-properties model and its preflight infrastructure. Runtime
- * composition, storage, schedulers and transport adapters are not scanned.</p>
+ * composition, storage, schedulers and transport adapters are not scanned. Boot
+ * imports and effective environment overrides still participate. Console output
+ * is temporarily suppressed, so this is a command path, not an embedded runner.</p>
  */
 public final class IocSemanticConfigurationCheck {
 
@@ -40,10 +49,7 @@ public final class IocSemanticConfigurationCheck {
             "org.springframework.boot.context.logging.", "LoggingApplicationListener");
     private static final Object VALIDATION_MONITOR = new Object();
     private static final List<String> FORBIDDEN_CONFIG_ARGUMENTS = List.of(
-            "--spring.config.location=",
-            "--spring.config.additional-location=",
-            "--spring.config.import=",
-            "--spring.config.name=");
+            "location", "additionallocation", "import", "name");
 
     private IocSemanticConfigurationCheck() {
     }
@@ -149,7 +155,15 @@ public final class IocSemanticConfigurationCheck {
     }
 
     private static boolean controlsConfigLoading(String argument) {
-        return FORBIDDEN_CONFIG_ARGUMENTS.stream().anyMatch(argument::startsWith);
+        if (!argument.startsWith("--")) {
+            return false;
+        }
+        String key = argument.substring(2).split("=", 2)[0];
+        ConfigurationPropertyName name = ConfigurationPropertyName.adapt(key, '.');
+        return name.getNumberOfElements() >= 3
+                && "spring".equals(name.getElement(0, ConfigurationPropertyName.Form.UNIFORM))
+                && "config".equals(name.getElement(1, ConfigurationPropertyName.Form.UNIFORM))
+                && FORBIDDEN_CONFIG_ARGUMENTS.contains(name.getElement(2, ConfigurationPropertyName.Form.UNIFORM));
     }
 
     private static String className(String packageName, String simpleName) {
@@ -162,7 +176,7 @@ public final class IocSemanticConfigurationCheck {
         return OptionalInt.of(CONFIGURATION_ERROR_EXIT_CODE);
     }
 
-    private static void reportFailure(Path path, RuntimeException failure, PrintWriter err) {
+    static void reportFailure(Path path, RuntimeException failure, PrintWriter err) {
         err.println("CONFIG.SEMANTIC_INVALID: " + path);
         if (findCause(failure, SemanticSourceOverrideException.class) != null) {
             err.println("CONFIG.SEMANTIC_SOURCE_OVERRIDE");
@@ -175,23 +189,7 @@ public final class IocSemanticConfigurationCheck {
             err.println(analysis.getAction());
             return;
         }
-        Throwable informative = informativeCause(failure);
-        err.println(informative.getClass().getSimpleName());
-        if (informative.getMessage() != null && !informative.getMessage().isBlank()) {
-            err.println(informative.getMessage());
-        }
-    }
-
-    private static Throwable informativeCause(Throwable failure) {
-        Throwable current = failure;
-        Throwable informative = failure;
-        while (current != null) {
-            if (current.getMessage() != null && !current.getMessage().isBlank()) {
-                informative = current;
-            }
-            current = current.getCause();
-        }
-        return informative;
+        err.println(IocConfigurationCheckFailure.from(failure).description());
     }
 
     private static <T extends Throwable> T findCause(Throwable failure, Class<T> type) {
@@ -210,9 +208,26 @@ public final class IocSemanticConfigurationCheck {
 
         @Override
         public void onApplicationEvent(ApplicationEnvironmentPreparedEvent event) {
-            if (event.getEnvironment().containsProperty("spring.main.sources")) {
+            var environment = event.getEnvironment();
+            ConfigurationPropertyName root = ConfigurationPropertyName.of("spring.main.sources");
+            for (var source : ConfigurationPropertySources.get(environment)) {
+                if (source instanceof IterableConfigurationPropertySource iterable
+                        && iterable.stream().anyMatch(name -> root.equals(name) || root.isAncestorOf(name))) {
+                    throw new SemanticSourceOverrideException();
+                }
+            }
+            // Opaque sources cannot enumerate declarations. Bind only names of sources,
+            // never classes, so even that fallback cannot instantiate an extra source.
+            if (environment.containsProperty("spring.main.sources")
+                    || Binder.get(environment).bind("spring.main.sources", Bindable.listOf(String.class)).isBound()) {
                 throw new SemanticSourceOverrideException();
             }
+            // These flags belong to the short-lived checker, regardless of runtime settings.
+            environment.getPropertySources().addFirst(new MapPropertySource("iocSemanticContext", Map.of(
+                    "spring.main.lazy-initialization", false,
+                    "spring.main.keep-alive", false,
+                    "spring.main.register-shutdown-hook", false,
+                    "spring.main.log-startup-info", false)));
         }
     }
 
@@ -221,7 +236,7 @@ public final class IocSemanticConfigurationCheck {
         private static final long serialVersionUID = 1L;
     }
 
-    /** Prevents effective logging configuration from exposing values during validation. */
+    /** Suppresses command-console noise; this does not control arbitrary logging appenders. */
     private static final class ConsoleOutputScope {
 
         private final PrintStream standardOutput;

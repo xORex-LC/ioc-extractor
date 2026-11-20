@@ -79,7 +79,7 @@ public final class SliceCompletedPublishListener {
     }
 
     private MdcScope mdc(SliceCompleted event, PublishTarget target) {
-        return MdcScope.open()
+        return MdcScope.open(scope -> scope
                 .put(LogField.IOC_RUN_ID, event.metadata().correlationId())
                 .put(LogField.IOC_EVENT_ID, event.metadata().eventId())
                 .put(LogField.IOC_EVENT_TYPE, event.metadata().eventType())
@@ -89,6 +89,6 @@ public final class SliceCompletedPublishListener {
                 .put(LogField.IOC_EXPORT_PROFILE, event.profile())
                 .put(LogField.IOC_EXPORT_SLICE_ID, event.sliceId())
                 .put(LogField.IOC_SYNC_TARGET, target.targetId())
-                .put(LogField.IOC_SYNC_ENDPOINT, target.endpoint());
+                .put(LogField.IOC_SYNC_ENDPOINT, target.endpoint()));
     }
 }

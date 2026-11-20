@@ -24,6 +24,10 @@
     <dependencies>
         <dependency>
             <groupId>io.github.xorex-lc</groupId>
+            <artifactId>ioc-events-spring</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.xorex-lc</groupId>
             <artifactId>ioc-platform-diagnostics-api</artifactId>
         </dependency>
 
@@ -41,12 +45,16 @@
             <artifactId>ioc-platform-etl</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.iocextractor</groupId>
+            <groupId>io.github.xorex-lc</groupId>
             <artifactId>ioc-platform-events</artifactId>
         </dependency>
         <dependency>
             <groupId>io.github.xorex-lc</groupId>
             <artifactId>ioc-platform-concurrency</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.xorex-lc</groupId>
+            <artifactId>ioc-platform-logging-slf4j</artifactId>
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>
@@ -72,6 +80,10 @@
         </dependency>
 
         <!-- Adapter production universe. -->
+        <dependency>
+            <groupId>io.github.xorex-lc</groupId>
+            <artifactId>ioc-config-spring-boot</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>
             <artifactId>ioc-adapter-regex-re2j</artifactId>

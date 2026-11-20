@@ -92,8 +92,7 @@ public final class SqliteUserVersionSchemaMigrator {
             if (applied.isEmpty()) {
                 LogEvents.debug(LOGGER)
                         .action(EventAction.SCHEMA_MIGRATE)
-                        .outcome(EventOutcome.UNKNOWN)
-                        .field(LogField.EVENT_TYPE, "skipped")
+                        .field(LogField.IOC_OPERATION_DISPOSITION, "skipped")
                         .field(LogField.IOC_DB_ROLE, dbRole)
                         .field(LogField.IOC_SCHEMA_VERSION, targetVersion)
                         .message("sqlite schema already current")

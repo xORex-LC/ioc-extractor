@@ -18,16 +18,16 @@ public final class LoggingPipelineObserver implements PipelineObserver {
 
     @Override
     public AutoCloseable openRun(EnvelopeMeta meta) {
-        return MdcScope.open()
+        return MdcScope.open(scope -> scope
                 .put(LogField.IOC_RUN_ID, meta.runId())
                 .put(LogField.IOC_SOURCE_ID, meta.sourceId())
                 .put(LogField.IOC_SOURCE_PATH, meta.attributes().get(LogField.IOC_SOURCE_PATH.key()))
-                .put(LogField.IOC_MODE, meta.attributes().get(LogField.IOC_MODE.key()));
+                .put(LogField.IOC_MODE, meta.attributes().get(LogField.IOC_MODE.key())));
     }
 
     @Override
     public AutoCloseable openStage(EnvelopeMeta meta) {
-        return MdcScope.open().put(LogField.IOC_STAGE, meta.stage().value());
+        return MdcScope.open(scope -> scope.put(LogField.IOC_STAGE, meta.stage().value()));
     }
 
     @Override
