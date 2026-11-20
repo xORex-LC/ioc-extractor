@@ -1,69 +1,88 @@
 # adapters/adapter-transport-smb
 
-## Назначение
+## Purpose and boundary
 
-Outbound remote-transport adapter over **SMB2/3** (smbj): реализует
-`FileTransport` (list/stat/get/delete + atomic multi-file publish), managed
-dataframe-import ownership/source access/disposition/retention и опциональный
-`RemoteChangeSignalSource` (SMB2 `CHANGE_NOTIFY` doorbell для fetch/import).
+Outbound SMB2/3 integration for remote sync and managed dataframe import. The
+internal reactor artifact is `com.iocextractor:ioc-adapter-transport-smb`; it is
+neither a runnable application nor a separately published library.
 
-**Правило слоя:** держит только SMB-специфику (сессии, handles, timeouts,
-reconnect, server rename, file identity/share modes, marker-last publish,
-watch-lifecycle); discovery/dedup/ledger-логика
-остаётся в application. Наружу торчит контракт порта, не типы smbj.
+The module owns SMBJ clients, sessions, share handles, encryption negotiation,
+file operations and optional change notifications. Application ports own fetch
+and publish orchestration, delivery identity, retries, ledgers and reconciliation.
+A notification only requests detection; it never establishes delivery or commit.
 
-## Структура
+## Structure
 
-| Подпапка / файл | Назначение |
+| Directory / file | Responsibility |
 |---|---|
-| `pom.xml` | Maven module descriptor |
-| `SmbSessionPool` | Общий lazy endpoint-keyed pool для sync и managed import; сериализует endpoint operation и владеет reconnect/idle close |
-| `SmbTransportTelemetry` | Framework-free thread-safe snapshot активных connection/session/tree-connect leases, open/operation failures и resource exhaustion по bounded endpoint/role dimensions |
-| `SmbFileTransport` | `FileTransport`: list/stat/get/delete + `publishAtomically` поверх общего pool |
-| `SmbShareClient` / `SmbjShareClient` (+ `Factory`) | Обёртка над smbj share; открытие/аутентификация/операции |
-| `SmbManagedImportSourceLifecycle` | Positive pre-provisioned namespace probe, server-side claim rename, orphan adoption, write-exclusive claimed-byte access, remote disposition и exact terminal-source purge |
-| `SmbImportChangeSignalSource` | Source-scoped import doorbells поверх transport-neutral watch port |
-| `SmbEndpointSettings` / `SmbEncryptionPolicy` | Настройки соединения (host/share/domain/creds/encryption policy/таймауты); пароль — defensive copy, `<redacted>` в `toString` |
-| `ConnectTimeoutSocketFactory` | Настоящий TCP connect-timeout (smbj его не даёт) |
-| `SmbExceptionMapper` | smbj/IO ошибки → `RemoteTransportException` с `RemoteErrorKind`; resource/quota NTSTATUS классифицируются по raw numeric status, включая отсутствующие в enum smbj |
-| `SmbChangeNotifyWatcher` | `RemoteChangeSignalSource`: выделенная watch-сессия, doorbell-callback, re-arm/overflow/lease, capped backoff |
-| `Smb*ChangeNotify{Session,Pending,Result,SessionFactory}` | Тестируемый SPI-seam вокруг `CHANGE_NOTIFY`; `Smbj…` — реализация на smbj |
-| `SmbRemoteEntry` | Внутреннее remote evidence: path, size, last-write time, directory bit и server file ID |
+| [pom.xml](pom.xml) | Application ports, SMBJ and test-support dependencies |
+| [Production package](src/main/java/com/iocextractor/adapter/out/transport/smb/README.md) | Shared sessions, file transport, managed ownership, notifications and telemetry |
+| [Test package](src/test/java/com/iocextractor/adapter/out/transport/smb/README.md) | Offline fake-backed contracts and opt-in live-server qualification |
 
-## Зависимости
+Production and test sources each occupy one package. There are no module-local
+resource trees. The production README maps the concrete types; the test README
+owns fixture requirements and commands for external suites.
 
-**Зависит от:** `ioc-application` (порты `FileTransport`,
-`RemoteChangeSignalSource`, sync value objects), `ioc-domain`, platform
-errors/observability, **smbj** (единственная внешняя transport-библиотека
-модуля), SLF4J API.
+## Dependencies
 
-**Не импортируется:** bootstrap и соседние адаптеры. Один модуль = одна внешняя
-библиотека/интеграция (SMB): смена транспорта затрагивает только этот модуль.
+Production directly depends on `ioc-application` and SMBJ. Application supplies
+inward ports/models and transitively supplies domain/platform contracts.
+`ioc-application-tck` is test-scoped for shared test annotations. The parent owns
+versions and the Java 21 baseline; inspect the POM/dependency tree for the current
+SMBJ runtime dependencies rather than maintaining another version list here.
 
-Managed import не расширяет read-only контракт ordinary sync fetch. Runtime не
-создаёт `.ioc-managed-import/{processing,terminal,quarantine,probe}`: operator
-provisions namespace/ACL, adapter проверяет положительный private-object flow.
-Локальный snapshot хранится общей реализацией за application port, переданной
-composition root; SMB module не зависит от `adapter-ingest`.
+SMBJ types remain local. Production has no Spring, bootstrap, metrics-framework
+or sibling-adapter dependency. The shared local snapshot implementation is
+injected through `ImportSnapshotStore`, without coupling to `adapter-ingest`.
 
-Encryption policy также остаётся общей для ordinary sync и managed import:
-`required` допускает только SMB3 и проверяет effective session encryption до
-share I/O, `preferred` явно разрешает fallback, `disabled` не запрашивает
-client-preferred encryption. Policy mismatch публикуется как общий
-`SECURITY_POLICY_UNMET`, а SMBJ mechanics не выходят из adapter.
+## Entry points and contracts
 
-SMB session capacity не discoverable через обычный client protocol. Adapter
-считает только установленные ресурсы, которыми владеет приложение, и переводит
-серверные resource/quota отказы в общий `RESOURCE_EXHAUSTED`. Micrometer и
-Actuator проецируют framework-free snapshot только в bootstrap.
+[SyncConfig](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/SyncConfig.java)
+constructs a lazy `SmbSessionPool`, `SmbFileTransport`, `SmbChangeNotifyWatcher`
+and shared telemetry when sync or import is enabled. Import uses the same endpoint
+catalog and pool through
+[DataframeImportRuntimeConfiguration](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/DataframeImportRuntimeConfiguration.java).
+Bootstrap owns configuration binding, idle-close scheduling, metrics and health.
 
-## Связанные документы
+One pool serializes operations for each logical endpoint name; different names
+have separate lanes. Watch workers use dedicated connections so long-lived
+`CHANGE_NOTIFY` requests do not occupy a pooled file-operation lane. This is
+process-local coordination, not fencing against another service or SMB client.
 
-- Способность целиком: [../../docs/dev/sync.md](../../docs/dev/sync.md).
-- Гайд по эксплуатации/настройке SMB-шары:
-  [../../docs/guides/remote-storage-sync.md](../../docs/guides/remote-storage-sync.md).
-- Гайд managed import namespace/ACL:
-  [../../docs/guides/dataframe-import.md](../../docs/guides/dataframe-import.md#submit-an-smb-delivery).
-- Решения: ADR [0011](../../docs/ADR/0011-remote-sync.md),
-  [0013](../../docs/ADR/0013-event-driven-coordination.md),
-  [0024](../../docs/ADR/0024-managed-dataframe-import.md).
+`REQUIRED` encryption restricts negotiation to SMB3 and checks effective session
+encryption before connecting the share. `PREFERRED` allows unencrypted fallback;
+`DISABLED` removes the client preference and does not forbid server-required
+encryption. Custom TCP ports apply to both pooled operations and watches.
+Connect, request and idle timeouts have distinct purposes, described in the
+production README.
+
+Publish uploads into a temporary sibling directory, writes the marker last,
+checks remote sizes and renames to the final slice path. Matching committed
+markers are idempotent success. Marker-less final directories are treated as
+adapter-owned partial output and may be deleted recursively: dedicate the target
+to the publisher. This protocol does not supply cross-process publication locks
+or a fresh remote checksum audit on an idempotent retry.
+
+Managed import claims producer files by server rename into an operator-provisioned
+private namespace before downloading. It checks server identity/metadata around
+materialization and delegates durable local snapshot publication to the snapshot
+store. Its positive capability probe cannot certify producer denial or qualify
+an arbitrary server's ACL/rename/share-mode behavior. Keep ordinary sync-fetch
+sources read-only; managed import has a separate mutating ownership contract.
+
+## Verification and related docs
+
+Run from the repository root:
+
+```bash
+make test-module MODULE=adapters/adapter-transport-smb
+make test-integration-module MODULE=adapters/adapter-transport-smb
+```
+
+Full reactor acceptance uses `make verify`. External suites are discovered but
+skip unless enabled; a green offline gate is not live SMB qualification.
+See [sync internals](../../docs/dev/sync.md),
+[event coordination](../../docs/dev/event-coordination.md),
+[remote-sync operations](../../docs/guides/remote-storage-sync.md),
+[managed-import operations](../../docs/guides/dataframe-import.md) and
+[OPS-8](../../docs/KNOWN-ISSUES.md#ops-8) for deployment requirements and open qualification.

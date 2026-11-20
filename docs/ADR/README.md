@@ -1,75 +1,105 @@
-# Dev-документация
+# Architecture Decision Records
 
-## Назначение
+## Purpose
 
-Комплект документов для разработчиков: история обсуждений и **решений**
-(ADR-lite), контекст реализации и причины выбора подходов. В отличие от
-релизных документов верхнего уровня, эти файлы фиксируют «почему так» и историю
-выбора, а не являются пользовательским описанием продукта.
+These records explain why a decision was made at a particular point in time:
+context, alternatives, trade-offs, consequences and subsequent dated amendments.
+They are historical evidence, not a description of the current implementation.
+For current behavior, follow the [architecture map](../ARCHITECTURE.md),
+[module map](../MODULARIZATION.md) and [capability documentation](../dev/).
 
-**Правило:** один документ — одно направление/решение. Нумерация по порядку
-(`NNNN-slug.md`). Принятое решение отражается в основных доках
-(`architecture.md`, `ingestion.md`, …); dev-документ остаётся как обоснование.
+Accepted decisions are append-only. A new decision or a dated superseding note
+records a change; earlier reasoning remains available. One record covers one
+coherent decision or direction, identified by its stable `NNNN-slug.md` path.
+A historical implementation plan, status or example must be read in its dated context.
 
-## Структура
+## Languages and historical preservation
 
-| Файл | О чём |
-|---|---|
-| `0000-foundations.md` | Фундамент: гексагон+onion, Maven, Spring Boot (CLI), RE2/J+JDK, Tika, CSV-артефакты |
-| `0001-streaming-ingestion.md` | Стриминговый демон-инжест: детект, автомат каталогов, идемпотентность, retention, параллелизм |
-| `0002-output-mapping-and-matching.md` | Конфигурируемое заполнение артефактов + 4-вариантная классификация (PSL), id-фикс |
-| `0003-diagnostics.md` | Подсистема диагностики: каталог, шаблоны (JSON-схема №8 отменена в пользу ECS — см. 0007) |
-| `0004-extraction-and-test-corpus.md` | Типы/нормализация (.onion, telegram), тест-корпус и изоляция тестов |
-| `0005-services-and-pipeline.md` | DDD-сервисы, ETL-конвейер (P&F+Envelope+Result), границы, модульность |
-| `0006-design-review-refinements.md` | Уточнения по итогам ревью: SourceFeed/driving-порт, PSL в адаптере, статусы инжеста, стабильные id, лимит DSL |
-| `0007-logging-observability.md` | Логирование/observability как отдельная подсистема: ECS, MDC←Envelope, отмена 0003 №8 |
-| `0008-stage-6-8-implementation-followups.md` | Ревью реализации этапов 6–8: устранённые находки + отложенный техдолг (D1 интеграция diagnostics, D3 ECS-типы; D2 закрыт этапом 9) |
-| `0009-modularization-granularity.md` | Гранулярность реактора (14 модулей, единый `ioc-domain`); coupling vs cross-cut; критерий выноса capability; `refang` — кандидат №1; защита границ слоями (Maven/Enforcer/ArchUnit), Modulith отложен |
-| `0010-health-actuator.md` | Health/Actuator по HTTP только в daemon (`DaemonWebEnvironmentPostProcessor` гейтит по `runtime.mode`), loopback-bind, прижатый пул Tomcat, systemd-hardening; задел под web driving-adapter (ING-8) |
-| `0011-remote-sync.md` | Двунаправленная синхронизация с внешними хранилищами (`ioc.sync`, SMB/smbj): transport-neutral fetch → inbox и publish verified export slices, JDBC ledgers, daemon/CLI/health. **Реализовано (S0–S8).** |
-| `0012-streaming-dataframe-emission.md` | Реализованный Artifact Emission поверх БД-truth: atomic revision, strict streaming snapshot, immutable complete-slices + manifest/`_SUCCESS`, CAS saga/recovery, CLI/daemon cadence, health и slice retention. Готовый локальный контракт потребляется будущей доставкой 0011. **Реализовано (C0–C11)** |
-| `0013-event-driven-coordination.md` | Гибридная модель координации: control-plane события (`ApplicationEventPublisher` за framework-free портом `ControlEventPublisher`/`platform-events`) + transformation на `platform-etl` (library, не SI) + edge-IO на Spring Integration; detection ⊥ execution, smart-poll fetch / event-driven publish, correctness-via-reconcile, YAGNI-seam'ы (DLQ/outbox/CHANGE_NOTIFY). **Несущий anti-broker инвариант** (платформа = event model + publish contract, доставка/durable — адаптеры; Modulith/брокер за портом). Reference-grounded (EIP, Fowler Event Notification, Spring Modulith, Richardson outbox). Реализует OPS-4 и «Post-v1 уточнение» 0011. **Реализовано базовое ядро S0–S8; durable outbox/broker/CHANGE_NOTIFY остаются отложенными seam'ами.** |
-| `0014-event-driven-ingest-to-delivery.md` | Расширение 0013 на цепочку `ingest → export → delivery` (не supersede): инвариант «эмитить факт везде, где он становится истиной» (recovery тоже эмитит `SliceCompleted`); ingest→export fast-path `CanonicalArtifactsChanged` вместо poll-over-revision; delivery fan-out (`SliceCompleted` — факт, N независимых consumers со своими ledger'ами + обобщённый retention guard над `DeliverySink`); retention остаётся periodic, event-nudge отложен. Аддитивно, backstop'ы сохраняются. Связь: EXP-3, OPS-4, ING-7. **Принято; Р1/Р2 реализованы и проверены на стенде, Р3/Р4 остаются trigger-deferred design state.** |
-| `0015-retire-legacy-csv-lookup-storage.md` | Вывод legacy CSV lookup/storage-режима после перехода dataframe truth на SQLite/JDBC: `lookup.contains` больше не application policy, storage dedup/provenance принадлежит canonical repository (`row_key` + `<artifact>_sources`), batch-dedup остаётся only within-run, `LookupRepository` разделяется на удаляемый existence check и узкий id-baseline seam, CSV остаётся только projection/export. |
-| `0016-config-preflight-strict-binding.md` | Надёжность конфигурации (блок CFG): единый startup preflight для `ioc.*` до runtime graph; semantic collect-all через `configurationPropertiesValidator`, unknown/deprecated keys через reflection-shape preflight + legacy `FailureAnalyzer`, ссылочная целостность config→config (identity↔sink, key-columns⊆columns, дубликаты, id policy), registry-backed keys до обработки файла/записи; compact-конструкторы — только нормализация/дефолты; tombstones удалены из модели; закрытые словари → enum/value types, ранние consumers и `IocProperties` используют одну грамматику, `id.start` — sealed value contract. `IOC_*` также строгий через schema-aware matcher; успешный старт показывает value-free winning overrides. **Реализовано 2026-07-09--10 (`b0e5157..2c224c2`).** |
-| `0017-diagnostics-first-class-outcome.md` | Диагностика как first-class processing outcome (OBS-D1): envelope policy и saga state machine остаются разными контурами; `DiagnosticImpact` фиксирует ELEMENT/RUN/OPERATION; runner исполняет exactly-once flush до policy без re-emit; `failure-policy` и bounded accumulation конфигурируемы, а `ExtractionResult` возвращает completion quality + diagnostic summary. Write-path разделён на side-effect-free artifact preparation → policy checkpoint → canonical commit; classification и TRACE питаются едиными pure domain decision outcomes. Raw context проходит redaction; resilient sink не меняет outcome; durable quarantine/report/occurrence delivery оставлены за явными seams без broker. **Принято 2026-07-12; реализовано 2026-07-13 (`354c5c6..32b4202`, review fixes `d34b733`, `c990b98`).** |
-| `0018-typed-ecs-structured-logging.md` | Типизированный ECS logging contract (OBS-D3): ambient string correlation остаётся в MDC, event-local duration/counts/boolean идут через SLF4J 2 key/value pairs; `LogField` получает исполнимый JSON scalar type и generated catalog, arbitrary keys/numeric MDC запрещаются. Wire-format migration, collision semantics, async/concurrency и будущий generated Elasticsearch component-template seam описаны явно. **Принято и реализовано 2026-07-16; baseline/physical representation частично superseded ADR-0019.** |
-| `0019-spring-boot-4-nested-ecs.md` | Финальный framework baseline релиза (изначально 0.1.1, retargeted на 0.2.0 датированным дополнением): одна supported line Spring Boot `4.0.x` (`4.0.7` candidate), Boot 3.5 только migration bridge. Фиксирует nested ECS JSON как публичный wire format, узкую роль `IocEcsStructuredLogEncoder`, SemVer disposition, plan B и exact-candidate smoke evidence. **Принято и реализовано 2026-07-21; финальный candidate smoke остаётся release gate.** |
-| `0020-canonical-record-expiration-lifecycle.md` | Record validity принадлежит canonical artifact lifecycle; internal `valid_until`, exact active-read predicate, bounded expiration/history reconciliation, explicit one-way legacy activation, clock safety и duplicate-receipt fallback образуют один согласованный data-quality contract. Existing public schemas остаются неизменными. **Принято 2026-08-16; P1–P9 и финальная packaged qualification завершены 2026-09-01. §4 об external ID superseded ADR-0021, physical reconcile journal/scheduling — ADR-0023.** |
-| `0021-stable-reusable-export-slots.md` | Внешний artifact `id` отделяется от canonical/lifecycle identity и трактуется как stable sparse reusable export slot: surviving active rows не перенумеровываются, expired slots освобождаются при следующем eligible export, новые rows занимают минимальные holes. Узко supersede'ит ADR-0020 §4. **Принято 2026-08-19; P7 и packaged qualification завершены 2026-09-01.** |
-| `0022-revision-significant-identical-export.md` | Byte-identical candidate нельзя считать избыточным, если manifest покрывает более новую `artifact_revision`: новая lifecycle после TTL создаёт новый immutable slice и delivery; одинаковые plan/hash/revision всё ещё допускают `SKIPPED` при recovery. Узко supersede'ит content-only skip ADR-0012. **Принято и реализовано 2026-08-22; packaged qualification завершена 2026-09-01.** |
-| `0023-bounded-lifecycle-reconciliation-runtime.md` | Five-second lifecycle backstop остаётся correctness path, но пустой tick лишь обновляет nearest deadline; реальные cycles обновляют singleton checkpoint, а history retention получает independent cadence. Узко supersede'ит append-only physical cycle и coupled scheduling из ADR-0020. **Принято и реализовано 2026-08-23; qualification завершена 2026-09-01.** |
-| `0024-managed-dataframe-import.md` | Управляемый contract-driven импорт CSV-поставок в SQLite truth: occurrence identity, compiled source/authority catalog, active-only tri-state patch, atomic cross-artifact promotion, service-ledger + dataframe receipt recovery, requested sparse export slots и events-as-hints. Узко supersede'ит запрет CSV input из ADR-0015, не возвращая lookup/seed storage. **Принято 2026-08-23; P0-P9 и packaging gate завершены 2026-09-01, внешний H5 scope ограничен ADR-0025/`OPS-8`.** |
-| `0025-managed-import-smb-service-namespace-and-terminal-retention.md` | SMB managed import использует заранее подготовленный private service namespace и source-scoped capability gate; общие readiness/snapshot/retention contracts и managed-object identity остаются transport-neutral, а SMB adapter владеет только protocol/namespace mechanics. Remote terminal/quarantine remnants удаляются exact-object retention до local evidence, ledger row остаётся последней retry authority, replay не имеет remote occurrence. **Принято 2026-08-26; implementation и H1–H4 evidence завершены, недоступная two-identity H5 breadth явно отложена как `OPS-8`.** |
-| `0026-fail-closed-smb-encryption-policy.md` | Неоднозначный `encrypt: boolean` заменён closed policy `required|preferred|disabled`: secure default разрешает только SMB3 и проверяет effective session encryption до share I/O; policy mismatch получает общий terminal `SECURITY_POLICY_UNMET`, SMBJ остаётся в adapter. Узко supersede'ит encryption-конфигурацию ADR-0011. **Принято 2026-08-28; candidate реализован, live qualification pending.** |
-| `0027-rollback-safe-configuration-evolution.md` | Breaking configuration rename через shared operator-owned config проходит bounded expand/contract: typed compatibility alias, value-free warning, dual-key semantic rejection и удаление только после retirement старого rollback point. Узко supersede'ит immediate `encrypt` rejection из ADR-0026 и уточняет tombstone rule ADR-0016. **Принято 2026-08-29; первый overlap реализован для SMB encryption selector.** |
+The canonical paths below contain English. Russian counterparts are under `ru/`.
+The translation migration covers ADR-0000–ADR-0048 and does not audit their decisions
+against current code or update their historical implementation claims.
 
-| `0028-pilot-library-publication.md` | Пилотная JDK-only concurrency-библиотека: отдельные Maven-координаты, независимый consumer POM, Central и GitHub Packages, однократная сборка/подпись и восстановление публикации из неизменного bundle. **Принято 2026-09-07; live qualification pending.** |
-| `0029-release-branch-library-publication.md` | Публикация concurrency-библиотеки из `release-X.Y.Z` по отдельному component-тегу при общей версии с продуктом; default branch содержит workflow только для регистрации ручного запуска. Узко supersede'ит branch/tag selection из ADR-0028. **Принято 2026-09-08; live qualification pending.** |
-| `0030-registered-observation-order-for-artifact-fields.md` | Dataframe-owned monotonic observation order resolves mutable artifact fields independently of completion order; document/import/oneshot coordination retains occurrence identity across retry and recovery, with file and JDBC daemon journals behind one port. **Принято 2026-09-26; реализовано и квалифицировано для 0.3.0.** |
-| [0031-bounded-camel-preparation-runtime.md](0031-bounded-camel-preparation-runtime.md) | Embedded Camel for bounded preparation behind inward ports; selected document/import integration is active and P6 qualification is recorded in the dated implementation note. |
+- ADR-0000–ADR-0019 were written in Russian. Their English versions are labelled
+  translations; the Russian originals are retained under `ru/`.
+- ADR-0020–ADR-0048 were written in English. Those original files remain byte-for-byte
+  unchanged; their Russian versions are labelled translations.
+- As explicitly approved for this migration, moving the Russian originals changes
+  **only relative Markdown link addresses**, so they still resolve to the same
+  **English canonical destinations**. Decision prose, dates, statuses and examples
+  remain unchanged. Original bytes remain available in the recorded Git revisions.
+- Fenced historical examples, including comments and diagram labels, are reproduced
+  verbatim in translations. They are historical exhibits, not newly qualified commands.
+- Translations retain explicit anchors for headings in the original language, keeping
+  existing fragment links usable at the canonical paths.
 
-| [0032-invocation-owned-ioc-semantic-reuse.md](0032-invocation-owned-ioc-semantic-reuse.md) | Ограниченное переиспользование семантики IOC в документной сессии и одной строке импорта; полный ключ классификации, текущий source при host reuse и явное закрытие до checkpoint. |
+[Translation provenance](translation-provenance.tsv) records each source's baseline
+revision/hash, the migration input revision/hash, and both resulting paths/hashes.
+The separate migration identity preserves the previously approved URL-only repair
+in ADR-0025 without overwriting its earlier baseline identity.
+[Link rebases](translation-link-rebases.tsv) enumerates every approved address change
+in relocated Russian originals, including repeated occurrences.
 
-| [0033-bounded-semantic-reuse-during-import-staging.md](0033-bounded-semantic-reuse-during-import-staging.md) | Bounded LRU partitions and application-owned processed-import staging sessions; unchanged row participation and canonical authority. |
+## Records
 
-| [0034-required-router-processing-plans.md](0034-required-router-processing-plans.md) | Required document/processed-import Router plans, original-value production defaults and explicit observation selection; supersedes optional dispatch in ADR 0031. |
+| ID | Decision | English | Russian |
+|---|---|---|---|
+| ADR-0000 | Foundational decisions | [EN](0000-foundations.md) | [RU](ru/0000-foundations.md) |
+| ADR-0001 | Streaming ingestion (daemon) | [EN](0001-streaming-ingestion.md) | [RU](ru/0001-streaming-ingestion.md) |
+| ADR-0002 | Configurable artifact filling and four-variant classification | [EN](0002-output-mapping-and-matching.md) | [RU](ru/0002-output-mapping-and-matching.md) |
+| ADR-0003 | Diagnostics subsystem and logging | [EN](0003-diagnostics.md) | [RU](ru/0003-diagnostics.md) |
+| ADR-0004 | Extraction, patterns and test corpus | [EN](0004-extraction-and-test-corpus.md) | [RU](ru/0004-extraction-and-test-corpus.md) |
+| ADR-0005 | Services, pipeline and boundary enforcement | [EN](0005-services-and-pipeline.md) | [RU](ru/0005-services-and-pipeline.md) |
+| ADR-0006 | Refinements following design review | [EN](0006-design-review-refinements.md) | [RU](ru/0006-design-review-refinements.md) |
+| ADR-0007 | Logging/observability as a separate subsystem (ECS) | [EN](0007-logging-observability.md) | [RU](ru/0007-logging-observability.md) |
+| ADR-0008 | Stages 6–8 implementation review and technical debt | [EN](0008-stage-6-8-implementation-followups.md) | [RU](ru/0008-stage-6-8-implementation-followups.md) |
+| ADR-0009 | Module granularity and criteria for splitting the domain | [EN](0009-modularization-granularity.md) | [RU](ru/0009-modularization-granularity.md) |
+| ADR-0010 | Daemon Health / Actuator HTTP boundary | [EN](0010-health-actuator.md) | [RU](ru/0010-health-actuator.md) |
+| ADR-0011 | Synchronization with external storage (delivery/SMB) | [EN](0011-remote-sync.md) | [RU](ru/0011-remote-sync.md) |
+| ADR-0012 | Dataframe emission and export over DB truth (streaming) | [EN](0012-streaming-dataframe-emission.md) | [RU](ru/0012-streaming-dataframe-emission.md) |
+| ADR-0013 | Hybrid coordination: control-plane events + edge IO + ETL core | [EN](0013-event-driven-coordination.md) | [RU](ru/0013-event-driven-coordination.md) |
+| ADR-0014 | Event-driven coordination of the full chain: ingest → export → delivery | [EN](0014-event-driven-ingest-to-delivery.md) | [RU](ru/0014-event-driven-ingest-to-delivery.md) |
+| ADR-0015 | Retire legacy CSV lookup/storage mode | [EN](0015-retire-legacy-csv-lookup-storage.md) | [RU](ru/0015-retire-legacy-csv-lookup-storage.md) |
+| ADR-0016 | Configuration reliability: unified preflight + strict binding | [EN](0016-config-preflight-strict-binding.md) | [RU](ru/0016-config-preflight-strict-binding.md) |
+| ADR-0017 | Diagnostics as a first-class processing outcome (OBS-D1) | [EN](0017-diagnostics-first-class-outcome.md) | [RU](ru/0017-diagnostics-first-class-outcome.md) |
+| ADR-0018 | Typed ECS structured logs: event fields outside MDC | [EN](0018-typed-ecs-structured-logging.md) | [RU](ru/0018-typed-ecs-structured-logging.md) |
+| ADR-0019 | Spring Boot 4 baseline and nested ECS wire format | [EN](0019-spring-boot-4-nested-ecs.md) | [RU](ru/0019-spring-boot-4-nested-ecs.md) |
+| ADR-0020 | Canonical record validity and expiration lifecycle | [EN](0020-canonical-record-expiration-lifecycle.md) | [RU](ru/0020-canonical-record-expiration-lifecycle.md) |
+| ADR-0021 | Stable reusable export slots | [EN](0021-stable-reusable-export-slots.md) | [RU](ru/0021-stable-reusable-export-slots.md) |
+| ADR-0022 | Revision-significant identical export candidates | [EN](0022-revision-significant-identical-export.md) | [RU](ru/0022-revision-significant-identical-export.md) |
+| ADR-0023 | Bounded lifecycle reconciliation runtime state | [EN](0023-bounded-lifecycle-reconciliation-runtime.md) | [RU](ru/0023-bounded-lifecycle-reconciliation-runtime.md) |
+| ADR-0024 | Managed contract-driven dataframe import | [EN](0024-managed-dataframe-import.md) | [RU](ru/0024-managed-dataframe-import.md) |
+| ADR-0025 | Managed-import SMB service namespace and terminal retention | [EN](0025-managed-import-smb-service-namespace-and-terminal-retention.md) | [RU](ru/0025-managed-import-smb-service-namespace-and-terminal-retention.md) |
+| ADR-0026 | Fail-closed SMB encryption policy | [EN](0026-fail-closed-smb-encryption-policy.md) | [RU](ru/0026-fail-closed-smb-encryption-policy.md) |
+| ADR-0027 | Rollback-safe configuration evolution | [EN](0027-rollback-safe-configuration-evolution.md) | [RU](ru/0027-rollback-safe-configuration-evolution.md) |
+| ADR-0028 | Publish the concurrency pilot as an independent library | [EN](0028-pilot-library-publication.md) | [RU](ru/0028-pilot-library-publication.md) |
+| ADR-0029 | Release-branch publication with component tags | [EN](0029-release-branch-library-publication.md) | [RU](ru/0029-release-branch-library-publication.md) |
+| ADR-0030 | Registered observation order for mutable artifact fields | [EN](0030-registered-observation-order-for-artifact-fields.md) | [RU](ru/0030-registered-observation-order-for-artifact-fields.md) |
+| ADR-0031 | Bounded Camel preparation runtime | [EN](0031-bounded-camel-preparation-runtime.md) | [RU](ru/0031-bounded-camel-preparation-runtime.md) |
+| ADR-0032 | Invocation-owned IOC semantic reuse | [EN](0032-invocation-owned-ioc-semantic-reuse.md) | [RU](ru/0032-invocation-owned-ioc-semantic-reuse.md) |
+| ADR-0033 | Bounded semantic reuse during import staging | [EN](0033-bounded-semantic-reuse-during-import-staging.md) | [RU](ru/0033-bounded-semantic-reuse-during-import-staging.md) |
+| ADR-0034 | Required Router processing plans | [EN](0034-required-router-processing-plans.md) | [RU](ru/0034-required-router-processing-plans.md) |
+| ADR-0035 | Generation-owned mutable artifact projections | [EN](0035-generation-owned-mutable-projections.md) | [RU](ru/0035-generation-owned-mutable-projections.md) |
+| ADR-0036 | Sealed document preparation workspace | [EN](0036-sealed-document-preparation-workspace.md) | [RU](ru/0036-sealed-document-preparation-workspace.md) |
+| ADR-0037 | Profile-scoped export execution | [EN](0037-profile-scoped-export-execution.md) | [RU](ru/0037-profile-scoped-export-execution.md) |
+| ADR-0038 | Durable bounded document execution and writer admission | [EN](0038-durable-bounded-document-execution.md) | [RU](ru/0038-durable-bounded-document-execution.md) |
+| ADR-0039 | Workspace-owned streamed document source processing | [EN](0039-streamed-document-source-processing.md) | [RU](ru/0039-streamed-document-source-processing.md) |
+| ADR-0040 | Native sequential preparation dispatch | [EN](0040-native-sequential-preparation-dispatch.md) | [RU](ru/0040-native-sequential-preparation-dispatch.md) |
+| ADR-0041 | SQLite staged publication experiment | [EN](0041-sqlite-staged-publication-experiment.md) | [RU](ru/0041-sqlite-staged-publication-experiment.md) |
+| ADR-0042 | Retain Native SQLite production storage | [EN](0042-native-sqlite-production-storage.md) | [RU](ru/0042-native-sqlite-production-storage.md) |
+| ADR-0043 | Configurable CSV record endings and independent quoting | [EN](0043-configurable-csv-output-format.md) | [RU](ru/0043-configurable-csv-output-format.md) |
+| ADR-0044 | Extract a JDK-only diagnostics contract | [EN](0044-reusable-diagnostics-contract.md) | [RU](ru/0044-reusable-diagnostics-contract.md) |
+| ADR-0045 | Extract typed SLF4J logging and a scalar ECS profile | [EN](0045-reusable-slf4j-logging-contract.md) | [RU](ru/0045-reusable-slf4j-logging-contract.md) |
+| ADR-0046 | Extract Spring Boot configuration declaration inspection | [EN](0046-reusable-spring-boot-configuration-inspection.md) | [RU](ru/0046-reusable-spring-boot-configuration-inspection.md) |
+| ADR-0047 | Separate local event contracts from explicit Spring delivery | [EN](0047-explicit-spring-control-event-adapter.md) | [RU](ru/0047-explicit-spring-control-event-adapter.md) |
+| ADR-0048 | Independent library versions and reuse before duplication | [EN](0048-independent-library-versions-and-reuse.md) | [RU](ru/0048-independent-library-versions-and-reuse.md) |
 
-| [0039-streamed-document-source-processing.md](0039-streamed-document-source-processing.md) | Workspace-owned source streaming, lazy extraction/attribution, bounded parser admission and fatal-worker recovery. |
-| [0040-native-sequential-preparation-dispatch.md](0040-native-sequential-preparation-dispatch.md) | Native sequential branch consumers with isolated UnitOfWork; remove redundant dispatch/aggregation without a second runtime. |
-| [0041-sqlite-staged-publication-experiment.md](0041-sqlite-staged-publication-experiment.md) | Historical isolated versioned SQLite experiment; concluded without activation under ADR 0042. |
+## Authoring
 
-| [0042-native-sqlite-production-storage.md](0042-native-sqlite-production-storage.md) | Retain improved Native SQLite as the sole production backend; remove isolated versioned storage and experiment tooling while preserving shared preparation and recovery. |
-| [0043-configurable-csv-output-format.md](0043-configurable-csv-output-format.md) | Explicit LF/CRLF and independent header/data quoting, strict unquoted validation, unchanged v1 bytes and versioned layout manifests. |
-| [0044-reusable-diagnostics-contract.md](0044-reusable-diagnostics-contract.md) | Общий JDK-only контракт diagnostics: коды сервиса, чистые policy decisions, bounded samples и точные counts; локальные IOC-каталоги/исключения и отдельный допуск публикации. Принято 2026-10-18; удалённая публикация ожидает отдельного разрешения. |
-| [0045-reusable-slf4j-logging-contract.md](0045-reusable-slf4j-logging-contract.md) | Общий SLF4J API, восстановление MDC, скалярный профиль ECS и явное маскирование; IOC-каталоги и Boot backend остаются локальными. Синхронный рецепт и границы квалификации проверяются отдельно от публикации. Принято 2026-10-20. |
-| [0046-reusable-spring-boot-configuration-inspection.md](0046-reusable-spring-boot-configuration-inspection.md) | Общая проверка имён и наблюдение миграций по неизменяемому снимку; загрузка источников, binding, валидация значений и область отказа принадлежат сервису. Ограниченный контекст и закрытые входы проверяются раздельно; публикация требует отдельного допуска. Принято 2026-10-22. |
+New ADRs are written in English using the next sequential number. Include status,
+context, decisions with rationale and rejected alternatives, consequences and any
+open questions. Reflect accepted outcomes in their owning current documentation;
+link back to the ADR for the historical rationale.
 
-| [0047-explicit-spring-control-event-adapter.md](0047-explicit-spring-control-event-adapter.md) | Явный Spring publisher отдельно от JDK-контрактов; исходный Error, первичная ошибка публикации и ограничение резервного логирования; настройка обработчиков остаётся у сервиса. Принято 2026-10-24; публикация требует отдельной квалификации. |
-
-## Формат
-
-`Статус` · `Контекст` · `Решения` (выбор + обоснование + отклонённые варианты) ·
-`Следствия` · `Открытые вопросы`. Новые ADR пишутся на английском; существующие
-русские решения сохраняют свой язык и остаются append-only. Правило перехода —
-[CONVENTIONS.md](../CONVENTIONS.md).
+Follow [documentation conventions](../CONVENTIONS.md#languages-and-translations).
+The migration exception above is limited to preserving link destinations when
+relocating these originals; it does not permit rewriting historical decisions.

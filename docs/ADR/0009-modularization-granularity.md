@@ -1,100 +1,113 @@
-# 0009 — Гранулярность модулей и критерий разреза домена
+> English translation of the historical Russian record. Decision/status/dates are preserved. [Russian original](ru/0009-modularization-granularity.md) (relative link addresses rebased on relocation).
 
-## Статус
+<a id="0009--гранулярность-модулей-и-критерий-разреза-домена"></a>
+# 0009 — Module granularity and criteria for splitting the domain
 
-**Принято.** Определяет гранулярность реактора для этапа 9 и критерий, когда
-доменную capability выносить в отдельный артефакт.
+<a id="статус"></a>
+## Status
 
-## Контекст
+**Accepted.** Defines stage 9 reactor granularity and the criterion for extracting
+a domain capability into a separate artifact.
 
-Принцип проекта — «каждый агностичный сервис в своих границах, параллельная
-разработка, наглядность». Первый набросок плана давал ~19 модулей, в т.ч. 6
-отдельных доменных capability (`refang/extraction/features/classification/
-attribution/kernel`). Вопрос: не слишком ли это дробно и, наоборот, не провалены
-ли границы, раз новая фича задевает несколько стадий.
+<a id="контекст"></a>
+## Context
 
-## Решения
+The project principle is “each agnostic service within its own boundaries,
+parallel development, clarity”. The first draft yielded approximately 19 modules,
+including six separate domain capabilities (`refang/extraction/features/classification/
+attribution/kernel`). The question: is that too fine-grained, or conversely are
+boundaries failing because a new feature touches several stages?
 
+<a id="решения"></a>
+## Decisions
+
+<a id="1-coupling--cross-cutting-feature"></a>
 ### 1. Coupling ≠ cross-cutting feature
 
-«Изменение задевает несколько стадий» — **не** признак связанности. Это два
-разных понятия:
+“A change touches several stages” does **not** indicate coupling. These are two
+different concepts:
 
-- **Coupling** — изменение A вынужденно ломает B (A лезет во внутренности B).
-  Тест: «могу поменять внутренности `feature`, не трогая `classify`?». У нас
-  стадии общаются только через стабильные контракты (payload-records / доменные
-  типы), порядок — в одном `Pipeline`. Значит coupling **низкий**, границы целы.
-- **Cross-cutting feature** — одна бизнес-фича имеет аспект в нескольких
-  single-responsibility компонентах. При **горизонтальной** нарезке (по шагам
-  конвейера) любая фича вертикальна и пересекает несколько шагов. Это свойство
-  оси нарезки, не дефект границ.
+- **Coupling** means changing A necessarily breaks B (A reaches into B's internals).
+  Test: “can I change `feature` internals without touching `classify`?” Our stages
+  communicate only through stable contracts (payload records / domain types),
+  with ordering in one `Pipeline`. Thus coupling is **low** and boundaries intact.
+- **Cross-cutting feature** means one business feature has an aspect in several
+  single-responsibility components. With **horizontal** decomposition (pipeline
+  steps), every feature is vertical and crosses several steps. This is a property
+  of the decomposition axis, not a boundary defect.
 
-### 2. Ось «новый тип IOC» вынесена в конфиг, а не в код
+<a id="2-ось-новый-тип-ioc-вынесена-в-конфиг-а-не-в-код"></a>
+### 2. The “new IOC type” axis lives in configuration, not code
 
-Архитектура декларативна (паттерны, `classify.rules`, `refang.rules`, `columns`
-в `application.yml`). Поэтому:
+The architecture is declarative (patterns, `classify.rules`, `refang.rules`,
+`columns` in `application.yml`). Therefore:
 
-- тип в существующей структурной семье (hash/url/ip/domain-образный) —
-  **только конфиг** + значение в `IndicatorType` (kernel); код стадий не меняется;
-- структурно-новый тип (email `@`, IPv6) — трогает `kernel` (enum) и компонент,
-  работающий со структурой (`feature`), но каждый меняется независимо за своим
-  контрактом.
+- A type in an existing structural family (hash/url/ip/domain-like) requires
+  **configuration only** + an `IndicatorType` value (kernel); stage code stays unchanged.
+- A structurally new type (email `@`, IPv6) touches `kernel` (enum) and the
+  structure-handling component (`feature`), but each changes independently behind
+  its own contract.
 
-Итог: типичное «добавить тип» не рябит даже по коду, тем более по модулям.
+Result: a typical “add a type” change does not ripple even through code, much
+less through modules.
 
-### 3. Гранулярность реактора — средняя (14 модулей + parent)
+<a id="3-гранулярность-реактора--средняя-14-модулей--parent"></a>
+### 3. Reactor granularity is medium (14 modules + parent)
 
-Было 19 (домен дробился на 7); стало 14 за счёт схлопывания домена в один артефакт:
-platform (5) + core (`ioc-domain` + `ioc-application` = 2) + adapters (6) + `ioc-app` (1).
+Previously 19 (domain split into seven); now 14 by collapsing the domain into
+one artifact: platform (5) + core (`ioc-domain` + `ioc-application` = 2) + adapters
+(6) + `ioc-app` (1).
 
-| Группа | Разрез | Обоснование |
+| Group | Decomposition | Rationale |
 |---|---|---|
-| `platform-*` (errors, etl, diagnostics, observability, diagnostics-logging) | **отдельные артефакты** | настоящие переиспользуемые библиотеки с независимым жизненным циклом |
-| `ioc-domain` | **единый артефакт**; capability = пакеты + ArchUnit-DAG | один bounded context, один общий язык; высокая связность ≠ «толсто» |
-| `ioc-application` | отдельный | use cases + порты + IOC-стадии |
-| `adapter-*` (6) | **отдельные артефакты** | каждый изолирует свой внешний dep (Tika/CSV/Guava/RE2J/picocli) — эталон CRP |
-| `ioc-app` | отдельный | composition root, executable jar |
+| `platform-*` (errors, etl, diagnostics, observability, diagnostics-logging) | **Separate artifacts** | Truly reusable libraries with independent lifecycles |
+| `ioc-domain` | **One artifact**; capabilities = packages + ArchUnit DAG | One bounded context, one ubiquitous language; high cohesion does not mean “too large” |
+| `ioc-application` | Separate | Use cases + ports + IOC stages |
+| `adapter-*` (6) | **Separate artifacts** | Each isolates its external dependency (Tika/CSV/Guava/RE2J/picocli), a CRP reference |
+| `ioc-app` | Separate | Composition root, executable JAR |
 
-Доменный разрез на 6 артефактов **не уменьшает coupling** (он уже низкий через
-контракты+ArchUnit), а лишь добавляет релизную церемонию (6 версий/PR) к
-изменению, которое по природе кросс-секущее. Артефакт окупается при
-**независимой компиляции/релизе/переиспользовании**, а не ради наглядности.
+Splitting the domain into six artifacts **does not reduce coupling** (already
+low through contracts+ArchUnit); it only adds release ceremony (six versions/PRs)
+to an inherently cross-cutting change. An artifact pays off through **independent
+compilation/release/reuse**, not visual clarity alone.
 
-### 4. Критерий выноса доменной capability в свой артефакт
+<a id="4-критерий-выноса-доменной-capability-в-свой-артефакт"></a>
+### 4. Criterion for extracting a domain capability into its own artifact
 
-Выносим **только при реальной силе**: отдельная команда, отдельный релизный темп
-или переиспользование в другом продукте («extract later»). Не выносим ради
-«красиво/наглядно».
+Extract **only under a real driving force**: a separate team, release cadence or
+reuse in another product (“extract later”). Do not extract for aesthetics/clarity.
 
-`refang` — **первый и пока единственный кандидат**: это coupling-остров (чистый
-`text→text`, ноль внутридоменных зависимостей) и реально переиспользуемая
-библиотека-рефангер. Остальные capability (`extract/feature/classify/attribute`)
-сидят на общем `kernel`, а `classify` жёстко на `IndicatorFeatures` — держим
-вместе.
+`refang` is the **first and currently only candidate**: an island of coupling
+(pure `text→text`, zero internal domain dependencies) and a genuinely reusable
+refanging library. Other capabilities (`extract/feature/classify/attribute`)
+share `kernel`, while `classify` is closely tied to `IndicatorFeatures`; keep them together.
 
-### 5. Защита границ — слоями
+<a id="5-защита-границ--слоями"></a>
+### 5. Boundary enforcement in layers
 
-- **Maven reactor deps** — базовый compile-time барьер;
-- **Maven Enforcer** (`bannedDependencies`, toolchain/plugin guards) — нет
-  Spring/Tika/CSV/Guava/RE2J в core/platform;
-- **ArchUnit** — внутридоменный DAG capability (`refang` ни на кого; `classify` →
-  `feature`+`model`; `extract`/`attribute` → `model`; без циклов);
-- **Отложено как долг:** `dependencyConvergence`, Spring Modulith/canvas и JPMS.
-  Для этапа 9 достаточно Maven reactor + Enforcer + ArchUnit.
+- **Maven reactor dependencies:** basic compile-time barrier.
+- **Maven Enforcer** (`bannedDependencies`, toolchain/plugin guards): no
+  Spring/Tika/CSV/Guava/RE2J in core/platform.
+- **ArchUnit:** internal domain capability DAG (`refang` depends on nothing;
+  `classify` → `feature`+`model`; `extract`/`attribute` → `model`; no cycles).
+- **Deferred debt:** `dependencyConvergence`, Spring Modulith/canvas and JPMS.
+  Maven reactor + Enforcer + ArchUnit suffice for stage 9.
 
-## Следствия
+<a id="следствия"></a>
+## Consequences
 
-- План 0009 правится: единый `ioc-domain` вместо 6 доменных модулей; добавлен
-  внутридоменный ArchUnit-DAG; зафиксирован критерий выноса и `refang` как
-  кандидат №1. Spring Modulith/canvas и `dependencyConvergence` не входят в
-  реализацию этапа 9 и остаются отдельным долгом.
-- Горизонтальная нарезка (по шагам) принята осознанно; вертикальная (по типу IOC)
-  не нужна, т.к. ось типов вынесена в конфиг.
+- Plan 0009 changes: one `ioc-domain` instead of six domain modules; internal
+  ArchUnit DAG added; extraction criterion and `refang` as candidate 1 established.
+  Spring Modulith/canvas and `dependencyConvergence` are outside stage 9
+  implementation and remain separate debt.
+- Horizontal decomposition (by step) is deliberate; vertical decomposition (by
+  IOC type) is unnecessary because the type axis lives in configuration.
 
-## Открытые вопросы
+<a id="открытые-вопросы"></a>
+## Open questions
 
-- `StageName` решён: generic `StageId` живёт в `platform-etl`, IOC-specific stage
-  implementations/payloads остаются в `ioc-application`.
-- Regex SPI: `PatternEngine` в `ioc-domain` (внутри extract) vs отдельный
-  `platform-regex-api` (по умолчанию — порт в extract, impl в adapter).
-- Spring Modulith/canvas — отдельный долг после стабилизации reactor-структуры.
+- `StageName` resolved: generic `StageId` lives in `platform-etl`; IOC-specific
+  stage implementations/payloads remain in `ioc-application`.
+- Regex SPI: `PatternEngine` in `ioc-domain` (inside extract) versus a separate
+  `platform-regex-api` (default: port in extract, implementation in adapter).
+- Spring Modulith/canvas remains separate debt after reactor structure stabilizes.

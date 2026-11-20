@@ -1,28 +1,38 @@
 # com.iocextractor.domain.classify
 
-## Назначение
+## Responsibility and boundary
 
-Классификация сетевой маски: определение кодов `url_match` / `host_match` по
-**декларативным правилам** над признаками индикатора (`domain.feature`).
+Evaluate declarative mask rules over derived indicator features. This capability
+depends on `feature` and `model`; configuration resolution, artifact routing and
+rendering remain outside. The evaluator contains no fixed four-variant code table.
 
-**Правило слоя:** чистое доменное правило. Логика «какой вариант» — не зашита:
-тонкий вычислитель применяет правила из конфига; коды и предикаты декларативны.
+## Types
 
-## Структура
-
-| Файл | Назначение |
+| Source | Responsibility |
 |---|---|
-| `MatchPolicy.java` | Порт: `ClassificationDecision classify(Indicator)` |
-| `ClassificationDecision.java` | Features + matched rule/predicate names + `MaskMatch` |
-| `FeaturePredicate.java` | Тонкий именованный предикат над `IndicatorFeatures` |
-| `FeaturePredicates.java` | Реестр предикатов по ключам (`has-query`, `is-subdomain`, …) |
-| `MatchRule.java` | Правило: `when` (предикаты, AND) → коды `MaskMatch` |
-| `RuleBasedMatchPolicy.java` | Вычислитель: признаки → первое подходящее правило (first-match-wins) |
+| [MatchPolicy](MatchPolicy.java) | Complete classification decision for one indicator |
+| [RuleBasedMatchPolicy](RuleBasedMatchPolicy.java) | Extract features once per call and choose the first matching rule |
+| [MatchRule](MatchRule.java) | Aligned predicate names/functions combined with AND, plus output codes |
+| [FeaturePredicate](FeaturePredicate.java), [FeaturePredicates](FeaturePredicates.java) | Named feature tests and built-in registry |
+| [ClassificationDecision](ClassificationDecision.java) | Features, matched-rule index/names and `MaskMatch` |
 
-## Заметки
+## Rules and decisions
 
-4-вариантная схема и правила — `application.yml` (`ioc.classify.rules`) и
-`docs/dev/processing.md` (декларативная классификация). Вид хоста (PSL) приходит
-через признаки `domain.feature` (порт `HostClassifier`).
-Decision материализуется application-стадией ровно один раз на indicator;
-artifact providers и filters только читают его и не повторяют feature extraction.
+Rules are evaluated in supplied order. Empty `when` matches unconditionally, so an
+early catch-all shadows later rules. A rule must have as many predicate names as
+functions. If none matches, the decision has index `-1`, no matched names and
+`MaskMatch(null, null)`; this differs from a matched rule whose supplied codes happen
+to be null. Decision predicate lists are copied.
+
+The built-in names are `has-query`, `has-path`, `has-port`, `has-path-or-port`,
+`is-ip`, `is-registrable`, `is-subdomain` and `is-onion`. No built-in fragment test
+is registered. `HostClassifier` supplies host kind through feature extraction;
+this package does not implement PSL lookup. Callers resolve configured names to
+functions before constructing rules and own admission of code values.
+
+`classify` computes one complete decision per invocation. It does not memoize
+across calls or prohibit a caller from classifying file indicators; the processing
+layer owns routing, reuse and any non-network bypass. The configured four-variant
+policy and artifact use are explained in [processing](../../../../../../../../../docs/dev/processing.md).
+See [classification tests](../../../../../../test/java/com/iocextractor/domain/classify/ClassificationContractsTest.java)
+for predicate vocabulary, AND/catch-all, first-match and unmatched behavior.

@@ -1,78 +1,100 @@
-# platform-events
+# ioc-platform-events
 
-JDK-only metadata and publication contracts for service-owned local control
-events. Requires Java 21. The coordinate is
-`io.github.xorex-lc:ioc-platform-events:0.3.0-SNAPSHOT`. Packaging produces a
-parent-independent POM, plain JAR, sources and strict Javadoc. The `events`
-selector supports packaging and a cold JDK consumer outside the reactor,
-including the exact guide example and four-file hash/origin checks.
-Release admission is implemented; registry publication remains a separate action.
+## Purpose and boundary
 
-**Layer rule:** no Spring, IOC domain/application types, transport libraries,
-serialization, keyed execution or delivery infrastructure. Services define the
-payload, listeners and durable recovery. Delivery adapters remain outside this
-module.
+Java 21 control-event metadata and publish-only contracts, with no production
+dependencies beyond the JDK. Maven identity: `io.github.xorex-lc:ioc-platform-events`.
+Services own concrete events, payload validation, delivery adapters, handlers,
+durable state and recovery.
 
-## Public API
+Events announce facts or nudge recoverable work. The core supplies no broker,
+subscriber registry, queue, executor, wire format, transaction, acknowledgement,
+deduplication or retry. It neither generates IDs nor installs correlation context.
+An ordinary publication return is not proof that any handler ran or completed;
+a failure can follow partial delivery. Ledger/state and reconciliation belong to
+the service, not this port.
 
-| Type | Responsibility |
+## Structure
+
+| Location | Responsibility |
 |---|---|
-| `ControlEvent` | Service-owned payload exposing non-null metadata |
-| `ControlEventMetadata` | Immutable producer-supplied identity, type/version, occurrence time, correlation and optional causation |
-| `ControlEventPublisher` | Publish one non-null event; the implementation defines delivery and failure behavior |
-| `ControlEventObserver` | Observe publication calls and individual dispatch attempts without business work |
-| `NoopControlEventPublisher` | Validate the event reference and discard it |
-| `NoopControlEventObserver` | Validate callback arguments and discard the observation |
-| `RecordingControlEventPublisher` | Unbounded in-memory recording fixture storing the supplied event references |
+| [Production package](src/main/java/com/iocextractor/platform/events/README.md) | Seven public contracts/helpers, metadata validation, no-ops and recording fixture |
+| [Tests](src/test/java/com/iocextractor/platform/events/README.md) | Metadata boundaries, no-op validation, reference ownership, snapshots and concurrent recording |
+| [pom.xml](pom.xml) | Published identity, flattened consumer POM, license resource and publication profile |
 
-Metadata rejects null/blank required text, non-positive versions, a null timestamp
-and blank non-null causation. Non-blank text is preserved, including surrounding
-whitespace. The library does not generate IDs or timestamps, validate a type
-registry or promise uniqueness, schema compatibility or tracing-context setup.
-`causationId()` may return null; `causation()` returns an `Optional`.
+Public Javadoc and `package-info.java` own exact operation/package guarantees;
+the package reference maps entry points and local ownership.
 
-## Delivery and observation
+## Dependencies and publication
 
-Returning from `publish` does not establish delivery to any or every handler.
-A failing call may follow partial delivery. Services decide when to publish and
-how to recover; the port has no subscriptions, acknowledgements or retry policy.
+Keep Spring, SLF4J, IOC catalogs/domain/application, serialization, transport and
+keyed execution outside this module. JUnit Jupiter and AssertJ are inherited test
+dependencies. Bootstrap's
+[ArchitectureTest](../../bootstrap/ioc-app/src/test/java/com/iocextractor/ArchitectureTest.java)
+checks the framework/business/broker boundary, non-serializable control events
+and separation of keyed execution. The POM and packaged consumer checks establish
+the dependency-free production closure.
 
-`published` reports a normal return from the underlying publication call.
-`publishFailed` reports its runtime failure; it does not mean that no listener
-acted. Dispatch callbacks describe one handler attempt. Callback exception
-containment belongs to their caller, not to this interface.
+The flattened consumer POM removes the reactor parent. The main/source artifacts
+carry the MIT license; `library-publication` adds sources and strict Javadoc
+attachments, with doclint warnings treated as failures. The
+[permanent release record](../../.github/release-notes/ioc-platform-events-0.3.0-rc.1.md)
+retains immutable `0.3.0-rc.1` source, signed hashes and separate Central/GitHub
+qualification. Historical repository checks do not qualify a later rebuild.
 
-The no-op implementations are stateless and safe to share. They do not read
-metadata. Null events/failures cause `NullPointerException`; a null or blank
-handler name causes `IllegalArgumentException`.
+The [Spring adapter](../../adapters/adapter-events-spring/README.md) is a separate
+artifact requiring the exact same core version. Both form one release family.
+Current source versions still follow the shared reactor version; independent
+version activation remains pending as [TOOL-9](../../docs/KNOWN-ISSUES.md#tool-9) under
+[ADR 0048](../../docs/ADR/0048-independent-library-versions-and-reuse.md). Metadata's
+`eventVersion` is a service payload version, not this Maven version.
 
-## Recording fixture
+## Entry points and service integration
 
-`RecordingControlEventPublisher` retains duplicates and has no capacity limit or
-durable journal. Each `events()` call returns an immutable list snapshot; later
-publications cannot grow that list. It holds the original event references and
-does not freeze mutable payloads. Create a new instance per test/fixture.
+Implement `ControlEvent`, construct `ControlEventMetadata` explicitly, and inject
+`ControlEventPublisher`. Concrete events should carry bounded work references
+and stable payloads. The interface adds no copying or delivery synchronization.
+`ControlEventObserver` reports publication/individual dispatch telemetry; it is
+not a subscription SPI and must not perform business work.
 
-Concurrent publication and snapshots are safe. Sequential calls retain order;
-overlapping calls have no invocation-time ordering guarantee. Copy-on-write
-storage copies the list on publication, so this fixture is unsuitable for a
-long-running production event history.
+The supplied no-ops validate arguments and discard them. The recorder retains
+original event references, duplicates included, in an unbounded copy-on-write
+list. It is a small test fixture, not production history. Neither publisher
+inspects metadata, dispatches handlers or invokes an observer. See the
+[package reference](src/main/java/com/iocextractor/platform/events/README.md)
+for validation, snapshot, failure and concurrency limits.
 
-## Verification and references
+IOC's [EventCoordinationConfig](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/EventCoordinationConfig.java)
+explicitly composes the Spring adapter with a service-owned observer; application
+event classes and bootstrap listeners remain outside core. The adapter's timing
+and exception behavior are its own contract, not guarantees of this interface.
+[Event coordination](../../docs/dev/event-coordination.md) owns ledger/reconcile
+backstops and admission policy. [ADR 0047](../../docs/ADR/0047-explicit-spring-control-event-adapter.md)
+records the two-artifact boundary.
 
-`ControlEventMetadataTest` covers required/optional fields, nulls, blank Unicode
-text, version boundaries and value preservation. Publisher/observer tests cover
-input validation, shallow immutable snapshots, duplicates and concurrent recording
-with bounded worker cleanup. These tests qualify the JDK contract, not a Spring
-adapter or independently published artifact. Publication packaging rejects any
-dependency, private parent, unresolved property, foreign class or executable
-Boot layout; the embedded POM must match the standalone POM. See the
-[publication guide](../../docs/guides/library-publication.md#events-packaging-preparation)
-for the supported baseline, API/version ownership, core-first release order and
-retained qualification required by the Spring adapter. No events release is
-claimed published by local checks.
+## Verification and related docs
 
-- [Consumer guide](../../docs/guides/events-library.md): a service-defined event and local recording example.
-- [Event coordination](../../docs/dev/event-coordination.md): IOC producers, durable backstops and Spring composition.
-- `src/main/java/com/iocextractor/platform/events/`: public API and package documentation.
-- `src/test/java/com/iocextractor/platform/events/`: JDK contract tests.
+From the repository root:
+
+```bash
+make test-module MODULE=platform/platform-events
+make docs
+make verify
+```
+
+Use the [English consumer guide](../../docs/guides/libraries/events.md) or
+[Russian consumer guide](../../docs/guides/ru/libraries/events.md) for released dependency
+setup and an executable example. The [test reference](src/test/java/com/iocextractor/platform/events/README.md)
+separates core behavior from delivery-adapter/service qualification.
+
+For packaged checks, follow the
+[publication procedure](../../docs/guides/library-publication.md#events-packaging-preparation):
+prepare a new `LIBRARY_BUNDLE` with `make library-bundle LIBRARY_COMPONENT=events`,
+then run `make library-consumer` with the same selector/directory. The
+[standalone JDK consumer](../../tools/fixtures/events-consumer/README.md) compiles the
+actual bilingual guide source outside the checkout with an empty cache and
+checks the dependency graph, four primary hashes/origins and routing negatives.
+Core-first admission and exact-version adapter qualification are separate steps.
+Local examples/package checks are not a new publication or deployed-service test.
+Update public Javadoc, package/module references, meaningful tests and paired
+guides with contract changes; preserve immutable release records.

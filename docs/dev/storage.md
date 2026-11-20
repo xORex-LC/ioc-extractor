@@ -1,5 +1,7 @@
 # Canonical SQLite storage
 
+[Русская версия](ru/storage.md)
+
 Storage owns business truth, durable coordination facts, schema evolution and
 local transaction boundaries. Application ports define the contracts;
 `adapter-store-jdbc` implements them with SQLite, Spring JDBC and HikariCP.
@@ -53,6 +55,8 @@ not versioned canonical publication or another storage backend.
    ascending ID allocation. Lifecycle writes reserve durable canonical IDs and
    lifecycle IDs before mutation; failed ranges remain burned. Immutable export
    uses reusable sparse slots scoped by `(profile, artifact)`, not canonical IDs.
+   Gaps are expected: reservations cover the worst case, including candidates
+   that only renew existing rows. An ID high-water mark is not a row count.
 4. **Checkpoint precedes side effects.** Rejected preparation does not reserve
    IDs or mutate business rows. The lifecycle writer rejects duplicate final
    keys before reservation, including retained-observation mapping collisions.
@@ -190,13 +194,14 @@ import occurrence cannot silently acquire a different rank after restart.
 | Failure boundary | Result and recovery |
 |---|---|
 | Schema/identity drift | Startup fails before business mutation; correct configuration or perform an explicit migration |
-| Canonical transaction | Roll back that artifact or complete import delivery; reserved IDs remain burned |
+| Canonical transaction | Roll back the owning artifact transaction or the entire import transaction; independently reserved IDs remain burned |
 | Commit before projection/finalization | Canonical truth remains; run/delivery ledgers reconcile from the canonical receipt/checkpoint |
 | Source/workspace removed after commit | A compatible complete receipt is sufficient; do not reapply the delivery |
 | Projection rename before acknowledgement | Required generation remains pending; startup/periodic recovery repeats installation |
 | Interrupted expiry | Committed pages remain closed; reconcile resumes from truth without resurrection |
 | Unsafe UTC | Confirmation fails closed; readiness reflects clock degradation without reducing high-water |
-| CSV lost or corrupt | Regenerate from canonical storage |
+| Mutable CSV lost or corrupt | Regenerate through the owning projection path; deletion of an already acknowledged file does not create pending generation work automatically |
+| Historical immutable slice lost or corrupt | Restore its original verified bytes; a new export of current rows cannot reconstruct the same historical snapshot or delivery identity |
 | Unsealed import workspace | Not promotion evidence; rebuild only from the pinned snapshot and delivery checkpoint |
 
 Rollback after schema evolution restores coordinated stopped backups of both
@@ -214,8 +219,11 @@ an adapter and the same port contracts, not a new lifecycle or merge engine.
 - Native ordinary writer: [JdbcCanonicalLifecycleWriter](../../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalLifecycleWriter.java).
 - Native import writer and contract: [JdbcCanonicalImportWriter](../../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalImportWriter.java), [contract suite](../../adapters/adapter-store-jdbc/src/test/java/com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalImportWriterContractIT.java).
 - Lifecycle TCK binding: [JdbcCanonicalRecordLifecycleContractIT](../../adapters/adapter-store-jdbc/src/test/java/com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalRecordLifecycleContractIT.java).
+- Schema authority and downgrade rejection: [DataframeFormatMigrations](../../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/DataframeFormatMigrations.java), [ServiceSchemaMigrations](../../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/ServiceSchemaMigrations.java), [SqliteUserVersionSchemaMigratorIT](../../adapters/adapter-store-jdbc/src/test/java/com/iocextractor/adapter/out/store/jdbc/SqliteUserVersionSchemaMigratorIT.java).
 - Production Spring flow: [NativeDeliveryLifecycleIT](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/NativeDeliveryLifecycleIT.java).
 - Module reference: [adapter-store-jdbc](../../adapters/adapter-store-jdbc/README.md).
+
+## When to update this document
 
 Update this document when commit scope, identity/UTC authority, receipt recovery,
 resource ownership, schema or projection/slot visibility changes.

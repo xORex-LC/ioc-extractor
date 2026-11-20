@@ -293,7 +293,7 @@ Costs and trade-offs:
 ## Implementation and validation follow-up
 
 The implementation sequence and executable acceptance matrix live in the
-versioned [SMB hardening worknote](../worknote/0.3.0/dataframe-import/smb-hardening.md).
+versioned [SMB hardening worknote](https://github.com/xORex-LC/ioc-extractor/blob/1ad9f8b483575c136c2eb5529869fb01fa53ad00/docs/worknote/0.3.0/dataframe-import/smb-hardening.md).
 Until those gates pass, this ADR is a designed contract rather than evidence
 that the candidate already enforces it.
 

@@ -27,6 +27,11 @@ CENTRAL = 'https://repo.maven.apache.org/maven2'
 GITHUB = 'https://maven.pkg.github.com/xorex-lc/ioc-extractor'
 PORTAL = 'https://central.sonatype.com/api/v1/publisher'
 SUFFIXES = ('.pom', '.jar', '-sources.jar', '-javadoc.jar')
+# Match the application's admitted release syntax: SemVer core, optional rc.N
+# starting at 1, and a development-only SNAPSHOT suffix. Use ASCII digits.
+VERSION_NUMBER = r'(?:0|[1-9][0-9]*)'
+VERSION_BASE = rf'{VERSION_NUMBER}\.{VERSION_NUMBER}\.{VERSION_NUMBER}'
+VERSION_RELEASE = rf'{VERSION_BASE}(?:-rc\.[1-9][0-9]*)?'
 # Each component has an exact dependency contract; adding a component does not
 # relax the zero-dependency checks for the existing JDK-only libraries.
 COMPONENTS = {
@@ -125,7 +130,7 @@ def require_release_admission(component):
 
 
 def version_check(version, release=False):
-    require(re.fullmatch(r'\d+\.\d+\.\d+(?:-rc\.\d+|-SNAPSHOT)?', version), 'invalid version')
+    require(re.fullmatch(rf'{VERSION_BASE}(?:-rc\.[1-9][0-9]*|-SNAPSHOT)?', version), 'invalid version')
     require(not release or not version.endswith('-SNAPSHOT'), 'snapshot publication is not admitted')
     return version
 
@@ -134,8 +139,8 @@ def release_version(component_name, tag, branch):
     """Admit only this component's tag on its matching product release branch."""
     require(component_name in COMPONENTS, 'unknown component')
     artifact = COMPONENTS[component_name]['artifact']
-    tag_match = re.fullmatch(re.escape(artifact) + r'-v(\d+\.\d+\.\d+(?:-rc\.\d+)?)', tag)
-    branch_match = re.fullmatch(r'release-(\d+\.\d+\.\d+)', branch)
+    tag_match = re.fullmatch(re.escape(artifact) + rf'-v({VERSION_RELEASE})', tag)
+    branch_match = re.fullmatch(rf'release-({VERSION_BASE})', branch)
     require(tag_match is not None, 'invalid component tag')
     require(branch_match is not None, 'select a release-X.Y.Z branch')
     version = tag_match.group(1)
@@ -596,29 +601,52 @@ def consume(bundle, repository, dependency_bundle=None):
             consume_fixture(metadata, component, fixture, repository, url, artifacts)
 
 
+def bilingual_blocks(guide, counts):
+    """Read the canonical guide and require matching executable blocks in its translation."""
+    english = (ROOT / 'docs/guides/libraries' / (guide + '.md')).read_text()
+    russian = (ROOT / 'docs/guides/ru/libraries' / (guide + '.md')).read_text()
+    examples = {}
+    for language, count in counts.items():
+        blocks = re.findall(r'```' + language + r'\n(.*?)\n```', english, re.DOTALL)
+        translated = re.findall(r'```' + language + r'\n(.*?)\n```', russian, re.DOTALL)
+        require(blocks == translated, guide + ' guide ' + language + ' translations differ')
+        require(len(blocks) == count, guide + ' guide ' + language + ' example count changed')
+        examples[language] = blocks
+    return examples
+
+
 def populate_examples(component, fixture, project):
     """Compile the actual guide sources rather than a second copy of the examples."""
+    if component in (COMPONENTS['concurrency'], COMPONENTS['diagnostics']):
+        name = 'concurrency' if component == COMPONENTS['concurrency'] else 'diagnostics'
+        names = ('KeyedGuardExample', 'KeyedExecutorExample') if name == 'concurrency' else (
+            'DiagnosticResultExample', 'DiagnosticBudgetExample', 'DiagnosticDeliveryExample')
+        examples = bilingual_blocks(name, {'java': len(names), 'xml': 1})
+        for class_name, source in zip(names, examples['java']):
+            require('public final class ' + class_name + ' {' in source, name + ' guide class changed')
+            (project / (class_name + '.java')).write_text(source)
+        return
     if component in (COMPONENTS['events'], COMPONENTS['events-spring']):
-        guide = (ROOT / 'docs/guides/events-library.md').read_text()
-        blocks = re.findall(r'```java\n(.*?)\n```', guide, re.DOTALL)
-        names = ['LocalEventsExample', 'SpringEventsExample']
-        require(len(blocks) == len(names), 'events guide Java example count changed')
-        for name, source in zip(names, blocks):
+        guides = [('events', 'LocalEventsExample')]
+        if component == COMPONENTS['events-spring']:
+            guides.append(('events-spring', 'SpringEventsExample'))
+        for guide, name in guides:
+            source = bilingual_blocks(guide, {'java': 1, 'xml': 1})['java'][0]
             require('public final class ' + name + ' {' in source, 'events guide example changed')
-            if name == 'LocalEventsExample' or component == COMPONENTS['events-spring']:
-                path = project / 'src/main/java' / (name + '.java')
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(source)
+            path = project / 'src/main/java' / (name + '.java')
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(source)
         return
     if component == COMPONENTS['configuration']:
-        guide = (ROOT / 'docs/guides/configuration-library-check.md').read_text()
+        api = bilingual_blocks('config-spring-boot', {'java': 1, 'xml': 1})
+        recipe = bilingual_blocks('config-spring-boot-check', {'java': 1, 'yaml': 1})
         destination = project / 'src/main/java/examples/configuration'
         destination.mkdir(parents=True, exist_ok=True)
-        for language, path in [('java', destination / 'CollectorConfigurationCheck.java'),
-                               ('yaml', project / 'collector.yml')]:
-            blocks = re.findall(r'```' + language + r'\n(.*?)\n```', guide, re.DOTALL)
-            require(len(blocks) == 1, 'guide example count changed')
-            path.write_text(blocks[0])
+        for name, source in [('ConfigurationInspectionExample', api['java'][0]),
+                             ('CollectorConfigurationCheck', recipe['java'][0])]:
+            require('public final class ' + name + ' {' in source, 'configuration guide class changed')
+            (destination / (name + '.java')).write_text(source)
+        (project / 'collector.yml').write_text(recipe['yaml'][0])
         shutil.copyfile(ROOT / 'bootstrap/ioc-app/src/test/resources/consumer/configuration/ConfigurationRecipeMain.java',
                         destination / 'ConfigurationRecipeMain.java')
         resources = project / 'src/main/resources'
@@ -627,31 +655,30 @@ def populate_examples(component, fixture, project):
         return
     if component != COMPONENTS['logging']:
         return
-    guides = ['logging-library.md']
+    guides = [('logging-slf4j', {'java': 3, 'xml': 1},
+               ('CollectionExample', 'OmissionExample', 'FailureExample'))]
     if fixture == 'logging-boot-consumer':
-        guides.append('logging-library-boot.md')
+        guides.append(('logging-slf4j-boot', {'java': 1, 'yaml': 1, 'xml': 1},
+                       ('CollectorEcsEncoder',)))
         driver = ROOT / 'bootstrap/ioc-app/src/test/resources/consumer/logging/BootRecipeMain.java'
         destination = project / 'src/main/java/qualification/BootRecipeMain.java'
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(driver, destination)
-    for guide in guides:
-        document = (ROOT / 'docs/guides' / guide).read_text()
-        blocks = re.findall(r'```java\n(.*?)\n```', document, re.DOTALL)
-        require(len(blocks) == (3 if guide == 'logging-library.md' else 1), 'guide Java example count changed')
-        for source in blocks:
+    for guide, counts, names in guides:
+        examples = bilingual_blocks(guide, counts)
+        for expected_name, source in zip(names, examples['java']):
             package = re.search(r'^package ([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*);', source, re.MULTILINE)
             name = re.search(r'public final class (\w+)', source)
             require(package is not None and name is not None, 'incomplete guide Java example')
+            require(name.group(1) == expected_name, 'logging guide class changed')
             path = project / 'src/main/java' / package.group(1).replace('.', '/') / (name.group(1) + '.java')
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(source)
-        if guide == 'logging-library-boot.md':
+        if guide == 'logging-slf4j-boot':
             resources = project / 'src/main/resources/recipe'
             resources.mkdir(parents=True, exist_ok=True)
             for language, filename in [('yaml', 'application.yml'), ('xml', 'logback-spring.xml')]:
-                blocks = re.findall(r'```' + language + r'\n(.*?)\n```', document, re.DOTALL)
-                require(len(blocks) == 1, 'guide configuration count changed')
-                (resources / filename).write_text(blocks[0])
+                (resources / filename).write_text(examples[language][0])
 
 
 def verify_resolved_artifacts(metadata, component, cache, origin='library-target'):

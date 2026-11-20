@@ -12,7 +12,7 @@ import java.util.Optional;
  *
  * @param runId correlation identifier supplied by the driving boundary
  * @param source path to the source document (.htm/.docx/.pdf/…)
- * @param dryRun when {@code true}, extract & report but do not write artifacts
+ * @param dryRun when {@code true}, extract and report but do not write artifacts
  * @param lifecycleWriteContext accepted-delivery facts for lifecycle-aware writes, or {@code null}
  * @param registration durable delivery precedence, or {@code null} for legacy artifact policies
  */

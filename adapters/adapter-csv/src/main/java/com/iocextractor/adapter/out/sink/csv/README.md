@@ -1,124 +1,147 @@
 # com.iocextractor.adapter.out.sink.csv
 
-## Назначение
+## Purpose and boundary
 
-Выходные CSV-адаптеры для двух контрактов: generated projection из canonical
-dataframe и формирование immutable export slices. Схема артефакта (колонки) и
-заполнение остаются **декларативными**, не зашитыми в код.
+Artifact preparation, CSV byte formatting and local projection/slice publication.
+The package implements application ports; it does not access the service DB,
+transition export ledgers or coordinate remote delivery. Follow the
+[module dependency rules](../../../../../../../../../README.md).
 
-**Правило слоя:** пакет реализует application-порты и инкапсулирует commons-csv,
-кодировки и filesystem publication protocol. Он не меняет export-ledger, не
-читает service DB и не координирует saga. Новый формат артефакта = блок `columns`
-в конфиге (без кода); новая семантика колонки = новый тонкий
-`ValueProvider`/`Transform` в `ioc-processing`.
+## Structure
 
-## Структура
-
-| Файл | Назначение |
+| Files | Responsibility |
 |---|---|
-| `CsvArtifactDefinition.java`, `CsvArtifactPreparer.java` | Выбор артефакта и адаптация общей подготовки полей к write plan |
-| `CsvArtifactProjection.java` | Производная CSV-проекция из canonical JDBC storage |
-| `CsvArtifactSliceWriter.java` | Реализация `ArtifactSliceWriter`: staging, inspection/recovery и atomic publish; синхронный `SnapshotRowConsumer` |
-| `CsvSliceMaterialization.java` | Состояние одного callback-сеанса: `ArtifactRow → CsvRecordFormat → DigestOutputStream`, row count и SHA-256 за один проход |
-| `CsvRecordFormat.java` | Общие LF/CRLF и независимые правила кавычек заголовка/данных; строгая проверка режима без кавычек |
-| `SliceTreeVerifier.java` | Независимая проверка manifest identity, точного состава каталога, data hashes и `_SUCCESS → manifest` hash-chain |
-| `FileSystemSliceRetentionStore.java` | Profile-scoped discovery и recursive directory-as-unit delete только verified final slices |
-| `FileSystemCompletedSliceCatalog.java` | Read-only publish worklist поверх тех же verified final slices, без delete/retention semantics |
-| `SliceDirectoryLayout.java` | Безопасное разрешение `.staging/<runId>` и `<profile>/<sliceName>` внутри configured root |
-| `NioSliceFileOperations.java`, `SliceFileOperations.java` | `force(true)`, directory fsync и `ATOMIC_MOVE` без copy/rename fallback |
-| `NioExportOperationGuard.java` | NIO file lease, сериализующий formation/recovery между локальными JVM/processes |
-| `SliceHashes.java` | Потоковые SHA-256 helpers без загрузки data files в heap |
+| [CsvArtifactDefinition.java](CsvArtifactDefinition.java), [CsvArtifactPreparer.java](CsvArtifactPreparer.java) | Artifact policy, filtering and configured field preparation |
+| [IdValueProvider.java](IdValueProvider.java) | `id` provider returning a deferred null placeholder |
+| [CsvArtifactProjection.java](CsvArtifactProjection.java) | Canonical stream to mutable CSV, generation result and encoding diagnostics |
+| [CsvRecordFormat.java](CsvRecordFormat.java) | Shared record endings, independent header/value quoting and strict NONE |
+| [CsvIo.java](CsvIo.java), [CsvValueEncodingInspector.java](CsvValueEncodingInspector.java) | Charset-aware I/O and logical replacement counts |
+| [CsvArtifactSliceWriter.java](CsvArtifactSliceWriter.java) | Stage, inspect/recover, publish and discard-staging operations |
+| [CsvSliceMaterialization.java](CsvSliceMaterialization.java) | One synchronous row-callback session, file digests and manifest/marker writes |
+| [SliceDirectoryLayout.java](SliceDirectoryLayout.java) | Derived safe staging/final paths |
+| [SliceTreeVerifier.java](SliceTreeVerifier.java), [VerifiedSlice.java](VerifiedSlice.java) | Shared exact-membership/hash-chain verification and result |
+| [SliceHashes.java](SliceHashes.java) | Streaming SHA-256 helpers |
+| [SliceFileOperations.java](SliceFileOperations.java), [NioSliceFileOperations.java](NioSliceFileOperations.java) | Durability/move seam and Linux-oriented NIO implementation |
+| [NioExportOperationGuard.java](NioExportOperationGuard.java) | Caller-held profile formation/recovery lease |
+| [FileSystemSliceRetentionStore.java](FileSystemSliceRetentionStore.java) | Verified final-directory discovery and deletion |
+| [FileSystemCompletedSliceCatalog.java](FileSystemCompletedSliceCatalog.java) | Read-only completed-slice worklist for publish |
+| [InvalidSliceException.java](InvalidSliceException.java), [SliceWriteException.java](SliceWriteException.java) | Internal integrity and callback-I/O failure bridges |
+| [package-info.java](package-info.java) | Package-level ownership rule |
 
-## Заметки
+## Preparation and identity
 
-Диалект по умолчанию: `;`, CRLF, кавычки на не-null значениях, `null` → литерал `NULL`.
-Окончания записей и кавычки настраиваются независимо для заголовка и данных;
-см. [формат CSV](../../../../../../../../../../../docs/dev/csv-output-format.md).
-DSL ограничен (см.
-`docs/dev/processing.md`): artifact `include`/`exclude`, провайдер/`const`,
-`when-type`, упорядоченные `transform` — без выражений в конфиге. Реестры
-собираются в `bootstrap/AppConfig`.
+`CsvArtifactPreparer` filters already-classified views and delegates field mapping
+to the configured mapper. It returns templates and diagnostics before the
+application failure-policy checkpoint, without reserving IDs or writing data.
+`prepareRouted` maps one selected branch with per-column views and occurrence
+positions for managed fields. Gated TRACE reports routing decisions without
+reclassifying each field.
 
-JDBC truth path использует те же artifact definitions, но держит
-ответственности раздельно: application orchestration не знает CSV-диалект, а
-adapter отвечает за projection-файл и immutable export slices.
-`match.*`, `address.*` и artifact filters читают уже materialized features/match
-из `ClassifiedIndicator`; общая семантика живёт в `ioc-processing`, adapter не вызывает `MatchPolicy` или
-`IndicatorFeatureExtractor` повторно для каждой колонки.
+`MappingValueException` identifies expected input-dependent provider/transform
+failure; `ConfigurableRowMapper` adds column/component location in
+`RowMappingException`, which the preparer converts to an element diagnostic.
+The reason must be operator-safe; the preparer does not attach its exception
+chain. Other runtime defects stop the run. Application policy decides whether
+valid candidates can commit or the run must stop before any durable write.
 
-Provider/transform бросает `MappingValueException` только для ожидаемого
-input-dependent отказа и обязан дать operator-safe reason. Mapper переводит
-только этот тип и добавляет column/component location. Любой другой
-`RuntimeException` считается programming/config defect и остаётся RUN failure;
-preparer не прикладывает exception chain к ожидаемому element diagnostic, чтобы
-cause message не обходил общую redaction policy.
+The DSL supports type gates (`when-type`/`when-types`), named `when` predicates,
+constants/providers and ordered transforms; it is not an expression evaluator.
+Filters, providers, transforms and shared semantics belong to `ioc-processing`,
+with registries/preflight composed in bootstrap. See
+[processing](../../../../../../../../../../../docs/dev/processing.md).
+
+`IdValueProvider` does not allocate identity. Prepared plans carry an application
+ID sequence; canonical reservation and commit belong to application/storage.
+Reusable immutable-export slots are a separate snapshot/export contract. The
+formatter does not derive IDs from CSV row order or compact sparse slots.
+
+## Shared byte policy and mutable projection
+
+`CsvRecordFormat` uses the supplied `ExportFormat`: LF/CRLF and independent
+ALL/MINIMAL/NONE header/value quoting. Defaults are semicolon, CRLF, ALL/ALL and
+`NULL` for a missing value. MINIMAL still quotes literal text equal to the null
+marker. NONE rejects cells containing syntax, literal null-marker collisions and
+an ambiguous single empty field before appending that record. The full contract
+is [CSV output format](../../../../../../../../../../../docs/dev/csv-output-format.md).
+
+`CsvArtifactProjection` must be invoked through the shared application generation
+owner. It reads canonical rows through `CanonicalArtifactStreamReader`, writes a
+sibling temporary file and installs it with atomic replacement. It returns row
+count, snapshot generation and outcome diagnostics. Application decides whether
+the generation is current and delivers the diagnostics.
+
+Replacement occurs per artifact, not across the artifact set. Cancellation is
+checked per row and immediately before rename. Failures before installation
+remove incomplete temporary output; cleanup errors are suppressed on the primary
+failure. A relative leaf path uses the current directory; a filesystem root
+without a filename is rejected. Atomic replacement has no non-atomic fallback.
+
+Only ALL/ALL mutable projection permits charset replacement. The logical encoding
+inspector counts affected header values, data values and rows and returns one
+`SINK.CHARSET_UNMAPPABLE` diagnostic when loss occurs. MINIMAL/NONE projection uses
+strict encoding, preventing a replacement byte from creating unquoted CSV syntax.
+Immutable slice encoding always uses `REPORT` for malformed/unmappable content.
 
 ## Immutable slice protocol
 
-`stage` создаёт новый каталог `root/.staging/<runId>/` и принимает строки только
-через синхронные callbacks `SnapshotSliceReader`. Для каждого artifact сначала
-пишется header, затем строки в порядке snapshot reader; writer не хранит список
-строк. Закрытый data file принудительно сбрасывается на диск, после всех data
-files записывается и fsync-ится `manifest.json`, а `_SUCCESS` с точным SHA-256
-записанных manifest bytes создаётся последним. После этого fsync-ятся staging и
-его parent directory. При первом запуске также fsync-ится каждая созданная
-directory entry вплоть до parent configured root, поэтому сам `export/` не
-остаётся только в page cache родительского каталога.
+`CsvArtifactSliceWriter.stage` requires a matching STARTED run/plan and unused
+staging/final paths. It creates `root/.staging/<runId>/`; synchronous callbacks
+from `SnapshotSliceReader` then drive one `CsvSliceMaterialization` on its owner
+thread. The callback sequence and ordered artifact metadata are checked. Rows are
+written and hashed as they arrive, without retaining the snapshot's row list.
+Per-invocation state allows unrelated profiles to materialize concurrently under
+the application reader budget; callers must hold the appropriate profile lease.
 
-`inspect` не доверяет одному наличию marker: повторно декодирует manifest,
-сверяет `runId/profile/planHash`, запрещает symlink/лишние файлы и пересчитывает
-SHA-256 каждого data file. Staging без marker, но с полностью валидной hash-chain,
-имеет состояние `RECOVERABLE`; `recoverStaging` дописывает только `_SUCCESS` и не
-перечитывает canonical storage.
+For each artifact, the header precedes rows in snapshot order. After closing the
+file, the adapter forces it to disk. It then writes/forces `manifest.json`, writes
+`_SUCCESS` last with the exact manifest-byte SHA-256 plus LF, and forces staging
+and its parent. Creating a nested export root also persists each newly linked
+directory entry. Format/charset are validated before opening an artifact file.
 
-`makeAvailable` выполняет единственный `ATOMIC_MOVE` staging-каталога в
-`root/<profile>/<sliceName>/`. Copy fallback и неатомарный rename запрещены:
-если filesystem не поддерживает atomic directory move, операция завершается
-`EXPORT.ATOMIC_PUBLISH_UNSUPPORTED`, а staging остаётся для recovery.
+`inspect` verifies run/profile/plan identity, safe physical files, exact directory
+membership, every data hash and the marker-to-manifest hash. Presence of a marker
+alone is insufficient. Staging with a valid manifest/data tree but no marker is
+RECOVERABLE: `recoverStaging` adds the marker without rereading canonical data.
+Missing/partial/corrupt, staged, available and conflicting paths remain distinct;
+simultaneous staging/final paths are CONFLICT.
 
-## Slice retention
+`makeAvailable` moves the staged directory to `root/<profile>/<sliceName>/` using
+one `ATOMIC_MOVE` and forces the affected directories. Unsupported atomic move
+fails with `EXPORT.ATOMIC_PUBLISH_UNSUPPORTED`, leaving staging for recovery;
+there is no copy or ordinary-rename fallback. An already available valid slice
+is returned idempotently. `discardStaging` targets only the derived staging path.
 
-Retention adapter рассматривает только непосредственные каталоги
-`root/<profile>/<slice>/`; `.staging` не входит в discovery. Каждый final-каталог
-должен пройти полную проверку marker → manifest → data hashes. Incomplete или
-corrupt final не становится кандидатом и завершает sweep ошибкой, чтобы
-corruption была видима оператору. Перед recursive delete descriptor и hash-chain
-проверяются повторно; symlink и подмена каталога запрещены.
+Manifest serialization is injected through `SliceManifestCodec`; this package
+knows no Jackson implementation. Integrity failures use `EXPORT.MANIFEST_INVALID`,
+write/durability failures use `EXPORT.SLICE_WRITE_FAILED`. Ledger recovery and
+state transitions remain application-owned. A valid hash-chain proves byte
+integrity, not source authentication or canonical-data authority.
 
-## Publish worklist
+## Leases, retention and publish discovery
 
-`FileSystemCompletedSliceCatalog` использует тот же `SliceTreeVerifier`, но
-остаётся отдельным от retention API: он только перечисляет verified final slices
-для remote delivery и возвращает `CompletedSlice` с локальным каталогом,
-manifest SHA-256 и decoded manifest. `.staging` не входит в область поиска;
-incomplete/corrupt final не становится pending work. Profile discovery
-может получить только имена completed-candidate каталогов (`physical directory` + `_SUCCESS`)
-без manifest/artifact rehash; мусорные children диагностируются как `SYNC.LOCAL_SLICE_INVALID`,
-а deep verify выполняется при точечном `find(profile, sliceName)`. Это позволяет reconcile делать
-anti-join и не перечитывать payload уже известных срезов.
+`NioExportOperationGuard` uses nonblocking local file locks keyed by profile in
+one configured root. The caller closes the lease; busy acquisition fails rather
+than waiting. Different profiles can proceed independently. This is local
+filesystem-backed exclusion, not a distributed ownership/fencing protocol.
+NIO file/directory forcing is Linux-oriented; temporary-directory tests do not
+qualify arbitrary network mounts or other deployment filesystems.
 
-## Инварианты и ошибки
+Retention scans only immediate final children of `root/<profile>/`, outside
+`.staging`. Corrupt/incomplete finals fail the sweep and remain ineligible.
+Deletion rechecks the descriptor and integrity chain, then removes the directory
+tree. Directory-as-unit selection does not make recursive deletion transactional.
+The protocol assumes a controlled export root, not arbitrary concurrent writers.
 
-- data CSV использует charset/delimiter/quote/null literal из immutable
-  `ExportPlan`; LF/CRLF и кавычки заголовка/данных задаются независимо;
-  исходные defaults — CRLF/ALL/ALL; format/charset проверяются до открытия artifact file;
-- manifest hash считается по фактически записанным bytes codec-а;
-- final slice считается доступным только при валидных data/manifest/marker;
-- одновременное наличие staging и final классифицируется как `CONFLICT`;
-- I/O записи, invalid manifest/tree и отсутствие atomic move различаются кодами
-  `SLICE_WRITE_FAILED`, `MANIFEST_INVALID`, `ATOMIC_PUBLISH_UNSUPPORTED`;
-- `discardStaging` удаляет только derived staging path и никогда не затрагивает
-  опубликованный каталог.
+`FileSystemCompletedSliceCatalog` deliberately has different failure semantics:
+invalid children are diagnosed as `SYNC.LOCAL_SLICE_INVALID` and skipped by list
+operations. `listCompletedSliceNames` only checks physical directories/markers;
+it does not rehash payloads. `listCompleted` and targeted `find` perform deep
+verification; corrupt targeted lookup throws, while a missing target is empty.
+This lets reconcile anti-join known names before verifying new candidates, without
+turning marker-only candidates into trusted completed slices.
 
-## Тесты
+## Verification and related docs
 
-`CsvArtifactSliceWriterIT` фиксирует deterministic bytes/tree, порядок marker,
-невидимость final до rename, corruption detection, forward recovery,
-идемпотентную inspection/publication, unsupported atomic move и поток из 50 000
-строк без накопления rows внутри writer. Failure-path tests отдельно фиксируют,
-что invalid charset не оставляет открытый/пустой artifact file, и что первое
-создание nested export root принудительно сохраняет directory entries.
-`FileSystemSliceRetentionStoreIT` проверяет целостное удаление каталога,
-изоляцию staging и отказ удалять incomplete/corrupt final.
-`FileSystemCompletedSliceCatalogIT` проверяет verified discovery, независимые
-profile pools, rejected unsafe paths, staging isolation и surfacing corruption.
+The [test package](../../../../../../../../test/java/com/iocextractor/adapter/out/sink/csv/README.md) maps byte/protocol and failure-path
+contracts. Cross-module lifecycle, identity, snapshot and delivery rules belong to
+[artifact export](../../../../../../../../../../../docs/dev/artifact-export.md) and [storage](../../../../../../../../../../../docs/dev/storage.md).

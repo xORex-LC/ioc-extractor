@@ -1,131 +1,91 @@
 # core/ioc-application
 
-## Назначение
+## Purpose and boundary
 
-Application layer: use-case ports, IOC ETL payloads/stages, extraction
-orchestration и storage-neutral Artifact Emission contracts, model,
-formation saga/change detection/forward recovery. Модель canonical record
-validity находится в `application.artifact.lifecycle`; её client-shaped driven
-ports остаются framework-free. Lifecycle application services координируют common
-admission, bounded expiry, independent history retention и durable mutable
-projection convergence. One-way legacy activation и bounded fingerprinted
-receipt replay также остаются application use cases; scheduling, SQL, packaging
-defaults и health не проникают в этот слой.
+Framework-free application layer for document extraction, canonical artifact
+lifecycle, ordered observations, managed CSV import, immutable export and remote
+fetch/publish coordination. The reactor artifact is `com.iocextractor:ioc-application`;
+it is neither a runnable application nor an admitted standalone library.
 
-Extraction возвращает first-class completion/diagnostic outcome. Pure domain
-decisions материализуются один раз; application stages используют их
-для policy outcome и передают в gated observability port без SLF4J dependency.
-`ExtractionCommand.runId` обязателен и задаётся driving boundary: oneshot CLI
-создаёт новый correlation id, daemon передаёт durable `ingest_run.run_id`.
-`ExtractionResult` возвращает тот же id из terminal envelope.
-Каждый документ использует обязательный `DocumentProcessingPlan` port и
-`PrepareRoutedArtifactsStage`. Stage закрывает собственную сессию до checkpoint
-и при исключениях; application не знает Camel и CSV. Поставляемый план сохраняет
-исходные наблюдения `keep-first` после source-дедупликации, включая кратность
-mapped-коллизий. Для `last-nonempty` и планов с выбором по конечному ключу
-победитель выбирается глобально в `DocumentPreparationWorkspace`. Invocation
-владеет закреплённым исходным документом и закрывает workspace на каждом пути.
-`ArtifactWritePlan`, canonical confirmations и typed receipts передают
-повторяемый `RowSource`, а вызывающий код закрывает каждый `RowCursor`.
-Framework-free ports задают контракт; дисковый reducer, квоты и SQLite
-соединения принадлежат JDBC adapter.
-`DocumentSourceWorkspace` этого же invocation предоставляет decoded/refanged
-текст и source cursors. Стадии `ReadSourceStreamStage`, `RefangSourceStreamStage`,
-`ExtractSourceStreamStage`, `AttributeSourceStreamStage` передают Router поток
-атрибутированных occurrences без полного списка. Source scratch закрывается
-перед seal; fatal errors проходят через cleanup и driving fail-stop boundary.
-Альтернативного dedup/classify/prepare dispatcher нет.
-`ArtifactRow` владеет единственным упорядоченным защитным снимком колонок:
-фабрика `ordered` использует снимок конструктора, сохраняет `null` и порядок
-колонок, не раскрывает изменяемую карту вызывающего кода.
-Terminal ingestion rejection идемпотентен: driving adapter различает впервые
-записанный `REJECTED` и уже durable `ALREADY_REJECTED`, не читая ledger напрямую.
-`ObservationId` идентифицирует одну delivery/retry цепочку, а повторяемый
-`SourceKey` — содержимое; их разделение позволяет поздней одинаковой доставке
-подтвердить freshness без нарушения recovery-idempotency.
+Driving adapters invoke use-case ports; driven ports describe required storage,
+parsing, transport and reporting behavior. Bootstrap supplies implementations,
+validated policy and runtime scheduling. Model invariants and orchestration live
+here; SQL, Spring, Camel/CSV/Tika/SMBJ integration and concrete encoders stay outward.
+Framework-free does not imply pure computation: services invoke side-effecting
+ports, and the current sync package also owns JDK NIO local landing/marker IO.
 
-**Правило слоя:** application работает через ports and domain/platform
-contracts. It does not import concrete adapters, Spring or runtime logging.
+## Structure and reading order
 
-## Структура
-
-| Подпапка / файл | Назначение |
+| Directory | Responsibility |
 |---|---|
-| `pom.xml` | Maven module descriptor |
-| `src/main/java/com/iocextractor/application/` | Ports, use cases, payloads and stages |
-| `src/test/java/com/iocextractor/application/` | Application and stage tests |
+| [Application package](src/main/java/com/iocextractor/application/README.md) | Capability map and local package ownership |
+| [Driving ports](src/main/java/com/iocextractor/application/port/in/README.md) | Commands/results and supported entry operations |
+| [Driven ports](src/main/java/com/iocextractor/application/port/out/README.md) | Adapter contracts, callback/resource lifetimes and atomicity boundaries |
+| [Extraction service](src/main/java/com/iocextractor/application/service/README.md) | Workspace-owned extraction and split prepare/promote |
+| [Pipeline](src/main/java/com/iocextractor/application/pipeline/README.md) | Application metadata/payloads and streamed versus batch stages |
+| [Artifacts](src/main/java/com/iocextractor/application/artifact/README.md) | Identity, preparation, canonical writes and lifecycle |
+| [Managed import](src/main/java/com/iocextractor/application/dataframeimport/README.md) | Contract compilation, staging, global-head processing, receipts and recovery |
+| [Tests](src/test/java/com/iocextractor/application/README.md) | Local fake-backed contracts and downstream integration boundaries |
 
-Artifact Emission разделяет orchestration на три узких компонента:
-`ExportService` координирует новый run, `ExportChangeDetector` содержит чистую
-revision/hash policy, `ExportRunRecoveryService` продвигает crash checkpoints
-только из ledger + manifest/filesystem evidence. Ни один из них не зависит от
-JDBC, CSV/JSON, path API, Spring или SLF4J. Candidate считается избыточным только
-при совпадении plan, public hashes и manifest coverage revisions: новая covered
-revision сохраняет delivery significance даже для byte-identical projection.
+There are no module-local resource trees. Follow a capability's package README
+for its important types and port map, rather than treating a root summary as the
+complete contract. Existing compatibility surfaces remain documented until their
+retirement is separately accepted.
 
-Canonical lifecycle следует той же границе. `LifecycleReconciliationService`
-держит один cycle `asOf` и coalesce-ит lossy projection hints по artifact;
-`ArtifactProjectionConvergenceService` обнаруживает pending work, а общий
-`GenerationOwnedArtifactProjection` сериализует snapshot/build/install/ack по
-артефакту и подтверждает фактически установленное поколение. Повторные запросы
-могут использовать уже подтверждённый результат с сохранением предупреждений;
-`LifecycleAdmissionService` сериализует idempotent pre-stateful-work
-barrier. Events ускоряют работу, но deadline/projection state и periodic
-reconcile остаются authority.
-`LifecycleActivationService` возобновляет bounded `existing-records: expire`
-до admission, а `ConfirmationReceiptReplayService` использует только complete,
-unexpired receipt с точным processing-policy fingerprint и иначе возвращает
-обычный ETL fallback.
+## Dependencies
 
-Managed dataframe import остаётся отдельным application capability. Его
-`DataframeImportProcessingService` продвигает только минимальный non-terminal
-global sequence через pinned snapshot, exact contract, sealed stage, canonical
-receipt и forward-only finalization. `DataframeImportRecoveryService`, drain и
-reconcile coordinators используют ledger как authority; in-memory events и
-keyed executor лишь ускоряют работу. Validate/status/replay/retention доступны
-через узкие driving ports и не дают оператору skip/reorder либо прямую mutation
-ledger.
-`DataframeImportSourceReadinessCoordinator` закрывает только источник, не
-прошедший transport-neutral positive capability probe. Общие
-`ImportManagedObjectId` и `ImportSnapshotStore` сохраняют token/snapshot
-контракт независимым от local/SMB транспорта; replay имеет явный
-source-detached kind и не вызывает source disposition/retention.
-Terminal retention использует общую семантику
-`max-age|max-count|delete|archive` для непересекающихся outcome targets и
-сначала очищает transport-managed terminal source, затем local terminal unit,
-snapshot/stage/receipt и только последним CAS удаляет ledger row.
+The POM directly selects domain, pure `ioc-processing` and platform ETL,
+IOC diagnostics, diagnostics API, control-event and keyed-concurrency contracts.
+Platform errors arrive transitively. Parent management owns versions/Java 21;
+parent test dependencies supply JUnit/AssertJ. This module does not depend on the
+application TCK, adapters or bootstrap.
 
-Ordered field policies используют framework-free `ObservationOrder`,
-`OccurrencePosition` и `FieldValueOrigin`. `DocumentAdmissionService`,
-`ManagedImportObservationAdmission` и `ObservationOrderedExtractionDecorator`
-координируют dataframe registration с transport/service recovery references
-короткими последовательными операциями, без cross-database transaction.
-Recovery всегда вызывает `resume` с сохранённым namespace и не имеет права
-выделить новый rank. Terminal retention запрашивает безопасное удаление точной
-registration и оставляет recovery reference, пока её удерживает provenance или
-receipt; после `PURGED` либо доказанного `MISSING` удаляется service/file
-reference. Это делает crash между двумя локальными удалениями идемпотентным.
+Module Enforcer rules reject Spring, CSV, SMBJ, JDBC/TX, Hikari and SQLite
+integration dependencies transitively; architecture tests additionally enforce
+inward imports and port/package rules. A framework-free class may carry JDK
+`Path`/`Clock` values. Do not describe that as a runtime SDK or storage
+implementation guarantee. The POM/dependency tree owns exact coordinates.
 
-`LatestRegisteredValuePolicy` является pure strategy без clock/storage access.
-`ArtifactWritePlan` сохраняет positions управляемых полей до commit, а
-`WriteArtifactsStage` передаёт registration через storage-neutral command либо
-lifecycle confirmation. Результат записи различает inserted, public-updated и
-metadata-only rows; наружу публикуется ordered set artifacts с изменившимся
-public представлением, чтобы projection и recovery не теряли name-only update.
-Managed import использует ту же registration через `CanonicalImportCommand`,
-поэтому document и CSV delivery сравниваются одним dataframe-owned order, а
-service sequence остаётся только FIFO authority самого import-контура.
+## Key execution contracts
 
-## Зависимости
+The factory-built document path is streamed source read/refang/extraction/
+attribution, required selected-plan preparation, failure-policy checkpoint,
+then canonical write and projection. Prepared workspaces are private precommit
+evidence. Only promotion reserves IDs or changes canonical rows. Dry-run still
+reads/prepares scratch; it skips canonical writing/ID reservation at this boundary.
 
-**Зависит внутрь от:** domain, чистого `ioc-processing` и framework-free platform contracts для ETL,
-diagnostics, control events и keyed concurrency. Точный прямой Maven-граф
-задаёт [pom.xml](pom.xml); README описывает роли, но не дублирует dependency
-inventory.
+Document commit proceeds artifact by artifact, with projection after each commit;
+it is not one cross-artifact transaction. A later failure can follow earlier
+canonical effects and requires forward recovery. Managed import has a different
+port: one integrity-pinned delivery is promoted atomically across affected
+artifacts, with a dataframe commit receipt as idempotency authority.
 
-**Не импортируется:** adapters, bootstrap, Spring, Tika, CSV, picocli, Logback.
+Canonical IDs, lifecycle IDs, content keys, delivery observation IDs, dataframe
+observation ranks, import FIFO sequence and reusable export slots are distinct.
+A repeated file is a new delivery observation even when its content key matches.
+Expiry affects active membership/projection generation; it is not automatically
+a new-row revision or a new immutable slice. Events are hints; durable ledgers,
+receipts, revisions/deadlines/generations and periodic reconcile own recovery.
 
-Processed-import staging owns an optional preparation session after contract-pin
-validation and closes it before sealing on all exit paths. Every input still
-participates in ordinary admission, source authority and workspace accounting.
-See [ADR 0033](../../docs/ADR/0033-bounded-semantic-reuse-during-import-staging.md).
+Services depend on configured resource bounds supplied by workspace/transport
+implementations. Repeatable cursors and bounded diagnostic detail do not prove
+whole-process memory or full-service capacity. Current qualified limits and
+open issues remain in the linked capability docs and registry.
+
+## Verification and related docs
+
+Run from the repository root:
+
+```bash
+make test-module MODULE=core/ioc-application
+```
+
+Local suites run in Surefire with synthetic/fake port implementations. JDBC TCK,
+actual parser/transport/Camel and composed runtime scenarios live downstream;
+full reactor acceptance uses `make verify`. A green local suite is not live SMB,
+installation, reference-load or complete compatibility qualification.
+
+See [processing](../../docs/dev/processing.md), [ingestion](../../docs/dev/ingestion.md),
+[lifecycle](../../docs/dev/canonical-record-lifecycle.md), [import](../../docs/dev/dataframe-import.md),
+[export](../../docs/dev/artifact-export.md), [sync](../../docs/dev/sync.md),
+[test policy](../../docs/TESTING.md) and [known issues](../../docs/KNOWN-ISSUES.md).

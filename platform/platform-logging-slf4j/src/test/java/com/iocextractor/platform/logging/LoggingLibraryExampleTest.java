@@ -86,11 +86,11 @@ class LoggingLibraryExampleTest {
 
     private static Map<String, String> guideExamples() throws Exception {
         Path root = Path.of("").toAbsolutePath();
-        while (root != null && !Files.isRegularFile(root.resolve("docs/guides/logging-library.md"))) {
+        while (root != null && !Files.isRegularFile(root.resolve("docs/guides/libraries/logging-slf4j.md"))) {
             root = root.getParent();
         }
         assertThat(root).as("Reactor root containing the consumer guide").isNotNull();
-        var document = Files.readString(root.resolve("docs/guides/logging-library.md"));
+        var document = Files.readString(root.resolve("docs/guides/libraries/logging-slf4j.md"));
         var blocks = Pattern.compile("```java\\R(.*?)\\R```", Pattern.DOTALL).matcher(document);
         var examples = new LinkedHashMap<String, String>();
         while (blocks.find()) {

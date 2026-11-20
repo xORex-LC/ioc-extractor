@@ -1,7 +1,13 @@
 # Эксплуатация daemon
 
-Runbook описывает повседневную работу с установленным daemon ioc-extractor:
-подачу sources, health, logs, failed files и защиту durable state.
+[English version](../daemon-operations.md)
+
+Runbook описывает повседневную эксплуатацию установленного daemon ioc-extractor:
+подачу документов, health, разбор неудачных/заблокированных заданий и сохранение
+состояния для восстановления. Внутренний механизм описан в
+[ingestion](../../dev/ru/ingestion.md), установка и обновление — в
+[deployment](deployment.md). Для CSV inbox действует отдельное
+[руководство import](dataframe-import.md).
 
 ## Управление сервисом
 
@@ -13,7 +19,7 @@ sudo systemctl status ioc-extractor --no-pager
 sudo journalctl -u ioc-extractor -f
 ```
 
-Application commands запускайте установленным launcher:
+Для команд приложения используйте установленный launcher:
 
 ```bash
 sudo /opt/ioc-extractor/bin/ioc --version
@@ -21,38 +27,55 @@ sudo /opt/ioc-extractor/bin/ioc health
 sudo /opt/ioc-extractor/bin/ioc health --json
 ```
 
-Default prefix — `/opt/ioc-extractor`; при другой установке замените его.
+Примеры используют prefix установщика `/opt/ioc-extractor` и пользователя `ioc`.
+Подставьте выбранные prefix/учётную запись; у `deploy-local.sh` значение по
+умолчанию — `/srv/ioc-extractor`. Launcher требует root и запускает команду от
+служебного пользователя с настроенным окружением. `health` опрашивает работающий
+daemon; он не запускает второй daemon и не восстанавливает его очередь. Не
+запускайте второй daemon на том же пространстве inbox/БД.
 
-### Безопасный planned restart
+### Безопасный плановый перезапуск
 
-Startup recovery завершается до допуска новой работы обычным poller, а
-source-key serialization не позволяет recovery и polling одновременно
-обрабатывать один source. Для согласованной точки backup или восстановления
-конфигурации всё равно выполняйте planned restart в idle maintenance window:
+Startup recovery завершается до открытия обычного intake. Обычный restart умеет
+восстанавливать захваченную работу, но не гарантирует свободную от заданий точку
+для смены конфигурации или backup. Для такой точки:
 
-1. приостановите local и remote producers, чтобы новые sources не поступали;
-2. дождитесь завершения текущего source и пустых `var/inbox` и
-   `var/processing`, включая временные/частичные files;
-3. проверьте local health и последние diagnostics `INGEST.*`;
-4. перезапустите service, подтвердите health и только затем возобновите intake.
+1. Приостановите локальных и удалённых производителей, включая запланированные
+   поступления в import inbox, если они включены. Учтите уже начатые remote fetch:
+   остановка записи upstream сама по себе не выключает расписание fetch daemon.
+2. Дождитесь завершения принятой работы. Проверьте `var/inbox`, `var/processing`,
+   временные файлы, сохранённые pending/blocked admissions, import и publication
+   backlog. Пустые каталоги сами по себе не доказывают завершение всей работы.
+3. Проверьте локальный health и свежие `INGEST.*`. Заблокированный старейший допуск
+   требует разбора; restart не очищает очередь.
+4. Остановите сервис и убедитесь, что он остановлен, прежде чем менять recovery
+   state или делать файловую резервную копию. Для обычного restart без backup или
+   изменений используйте команду выше.
+5. Запустите сервис, подтвердите recovery и локальную readiness, затем возобновите
+   производителей.
 
-Это процедура операционной согласованности, а не способ сделать существующую
-`FAILED` identity retryable. Если idle window обеспечить нельзя, сохраните state
-и используйте reviewed maintenance procedure, не удаляя ledger records.
+Unit допускает 60 секунд на остановку; ожидание рабочих потоков dispatcher тоже
+ограничено. Timeout или принудительное завершение не означают чистый drain.
+Сохраните recovery files и проверьте следующий startup. Если свободное окно
+невозможно, используйте согласованную процедуру обслуживания, не удаляя ledger.
 
-## Подача source document
+## Подача исходного документа
 
-Daemon обрабатывает целые файлы, а не дописываемый byte stream:
+Daemon обрабатывает целые файлы, а не дописываемый поток байтов:
 
 ```text
-inbox → stability wait → atomic claim в processing
-      → canonical DB commit → CSV projection → done
-      └ post-claim terminal failure              → failed
-pre-claim terminal failure → может остаться в inbox (ING-13)
+inbox -> stability wait -> durable order -> atomic claim -> private sealed source
+      -> bounded preparation -> ordered promotion -> canonical commit
+      -> CSV projection -> done
+verified source rejection -> failed
+pre-hash retry exhaustion -> blocked admission, owned token retained
+pre-reservation failure -> may remain in inbox (ING-13)
 ```
 
-Локальный файл копируйте с временным исключённым suffix и переименовывайте после
-завершения:
+По умолчанию принимаются `.htm`, `.html`, `.docx`, а `.tmp`, `.part` и скрытые
+имена исключены. При смене конфигурации проверьте `ioc.ingestion.patterns`.
+Используйте уникальное имя поступления и исключённый временный суффикс, затем
+переименуйте в пределах ФС inbox после закрытия записи производителем:
 
 ```bash
 sudo -u ioc cp report.docx /opt/ioc-extractor/var/inbox/report.docx.part
@@ -60,138 +83,183 @@ sudo -u ioc mv /opt/ioc-extractor/var/inbox/report.docx.part \
   /opt/ioc-extractor/var/inbox/report.docx
 ```
 
-Rename явно обозначает producer completion. Прямое копирование в final name тоже
-защищено stability quiet period, но producer не должен изменять файл бесконечно.
+Целевое имя должно быть свободно; не перезаписывайте прежнее поступление и не
+используйте одно временное имя для двух производителей. Quiet period по умолчанию
+составляет 10 секунд, интервал полного обхода — 30 секунд. Это наблюдения, а не
+протокол завершения записи: приостановленная копия под конечным именем может
+слишком рано выглядеть стабильной.
 
-Не пишите в `processing`, `done` или `failed`. Не редактируйте files в
-`dataframe/`: это projections, восстанавливаемые из canonical storage.
+На сетевых/ненадёжных ФС сохраняйте полный опрос
+(`ioc.ingestion.detect.use-watch-service=false`). Опциональный WatchService не
+имеет периодического полного обхода; потеря события может оставить файл
+необнаруженным. Сканирование durable journal восстанавливает только уже
+допущенную работу.
 
-## Результаты обработки
+Не пишите напрямую в `processing`, `done`, `failed` и не меняйте уже захваченный
+изолированный файл. Архивные имена содержат ownership/hash metadata и могут
+заканчиваться на `.sealed`; не полагайтесь на прежний суффикс. Не редактируйте
+`dataframe/`: это проекции канонического хранилища.
 
-Успешный source архивируется в `var/done`. Новые canonical rows получают
-непереиспользуемые internal identities; повторный IOC сохраняется один раз, а
-source provenance накапливается. Новый документ не сбрасывает и не заменяет
-dataset. Поле `id` в immutable export является отдельным reusable slot,
-стабильным только пока lifecycle активна.
+## Интерпретация результата
 
-При `collect-and-continue` recoverable item errors могут завершить run с
-diagnostics. Валидные строки при этом записываются, поэтому logs/health следует
-проверять и для source, попавшего в `done`.
+Архив в `var/done` означает завершённый lifecycle исходного файла. Новые canonical
+rows получают непереиспользуемую внутреннюю identity; при той же row identity
+сохраняется существующая строка, а принятые наблюдения могут обновлять её
+lifecycle/provenance по политике. Другой документ не сбрасывает набор данных.
+В immutable export `id` — отдельный переиспользуемый slot; см.
+[руководство lifecycle](canonical-record-lifecycle.md).
 
-После bounded retries, следующих за успешным claim, terminal source перемещается
-в `var/failed`, а ledger фиксирует terminal state. При pre-claim failure source
-может остаться в `var/inbox` из-за ING-13. В текущем релизе нет поддерживаемой команды
-очистки или requeue такой identity. Не переносите source для повторной подачи и
-не редактируйте ledger files/SQLite tables вручную. Сохраните source там, где он
-остался, вместе с logs, исправьте причину и используйте reviewed recovery
-procedure; идентичный content может остаться terminally deduplicated.
+При `collect-and-continue` корректные строки могут фиксироваться при наличии
+диагностики отдельных элементов. Поэтому `COMPLETED_WITH_ERRORS` требует разбора,
+даже если файл попал в `done`. Запись документа фиксируется по артефактам: сбой
+позднего артефакта/проекции не откатывает прежние canonical writes. Health не
+является отчётом о commit конкретного источника. Ограничение partial-run resume
+отслеживается как `ING-11` в [известных проблемах](../../KNOWN-ISSUES.md).
 
-## Health checks
+| Ситуация | Где смотреть / действие |
+|---|---|
+| Проверенный источник отклонён после ограниченных попыток | `var/failed`, sidecar `.error` и диагностика; сохраните источник для расследования |
+| Достоверного ключа содержимого ещё нет, попытки исчерпаны | Owned token/admission может остаться в `processing`; `dataProcessingCapacity` имеет `DOWN`, следующие promotion ждут за заблокированным первым заданием |
+| Слишком большой незахваченный файл или насыщение count/byte admission | Файл остаётся в `inbox`; полный опрос повторяет допуск после изменения давления |
+| Сбой до reservation | Может остаться в `inbox` (`ING-13`); сохраните файл и логи |
+| Прерванные claim, promotion или projection | Сохраните journals и owned files для startup recovery |
 
-`ioc health` запрашивает loopback actuator и возвращает таблицу:
+Поддерживаемой команды clear/requeue очереди документов нет. Возврат терминального
+источника в inbox или удаление ledger/SQLite records не являются поддерживаемым
+повтором; идентичный контент может остаться терминально дедуплицированным.
+Исправьте причину и используйте согласованное recovery или coordinated restore.
+Не используйте команду managed-import `replay` для документов.
+
+## Проверки health
+
+`ioc health` опрашивает actuator и выводит таблицу; `--json` возвращает тело
+ответа. Exit code относится к запрошенному aggregate или выбранному компоненту:
 
 | Exit | Значение |
 |---|---|
-| `0` | Overall status healthy, включая допустимый degraded state. |
-| `1` | Компонент down или health response unhealthy. |
-| `2` | Endpoint недоступен либо response не удалось интерпретировать. |
+| `0` | Разобранный `status` в точности равен `UP` |
+| `1` | Любой другой разобранный статус, включая `DEGRADED`, `UNKNOWN`, `DOWN` |
+| `2` | Endpoint недоступен, запрос не выполнен или ответ не удалось разобрать |
 
 ```bash
-ioc health
-ioc health --component sync
-ioc health --json
-curl --fail --silent http://127.0.0.1:8081/actuator/health
+sudo /opt/ioc-extractor/bin/ioc health --component ingestionLifecycle
+sudo /opt/ioc-extractor/bin/ioc health --component dataProcessingCapacity --json
+sudo /opt/ioc-extractor/bin/ioc health --component sync
+curl --noproxy '*' --silent --show-error http://127.0.0.1:8081/actuator/health
 ```
 
-| Status | Интерпретация |
-|---|---|
-| `UP` | Есть успешное актуальное наблюдение. |
-| `DEGRADED` | Сервис доступен, но backlog/recovery/optional integration требуют внимания. |
-| `UNKNOWN` | Итоговой операции ещё не было; типично сразу после startup для optional sync. |
-| `DOWN` | Required local dependency или наблюдаемая операция failed. |
+При другом настроенном порте actuator подставьте его. Команда curl сохраняет
+тела ошибочных ответов для разбора; её exit code сам по себе не проверяет health
+JSON. `ingestionLifecycle` имеет `UP` только после recovery и запуска intake.
+`dataProcessingCapacity` имеет `DOWN`, когда dispatch остановлен или допуск
+заблокирован; details показывают возраст/байты очереди, фазы и давление
+writer/workspace. `UP` не подтверждает бюджет ресурсов или успех каждого источника.
 
-Deployment health gate проверяет local storage/application readiness, а не
-доступность каждого optional SMB endpoint.
+Опциональный sync может иметь `UNKNOWN` до первого наблюдения и `DEGRADED` при
+recovery/backlog. Проверяйте компоненты отдельно: aggregate status не является
+доказательством локальной readiness. Deployment gate проверяет локальные
+зависимости отдельно от доступности удалённых endpoint. При включённом managed
+import чтение status/health может упасть на pending head без retry deadline
+(`OPS-10` в [известных проблемах](../../KNOWN-ISSUES.md)); это сбой наблюдения,
+а не доказательство отката или исчезновения поступления.
 
-## Logs и diagnostics
+## Логи и диагностика
 
-Daemon пишет ECS JSON в `var/logs` и systemd journal:
+С поставляемым профилем `daemon` структурированный ECS JSON записывается в
+`var/logs/ioc-extractor.ecs.json` и ротируется там же. Console output доступен
+через systemd journal; он не обязан иметь тот же JSON-формат.
 
 ```bash
 sudo journalctl -u ioc-extractor --since "30 minutes ago" --no-pager
-sudo journalctl -u ioc-extractor -p warning --since today --no-pager
 ```
 
-Stable codes `CONFIG.*`, `SOURCE.*`, `SINK.*`, `INGEST.*`, `EXPORT.*`, `SYNC.*`
-задают область failure. INFO/WARN не содержат raw IOC и credentials. Per-item
-TRACE включайте только на короткое контролируемое окно и затем отключайте.
+Сопоставляйте имя файла, observation/source identity, run id и время; приватный
+token не обязан сохранять точное исходное имя. Используйте коды (`CONFIG.*`,
+`SOURCE.*`, `SINK.*`, `INGEST.*`, `EXPORT.*`, `SYNC.*`) и application severity.
+Один лишь journal priority filter может пропустить Java warnings в console stream.
+INFO/WARN намеренно не содержат raw IOC и credentials. Включайте per-item TRACE
+только на контролируемое диагностическое окно.
 
-При startup failure:
+При startup failure прочитайте все действия `CONFIG.*`, проверьте value-free
+отчёт выигравших ключей и сопоставьте YAML с
+[руководством конфигурации](configuration.md). Исправьте каждый invalid/unknown
+key до рестарта. Сбой ingestion recovery держит intake закрытым; не обходите
+барьер ради возобновления опроса.
 
-1. прочитайте полный список действий `CONFIG.*`;
-2. по value-free override report определите выигравшие external keys;
-3. сравните YAML со [справочником](configuration.md);
-4. исправьте все unknown/invalid keys до restart.
+## Разбор неудачного или заблокированного источника
 
-## Разбор failed source
+1. Приостановите автоматическую повторную подачу. Запишите имя, время, build
+   version, доступные observation/run identity и diagnostic codes.
+2. Сохраните источник там, где он остался (`failed`, `inbox` или owned token в
+   `processing`), sidecars и journals; это потенциально чувствительные данные.
+3. Проверьте формат/содержимое, права, свободный диск, storage и лимиты ресурсов.
+   Для заблокированного pre-hash head сохраните исходный порядок допуска.
+4. Изучите run/receipt и projection evidence до вывода о совершённых commit.
+   Одного failed source или здорового aggregate недостаточно.
+5. Исправьте причину и следуйте согласованной процедуре без удаления durable state.
 
-1. Остановите автоматическую resubmission со стороны producer.
-2. Зафиксируйте filename, timestamp, build version и diagnostic codes.
-3. Сохраните source там, где он остался (`var/failed` либо `var/inbox` для
-   известного pre-claim пути ING-13), как потенциально sensitive.
-4. Отделите input format/content, config, storage, permission и resource failures.
-5. Проверьте canonical/projection health и факт возможного commit.
-6. Исправьте причину и примените approved recovery procedure. Не удаляйте ledger
-   state только ради повторного запуска.
+Обычный startup восстанавливает распознанные claims и незавершённые committed
+runs. Нераспознанные orphan files могут быть изолированы как ошибки; не
+переименовывайте их вручную в успешные. Recovery сохраняет полномочия и порядок,
+а не придумывает новый ранг для незавершённой legacy-работы.
 
-Orphan в `processing` изолируется как failure. При нормальном restart durable
-recovery повторяет незавершённый claimed work, а после DB commit доводит run
-вперёд повторной projection.
+## Очередь и ёмкость
 
-## Backlog и capacity
+Отслеживайте pending count, source bytes, oldest age и blocked count в
+`dataProcessingCapacity`, а также возраст inbox, свободный диск, размер DB/WAL,
+давление workspace и export/publish lag. Счётчики фаз/завершений дополняют осмотр
+каталогов; часть из них принадлежит процессу и сбрасывается при restart.
 
-Контролируйте:
-
-- число и oldest age файлов в `inbox`, `processing`, `done`, `failed`;
-- свободное место под installation prefix;
-- размеры `var/db`, `var/export`, `dataframe`, `var/logs`;
-- pending export/publish и pinned slices в health;
-- повторяющиеся retry/reconcile diagnostics.
-
-Не увеличивайте `ioc.ingestion.concurrency` для сброса backlog: 0.3.0 принимает
-только `1`, любое другое значение роняет startup. Будущий concurrency потребует
-отдельной модели ordering/admission и load testing claim/recovery/SQLite
-contention. Сначала проверьте slow copies, parser-heavy documents, remote outage
-и quiet period.
+`ioc.ingestion.concurrency` должен оставаться `1`. Это последовательное обнаружение
+и promotion, тогда как `ioc.ingestion.execution.preparation-workers` допускает
+до двух параллельных подготовок. Окно по умолчанию — четыре, очередь — 64 документа,
+4 GiB ожидающих исходных файлов и 512 MiB на файл. Это отдельные бюджеты от
+memory/disk workspace, а не обещание предела памяти процесса целиком. Увеличение
+лимита требует измерений ёмкости, не только успешного startup. До настройки очереди
+исследуйте blocked head, медленный storage/parser, копирование и remote outage.
 
 ## Retention
 
-Политики независимы:
+Согласуйте политики: у них разные владельцы.
 
-- `ioc.export.retention` удаляет старые unpinned immutable slices;
-- `ioc.maintenance.retention` обрабатывает leaf files, например `done`/`failed`.
+- `ioc.maintenance.retention` очищает настроенные leaf directories, например
+  `done` и `failed`; в поставляемых defaults выключен до согласования окон
+  расследования и backup.
+- `ioc.export.retention` очищает старые незакреплённые immutable slices; ожидающая
+  доставка может их закреплять. См. [remote storage](remote-storage-sync.md).
+- Очистка lifecycle history/receipts и managed-import terminal имеет отдельные
+  обязательства восстановления; см. [lifecycle](canonical-record-lifecycle.md)
+  и [import](dataframe-import.md). Ротация логов тоже независима.
 
-Не включайте maintenance retention до согласования сроков investigation/backup.
-Никогда не задавайте DB directory, export root, inbox или processing как leaf-file
-retention target.
+Не применяйте leaf-file retention к DB/export roots, inbox, processing, admission
+journals или preparation workspaces. Не удаляйте закреплённые файлы ради свободного
+места; восстановите ёмкость или используйте процедуру очистки владельца.
 
-## Backup и recovery
+## Резервное копирование и восстановление
 
-Canonical business data и durable service state находятся в `var/db`. CSV
-projections восстанавливаются, DB — нет. Копируйте весь DB directory вместе с
-matching application/configuration release.
+Согласованный backup остановленного сервиса включает обе БД — canonical и service,
+файловые journals (по умолчанию `var/ledger`), owned sources/admissions и все
+referenced workspace/snapshot/export files, а также соответствующие binary и
+configuration. Учтите все настроенные пути, включая внешние относительно prefix.
+Копия одних БД может оставить восстанавливаемые claims без источника или receipts.
 
-Upgrade, rollback и restore описаны в [deployment guide](deployment.md). Проверяйте
-restore на non-production host: backup без проверенного restore не является
-подтверждённой recovery point.
+Не копируйте один main file работающей SQLite и не отбрасывайте WAL. Перед
+файловым snapshot остановите всех writers и сохраните database sidecars в
+согласованном комплекте; для online backup нужна отдельно квалифицированная
+процедура SQLite. Mutable CSV projections восстанавливаются, но pinned immutable
+slices и recovery inputs должны сохраниться вместе с ledgers. Не смешивайте
+файлы БД и journals из разных моментов backup.
 
-## Routine checklist
+Сверяйте upgrade/rollback compatibility с [deployment guide](deployment.md);
+одна копия DB directory не образует полноценную точку rollback. Проверьте
+согласованный restore на отдельном host, прежде чем считать recovery проверенным.
 
-- Service и local health находятся в норме.
-- Inbox age и processing backlog укладываются в ожидаемое окно.
-- Failed files разбираются, а не молча накапливаются.
-- Disk space покрывает DB growth, export, logs и backups.
-- Retention не удаляет evidence для investigation.
-- После deploy зафиксированы version/config.
-- Optional remote sync проверяется отдельно по
-  [гайду remote storage](remote-storage-sync.md).
+## Регулярная проверка
+
+- Сервис, recovery barrier и обязательные локальные компоненты готовы.
+- Возраст inbox, допущенная очередь и blocked count проверены.
+- Failed files и partial outcomes имеют решение по дальнейшим действиям.
+- Диск покрывает databases/WAL, workspaces, slices, логи и backup.
+- Retention сохраняет recovery pins и evidence для расследования.
+- После deployment записана идентичность build/configuration.
+- Опциональные sync и включённый import проверены по собственным руководствам.

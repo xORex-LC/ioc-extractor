@@ -1,58 +1,137 @@
 # Configuration reference
 
-This guide is the complete operator-facing configuration reference for
-ioc-extractor. It describes supported settings, accepted values and operational
-trade-offs without requiring knowledge of the implementation.
+[Русская версия](ru/configuration.md)
 
-For a ready-to-edit production override, use
-[the full application template](../../packaging/templates/application.yml).
+This is the operator reference for supported settings, accepted values and
+operational trade-offs. Start from the
+[full production template](../../packaging/templates/application.yml).
+The tables show built-in classpath defaults. Omission from an external file
+retains effective lower-priority configuration; it does not necessarily select
+an empty list or a Java constructor default.
+
+The fresh production preset deliberately differs: daemon runtime/logging,
+`collect-and-continue`, fixed `12h` validity with `existing-records: reject`, and
+shorter detection/export cadences. Upgrades preserve operator-owned YAML and
+write changed templates as `application.yml.new`; review and reconcile them.
+Do not copy the fresh lifecycle preset into a populated database without the
+[activation procedure](canonical-record-lifecycle.md).
 
 ## How configuration is applied
 
-The application ships with safe built-in defaults. An installed service loads
-`<prefix>/etc/application.yml` as an override, so omitted settings retain their
-built-in values. Effective precedence, from lowest to highest, is:
+For the usual deployment sources, precedence increases from left to right:
 
 ```text
 packaged defaults < external YAML < environment < JVM system properties < CLI
 ```
 
-The complete `ioc.*` namespace is strict. A misspelled or removed property from
-YAML, environment, a system property or the command line stops startup. This is
-intentional: an operator must never believe that a safety or delivery setting was
-applied when it was silently ignored.
+Classpath defaults import optional `./configs/application.yml`. The installed
+unit additionally loads `<prefix>/etc/application.yml` from its working
+directory. Boot imports and active-profile documents/files also participate.
+`SPRING_APPLICATION_JSON`, when supplied, can override ordinary environment and
+JVM properties; CLI still wins. Keep that input explicit when diagnosing a
+setting that appears to ignore YAML.
 
-Do not edit the installed YAML in place. Prepare a separate candidate and apply
-it through the installed helper:
+The `ioc.*` namespace is strict, including declarations shadowed by another
+source. A misspelled or removed key in loaded YAML, environment, JVM properties
+or CLI stops startup. `IOC_*` is reserved; unrelated operator variables must
+use another prefix. A syntactically valid YAML file can still fail conversion,
+semantic constraints, registry/plan admission or later runtime checks.
+
+Settings are read at startup; there is no general hot reload. Prepare a separate
+candidate rather than editing live YAML. Set `install_prefix` to the existing
+installation root, then run:
 
 ```bash
-sudo cp <prefix>/etc/application.yml ./application.candidate.yml
-sudo chown "$(id -u):$(id -g)" ./application.candidate.yml
+install_prefix=/srv/ioc-extractor
+sudo cp -- "$install_prefix/etc/application.yml" ./application.candidate.yml
+sudo chown -- "$(id -u):$(id -g)" ./application.candidate.yml
 ${EDITOR:-vi} ./application.candidate.yml
-sudo <prefix>/bin/ioc-config check ./application.candidate.yml
-sudo <prefix>/bin/ioc-config apply ./application.candidate.yml
+sudo "$install_prefix/bin/ioc-config" check ./application.candidate.yml
+sudo "$install_prefix/bin/ioc-config" apply ./application.candidate.yml
 ```
 
-`check` is a side-effect-free syntax check. `apply` validates the exact staged
-bytes again, replaces the live file atomically, restarts the service and waits
-for health. A typed or semantic startup failure restores the previous YAML and
-preserves the rejected candidate for diagnosis. Syntax failures use
-`CONFIG.YAML_INVALID` with line and column but never echo the source line.
+`check [candidate.yml]` stages a service-readable copy and performs syntax,
+strict-name, typed binding, semantic and registry/plan checks in a
+configuration-only Spring context. Without a candidate it checks the installed
+YAML. It runs as the service account, in the installation directory, with the
+installed systemd EnvironmentFile and JVM overrides. Classpath defaults, the
+candidate, allowed imports, profiles and effective overrides all participate.
+A higher-priority override can therefore mask a candidate's value. Review the
+effective sources when the outcome is surprising.
 
-Secrets must be supplied through environment placeholders such as
-`${SMB_PASSWORD}` and must not be written directly into YAML.
+Successful checking prints `CONFIG.SEMANTIC_VALID` and exits `0`. It does not
+open application databases, initialize transports, start intake or verify the
+current database/policy, paths, remote access and recovery. Required imports
+can perform I/O; the restricted bean graph is not resource isolation. Use the
+installed helper for this short-lived check. The internal YAML-only parser's
+`CONFIG.YAML_VALID` confirms syntax alone.
+
+`apply` requires a separate regular non-symlink file. It takes an apply lock,
+stages and validates the exact bytes again, backs up live YAML, atomically
+replaces it, restarts the service and waits for `UP`. The original candidate
+may be anywhere root can read; checking uses the staged service-readable copy.
+Do not rely on relative imports beside the original candidate: Boot resolves
+relative resources from the staged file's location under installed `etc`.
+Use deployment-stable import locations and keep profile selection consistent.
+A standalone check does not reserve its environment or candidate for a later
+apply; apply performs a new check.
+
+A rejected precheck leaves live YAML and the running service unchanged. If the
+restart or health check fails after replacement, the helper preserves
+`application.yml.rejected-<stamp>`, restores
+`application.yml.backup-<stamp>` and attempts to restart the previous
+configuration. Check its final result: restored YAML does not prove that the
+previous service is healthy. File restoration does not undo database migration,
+lifecycle activation, admitted work or remote effects. Before state-changing
+settings, follow the owning backup/migration procedure.
+
+The systemd unit repeats semantic checking in `ExecCondition`; a configuration
+error with exit `78` skips activation without a restart loop. Use
+`journalctl -u ioc-extractor` and the checker output to locate the failed phase.
+See [deployment](deployment.md) and [packaging](../../packaging/README.md) for
+application/database recovery.
+
+Secrets belong in protected environment placeholders such as `${SMB_PASSWORD}`,
+not literal YAML values. Controlled checker output excludes supplied values and
+exception text; names and candidate paths can still be sensitive. Ordinary
+framework DEBUG logs and arbitrary appenders are outside that guarantee.
 
 ### Value syntax
 
-- Durations use Spring syntax: `500ms`, `10s`, `5m`, `2h`, `7d`.
+- Durations use Spring syntax: `500ms`, `10s`, `5m`, `2h`, `7d`. Bare numbers
+  have context-dependent units; use explicit units. Each setting's positivity
+  and bounds apply independently; zero is not a universal disable value.
 - Boolean values are `true` or `false`.
-- Paths may be absolute or relative to the process working directory. The
-  installed service uses the installation prefix as its working directory.
-- Lists are YAML sequences or inline lists: `[ "*.html", "*.docx" ]`.
-- Environment variables use uppercase underscore form, for example
-  `ioc.pipeline.failure-policy` → `IOC_PIPELINE_FAILURE_POLICY`. Prefer YAML for
-  indexed lists: partial list-element overrides can discard sibling fields from
-  the lower-precedence source.
+- Paths are absolute or relative to the process working directory; the installed
+  service uses its installation prefix. That does not relocate Boot's relative
+  imports, which follow the importing configuration resource.
+- Lists use YAML sequences or inline lists: `[ "*.html", "*.docx" ]`. The
+  highest-priority source defining a list replaces the whole list, including
+  element fields and lower-priority tail elements. Supply complete elements.
+  Maps combine entries; the higher-priority value wins for a shared key.
+- IOC environment names use uppercase underscores, for example
+  `ioc.pipeline.failure-policy` → `IOC_PIPELINE_FAILURE_POLICY`. Names are
+  checked against the IOC schema, not accepted by a generic spelling guess.
+  Prefer complete YAML lists to indexed environment overrides.
+
+### Failed checks
+
+| Output | Action |
+|---|---|
+| `CONFIG.YAML_UNREADABLE` / `CONFIG.SEMANTIC_UNREADABLE` | Check the path, file type and service-readable staged input. |
+| `CONFIG.YAML_INVALID` | Fix YAML syntax at the reported line/column; source text is not echoed. |
+| `CONFIG.UNKNOWN_PROPERTY` and applicable `CONFIG.LEGACY_*` | Correct or migrate the named setting in every declaring source, including shadowed ones. |
+| `CONFIG.BINDING_FAILED` | Use the documented type and accepted selector tokens at the reported field. |
+| `CONFIG.VALIDATION_FAILED` | Resolve the reported field/cross-section constraints; later checks may not have run. |
+| `CONFIG.REGISTRY` | Check registered names, artifact references, write policies and named processing plans. |
+| `CONFIG.SEMANTIC_USAGE` / `CONFIG.SEMANTIC_SOURCE_OVERRIDE` | Use the helper's supported invocation; do not extend its configuration sources with beans. |
+| `CONFIG.CHECK_FAILED` | Investigate incomplete checking, including missing required imports; this is not acceptance or a proven value error. |
+
+Checker failures exit `78`; the shell helper can also fail for staging, systemd,
+restart or health reasons. Preserve the output and inspect the failed phase.
+Successful preflight does not substitute for checking service health after apply.
+The [internal report contract](../dev/configuration-failure-reports.md) details
+category, location and disclosure limits.
 
 ## Runtime and observability
 
@@ -92,20 +171,30 @@ the service is stopped or after a coordinated SQLite backup.
 
 ## IOC processing plans
 
-Document preparation always uses a private disk workspace. Physical budgets do not change canonical receipt policy identity. Whole-text/extracted-occurrence buffers remain outside this budget.
+Document preparation uses a private disk workspace, including streamed source
+text and occurrences. Physical budgets do not change canonical receipt policy
+identity. These are admission/cache/row/disk limits, not a bound on total JVM
+heap, parser allocations or native memory. See the
+[resource-sizing guide](bulk-resource-sizing.md) for measured scope and limits.
 
 | Property | Default | Meaning |
 | --- | --- | --- |
 | `ioc.processing.workspace.directory` | `./var/document-preparation` | Private owned root; keep it on local storage. |
-| `ioc.processing.workspace.memory-bytes` | `67108864` | Factory-wide cache/row admission budget; shared across artifacts. |
-| `ioc.processing.workspace.cache-kib` | `4096` | SQLite page-cache target per live workspace; mmap is disabled. |
-| `ioc.processing.workspace.maximum-row-bytes` | `262144` | Maximum encoded prepared row. |
+| `ioc.processing.workspace.memory-bytes` | `67108864` | Factory-wide cache/row admission budget; shared across artifacts and admitted preparations, not a heap limit. |
+| `ioc.processing.workspace.cache-kib` | `4096` | SQLite page-cache target per live workspace (at least 64 KiB); mmap is disabled. |
+| `ioc.processing.workspace.maximum-row-bytes` | `262144` | Maximum encoded prepared row; at most 16777216 bytes and at least the field limit. The same numeric value also bounds HTML parser region characters; oversized regions fail preparation rather than being truncated. |
 | `ioc.processing.workspace.maximum-field-bytes` | `65536` | Maximum UTF-8 field size. |
 | `ioc.processing.workspace.workspace-bytes` | `2147483648` | Per-invocation source/database/journal disk quota. |
 | `ioc.processing.workspace.total-disk-bytes` | `8589934592` | Root-wide disk admission quota, including retained pins. |
 | `ioc.processing.workspace.batch-rows` | `128` | Maximum append group between commits/quota checks (1..4096). |
 | `ioc.processing.workspace.retention` | `24h` | Expired inactive pins are pruned on the next admission; live leases are protected. |
 
+Budgets must be consistent: the field limit cannot exceed the row limit, the
+root-wide disk allowance must cover one workspace, and memory must cover the
+validated cache/working-row allowance. Retention must be positive. Source
+admission must also fit within one quarter of the workspace disk budget; see
+`ioc.ingestion.execution.max-source-bytes` below. Increasing a physical quota
+does not qualify a larger workload without measuring the complete service.
 
 The `ioc.processing` tree includes a required `document-plan`. Named plans are
 checked at startup and execute when selected by a document or processed-import
@@ -253,12 +342,12 @@ contract and must be tested against existing databases and consumers.
 | `ioc.sink.artifacts` | non-empty list | masks, ip_list, address_blacklist, hashes, ioc_aggregate | Override complete list elements, not isolated indexes. See the [IOC aggregate guide](ioc-aggregate.md) before first activation. |
 | `ioc.sink.artifacts[].name` | unique string | required | Stable artifact identity referenced by export and row-key configuration. |
 | `ioc.sink.artifacts[].enabled` | boolean | required | Disabled artifacts are not prepared or projected. |
-| `ioc.sink.artifacts[].path` | path | required | Mutable projection output path. |
+| `ioc.sink.artifacts[].path` | path | required | Mutable projection file path; a filesystem root is invalid. Existing directories and access are checked at runtime. |
 | `ioc.sink.artifacts[].accepts` | list of IOC types | required | Values: `IPV4`, `DOMAIN`, `URL`, `MD5`, `SHA1`, `SHA256`. |
 | `ioc.sink.artifacts[].include` | list of filter names | optional | All configured include predicates must match. Also supports `is-bare-ip`. |
 | `ioc.sink.artifacts[].exclude` | list of filter names | optional | A matching predicate excludes the row. Also supports `is-bare-ip`. |
 | `ioc.sink.artifacts[].id` | object | optional | Required when a column uses the deferred `id` provider. |
-| `ioc.sink.artifacts[].id.strategy` | `ascending`, `descending` | `ascending` in defaults | Public ID allocation direction. |
+| `ioc.sink.artifacts[].id.strategy` | `ascending`, `descending` | `ascending` in defaults | Canonical/mutable-projection ID allocation direction; immutable export slots have a separate identity contract. |
 | `ioc.sink.artifacts[].id.start` | `auto` or signed 64-bit integer | `auto` | `auto` continues after the durable baseline. Failed reservations are not reused. |
 | `ioc.sink.artifacts[].columns` | non-empty ordered list | artifact-specific | Defines CSV header order and canonical table columns. |
 | `ioc.sink.artifacts[].columns[].name` | non-blank string | required | Output column name; unique within an artifact. |
@@ -329,7 +418,7 @@ longest producer-side non-atomic copy interval.
 
 | Property | Type / accepted values | Built-in default | Guidance |
 |---|---|---|---|
-| `ioc.dataframe-import.enabled` | boolean | `false` | Master runtime/catalog switch; startup remains fail-closed until recovery completes. |
+| `ioc.dataframe-import.enabled` | boolean | `false` | Runtime intake switch; declared catalogs/plans are still validated when disabled. Startup stays fail-closed until recovery completes. |
 | `ioc.dataframe-import.runtime.dirs.processing` | path | `./var/import/processing` | Private transport-owned files after strict claim; keep on the same filesystem as each local inbox. |
 | `ioc.dataframe-import.runtime.dirs.snapshots` | path | `./var/import/snapshots` | Private immutable byte snapshots; size and digest are pinned in the service ledger. |
 | `ioc.dataframe-import.runtime.dirs.staging` | path | `./var/import/staging` | Per-delivery sealed SQLite workspaces; must not overlap another managed root. |
@@ -413,12 +502,12 @@ longest producer-side non-atomic copy interval.
 | Property | Type / accepted values | Built-in default | Guidance |
 |---|---|---|---|
 | `ioc.export.enabled` | boolean | `true` | Controls manual and daemon export availability. |
-| `ioc.export.root` | path | `./var/export` | Holds immutable slices, staging data and export ledgers. |
+| `ioc.export.root` | path | `./var/export` | Holds immutable slices and temporary export staging; durable coordination is in the service database. |
 | `ioc.export.trigger.type` | `interval`, `quiet-period` | `interval` | `quiet-period` coalesces changes; periodic checks remain the recovery backstop. |
 | `ioc.export.trigger.interval` | positive duration | `5m` | Scheduler/reconcile cadence. |
 | `ioc.export.trigger.quiet-period` | positive duration | `5m` | Delay after the latest canonical change before export. |
 | `ioc.export.trigger.max-cap` | positive duration | `1h` | Maximum postponement under continuous ingestion. |
-| `ioc.export.profiles` | non-empty list | reputation-lists, address-blacklist | Ordered, indivisible artifact sets. |
+| `ioc.export.profiles` | non-empty list | reputation-lists, address-blacklist, ioc-aggregate | Ordered, indivisible artifact sets. |
 | `ioc.export.profiles[].name` | unique string | required | Used by CLI and sync targets. |
 | `ioc.export.profiles[].output-mode` | `complete`, `append` | `complete` | Only `complete` is executable in this release; `append` is reserved and rejected. |
 | `ioc.export.profiles[].artifacts` | non-empty list | profile-specific | References enabled sink artifact names. |
@@ -497,7 +586,15 @@ baseline for SQLite and deterministic file handling.
 | `ioc.ingestion.ledger.path` | path | `./var/ledger` | Filesystem ledger location when type is `file`. |
 | `ioc.ingestion.concurrency` | integer, exactly `1` | `1` | Single detection/claim path. Bounded parallel preparation is configured separately below; canonical promotion stays serial. |
 
-Document execution admission (`ioc.ingestion.execution`) bounds private work: `ioc.ingestion.execution.preparation-workers` (1–2), `ioc.ingestion.execution.window` (queued/running/ready preparations), `ioc.ingestion.execution.max-pending-documents`, `ioc.ingestion.execution.max-pending-source-bytes`, and `ioc.ingestion.execution.max-source-bytes`. Saturated input stays in the inbox for a later complete listing. Defaults are 2 workers, 4 preparations, 64 pending documents, 4 GiB pending source bytes and 512 MiB per source. Canonical promotion remains serial in durable admission order.
+Document execution admission bounds queued, running and ready preparations:
+
+| Property | Built-in default | Constraint / meaning |
+|---|---|---|
+| `ioc.ingestion.execution.preparation-workers` | `2` | 1–2 preparation workers; canonical promotion remains serial in durable admission order. |
+| `ioc.ingestion.execution.window` | `4` | Must satisfy workers ≤ window ≤ pending-document limit. |
+| `ioc.ingestion.execution.max-pending-documents` | `64` | At most `256`; saturated input remains in the inbox for a later complete listing. |
+| `ioc.ingestion.execution.max-pending-source-bytes` | `4294967296` | Positive total pending source-byte allowance; at least the per-source limit. |
+| `ioc.ingestion.execution.max-source-bytes` | `536870912` | Positive per-source limit; no more than `ioc.processing.workspace.workspace-bytes / 4`. |
 
 Preparation and claim sealing enforce the admitted byte allowance during copying. The `dataProcessingCapacity` health view reports saturation, blocked ownership and writer/readers. Exhausted pre-hash work remains owned in processing; preserve its token, journal and databases for investigation rather than moving it back into intake. Service schema v14 requires a stopped-service backup of both databases and owned files before upgrade; rollback requires restoring that backup.
 
@@ -525,12 +622,15 @@ positive.
 ## Maintenance retention
 
 Leaf-file retention applies to configured directories such as `done` and
-`failed`. Immutable export slices have their own retention policy.
+`failed`. Immutable slices have separate age/count policy, but their daemon
+reaper shares the maintenance interval/initial-delay and runs even when leaf
+retention is disabled. Managed-import terminal units and lifecycle history have
+separate retention mechanisms; do not sweep their owned directories as leaf files.
 
 | Property | Type / accepted values | Built-in default | Guidance |
 |---|---|---|---|
-| `ioc.maintenance.retention.enabled` | boolean | `false` | Enable only after backup and investigation requirements are defined. |
-| `ioc.maintenance.retention.interval` | positive duration | `1h` | Sweep cadence. |
+| `ioc.maintenance.retention.enabled` | boolean | `false` | Enables leaf-file targets only. Define backup/investigation requirements before enabling; immutable-slice reaping is independent. |
+| `ioc.maintenance.retention.interval` | positive duration | `1h` | Shared daemon cadence for immutable-slice and enabled leaf-file reapers. |
 | `ioc.maintenance.retention.initial-delay` | non-negative duration | `5m` | Delay after daemon startup. |
 | `ioc.maintenance.retention.targets` | list | done and failed examples | Policies for recursively discovered leaf files. |
 | `ioc.maintenance.retention.targets[].name` | unique string | required | Operator-facing policy identity. |
@@ -550,7 +650,7 @@ framework recognizes them.
 |---|---|---|
 | `spring.profiles.active` | derived from observability mode | Installed daemon uses `daemon`. |
 | `spring.config.additional-location` | launcher supplied | Keep the installed `optional:file:./etc/application.yml` location. |
-| `spring.main.web-application-type` | `none`; launcher forces `servlet` for daemon | Launcher-owned; do not override in the installed YAML. |
+| `spring.main.web-application-type` | `none`; daemon forces `servlet` | Bootstrap-owned runtime setting; do not override in installed YAML. |
 | `logging.level.root` | `INFO` | Use `DEBUG`/`TRACE` only for bounded diagnostics. |
 | `logging.level.com.iocextractor` | `INFO` | Application-specific verbosity. |
 | `logging.file.path` | `var/logs` | Rolling ECS JSON log directory in daemon mode. |
@@ -564,15 +664,32 @@ framework recognizes them.
 
 ## Environment file
 
-`<prefix>/etc/ioc-extractor.env` is read by systemd and the installed `ioc`
-launcher. Supported entries are:
+`<prefix>/etc/ioc-extractor.env` is loaded by systemd for the daemon,
+`ioc-config` and installed `ioc` wrapper. Use systemd EnvironmentFile syntax,
+not a shell script; do not load it with `source`. The installer protects it as
+`0640`, readable by root and the service group.
 
 | Variable | Purpose |
 |---|---|
-| `JAVA_HOME` | Optional JDK override used by the launcher. |
-| `JAVA_OPTS` | JVM memory, GC and diagnostic options. Do not put application CLI arguments here. |
+| `JAVA_OPTS` | JVM options used by the daemon and configuration checker; keep secrets and application CLI arguments out. The installed oneshot `ioc` wrapper uses its own fixed JVM options. |
 | `SMB_USER` | Username referenced by `${SMB_USER}`. |
-| `SMB_PASSWORD` | Password referenced by `${SMB_PASSWORD}`. The installer protects the file as `0640`, readable only by root and the service group. |
+| `SMB_PASSWORD` | Password referenced by `${SMB_PASSWORD}`. |
 
-Use `systemctl restart ioc-extractor` after changing YAML or environment values,
-then validate with `ioc health` and inspect `journalctl -u ioc-extractor`.
+The Java executable is selected when packaging/installing the service; adding
+`JAVA_HOME` to this file does not switch the rendered executable. Review memory
+options together with the unit's cgroup limits. Environment changes require a
+service restart; then check `ioc health` and `journalctl -u ioc-extractor`.
+Apply YAML through the candidate workflow above. See
+[daemon operations](daemon-operations.md) for health-client options.
+
+## Sources and maintenance
+
+Defaults and shapes come from
+[classpath YAML](../../bootstrap/ioc-app/src/main/resources/application.yml),
+[the production template](../../packaging/templates/application.yml) and
+[typed properties](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/IocProperties.java).
+The [documentation contract](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/ConfigurationDocumentationContractTest.java)
+checks property-name/vocabulary coverage and template binding. Prose, defaults,
+recommendations and target behavior require review. Update both guide languages
+with an affected setting; [configuration mechanics](../dev/configuration.md)
+links validation and effective-source tests.

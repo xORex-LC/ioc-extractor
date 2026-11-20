@@ -1,58 +1,60 @@
-# build-support/cpd-report
+# Production-source duplication report
 
-## Purpose
+## Purpose and structure
 
-Non-production Maven report module that creates the authoritative
-repository-wide PMD CPD report after all production dependencies have
-completed.
+Report-only Maven POM `ioc-cpd-report`: repository-wide PMD CPD over a positive
+list of production `src/main/java` roots. Dependencies equal the declared analyzed
+production set and establish reactor ordering. This POM produces no runtime code
+or published library; other production/report projects must not depend on it.
 
-**Layer rule:** dependencies exist only to define reactor ordering. The
-analyzed source universe is a positive list of checked-in production
-`src/main/java` roots. This module contains no runtime code and is not a
-published library.
-
-## Structure
-
-| File/output | Purpose |
+| File | Responsibility |
 |---|---|
-| `pom.xml` | Explicit production-source universe, `aggregate-cpd` execution, reviewed group-count snapshot and late gate wiring |
-| `cpd-scope.tsv` | Fail-closed disposition for every Maven reactor project |
-| `../build-quality/BuildQualityVerifier.java` | Shared JDK-only reactor/source-scope and report-integrity verifier |
-| `target/cpd/cpd.xml` | Generated machine-readable repository report |
-| `target/cpd/cpd.html` | Generated human-readable repository report |
+| [pom.xml](pom.xml) | Ordering dependencies, explicit source roots, analyzer settings, exact duplication-group snapshot and late gate |
+| [cpd-scope.tsv](cpd-scope.tsv) | Explicit disposition for the complete reactor |
+| [BuildQualityVerifier](../build-quality/BuildQualityVerifier.java) | Shared topology/source/report validation |
 
-## Dependencies
+Generated evidence is `target/cpd/cpd.xml` and `target/cpd/cpd.html`. Scope and
+group count belong to the tracked manifest/POM, not copied report output.
 
-**Depends on:** all 25 production modules in `platform`, `core`, `adapters` and
-`bootstrap`.
+## Analysis and enforcement
 
-**Not imported by:** any production, test-support, coverage-report or SpotBugs
-report module.
+Root validation requires complete reactor coverage and exact agreement among
+analyzed dispositions, ordering dependencies and configured source roots.
+TCK/tests, build-only projects, generated outputs and non-reactor vendor trees
+are outside the production-source universe. Explicit generated/vendor exclusions
+provide a second guard; they are not a general exemption mechanism.
 
-## Notes
+The report POM removes old `target/cpd` output in `initialize`. Its `verify`
+execution runs `aggregate-cpd`, then requires nonempty valid XML/HTML and
+reconciles unique reported paths with every current in-scope Java source.
+`minimumTokens=75` is the accepted detection threshold. Annotation, identifier
+and literal differences are not ignored by this configuration.
 
-`core/ioc-application-tck` is reusable test-contract code and is intentionally
-outside the production-source scope. A root-only `validate` gate checks the
-disposition registry before child projects are built. The registry must match
-the root reactor exactly, and its analyzed set must match both this module's
-ordering dependencies and configured `src/main/java` roots, so a new reactor
-module cannot be omitted silently. The synthetic-reactor contract harness in
-`../build-quality` protects this behavior against accidental weakening.
+`ioc.cpd.expectedDuplications` is an exact reviewed count of duplication groups,
+not duplicate lines, a per-file allowance or an automatic refactoring rule.
+Growth and reduction both stop the gate until reviewed. Every finding remains
+visible. A same-count replacement still requires semantic review: duplication
+may represent deliberate independent contracts or harmful copied behavior.
+A healthy analyzer and valid report are required even when the expected count
+is unchanged.
 
-The positive source-root list excludes Maven-generated sources, build outputs
-and any non-reactor vendor trees; explicit generated/vendor path patterns
-provide a second guard. Before each analysis, `initialize` removes the previous
-`target/cpd` directory. After `aggregate-cpd`, the verifier requires non-empty,
-structurally valid XML/HTML and reconciles the XML's unique file paths with
-every current Java file in the analyzed roots.
+## Verification and maintenance
 
-`minimumTokens=75` is the accepted 0.3.0 baseline after repository calibration.
-Every duplicate remains visible and requires semantic interpretation rather
-than automatic refactoring. The `ioc.cpd.expectedDuplications` property is an
-exact reviewed group-count snapshot: growth and reduction both stop `verify`
-until the full report is reviewed and the value is updated in the same change.
-Analyzer errors or missing XML/HTML outputs also fail the reactor build. This
-count ratchet is intentionally not an unstable token-location baseline.
+Run from the repository root:
 
-The cross-module lifecycle and semantic review policy are documented in
-[`docs/dev/build-quality.md`](../../docs/dev/build-quality.md).
+```bash
+./mvnw -B -ntp -N validate
+make verify
+```
+
+The first command checks configuration/synthetic contracts; the second creates
+current production analysis and validates the full report. Use `make context`
+for full-verification freshness. Do not interpret an older HTML file as evidence
+for the current worktree.
+
+When the count changes, review the full XML/HTML before refactoring or updating
+the snapshot, with rationale in the same change. Do not hide occurrences through
+weaker token settings, ignores, source exclusions or suppressions. Adding a Maven
+project requires a scope disposition and, when analyzed, matching dependencies/
+source roots. [Build-quality internals](../../docs/dev/build-quality.md#pmd-cpd) owns triage policy;
+[shared harnesses](../build-quality/README.md) protect negative cases.

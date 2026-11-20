@@ -1,75 +1,85 @@
-# 0002 — Конфигурируемое заполнение артефактов и 4-вариантная классификация
+> English translation of the historical Russian record. Decision/status/dates are preserved. [Russian original](ru/0002-output-mapping-and-matching.md) (relative link addresses rebased on relocation).
 
-- **Статус:** принято (дизайн); реализация ждёт
-- **Дата:** 2026-06-21
-- **Связано:** [processing](../dev/processing.md),
+<a id="0002--конфигурируемое-заполнение-артефактов-и-4-вариантная-классификация"></a>
+# 0002 — Configurable artifact filling and four-variant classification
+
+- **Status:** accepted (design); implementation pending
+- **Date:** 2026-06-21
+- **Related:** [processing](../dev/processing.md),
   [../architecture.md](../ARCHITECTURE.md), [0001-streaming-ingestion.md](0001-streaming-ingestion.md)
 
-## Контекст
+<a id="контекст"></a>
+## Context
 
-Анализ эталонов подтвердил большинство инференсов, но всплыли два требования:
+Reference analysis confirmed most inferences but exposed two requirements:
 
-1. **Заполнение выходных артефактов не должно быть зашито в код** — оно
-   конфигурируемо. Уточнение: без кода добавляется формат, выразимый
-   **существующими** `ValueProvider`/`Transform`; новая семантика колонки требует
-   нового тонкого provider/transform (это OCP, но это код).
-2. **Авторитетная схема match-кодов — четыре варианта** (а не два, как было в
-   моём инференсе по ручному эталону, где встречаются только варианты 1 и 3).
+1. **Output artifact filling must not be hardcoded** — it is configurable.
+   Clarification: adding a format needs no code if it can be expressed using
+   **existing** `ValueProvider`/`Transform` implementations; new column semantics
+   require a new thin provider/transform (that is OCP, but it is code).
+2. **The authoritative match-code scheme has four variants** (rather than the
+   two inferred from the hand-filled reference, which contains only variants 1 and 3).
 
-## Решения
+<a id="решения"></a>
+## Decisions
 
-| # | Вопрос | Выбор | Обоснование | Отклонено |
+| # | Question | Choice | Rationale | Rejected |
 |---|---|---|---|---|
-| 1 | Конфигурируемость заполнения | **Провайдеры + трансформации**: generic `ConfigurableRowMapper` + реестры `ValueProvider`/`Transform`, декларативные `columns` | Покрывает текущее, расширяется новыми провайдерами/трансформациями (OCP), без парсера выражений (KISS) | Expression-DSL (сложность/риск); только порядок колонок (логика осталась бы в коде) |
-| 2 | Граница вариантов 1 vs 2 | **Public Suffix List** (Guava `InternetDomainName`) | Регистрируемый домен → вариант 1, поддомен → вариант 2; корректно для `com.br`/`co.uk`/`workers.dev` | По числу меток (ошибается на многосоставных суффиксах) |
-| 3 | Схема match-кодов | **4 варианта** (авторитетно от заказчика) | Ручной эталон неполон (только 1 и 3) — оракулом для 2 и 4 быть не может | Оставить 2 варианта (неверно) |
-| 4 | id-последовательность | **Ascending + `auto` = max(lookup)+1** — *применено как фикс* | Эталонные id непрерывны 1..185 по возрастанию; `descending` давал отрицательные id | Descending (баг) |
-| 5 | Логика классификации | **Декларативная (rule-based)**: тонкий вычислитель + реестр предикатов; правила и коды — в конфиге | Минимум специфики в коде; правила меняются без правки кода; единый подход с заполнением | Хардкод-триггеры в `DefaultMatchPolicy` |
+| 1 | Configurable filling | **Providers + transforms**: generic `ConfigurableRowMapper` + `ValueProvider`/`Transform` registries, declarative `columns` | Covers current needs, extensible through new providers/transforms (OCP), no expression parser (KISS) | Expression DSL (complexity/risk); column ordering only (logic would remain in code) |
+| 2 | Boundary between variants 1 and 2 | **Public Suffix List** (Guava `InternetDomainName`) | Registrable domain → variant 1, subdomain → variant 2; correct for `com.br`/`co.uk`/`workers.dev` | Counting labels (incorrect for multipart suffixes) |
+| 3 | Match-code scheme | **Four variants** (authoritative customer input) | Hand-filled reference is incomplete (only 1 and 3), so cannot serve as an oracle for 2 and 4 | Retain two variants (incorrect) |
+| 4 | ID sequence | **Ascending + `auto` = max(lookup)+1** — *applied as a fix* | Reference IDs are contiguous 1..185 ascending; `descending` produced negative IDs | Descending (bug) |
+| 5 | Classification logic | **Declarative (rule-based)**: thin evaluator + predicate registry; configuration owns rules and codes | Minimal specific logic in code; change rules without code changes; consistent with filling | Hardcoded triggers in `DefaultMatchPolicy` |
 
-## Авторитетная схема match-кодов (masks)
+<a id="авторитетная-схема-match-кодов-masks"></a>
+## Authoritative match-code scheme (masks)
 
-`url_match | host_match` в зависимости от варианта совпадения значения с маской:
+`url_match | host_match` according to how the value matches the mask:
 
-| # | url_match | host_match | Смысл |
+| # | url_match | host_match | Meaning |
 |---|---|---|---|
-| 1 | `u:hAS` | `h:dAS` | Домен, все его поддомены и их содержимое |
-| 2 | `u:hEX` | `h:dEX` | Домен третьего уровня (точный хост) |
-| 3 | `u:hEX,dEX` | `null` | Домен с папкой или файлом, без вложенных папок |
-| 4 | `u:hAS,pEX` | `null` | Сценарий с конкретными параметрами |
+| 1 | `u:hAS` | `h:dAS` | Domain, all its subdomains and their content |
+| 2 | `u:hEX` | `h:dEX` | Third-level domain (exact host) |
+| 3 | `u:hEX,dEX` | `null` | Domain with a folder or file, without nested folders |
+| 4 | `u:hAS,pEX` | `null` | Scenario with specific parameters |
 
-**Подтверждённые триггеры** (кодируются декларативными правилами, first-match-wins):
-- есть query (`?…`) → вариант 4;
-- иначе есть путь/порт → вариант 3;
-- иначе голый хост/IP: регистрируемый домен (PSL) или IP → вариант 1; поддомен → вариант 2.
+**Confirmed triggers** (encoded as declarative rules, first-match-wins):
+- query present (`?…`) → variant 4;
+- otherwise path/port present → variant 3;
+- otherwise bare host/IP: registrable domain (PSL) or IP → variant 1; subdomain → variant 2.
 
-## Следствия
+<a id="следствия"></a>
+## Consequences
 
-- Заменяем `NetworkMaskRowMapper`/`FileHashRowMapper` на `ConfigurableRowMapper`
-  + реестры; `value-case`/`source-strip`/`header` уходят в `columns`/`transform`.
-- `MatchPolicy` расширяется до 4 вариантов; коды/правила — из конфига. Появляется
-  **доменный порт `HostClassifier`** (интерфейс), реализуемый адаптером
-  `PslHostClassifier` (Guava) в `adapter-psl`. В домене **нет** `InternetDomainName`.
-- Зависимость **Guava** — только в `adapter-psl`, не в домене. `url_match`/
-  `host_match` поступают в маппер как провайдеры `match.url`/`match.host` поверх
-  доменной `MatchPolicy`.
-- **DSL ограничен** (не интерпретатор): только `from`-провайдер/`const`,
-  `when-type` и упорядоченные `transform`; без вложенных выражений, условий
-  сложнее `when-type` и вычислений в YAML.
-- **Нормализация и признаки — доменные сервисы** `IndicatorNormalizer` +
-  `IndicatorFeatureExtractor`; `MatchPolicy`/предикаты работают над
-  `IndicatorFeatures`, а не над строковым URL в маппере.
-- Вывод 4-вариантной политики **разойдётся с ручным эталоном** на строках с
-  поддоменами (вариант 2) и параметрами (вариант 4) — это ожидаемо: правило
-  авторитетнее ручной заливки.
+- Replace `NetworkMaskRowMapper`/`FileHashRowMapper` with `ConfigurableRowMapper`
+  + registries; move `value-case`/`source-strip`/`header` into `columns`/`transform`.
+- Extend `MatchPolicy` to four variants; configuration supplies codes/rules.
+  Introduce the **domain port `HostClassifier`** (interface), implemented by the
+  `PslHostClassifier` adapter (Guava) in `adapter-psl`. The domain contains **no**
+  `InternetDomainName`.
+- **Guava** is a dependency only in `adapter-psl`, not the domain. The mapper
+  receives `url_match`/`host_match` through `match.url`/`match.host` providers over
+  the domain `MatchPolicy`.
+- **The DSL is bounded** (not an interpreter): only a `from` provider/`const`,
+  `when-type` and ordered `transform`; no nested expressions, conditions more
+  complex than `when-type` or computations in YAML.
+- **Normalization and features are domain services**: `IndicatorNormalizer` +
+  `IndicatorFeatureExtractor`; `MatchPolicy`/predicates operate on
+  `IndicatorFeatures`, not a URL string inside the mapper.
+- Four-variant policy output **will differ from the hand-filled reference** for
+  subdomains (variant 2) and parameters (variant 4). This is expected: the rule
+  takes precedence over hand-filled data.
 
-## Решённые уточнения (подтверждено)
+<a id="решённые-уточнения-подтверждено"></a>
+## Resolved refinements (confirmed)
 
-- **Вариант 3 vs 4** при наличии и пути, и query: приоритет у **query → вариант 4**.
-- **«Без вложенных папок»** (вариант 3) — это семантика `dEX` (точная директория),
-  а не ограничение на одно-сегментный путь.
-- **IP-адреса**: голый IP → вариант 1; IP+порт/путь → вариант 3; IP+query → вариант 4.
+- **Variant 3 versus 4** when both path and query exist: **query → variant 4** wins.
+- **“Without nested folders”** (variant 3) means `dEX` semantics (exact directory),
+  not a restriction to a single-segment path.
+- **IP addresses:** bare IP → variant 1; IP+port/path → variant 3; IP+query → variant 4.
 
-## Открытые вопросы
+<a id="открытые-вопросы"></a>
+## Open questions
 
-- Обогащение `score`/`time_*`/`threat_type`/`description` (сейчас всегда `NULL`) —
-  опционально, на будущее.
+- Enrichment of `score`/`time_*`/`threat_type`/`description` (currently always `NULL`)
+  is optional future work.

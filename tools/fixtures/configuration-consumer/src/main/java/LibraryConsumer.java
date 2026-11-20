@@ -16,6 +16,7 @@ public final class LibraryConsumer {
     public record Connection(String name) { }
 
     public static void main(String[] arguments) {
+        examples.configuration.ConfigurationInspectionExample.main(arguments);
         var namesOnly = new EnumerablePropertySource<Object>("sensitive-source-label", new Object()) {
             @Override public String[] getPropertyNames() {
                 return new String[] {"collector.requestTimeout", "collector.connections[3].old-name", "collector.unknown"};

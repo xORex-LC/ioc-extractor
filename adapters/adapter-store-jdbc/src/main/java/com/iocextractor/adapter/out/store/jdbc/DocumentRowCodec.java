@@ -16,7 +16,14 @@ import java.nio.charset.CharsetDecoder;
 import java.util.LinkedHashMap;
 import java.util.Optional;
 
-/** Versioned bounded row encoding; strict slice decoding preserves absent columns, nulls and field rank. */
+/**
+ * Versioned bounded row encoding that preserves absent columns, nulls and field rank.
+ *
+ * <p>The encoded values map and ordered-field-position map each have an independent
+ * structural limit of 128 entries, checked during encoding and decoding. This is
+ * a format bound, not a configurable batch size or a general CSV-column limit.
+ * Serialized row and field byte limits apply in addition to these entry counts.
+ */
 final class DocumentRowCodec {
     private static final int PAYLOAD_VERSION = 1;
     private static final int MAXIMUM_FIELDS = 128;

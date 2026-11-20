@@ -1,83 +1,83 @@
-# build-support/pmd-report
+# PMD source policy and watchlist
 
-## Purpose
+## Purpose and boundary
 
-Non-production Maven report module for the adopted BUILD-PMD-06 PMD
-production-source policy and its deferred watchlist. It owns separate
-repository-wide XML/HTML reports and their fail-closed scope, ruleset and
-integrity contracts.
-
-**Layer rule:** dependencies exist only for reactor ordering and PMD type
-resolution. The analyzed universe is an explicit list of checked-in production
-`src/main/java` roots. This module contains no runtime code and is not published.
+Report-only Maven POM `ioc-pmd-report` owns the adopted production-source policy
+and the separate diagnostic ownership/size watchlist. Dependencies cover the full
+analyzed production set for ordering/type resolution. The positive source-root
+list excludes TCK/tests, parent/report POMs and generated/vendor sources. It is
+not a runtime dependency or published artifact.
 
 ## Structure
 
-| File/output | Purpose |
+| File | Responsibility |
 |---|---|
-| `pom.xml` | `pmd-analysis` and `pmd-watchlist` profile selection, PMD `7.26.0` plugin realm, explicit source universe and report-integrity wiring |
-| `pmd-ruleset.xml` | Exact 22-rule adopted policy with calibrated complexity thresholds |
-| `pmd-advisory-counts.tsv` | Complete non-zero per-rule snapshot; all omitted adopted rules have zero tolerance |
-| `pmd-watchlist-ruleset.xml` | Exact three-rule ownership/size watchlist, excluded from the regular CI policy |
-| `pmd-scope.tsv` | Fail-closed disposition for all Maven reactor projects |
-| `../build-quality/BuildQualityVerifier.java` | Shared JDK-only scope, ruleset and report verifier |
-| `target/pmd/pmd.xml` | Generated machine-readable aggregate findings |
-| `target/pmd/pmd.html` | Generated human-readable aggregate report |
-| `target/pmd-watchlist/pmd.xml` | Generated machine-readable watchlist findings |
-| `target/pmd-watchlist/pmd.html` | Generated human-readable watchlist report |
+| [pom.xml](pom.xml) | Profile selection, explicit sources, pinned PMD plugin realm, cleanup and late verification |
+| [pmd-scope.tsv](pmd-scope.tsv) | Complete reactor dispositions |
+| [pmd-ruleset.xml](pmd-ruleset.xml) | Exact 22-rule adopted policy and calibrated properties |
+| [pmd-advisory-counts.tsv](pmd-advisory-counts.tsv) | Reviewed nonzero counts by exact rule reference; omitted adopted rules require zero findings |
+| [pmd-watchlist-ruleset.xml](pmd-watchlist-ruleset.xml) | Exactly PreserveStackTrace, CloseResource and NcssCount |
+| [Shared verifier](../build-quality/BuildQualityVerifier.java) | Scope, engine/ruleset, report-health and count contracts |
 
-## Dependencies
+Policy evidence is `target/pmd/pmd.xml` and `pmd.html`. Watchlist evidence is
+`target/pmd-watchlist/pmd.xml` and `pmd.html`. Keeping outputs separate prevents
+a diagnostic invocation from replacing the adopted policy report.
 
-**Depends on:** all 25 production modules in `platform`, `core`, `adapters` and
-`bootstrap`.
+## Commands and lifecycle
 
-**Not imported by:** any production, test-support or other build-support module.
-
-## Operation
-
-Run the adopted blocking/advisory policy from the repository root:
+Run from the repository root:
 
 ```bash
 make pmd-analysis
 ```
 
-Run the deferred watchlist explicitly when reviewing its ownership assumptions
-or PMD/JDK changes:
+Ordinary `make verify` includes this POM in reactor topology but does not activate
+source analysis. Root `validate` still protects its declared policy/scope. The
+regular CI policy job calls [tools/ci/pmd.sh](../../tools/ci/pmd.sh) independently; external
+branch/ruleset settings determine whether that status is required for merging.
+
+The policy facade selects this report and its complete upstream graph with
+`-pl build-support/pmd-report -am`, activates `pmd-analysis`, compiles inputs and
+skips tests, JaCoCo and SpotBugs. It runs one `aggregate-pmd-no-fork` after the
+declared production dependencies. Selecting this owner avoids competition with
+the independent full-reactor aggregators. Plugin/PMD engine versions belong to
+root/report configuration and the verifier's engine contract, not this README.
+
+For an explicit deferred-rule review:
 
 ```bash
 make pmd-watchlist
 ```
 
-Ordinary `make verify` includes this build-only POM in reactor topology but does
-not activate PMD source analysis. The regular CI workflow invokes
-`tools/ci/pmd.sh policy` in a separate job. Whether that job is required for a
-merge is external branch-protection/ruleset state, not a property of this POM or
-workflow file, and must be checked separately. Both developer targets
-select this module and its upstream reactor with `-pl build-support/pmd-report
--am`; that keeps the PMD aggregator away from the independent coverage,
-SpotBugs and CPD aggregate mojos in a parallel full-reactor build. The
-`pmd-analysis` profile runs exactly one `aggregate-pmd-no-fork` execution after
-its 20 ordering dependencies, removes only the selected output directory first
-and fails on analyzer/ruleset/report errors. The regular policy also reconciles
-every per-rule finding count: rules absent from `pmd-advisory-counts.tsv` must
-stay at zero, while listed rules must match their exact reviewed counts. The
-watchlist remains advisory and count-unconstrained. A successful policy run
-records separate PMD freshness evidence; a watchlist run never overwrites it.
+The watchlist facade activates both profiles and selects its own ruleset/output
+mode. Use it for exception/resource ownership, material size growth, changed
+PMD/JDK/framework assumptions or an explicit complete PMD review. Findings are
+advisory/count-unconstrained, but analyzer/ruleset/report errors still fail.
+It is not a routine merge gate and does not refresh PMD policy evidence.
 
-The adopted policy contains 22 exact rule references. `CognitiveComplexity`
-uses `reportLevel=16`; `ExcessiveParameterList` uses PMD's `minimum=13`
-property. The watchlist contains exactly `PreserveStackTrace`, `CloseResource`
-and `NcssCount`. Do not move a rule between these sets, change a threshold or
-add a suppression merely to quiet a report. If a policy count changes, inspect
-the complete XML/HTML and either fix the occurrence or update the exact snapshot
-and rationale in the same reviewed change. Reductions also require an update so
-the snapshot never leaves unused budget.
+## Enforcement and review
 
-`core/ioc-application-tck`, tests, generated/vendor sources, the root parent and
-all build-only POMs are outside analysis scope. Root validation rejects PMD
-source suppression markers and protects the stale-output cleanup plus late
-report-verifier invocation. The shared synthetic-reactor matrix protects these
-constraints, the scope, ruleset and report contract from silent weakening.
+Root validation pins source/dependency scope, exact rule references/properties,
+source suppression restrictions, cleanup and late verifier wiring. The PMD-specific
+cleanup clears only its selected output directory; inherited initialization can
+also remove module SpotBugs outputs. Run PMD before full verify or archive prior
+reports when retaining both evidence sets. The late gate checks XML/HTML,
+engine version, accepted finding rules/paths and processing/configuration errors.
+PMD reports list finding-bearing files; that list is not a full source manifest.
 
-The cross-module lifecycle, watchlist review triggers and triage policy are documented in
-[`docs/dev/build-quality.md`](../../docs/dev/build-quality.md).
+For adopted policy, unlisted rules have zero tolerance and listed rules must
+match their exact reviewed counts. This is not a budget for substituting different
+findings. Reductions also require review so no unused allowance remains.
+`CognitiveComplexity` uses `reportLevel=16`; `ExcessiveParameterList` uses
+`minimum=13`. Threshold/rule/suppression changes are policy changes, not routine
+ways to make a report pass.
+
+Inspect the full report on count drift and the affected findings after code
+changes. Fix the issue or retain an explicit reviewed rationale and update the
+owning snapshot in the same change. Do not regenerate a baseline wholesale.
+A successful policy facade records its own commit/worktree fingerprint;
+`make context` exposes `pmd.fresh` separately from `verify.fresh`.
+
+[Shared tools](../build-quality/README.md) describe synthetic contracts and
+[build-quality internals](../../docs/dev/build-quality.md#pmd-source-analysis-policy-and-watchlist)
+owns adoption, watchlist assumptions and triage workflow.

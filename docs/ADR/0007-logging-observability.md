@@ -1,46 +1,52 @@
-# 0007 — Логирование/observability как отдельная подсистема (ECS)
+> English translation of the historical Russian record. Decision/status/dates are preserved. [Russian original](ru/0007-logging-observability.md) (relative link addresses rebased on relocation).
 
-- **Статус:** принято (дизайн)
-- **Дата:** 2026-06-21
-- **Связано:** [observability](../dev/observability.md), [processing](../dev/processing.md),
+<a id="0007--логированиеobservability-как-отдельная-подсистема-ecs"></a>
+# 0007 — Logging/observability as a separate subsystem (ECS)
+
+- **Status:** accepted (design)
+- **Date:** 2026-06-21
+- **Related:** [observability](../dev/observability.md), [processing](../dev/processing.md),
   [0003-diagnostics.md](0003-diagnostics.md)
 
-> **Обслуживание документации 2026-07-21:** исторические `logging.md` и
-> `logging-taxonomy.md` объединены в текущую capability-карту
-> [observability.md](../dev/observability.md). Их имена ниже обозначают
-> исходные design documents на момент принятия решения.
+> **Documentation maintenance 2026-07-21:** historical `logging.md` and
+> `logging-taxonomy.md` were consolidated into the current capability map
+> [observability.md](../dev/observability.md). Their names below refer to the
+> original design documents at decision time.
 
-## Контекст
+<a id="контекст"></a>
+## Context
 
-Заказчик составил дизайн operational logging (`logging.md` +
-`logging-taxonomy.md`) на основе ECS и поставил вопрос:
-объединять ли логирование и диагностику в один этап. Ревью дизайна зафиксировало
-несколько уточнений и одно отменённое прежнее решение.
+The customer designed operational logging (`logging.md` + `logging-taxonomy.md`)
+using ECS and asked whether logging and diagnostics should share one stage.
+Design review recorded several refinements and revoked one earlier decision.
 
-## Решения
+<a id="решения"></a>
+## Decisions
 
-| # | Вопрос | Выбор | Обоснование |
+| # | Question | Choice | Rationale |
 |---|---|---|---|
-| 1 | Log event vs Diagnostic | **Разные подсистемы.** Log event — событие исполнения приложения; Diagnostic — результат/проблема обработки данных | Разные модели, порты, владельцы; снимает прежнее смешение |
-| 2 | Формат структурного лога | **ECS** (отменяет [0003](0003-diagnostics.md) №8 — собственную JSON-схему) | Индустриальный стандарт, тулинг, не тащим свою схему |
-| 3 | Корреляция | **`ioc.run.id` (run) / `ioc.source.id` (source)** как каноничные app-correlation поля; ECS `trace.id`/`transaction.id` — только при наличии совместимого tracing/APM-контекста; длительности — ECS `event.duration` | Не подменяем ECS tracing семантику обычным run id; сохраняем путь к APM |
-| 4 | MDC vs Envelope | **MDC — производное от `Envelope.meta`** (источник истины); заполняется на границе стадии/адаптера, чистится `MdcScope.close()` | Нет дубля состояния; нет протечек в daemon-пуле |
-| 5 | `event.dataset` | **Поле события** (per-event/stage), не корреляционный ключ | Корректная ECS-семантика |
-| 6 | Размещение | **`platform-observability`** (MdcScope, LogEvent, ECS-конфиг) + отдельный bridge **`platform-diagnostics-logging`** (`LoggingDiagnosticSink`) | Не ломаем независимость базовых platform-модулей; bridge явно зависит на diagnostics+observability |
-| 7 | Этап 6 | **Разбить**: 6 диагностика → 7 pipeline (`Envelope`) → 8 observability/logging | Логирование читает `Envelope.meta`/диагностику — делается после них; меньше риск, ревьюабельнее |
+| 1 | Log event versus Diagnostic | **Separate subsystems.** A log event describes application execution; a Diagnostic is a data-processing outcome/problem | Different models, ports, owners; resolves earlier conflation |
+| 2 | Structured log format | **ECS** (revokes [0003](0003-diagnostics.md) decision 8, a custom JSON schema) | Industry standard, tooling, no custom schema burden |
+| 3 | Correlation | **`ioc.run.id` (run) / `ioc.source.id` (source)** as canonical application-correlation fields; ECS `trace.id`/`transaction.id` only with compatible tracing/APM context; durations use ECS `event.duration` | Do not replace ECS tracing semantics with an ordinary run ID; preserve the path to APM |
+| 4 | MDC versus Envelope | **MDC derives from `Envelope.meta`** (source of truth); populate at a stage/adapter boundary, clear with `MdcScope.close()` | No duplicate state; no daemon-pool leakage |
+| 5 | `event.dataset` | **Event field** (per event/stage), not a correlation key | Correct ECS semantics |
+| 6 | Placement | **`platform-observability`** (MdcScope, LogEvent, ECS configuration) + separate bridge **`platform-diagnostics-logging`** (`LoggingDiagnosticSink`) | Preserve independence of base platform modules; bridge explicitly depends on diagnostics+observability |
+| 7 | Stage 6 | **Split**: 6 diagnostics → 7 pipeline (`Envelope`) → 8 observability/logging | Logging reads `Envelope.meta`/diagnostics, so follows them; lower risk, easier review |
 
-## Следствия
+<a id="следствия"></a>
+## Consequences
 
-- `ecs.version` не хардкодим (проставляет encoder); daemon по умолчанию `INFO`,
-  per-item — по флагу/в коротком окне; `var/logs/` в `.gitignore`.
-- Тесты логирования изолированы (in-memory appender / `OutputCapture`, без файлов).
-- Документы приведены в соответствие: schema-блок убран из diagnostics.md и
-  cross-cutting.md; logging.md — авторитет по логированию; roadmap перенумерован.
-- Зависимость к добавлению на этапе 8: `co.elastic.logging:logback-ecs-encoder`
-  (после Boot 3.4+ сравнить встроенный structured logging).
+- Do not hardcode `ecs.version` (encoder supplies it); daemon defaults to `INFO`,
+  per-item logging requires a flag/short window; `var/logs/` goes in `.gitignore`.
+- Logging tests are isolated (in-memory appender / `OutputCapture`, no files).
+- Documents aligned: schema section removed from diagnostics.md and
+  cross-cutting.md; logging.md owns logging; roadmap renumbered.
+- Dependency to add in stage 8: `co.elastic.logging:logback-ecs-encoder`
+  (compare built-in structured logging after Boot 3.4+).
 
-## Открытые вопросы
+<a id="открытые-вопросы"></a>
+## Open questions
 
-- Точный набор `var/logs/*` и rolling-параметры — при реализации daemon-логирования.
-- Маппинг `Severity` диагностики → `log.level` (таблица в logging-taxonomy.md) —
-  финализировать с первыми кодами каталога.
+- Exact `var/logs/*` set and rolling parameters, during daemon logging implementation.
+- Diagnostic `Severity` → `log.level` mapping (table in logging-taxonomy.md),
+  finalize with the first catalog codes.

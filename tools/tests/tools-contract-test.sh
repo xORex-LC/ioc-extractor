@@ -288,6 +288,60 @@ if grep -Fq 'deployment: false' \
   fail "Dependency Security workflow uses unsupported environment.deployment"
 fi
 
+python3 - "${REPO_ROOT}/.github/workflows/dependency-security.yml" <<'PY'
+import datetime, json, os, pathlib, re, subprocess, sys, tempfile, textwrap
+
+workflow = pathlib.Path(sys.argv[1]).read_text()
+step = workflow.split('      - name: Select security scan targets and day\n', 1)[1]
+match = re.search(r'        run: \|\n((?:          [^\n]*\n)+)', step)
+assert match, 'security cadence script is missing'
+script = textwrap.dedent(match.group(1))
+assert 'ref: ${{ matrix.ref }}' in workflow, 'scan must check out its selected ref'
+assert 'dependency-check-report-${{ matrix.ref }}-' in workflow, 'scan reports must have separate names'
+assert 'dependency-check-${{ runner.os }}-${{ matrix.ref }}-' in workflow, 'scan caches must have separate keys'
+
+with tempfile.TemporaryDirectory(prefix='ioc-security-cadence-') as directory:
+    root = pathlib.Path(directory)
+    date = root / 'date'
+    date.write_text('#!/bin/sh\nprintf "%s\\n" "$FIXTURE_EPOCH"\n')
+    date.chmod(0o700)
+    output = root / 'output'
+    env = {**os.environ, 'PATH': str(root) + ':' + os.environ['PATH'],
+           'GITHUB_OUTPUT': str(output), 'EVENT_NAME': 'schedule',
+           'SELECTED_REF': 'main', 'SELECTED_REF_TYPE': 'branch'}
+
+    def invoke():
+        output.write_text('')
+        result = subprocess.run(['bash', '-euo', 'pipefail', '-c', script], env=env,
+                                capture_output=True, text=True, timeout=5)
+        values = dict(line.split('=', 1) for line in output.read_text().splitlines())
+        return result.returncode, values
+
+    # Independent dates include month/year boundaries and leap day.
+    for day, expected in [('2026-11-20', 'false'), ('2026-11-21', 'true'),
+                          ('2026-11-30', 'false'), ('2026-12-01', 'true'),
+                          ('2026-12-31', 'true'), ('2027-01-01', 'false'),
+                          ('2028-02-28', 'true'), ('2028-02-29', 'false'),
+                          ('2028-03-01', 'true')]:
+        instant = datetime.datetime.fromisoformat(day).replace(tzinfo=datetime.timezone.utc)
+        env['FIXTURE_EPOCH'] = str(int(instant.timestamp()))
+        status, values = invoke()
+        assert status == 0 and values['scan'] == expected, (day, status, values)
+        assert json.loads(values['refs']) == ['main', 'release-0.3.0'], values
+
+    env['EVENT_NAME'] = 'workflow_dispatch'
+    for branch in ['main', 'release-0.3.0', 'release-0.4.0']:
+        env['SELECTED_REF'] = branch
+        status, values = invoke()
+        assert status == 0 and values['scan'] == 'true', (branch, status, values)
+        assert json.loads(values['refs']) == [branch], values
+    env['SELECTED_REF'] = 'feature/untrusted'
+    assert invoke()[0] != 0, 'candidate scan admitted an unrelated branch'
+    env['SELECTED_REF'] = 'release-0.3.0'
+    env['SELECTED_REF_TYPE'] = 'tag'
+    assert invoke()[0] != 0, 'candidate scan admitted a tag'
+PY
+
 LIBRARY_WORKFLOW="${REPO_ROOT}/.github/workflows/library-publication.yml"
 grep -Fq "always() && inputs.operation == 'publish' &&" "${LIBRARY_WORKFLOW}" \
   || fail "library recovery can skip repository qualification after its build job is skipped"

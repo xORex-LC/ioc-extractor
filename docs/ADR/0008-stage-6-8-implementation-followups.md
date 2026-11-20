@@ -1,49 +1,58 @@
-# 0008 — Ревью реализации этапов 6–8 и технический долг
+> English translation of the historical Russian record. Decision/status/dates are preserved. [Russian original](ru/0008-stage-6-8-implementation-followups.md) (relative link addresses rebased on relocation).
 
-## Статус
+<a id="0008--ревью-реализации-этапов-68-и-технический-долг"></a>
+# 0008 — Stages 6–8 implementation review and technical debt
 
-**Принято.** Этапы 6 (diagnostics), 7 (pipeline/Envelope) и 8 (observability)
-реализованы и зелёные (`mvn test`, 116 тестов, golden без изменений). Эта заметка
-фиксирует итоги code review: что поправлено сразу и какой долг осознанно отложен —
-чтобы не потерять.
+<a id="статус"></a>
+## Status
 
-## Контекст
+**Accepted.** Stages 6 (diagnostics), 7 (pipeline/Envelope) and 8 (observability)
+are implemented and green (`mvn test`, 116 tests, golden unchanged). This note
+records code-review outcomes: immediate fixes and deliberately deferred debt,
+so they are not lost.
 
-Реализация этапов 6–8 выдержала опубликованную архитектуру: `diagnostics` без
-SLF4J/Logback, ядро pipeline framework-free,
-observability подключён через порт `PipelineObserver`, три подсистемы разделены
-(подтверждено ArchUnit). Ниже — точечные находки.
+<a id="контекст"></a>
+## Context
 
-## Устранено сразу (в рамках ревью)
+Stages 6–8 comply with the published architecture: `diagnostics` has no
+SLF4J/Logback, the pipeline core is framework-free, observability connects through
+`PipelineObserver`, and the three subsystems are separate (confirmed by ArchUnit).
+Specific findings follow.
 
-| # | Находка | Фикс |
+<a id="устранено-сразу-в-рамках-ревью"></a>
+## Fixed immediately (during review)
+
+| # | Finding | Fix |
 |---|---|---|
-| F1 | `DiagnosticSink`-бин создавался, но никем не потреблялся (мёртвая проводка) | `IocExtractionService` дренирует `Envelope.diagnostics()` в `DiagnosticSink` в конце прогона; бин прокинут из `AppConfig`; дефолт — `NoopDiagnosticSink` |
-| F2 | CLI хардкодил `ioc.mode = oneshot` | `ExtractCommand` берёт режим из `@Value("${ioc.observability.mode:oneshot}")` (без импорта `bootstrap` — слой цел) |
-| F3 | `DiagnosticException` нёс как message только `code.id()` | message = `id + context` |
-| F4 | Спекулятивный `DiagnosticCategory.VALIDATION` без кодов | удалён (YAGNI) |
-| F5 | `PipelineRunner` redundant-catch читался как dead code | прокомментировано: внешние `catch` относятся только к `close()` |
-| F6 | `platform-observability` зависел на `application.pipeline` через `LoggingPipelineObserver` | на этапе 9 reusable ETL-контракты вынесены в `platform-etl` (`com.iocextractor.platform.etl`); observability больше не зависит на `ioc-application` |
+| F1 | `DiagnosticSink` bean created but never consumed (dead wiring) | `IocExtractionService` drains `Envelope.diagnostics()` to `DiagnosticSink` at run end; bean supplied from `AppConfig`; default `NoopDiagnosticSink` |
+| F2 | CLI hardcoded `ioc.mode = oneshot` | `ExtractCommand` obtains mode from `@Value("${ioc.observability.mode:oneshot}")` (without importing `bootstrap`, preserving the layer) |
+| F3 | `DiagnosticException` message contained only `code.id()` | message = `id + context` |
+| F4 | Speculative `DiagnosticCategory.VALIDATION` without codes | Removed (YAGNI) |
+| F5 | `PipelineRunner` redundant catch looked like dead code | Comment added: outer catches apply only to `close()` |
+| F6 | `platform-observability` depended on `application.pipeline` through `LoggingPipelineObserver` | Stage 9 moved reusable ETL contracts to `platform-etl` (`com.iocextractor.platform.etl`); observability no longer depends on `ioc-application` |
 
-## Отложенный долг (открыто)
+<a id="отложенный-долг-открыто"></a>
+## Deferred debt (open)
 
-| # | Долг | Почему отложено | Куда |
+| # | Debt | Reason for deferral | Destination |
 |---|---|---|---|
-| D1 | **Диагностика не интегрирована в реальный поток.** Нет ни одного producer-а `Diagnostic`: адаптеры/стадии бросают `IocExtractorException`. Следствие — `FailurePolicy` отрабатывает вхолостую, `DiagnosticSink` дренируется пустым. | Планы 6/7 явно отложили «массовую замену исключений на `Result`»; producer-ы вводятся «по мере появления реальных ошибок». Seam уже живой (F1). | следующий под-этап: первые producer-ы (`SOURCE.READ_FAILED`, `SINK.WRITE_FAILED`, `PIPELINE.ITEM_SKIPPED`/dedup) |
-| D3 | **ECS-типы `event.duration` / `ioc.rows` — строки.** Идут через MDC, а SLF4J MDC хранит только `String`; `logback-ecs-encoder` сериализует их как строки, тогда как ECS типизирует `event.duration` как `long`. Риск mapping-конфликта в Elasticsearch. | Числовые per-event поля через MDC чисто не сделать; форсить костыль не стали. | при подключении внешнего collector / строгого ECS-маппинга |
-| D4 | `DiagnosticCatalogTest` сканирует `codes/` и ассертит protocol `file` — сломается, если тесты однажды поедут из jar. | Сейчас не воспроизводится (тесты гоняются из `target/classes`). | при упаковке тестов в jar |
+| D1 | **Diagnostics is not integrated into the real flow.** No `Diagnostic` producer exists: adapters/stages throw `IocExtractorException`. Consequently `FailurePolicy` does no useful work and `DiagnosticSink` drains nothing. | Plans 6/7 explicitly deferred “mass replacement of exceptions with `Result`”; introduce producers as real errors appear. The seam is already live (F1). | Next substage: first producers (`SOURCE.READ_FAILED`, `SINK.WRITE_FAILED`, `PIPELINE.ITEM_SKIPPED`/dedup) |
+| D3 | **ECS `event.duration` / `ioc.rows` types are strings.** They pass through MDC, which stores only `String`; `logback-ecs-encoder` serializes strings, whereas ECS types `event.duration` as `long`. Risk of an Elasticsearch mapping conflict. | Numeric per-event fields cannot be represented cleanly through MDC; a workaround was not forced. | When integrating an external collector / strict ECS mapping |
+| D4 | `DiagnosticCatalogTest` scans `codes/` and asserts protocol `file`; it will fail if tests ever run from a JAR. | Not reproduced now (tests run from `target/classes`). | When packaging tests in a JAR |
 
-## Следствия
+<a id="следствия"></a>
+## Consequences
 
-- Отражено в текущем [observability.md](../dev/observability.md) (статус этапов внедрения,
-  `TemplateDiagnosticRenderer` вместо MessageSource, `MessageCatalog`/i18n отложены,
-  баннер про D1 и актуальный API `MdcScope.open().put(...)`) и
-  [processing.md](../dev/processing.md) (реальный `Result`-record, `Pipeline`/
-  `PipelineRunner`/`PipelineObserver`, этап 7 как realized).
-- `event.dataset` статический (`ioc-extractor`) — уже синхронизировано в
-  текущем `observability.md` (encoder фильтрует reserved ECS keys из MDC).
+- Reflected in current [observability.md](../dev/observability.md) (adoption-stage
+  status, `TemplateDiagnosticRenderer` instead of MessageSource,
+  `MessageCatalog`/i18n deferred, D1 banner and current `MdcScope.open().put(...)`
+  API) and [processing.md](../dev/processing.md) (actual `Result` record,
+  `Pipeline`/`PipelineRunner`/`PipelineObserver`, stage 7 marked realized).
+- `event.dataset` is static (`ioc-extractor`), already synchronized in current
+  `observability.md` (encoder filters reserved ECS keys out of MDC).
 
-## Открытые вопросы
+<a id="открытые-вопросы"></a>
+## Open questions
 
-- Когда вводить D1: отдельным малым под-этапом до модуляризации или вместе с
-  первым реальным источником ошибок (инжест, этап 10)?
+- When to introduce D1: a small separate substage before modularization, or with
+  the first real error source (ingestion, stage 10)?
