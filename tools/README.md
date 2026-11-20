@@ -1,27 +1,27 @@
-# tools
+# Repository tools
 
-## Назначение
+## Purpose and boundary
 
-Воспроизводимые developer/CI-инструменты поверх Maven wrapper и bootable jar.
-Корневой [`Makefile`](../Makefile) — стабильный локальный интерфейс для людей и
-агентов, а этот каталог содержит вызываемую им реализацию. GitHub workflows
-вызывают CI leaf scripts напрямую, чтобы pipeline оставался прозрачен без чтения
-Makefile. Tools-layer не заменяет Maven lifecycle и не содержит production
-deployment automation — она остаётся в [`packaging/`](../packaging/README.md).
+This directory implements the local [Makefile](../Makefile) facade and the
+explicit leaf commands used by [GitHub workflows](../.github/workflows).
+It contains development/runtime helpers, CI gates and isolated library consumers;
+it is not a Maven reactor module or an application dependency. Production
+installation and activation belong to [packaging](../packaging/README.md).
 
-## Состав
+## Structure
 
-| Каталог | Ответственность |
+| Location | Responsibility |
 |---|---|
-| [`dev/`](dev/README.md) | Doctor, IOC fixtures, изолированный runtime, smoke, ECS logs и release context |
-| [`ci/`](ci/README.md) | Неинтерактивные leaf-gates для build, docs, packaging и Dependency-Check |
-| [`tests/`](tests/README.md) | Contract-тесты самого tools-layer |
+| [dev/](dev/README.md) | Environment checks, synthetic inputs, owned runtime workspaces, inspection and opt-in smoke/load tools |
+| [ci/](ci/README.md) | Noninteractive quality gates, evidence receipts and library bundle/publication tooling |
+| [fixtures/](fixtures/README.md) | Seven standalone Maven consumers for six reusable libraries; outside the reactor |
+| [tests/](tests/README.md) | Shell-tool and offline publication/recovery contract tests |
+| [tool-versions.env](tool-versions.env) | Download version and architecture-specific SHA-256 pins used by local lychee bootstrap |
+| [eclipse-jdt.prefs](eclipse-jdt.prefs) | Narrow IDE policy for unchecked null conversions at generic/third-party annotation boundaries |
 
-Файл [`eclipse-jdt.prefs`](eclipse-jdt.prefs) задаёт узкую IDE-политику для
-Eclipse JDT: игнорируется только `nullUncheckedConversion` на границе generic
-method references и сторонних null-аннотаций. Реальные и потенциальные
-null-доступы не отключаются. VS Code Java подключает файл через локальный
-`java.settings.url`; путь должен указывать на текущий checkout.
+JDT suppresses only `nullUncheckedConversion`; real and potential null-access
+checks remain enabled. VS Code Java can load the preferences using a checkout-local
+absolute path:
 
 ```json
 {
@@ -30,111 +30,84 @@ null-доступы не отключаются. VS Code Java подключае
 }
 ```
 
-Начальная точка:
+## Environment and first checks
+
+Run commands from the repository root:
 
 ```bash
 make help
 make context
-make doctor
-make bootstrap  # repo-local static-musl lychee, если его нет в PATH
-make dependency-analysis
-make pmd-analysis
-make pmd-watchlist
-make mutation-pilot
-make stability-pilot SEED=42 REPEAT=3
-make spotbugs-baseline-proposal  # после SpotBugs ratchet failure
-make release-notes-context PREVIOUS_TAG=v0.1.0
-make pre-push
+make doctor-core
+make doctor-ci
 ```
 
-`make spotbugs-baseline-proposal` не запускает анализатор повторно и не меняет
-tracked baseline. Команда читает уже сформированные module-local raw XML и пишет
-только диагностическую разницу в
-`target/build-quality/spotbugs-baseline-proposal.xml`: analyzer identity для
-новых candidates и ID устаревших acceptances. В proposal намеренно отсутствуют
-`disposition`, `owner`, `evidence`, review trigger, rationale и suppression;
-эти решения добавляются человеком только в reviewed diff
-`spotbugs-accepted-findings.xml`. Команду следует запускать сразу после
-SpotBugs-отказа полного `make verify`; отсутствующий или повреждённый raw report
-завершает proposal с ошибкой.
-Полный lifecycle, identity contract и правила принятия finding описаны в
-[build-quality capability](../docs/dev/build-quality.md).
+GNU/Linux with Bash, GNU coreutils/findutils and `/proc` is the supported script
+environment. Use WSL, a Linux VM or a Linux container on other hosts. Java 21+
+and the committed Maven wrapper are required; do not infer a full compiler or
+`javadoc` installation from doctor's Java-version check. Runtime inspection and
+scenarios additionally use `curl`, `jq` and/or `sqlite3`; publication tooling uses
+Python 3 and GnuPG 2. See each directory reference for command-specific needs.
+`NO_COLOR` disables developer-message colors; captured output is color-free.
 
-`make dependency-analysis` последовательно собирает main/test bytecode с
-`-DskipTests` и выполняет быстрый dependency-hygiene report для всех
-функциональных JAR-модулей. Полный reactor path с тестами, SpotBugs и
-CPD доступен через `./mvnw -B -ntp -T 1C -Pdependency-analysis verify`.
-Findings остаются advisory: обычный `make verify` и CI не включают
-профиль. Не заменяйте `-DskipTests` на `-Dmaven.test.skip=true`: второе
-отключает компиляцию test bytecode и обедняет анализ scope.
+`make bootstrap` explicitly downloads checksum-verified lychee to
+`.dev/tools/bin`; Linux x86_64 and aarch64 are supported. Docs checking prefers
+`LYCHEE_BIN`, then `PATH`, then that local binary. CI leaves do not install tools.
 
-`make pmd-analysis` запускает принятую blocking/advisory PMD source policy по
-22 точным rules и 25 production `src/main/java` roots. Команда выбирает
-`build-support/pmd-report` и его upstream reactor через `-pl ... -am`, чтобы
-PMD aggregate mojo не конкурировал в parallel build с независимыми JaCoCo,
-SpotBugs и CPD aggregators. XML/HTML появляются в
-`build-support/pmd-report/target/pmd/`. Правила вне non-zero snapshot имеют
-zero tolerance; для пяти разобранных advisory rules проверяются точные counts.
-Любой count drift, scope/ruleset/engine drift, analyzer error или отсутствующий
-report завершает команду ошибкой. Успешный policy run сохраняет отдельное
-`last-pmd.env` evidence, которое `make context` показывает как `pmd.fresh`.
-Регулярный CI запускает эту же policy отдельным job; обычный `make verify` PMD
-source profile не активирует.
+## Quality commands and evidence
 
-`make pmd-watchlist` тем же механизмом формирует отдельный отчёт в
-`build-support/pmd-report/target/pmd-watchlist/` только для
-`PreserveStackTrace`, `CloseResource` и `NcssCount`. Watchlist не входит в
-регулярный CI и не является suppressions/baseline: его запускают при изменении
-resource/exception ownership, lifecycle contracts, PMD/JDK или перед повторным
-решением об adoption этих правил. Watchlist не обновляет PMD policy freshness.
+| Command | Scope and output |
+|---|---|
+| `make verify` | Deterministic reactor gate; local `last-verify.env` receipt |
+| `make pmd-analysis` | Separate adopted PMD source policy; `last-pmd.env` receipt |
+| `make pmd-watchlist` | Deferred-rule review; separate reports, no regular PMD freshness update |
+| `make lint-shell` | ShellCheck plus packaging and tools shell contracts |
+| `make docs` | Offline local-link checking; no external URL availability claim |
+| `make library-publication-test` | Offline Python contracts, including disposable-key signing |
+| `make dependency-analysis` | Advisory dependency hygiene after main/test compilation; not the security gate |
+| `make spotbugs-baseline-proposal` | Non-accepting diagnostic delta from existing raw reports |
+| `make mutation-pilot`, `make stability-pilot SEED=42 REPEAT=3` | Opt-in diagnostic pilots with their own reports |
+| `make pre-push` | Sequential PMD, verify, shell contracts and docs leaves |
 
-`make pre-push` последовательно выполняет те же leaf scripts, а значит те же
-Maven, shell-contract и offline-documentation gates, что обычный GitHub CI.
-Workflows вызывают scripts напрямую, не зависят от Makefile и остаются
-прозрачными.
-Dependency-Check остаётся отдельным security gate: `make security-update`
-явно обновляет NVD data по сети, а `make security-scan` быстро и детерминированно
-анализирует reactor только по имеющейся локальной базе. Scheduled workflow
-выполняет эти операции последовательно отдельными шагами.
+`pre-push` does not run the separate library-consumer CI jobs, Codecov reporting,
+scheduled Dependency-Check or opt-in pilots. Consult the
+[CI reference](ci/README.md) and workflow for the evidence required by a change.
+The [build-quality capability](../docs/dev/build-quality.md) and
+[testing policy](../docs/TESTING.md) own analyzer, coverage and test contracts.
 
-Все runtime-файлы developer environment создаются только под `/.dev/` и
-игнорируются Git. Скрипты не должны писать business data напрямую в SQLite:
-fixtures проходят через публичные `extract`/daemon ingest пути.
+A quality claim requires a passed result for the intended commit and current
+worktree. `make context` reports verify and PMD freshness independently. Receipts
+fingerprint HEAD, tracked diffs and nonignored untracked file contents; generated
+and ignored files are outside that fingerprint. Editing source/docs during a run
+invalidates its receipt. Local evidence under `.dev/state/` is not a CI check or
+release qualification record. A successful `verify` does not refresh PMD evidence.
 
-## Поддерживаемое окружение
+Dependency hygiene compiles tests with `-DskipTests`; replacing it with
+`-Dmaven.test.skip=true` removes test bytecode from analysis. The fuller opt-in
+path is `./mvnw -B -ntp -T 1C -Pdependency-analysis verify`.
 
-Tools-layer поддерживает **GNU/Linux**; проверяемая среда — Debian/Ubuntu с
-Bash, GNU coreutils/findutils и Linux `/proc`. Это осознанно совпадает с
-production deployment target. Некоторые команды дополнительно требуют `jq`,
-`sqlite3`, `curl` или `shellcheck`; точный набор проверяет `make doctor`.
+The SpotBugs proposal writes `target/build-quality/spotbugs-baseline-proposal.xml`
+without changing the accepted registry. Run it immediately after the failing
+SpotBugs gate while raw reports exist. It supplies analyzer identities and stale
+acceptance IDs, not ownership, rationale or permission to accept a finding.
 
-Native macOS и Windows не являются поддерживаемыми средами для этих scripts из-за
-различий `realpath`, `find`, `tail` и process inspection. На таких хостах следует
-использовать WSL, Linux VM или container, не заменяя GNU-команды несовместимыми
-алиасами. Цвет developer-сообщений включается только для соответствующего TTY;
-переменная `NO_COLOR` отключает его явно.
+## Effects and publication boundaries
 
-## Упаковка библиотек
+Developer runtime helpers validate normalized paths strictly below repo-local
+`.dev/`; reset deletes the selected workspace. Default fixtures also go under
+`.dev/`. Explicit fixture output paths may point elsewhere, and `app.sh` without
+`--workspace` runs in the checkout root. Use the documented isolated facade and
+synthetic configuration; workspace selection does not prevent explicit application
+configuration from redirecting storage or transport to other locations.
 
-`make library-bundle`, `make library-consumer` и `make library-publication-test`
-проверяют независимую упаковку и публичные контракты. Параметр
-`LIBRARY_COMPONENT` выбирает `concurrency` (по умолчанию), `diagnostics`, `logging`,
-`configuration`, `events` или `events-spring`;
-для каждого bundle задавайте отдельный `LIBRARY_BUNDLE`. Изолированные проекты
-расположены в [fixtures](fixtures/README.md), процедура публикации — в
-[руководстве](../docs/guides/library-publication.md). Требуются полный JDK 21
-с `javadoc`, Python 3, GnuPG 2 и сеть для зависимостей пустого Maven-кэша.
-Для logging запускаются отдельные SLF4J- и Boot-потребители с примерами из
-руководств. Разрешена только зависимость `slf4j-api:2.0.18`; провайдер выбирает
-потребитель. JDK-библиотеки concurrency, diagnostics и events не допускают зависимостей.
-Селекторы events/events-spring пока квалифицируют только упаковку и проверку
-manifest: подпись, публикация и consumer явно отклоняются до E4. Spring-адаптер
-требует events-контракты той же версии, Spring Context 7.0.9 и SLF4J API 2.0.18;
-каждый артефакт имеет отдельный bundle. В будущем сначала выпускаются контракты,
-затем адаптер; отдельный выпуск в этом этапе не выполняется.
+`make security-update` explicitly refreshes NVD data using `NVD_API_KEY` from
+the environment. `make security-scan` disables vulnerability-data updates and uses
+the existing database; `make security-report` only lists retained reports. An
+old database does not establish current vulnerability status.
 
-Для configuration проверяются инспекция/миграции, точный пример ограниченного
-контекста, BOM приложения и отказы при несовместимом выборе зависимостей.
-Resolver 1.9.22 использует явные списки групп для всех маршрутов репозиториев;
-отдельные проверки доказывают запрет fallback нашей библиотеки при пустом
-выбранном репозитории. Внешние зависимости и плагины доступны из Central.
+`make library-bundle` creates a new unsigned bundle; `make library-consumer`
+resolves it in temporary projects with empty Maven caches. Even local consumers
+need network access for public dependencies/plugins. Signing and remote writes
+are separate publication-tool commands governed by the
+[publication guide](../docs/guides/library-publication.md) and
+[release policy](../docs/RELEASE-PROCESS.md). Use a separate bundle path per
+component; ordinary developer builds do not publish artifacts.

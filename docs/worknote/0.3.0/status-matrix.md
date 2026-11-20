@@ -2,213 +2,787 @@
 title: "Матрица состояния релиза 0.3.0"
 version: "0.3.0"
 status: "Active"
-document_type: "Execution status"
 source_of_truth: false
 language: "ru"
 ---
 
 # Матрица состояния релиза 0.3.0
 
-Правила состояний и переходов: [execution-model.md](execution-model.md).
+Состояние на консолидацию 2026-11-08; это roadmap, не отчёт fresh gate.
+Правила переходов: [execution-model](execution-model.md).
+Исторические outcomes и точные identities:
+[qualification record](../../../.github/release-evidence/ru/0.3.0.md) и
+[компонентные records](../../../.github/release-notes/README.md).
 
-## 1. Global goals
+## Глобальные цели
 
-| Goal | State | Evidence | Next gate |
-|---|---|---|---|
-| `R030-BASE` | `verified` | [baseline](evidence/baseline.md), [compatibility ledger](evidence/compatibility-ledger.md) | Closed; re-baseline only by explicit scope/contract decision |
-| `R030-DATA` | `verified` | [TTL evidence](data-ttl-01/evidence.md), [export-slot correction](data-ttl-01/export-slot-correction.md), [TTL release contract](data-ttl-01/release-contract.md), [import architecture](dataframe-import/architecture-project.md), [import P0 evidence](dataframe-import/p0-evidence.md), [import P1 evidence](dataframe-import/p1-evidence.md), [import P2 evidence](dataframe-import/p2-evidence.md), [import P3 evidence](dataframe-import/p3-evidence.md), [import P4 evidence](dataframe-import/p4-evidence.md), [import P5 evidence](dataframe-import/p5-evidence.md), [import P6 evidence](dataframe-import/p6-evidence.md), [import P7 evidence](dataframe-import/p7-evidence.md), [import P8 evidence](dataframe-import/p8-evidence.md), [import P9 evidence](dataframe-import/p9-evidence.md), [aggregate evidence](ioc-aggregate/evidence.md), [ADR-0024](../../ADR/0024-managed-dataframe-import.md), [ADR-0030](../../ADR/0030-registered-observation-order-for-artifact-fields.md) | TTL, managed import and `DATA-AGGREGATE-01` are implemented and qualified. Aggregate P0-P7 closed on `71296e2e`; live activation and systemd acceptance are recorded on `130d0898`. External ADR-0025 H5 breadth remains explicitly deferred to `OPS-8`, is not reported as a pass, and does not extend support to unqualified SMB families |
-| `R030-BUILD` | `verified` | [build-quality ledger](evidence/build-quality-ledger.md), [closure PR #10](https://github.com/xORex-LC/ioc-extractor/pull/10) | Required project-owned statuses are active on `main` and `release-0.3.0`; all five release-branch checks passed under the active policy in run `34679847573` |
-| `R030-TEST` global controls | `verified` | [test-quality ledger](evidence/test-quality-ledger.md) | All global work items, including separate out-of-reactor Central and GitHub Packages consumers in run `34233605995`, are verified. Applicable per-module hardening cells remain independently tracked below |
-| `R030-SEC` | `in-progress` | Dependency remediation is qualified on exact commit `3307d1e2`: CI and Dependency Security runs passed with 0 unsuppressed findings | [Dependency security evidence](evidence/dependency-security.md); remaining repository, workflow and publication-security gap analysis |
-| `R030-LIB` | `verified` | [shared-code inventory](evidence/shared-code-inventory.md), [LIB-1 hardening](lib-1-concurrency-worknote.md), [LIB-2 D5](libs/lib-2-diagnostics-design.md#d5-protected-publication-record--2026-10-18) | `ioc-platform-concurrency:0.3.0-rc.1` was published from the immutable validated bundle and separately consumed from Central and GitHub Packages in protected run `34233605995`; diagnostics `0.3.0-rc.1` qualified in run `39137777538`; logging `0.3.0-rc.1` is separately published/qualified in run `39455105300` ([release record](libs/lib-3-logging-design.md#protected-publication-record--2026-10-21)) |
-| `R030-DOC` | `planned` | — | Translation inventory |
-| `R030-REL` | `planned` | — | All prerequisite goals |
+| Goal | State | Подтверждённое / следующий gate |
+|---|---|---|
+| R030-BASE | verified | Исходные compatibility/runtime сравнения сохранены; менять comparison contract только явно |
+| R030-DATA | verified | TTL/import/aggregate repository/package и отдельная live activation квалифицированы; H5 breadth явно deferred в OPS-8, TOOL-10 остаётся открытым |
+| R030-BUILD | verified | Tool adoption и ratchets приняты; required statuses активированы на main/release-0.3.0 и проверены в run 34679847573; fresh candidate gate всё равно обязателен |
+| R030-TEST global controls | verified | Lifecycle, coverage, regex, waits, external shells, pilots, Codecov и standalone consumers внедрены; module cells отдельны |
+| R030-LIB | verified | Шесть 0.3.0-rc.1 библиотек опубликованы и имеют отдельные records/consumers; TOOL-8 recovery, TOOL-6 API comparison и TOOL-9 versions остаются открытыми; ETL внутренний |
+| R030-QUAL | planned | Закрыть module review и актуальный intake в goal; зелёный analyzer не заменяет review |
+| R030-RETIRE | planned | Сверить поддерживаемые/history surfaces и выполнить RETIRE-APP-11; DEP-9/10 уже устранены |
+| R030-ARCH | planned | Подтвердить module/package maps и boundaries; QUAL-BOOT-1 остаётся review scope |
+| R030-SEC | in-progress | Старый dependency repair квалифицирован отдельно; SRC-3 и repository/workflow/publication-security review ещё открыты |
+| R030-DOC | verified | Документационный baseline закрыт:196 in-scope задач verified,2 security docs исключены пользователем (N/A); последующие code/candidate изменения требуют same-change обновлений |
+| R030-REL | planned | Все обязательные prerequisites, fresh security, compatibility/performance, packaging/upgrade/rollback и final release evidence |
 
-## 2. Module hardening matrix
+## Module hardening matrix
 
-Все cells начинаются с `planned`: applicability подтверждается analysis.
+Сохранены состояния исходной матрицы; `planned` означает необходимость сверки
+owning DoD/evidence, а не доказанный дефект реализации. Старые `in-progress`
+также нужно сверить с фактическим компонентным scope. Публикация, глобальный
+TEST и обновление документа не закрывают прочие cells автоматически.
 
 | Maven module | `R030-QUAL` | `R030-RETIRE` | `R030-ARCH` | `R030-TEST` | affected `R030-DOC` |
 |---|---|---|---|---|---|
-| `platform/platform-errors` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `platform/platform-diagnostics` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `platform/platform-etl` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `platform/platform-events` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `platform/platform-concurrency` | `in-progress` | `planned` | `in-progress` | `in-progress` | `in-progress` |
-| `platform/platform-observability` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `platform/platform-diagnostics-logging` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `core/ioc-domain` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `core/ioc-application` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `core/ioc-application-tck` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-regex-re2j` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-psl` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-source-tika` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-csv` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-manifest-json-jackson` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-store-jdbc` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-transport-smb` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-ingest` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-cli-picocli` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `bootstrap/ioc-app` | `planned` | `planned` | `planned` | `planned` | `planned` |
+| `platform/platform-errors` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `platform/platform-diagnostics-api` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `platform/platform-diagnostics` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `platform/platform-etl` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `platform/platform-events` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `platform/platform-concurrency` | `in-progress` | `planned` | `in-progress` | `in-progress` | `verified` |
+| `platform/platform-logging-slf4j` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `platform/platform-observability` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `platform/platform-diagnostics-logging` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `core/ioc-domain` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `core/ioc-processing` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `core/ioc-application` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `core/ioc-application-tck` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-config-spring-boot` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-events-spring` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-regex-re2j` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-psl` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-processing-camel` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-source-tika` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-csv` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-manifest-json-jackson` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-store-jdbc` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-transport-smb` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-ingest` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-cli-picocli` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `bootstrap/ioc-app` | `planned` | `planned` | `planned` | `planned` | `verified` |
 
-## 3. Work items
+## Оставшаяся очередь
 
-| Work item | Goal | Scope | Stage | Owner | State | Evidence |
-|---|---|---|---|---|---|---|
-| `DATA-AGGREGATE-01` | `R030-DATA` | Новый самостоятельный IOC aggregate artifact; обновление name при совпадении остальных public fields | P0-P7 реализованы и квалифицированы: самостоятельный артефакт и export profile, managed import, единый dataframe-owned порядок наблюдений для file/JDBC ledger, конфигурируемые occurrence/write policies, schema v11, переходные операции и диагностика. Проверены fresh/upgrade/restart/restore, оба daemon ledger, import, 100k/250k duplicate-heavy load и реальная systemd-активация; артефакт стартует пустым без backfill | AI agent + user review | `verified` | [рабочий комплект](ioc-aggregate/README.md), [evidence](ioc-aggregate/evidence.md), [release contract](ioc-aggregate/release-contract.md), [implementation plan](ioc-aggregate/implementation-plan.md), [verification matrix](ioc-aggregate/verification-matrix.md), [ADR-0030](../../ADR/0030-registered-observation-order-for-artifact-fields.md) |
-| `DATA-TTL-01` | `R030-DATA` | Canonical record expiry, stable sparse reusable export slots, revision-significant identical delivery and bounded idle lifecycle runtime | P0–P9 implementation, automated evidence and packaged qualification complete; lifecycle-owned dataframe schemas through v6 and service foundation v8; combined repository schemas are v9/v9 after DATA-IMPORT-01 migrations. Final committed-HEAD gate passed on `b3aee0a3` with `verify.fresh=true` | AI agent + user review | `verified` | [evidence](data-ttl-01/evidence.md), [export-slot correction](data-ttl-01/export-slot-correction.md), [implementation plan](data-ttl-01/implementation-plan.md), [ADR-0020](../../ADR/0020-canonical-record-expiration-lifecycle.md), [ADR-0021](../../ADR/0021-stable-reusable-export-slots.md), [ADR-0022](../../ADR/0022-revision-significant-identical-export.md), [ADR-0023](../../ADR/0023-bounded-lifecycle-reconciliation-runtime.md) |
-| `DATA-IMPORT-01` | `R030-DATA` | Managed local/SMB structured dataframe deliveries into SQLite truth; versioned recognition/mapping, active-only patch, atomic promotion and recovery | P0-P9 implementation, 100k/1M load, fairness, local/live SMB baseline, exact-v0.2/fresh packaged qualification and final committed-HEAD gate complete. ADR-0025 H1-H4 are implemented; unavailable H5 two-identity live breadth is explicitly deferred to `OPS-8`, not reported as a pass, and managed SMB import stays disabled pending deployment qualification | AI agent + user review | `verified` (`H5 breadth deferred`) | [P0 evidence](dataframe-import/p0-evidence.md), [P1 evidence](dataframe-import/p1-evidence.md), [P2 evidence](dataframe-import/p2-evidence.md), [P3 evidence](dataframe-import/p3-evidence.md), [P4 evidence](dataframe-import/p4-evidence.md), [P5 evidence](dataframe-import/p5-evidence.md), [P6 evidence](dataframe-import/p6-evidence.md), [P7 evidence](dataframe-import/p7-evidence.md), [P8 evidence](dataframe-import/p8-evidence.md), [P9 evidence](dataframe-import/p9-evidence.md), [architecture](dataframe-import/architecture-project.md), [release contract](dataframe-import/release-contract.md), [implementation plan](dataframe-import/implementation-plan.md), [verification matrix](dataframe-import/verification-matrix.md), [ADR-0024](../../ADR/0024-managed-dataframe-import.md), [ADR-0025](../../ADR/0025-managed-import-smb-service-namespace-and-terminal-retention.md) |
-| `BUILD-SPOTBUGS-01` | `R030-BUILD` | 19 production runtime JAR modules; fail-closed 25-project disposition registry keeps root/build-support POMs and reusable test-contract `ioc-application-tck` explicitly outside bytecode scope | Report-only tool introduction, per-module reports, reactor aggregate and 118-finding baseline; root `validate` checks scope before child builds, late report integrity checks outputs, and a synthetic-reactor matrix protects both contracts | AI agent | `verified` | [SpotBugs rollout](evidence/build-quality-ledger.md#spotbugs-rollout) |
-| `BUILD-CPD-02` | `R030-BUILD` | Fail-closed 25-project disposition registry; one repository-wide report over all 851 current Java source paths in 19 production modules; TCK, tests, generated/vendor sources and build-support explicitly excluded | PMD CPD `minimumTokens=75`; the adoption snapshot had 11 raw matches / 10 semantic findings. Post-import requalification reviewed all 26 then-current groups and removed five bounded knowledge duplicates, leaving 21 visible groups with explicit retained/deferred rationale. Follow-up exact group-count ratchet blocks any increase or decrease pending semantic review and same-change snapshot update | AI agent | `verified` | [CPD findings and calibration](evidence/build-quality-ledger.md#pmd-cpd-findings) |
-| `BUILD-DEPS-03` | `R030-BUILD` | Maven bytecode dependency analysis over all 20 functional JAR modules, including reusable TCK; root and four build-only POMs explicitly observed as plugin-skipped | Plugin `3.11.0` pinned; 14 direct source/POM mismatches corrected; residual `56 / 34 / 12` findings semantically classified; blocking lifecycle adoption deferred and an opt-in report profile retained without suppressions | AI agent | `verified` | [Dependency-analysis disposition](evidence/build-quality-ledger.md#maven-dependency-analysis-findings) |
-| `BUILD-SPOTBUGS-04` | `R030-BUILD` | C4 closure baseline: 77 reviewed findings in the same 19-module production-bytecode scope; one inherited filter had 71 exact selectors for 59 false positives + 18 policy-noise findings and no accepted legacy | Exception boundaries, 11 small local findings and all 44 mutable aliases were hardened with focused regressions. C4 also replaced compiler-generated lambda names with a stable exact class/field selector. Final clean + immediate repeat both passed 24/24 with 836 tests, 2 external SMB skips, 19 module report pairs + aggregate, 0 visible findings and 0 analyzer errors/missing classes. Later concurrency, Tika, nullable-path and SMB upload-plan follow-ups removed `SB04-016`, `SB04-018..019`, `SB04-029..030` and `SB04-033..039`, leaving 65 accepted identities / 61 selectors; focused and full-reactor evidence confirm the removals | AI agent | `verified` | [execution worknote](build-spotbugs-04-worknote.md) |
-| `BUILD-SPOTBUGS-05` | `R030-BUILD` | Same 19 production JAR modules; current baseline has 116 exact accepted identities (85 false positives + 31 policy noise), 112 generated narrow selectors, test bytecode still excluded | One raw analysis per module; root validates the structured baseline and concrete review-trigger catalog, then materializes the filter; late gate blocks new/stale/moved/metadata drift and analyzer/report/aggregate failures. Proposal-only tooling emits a non-accepting delta under `target/` and cannot populate acceptance metadata or edit the tracked baseline. Post-import requalification reviewed every current category and location; cleanup-precedence fixes were pinned by tests and the aggregate remains 0 visible findings with no analyzer errors/missing classes | AI agent | `verified` | [blocking-ratchet worknote](build-spotbugs-05-worknote.md) |
-| `BUILD-PMD-06` | `R030-BUILD` | Same fail-closed 25-project disposition and 19 production `src/main/java` roots as CPD; root, TCK, tests, generated/vendor sources and build-only POMs excluded | P3 adopted a reduced 22-rule policy with calibrated `CognitiveComplexity=16` and `ExcessiveParameterList.minimum=13`; a separate executable 3-rule watchlist preserves ownership/size signal without regular-CI adoption. Post-import requalification removed bounded defects; 21 policy findings in 16 files and 29 watchlist findings in 19 files remain visible. Follow-up enforcement gives 17 omitted-from-snapshot rules zero tolerance and requires exact counts for five reviewed advisory rules; no finding suppression/identity baseline. Harness: 7 happy / 56 negative scenarios | AI agent | `verified` (`P0/P1/P2/P3` completed; requalified 2026-08-31; ratcheted 2026-09-01) | [PMD adoption worknote](build-pmd-06-worknote.md) |
-| `ING-10 / SB04-116` | `R030-QUAL` | Single-daemon ingestion startup, recovery/poller ordering, per-source-key execution and file/JDBC ledger transitions | Five checkpoints implemented the startup barrier, shared keyed guard, fresh-state recovery, monotonic CAS transitions, lifecycle health and exact-1 configuration guard; restart/watched-inbox and observability regressions passed, and `SB04-116` is absent from current reports | AI agent | `verified` | [ING-10 execution worknote](ing-10-ingestion-lifecycle-hardening.md) |
+| Scope / item | Owner / goal | Следующий проверяемый результат |
+|---|---|---|
+| QUAL CPD/PMD intake, QUAL-BOOT-1 | QUAL/ARCH/TEST | Live characterization и disposition по компактным таблицам [QUAL](goals/R030-QUAL-code-health.md); метрики разрешают review, не механическое извлечение |
+| RETIRE-APP-11 StableArtifactId | RETIRE / application artifact | Подтвердить отсутствие Java/resource/reflection/API use, отдельное удаление declaration и obsolete reference с gates |
+| Supported/history retirement surfaces | RETIRE / owning modules | Сохранить migrations/ledger replay, engine fallback, SMB, maintenance, publish/TCK до принятого retirement; [контракт](goals/R030-RETIRE-retirement.md) |
+| Security: SRC-3 | SEC / dependency owners | Датированная affected-version матрица сохранена; reachability/owner disposition либо qualified remediation и fresh security evidence ещё нужны |
+| SEC-LOG-1 | SEC / observability | При отложенном аудите SECURITY-ENGINEERING сверить broad redaction statement с formatter-only structured-context contract; free message/Throwable/cause/suppressed требуют producer ownership; это не доказательство новой утечки |
+| DOC baseline | DOC / owning documents | [198 исходных задач](documentation/remaining-work.tsv):49 ADR,126 README,15 release paths и6 compatibility entries verified;2 security docs N/A по решению пользователя. Результат не закрывает SEC/REL и не заменяет final-candidate qualification |
+| Publication follow-ups | LIB/SEC/REL | TOOL-6 API comparison, TOOL-7 provenance, TOOL-8 protected configuration CI recovery, TOOL-9 independent-version Maven/CI transition; не повторная публикация исходных RC |
+| External target qualification | DATA/REL / operators | OPS-8 H5 две identities; неподтверждённые server/platform claims остаются skips; source default disabled |
+| Operational/source findings | Owning capabilities / REL | OPS-10…15, OUT-4, ING-11/13/15/16, SRC-3 и TOOL-10 сохраняются в [KNOWN-ISSUES](../../KNOWN-ISSUES.md); retirement записок не закрывает их |
+| Internal ETL reuse | QUAL/ARCH / ETL | Перед внешним reuse/publication сверить direct construction, compacted-policy input, post-effect observer failures и resource budget; текущие ограничения закреплены в README/Javadoc, ARCH-5 |
+| Final release comparison | REL | Повторить representative workloads с сопоставимым boundary; latency/RSS regression и unavailable checks получают явный disposition |
 
-`LIB-1-HARDEN-01`: [ограниченный hardening concurrency](lib-1-concurrency-worknote.md)
-проверен по подтверждённым текущим consumers (23 module tests, полный verify,
-PMD policy/watchlist и docs). Это не полное закрытие
-module cells и не publication admission.
+QUAL-REGEX-1 закрыт TEST-REGEX-03, QUAL-CSV-1 — POM metadata correction.
+RETIRE-DEP-9 (application→platform-errors) и RETIRE-DEP-10 (CSV→commons-io)
+уже устранены. Они не остаются кандидатами на повторное исправление.
 
-## 4. Deferred, blocked и queue decisions
+## Принятые defer
 
-| Work item/scope | Goal | State | Reason | Missing evidence/exit condition |
-|---|---|---|---|---|
-| `DATA-IMPORT-01 / ADR-0025 H5 / OPS-8` | `R030-DATA` | `deferred` (`external qualification`) | Для 0.3.0 явно принят ограниченный support claim: недоступный live fixture с раздельными producer/service identities не считается pass и не блокирует закрытие repository/package scope; managed SMB import по умолчанию выключен | Перед заявлением поддержки конкретного SMB family и включением source проходит opt-in `SmbManagedImportHardeningContractTest`: producer denial, capability/missing-namespace, no-replace claim, reconnect, disposition и exact remote purge; недоступные дополнительные families остаются named skips |
-| Multi-daemon ingestion lease/fencing | `R030-QUAL` | `deferred` | Поддерживаемый deployment 0.3.0 остаётся single-daemon; process-local guard ING-10 не является cross-process ownership protocol | Concrete multi-daemon deployment requirement plus an explicit durable lease/fencing ownership decision |
+| Scope | Причина / ограничение | Exit condition |
+|---|---|---|
+| DATA-IMPORT-01 / ADR 0025 H5 / OPS-8 | Нет двухидентичного live fixture; это не pass и не расширение SMB support claim | Opt-in SmbManagedImportHardeningContractTest на конкретном family: denial, capability/namespace, claim, reconnect, disposition, exact purge |
+| Multi-daemon ingestion lease/fencing | 0.3.0 поддерживает single-daemon; process-local ING-10 guard не cross-process ownership | Реальный multi-daemon deployment requirement и отдельное durable fencing решение |
+| Security documents | По решению пользователя 2026-11-16 полный аудит/переработка/перевод SECURITY-ENGINEERING и THREAT-MODEL исключены из baseline 0.3.0 (N/A), не блокируют DOC/release closure | SDLC и модель угроз — отдельный scope одной из следующих версий; существующие security checks и отдельные findings не закрываются этим исключением |
 
-## 5. Update rule
+## Обновление
 
-Matrix обновляется после каждого analysis или implementation work item.
-`verified` требует goal-specific DoD; наличие merged PR само по себе
-недостаточно.
+После item обновлять только затронутую cell/очередь, указывать постоянный outcome
+и точную verification identity. Completed audit transcripts, полный census и
+проектные журналы retired; они доступны в immutable snapshot из qualification
+record, но не являются новым active backlog. Шесть опубликованных RC не означают
+закрытие всех модулей или готовность приложения к выпуску.
 
-### LIB-1 publication preparation — 2026-09-07
+### README CLI adapter — 2026-11-11
 
-Implemented ADR 0028, the GitHub namespace coordinate, standalone POM and
-source/Javadoc packaging, publication recovery tooling and protected workflow.
-The separate consumer passed against the local bundle. At this preparation
-checkpoint, `R030-LIB` and `TEST-PUBLICATION-08` remained open pending real
-signing/repository validation and cold consumption from Central and GitHub
-Packages.
+Рекурсивно пересмотрены два исходных README `adapter-cli-picocli`; добавлены
+README test package и consumer fixtures. Все четыре reference-документа на
+английском: локальные обязанности, структура, dependencies, early/Spring paths,
+ленивое разрешение use cases, вывод/exit codes и границы test coverage.
+Два исходных queue items закрыты с сохранением original hash/revision;
+новые test/fixture references указаны как companion outcomes в строке модуля.
+Это закрывает affected DOC cell выбранного модуля, остальные goals не
+переоценены. Проверки: полный `make verify`, локальные ссылки и структура README;
+логи проверки остаются локальными в `.dev/cli-readme-audit/`.
 
-### LIB-1 protected validation — 2026-09-08
+### README configuration adapter — 2026-11-11
 
-Tag `ioc-platform-concurrency-v0.3.0-rc.1` fixes commit `c0f0f12f`. Protected
-run `34222437897` passed admission, full build, local standalone consumption,
-owner-key signing and Central validation for deployment
-`84d86a68-9402-4181-a587-772d004ad8c6`. The signed bundle is retained and
-GitHub Packages was not contacted in validation mode. The next gate is an
-explicitly approved recovery publication from that exact run/deployment,
-followed by independent cold resolution and execution against Central and
-GitHub Packages.
+Пересмотрен module README adapter-config-spring-boot, добавлены английские
+README production/test packages. Описаны API/internal boundary, source/schema
+coverage, name-only/result/migration contracts, ownership и различия local tests /
+standalone qualification. Один исходный queue item verified с прежним hash/ref;
+новые references записаны как companion outcomes. DOC cell модуля закрыт;
+остальные goals, TOOL-8 и историческая publication qualification не переоценены.
+Проверки: make verify, dependency tree, README file maps и локальные ссылки;
+логи локальные в `.dev/config-readme-audit/`.
 
-### LIB-1 protected publication — 2026-09-08
+### README CSV adapter — 2026-11-11
 
-Partial run `34229094758` published Central but exposed an HTTP redirect defect
-in GitHub Packages verification. Recovery fixes passed complete CI, and final
-protected run
-[`34233605995`](https://github.com/xORex-LC/ioc-extractor/actions/runs/34233605995)
-reused the original signed bundle, confirmed exact bytes at both repositories
-and passed two isolated cold consumers. This closes `R030-LIB` and the global
-`TEST-PUBLICATION-08` control; it does not close the separate module-hardening
-cells.
+Рекурсивно пересмотрены три исходных README adapter-csv и добавлены английские
+README обоих test packages. Уточнены strict input и limits, validators/transforms,
+deferred preparation, mapping DSL, generation-owned mutable projection, encoding,
+immutable staging/recovery/durability, leases и разные retention/catalog semantics.
+Пять references описывают local ownership и границы test evidence; wire-format
+Jackson tests и deployment-filesystem qualification не подменяются локальными
+codec fixtures. Три исходных queue items verified с сохранением hash/ref, новые
+companion outcomes отмечены в очереди. Закрыт только affected DOC cell.
+Проверки: make verify, dependency tree, README file maps/links и diff --check;
+локальные логи `.dev/csv-readme-audit/`.
 
-### Configuration library implementation admission — 2026-10-22
+### README Spring events adapter — 2026-11-11
 
-Configuration C1–C3 implements record-schema name/declaration inspection,
-explicit migration observations, IOC integration and the executable closed-input
-context recipe. [ADR 0046](../../ADR/0046-reusable-spring-boot-configuration-inspection.md)
-accepts the ownership boundary. Maven, analyzer and coverage registries include
-the adapter as a normal production module; their topology and fixed floors remain
-unchanged. The [C3 checkpoint](libs/configuration-library-design.md#c3-build-and-documentation-checkpoint--2026-10-22)
-records final local gates. C4 standalone POMs, dependency mediation, cold consumers
-and separately authorized publication remain open for this component; the earlier
-`R030-LIB` pilot closure does not qualify it automatically.
+Пересмотрен module README adapter-events-spring, добавлены английские README
+production/test packages. Уточнены one-attempt publication, partial delivery,
+normal-return/observer semantics, immediate Spring Error unwrap, primary/suppressed
+failure evidence и service-owned dispatch/resource boundary. Явно отделены
+inline executor tests от async completion и source tests от packaged consumers.
+Один original queue item verified с прежним hash/ref; новые references отмечены
+как companion outcomes. Только affected DOC cell закрыт; family publication,
+independent-version activation и другие goals не переоценены. Проверки: make
+verify, dependency tree, file maps/links и diff --check; логи локальные в
+`.dev/events-spring-readme-audit/`.
+
+### README ingest adapter — 2026-11-11
+
+Пересмотрены module README и inbound package README adapter-ingest, русский
+package reference переведён на English. Добавлены три README: outbound
+maintenance и два test packages. Локальная карта покрывает document admission,
+bounded prepare/ordered promotion, journals/retry/recovery/shutdown, managed import
+snapshots/terminal units и ordinary leaf retention. Уточнены разные WatchService
+backstops, pre-hash blocked queue, strict atomic claim/seal versus weaker legacy
+ledger/retention fallback, observation и single-daemon boundary. Два original
+queue items verified, исходные ref/hash/language сохранены, новые README отмечены
+companions. Только affected DOC cell закрыт; прочие goals и внешняя qualification
+не переоценены. Проверки: make verify, dependency tree, README links/file maps,
+English/provenance/preservation checks и diff --check; локальные логи в
+`.dev/ingest-readme-audit/`.
+
+### README Jackson manifest adapter — 2026-11-11
+
+Оба исходных README adapter-manifest-json-jackson пересмотрены и переведены
+на English; добавлен test-package README. Карта охватывает codec/package-info,
+четыре private wire records и единственную IT suite. Сверены POM/dependency tree,
+port/models, bootstrap wiring и filesystem integrity callers. Уточнены exact
+UTF-8 bytes, ordered arrays, legacy v1/explicit-layout v2, null/enum/error/resource
+границы и caller-owned hash/marker verification. Убрано неверное blanket обещание
+missing-field rejection: missing primitive rows -> zero подтверждён локальным
+probe. V1 golden, V2 round-trip и независимые consumer fixtures разграничены.
+Два original queue items verified, provenance сохранены, новый README отмечен
+companion; только affected DOC cell закрыт. Прочие goals не переоценены.
+Проверки: make verify, dependency tree, make docs, README links/file maps/English,
+provenance/preservation и diff --check; локальные логи `.dev/manifest-readme-audit/`.
+
+### README Camel processing adapter — 2026-11-12
+
+Module README adapter-processing-camel пересмотрен; добавлены четыре English
+README: contract/compile/runtime и test package. Карта охватывает 21 production
+и 5 test Java files. Уточнены neutral/Camel dependency seam, admission bounds,
+once-bound predicates, ordered tri-state selection, lazy view/recovery evidence,
+native sequential dispatch/UnitOfWork, shallow payload ownership и lifecycle.
+Устаревший optional-registration текст заменён текущим required bootstrap path;
+разграничены readiness snapshot, bounded drain и termination caller workers.
+Один original queue item verified с сохранением ref/hash/language; companions
+отмечены в note, закрыт только affected DOC cell. Остальные goals и историческая
+capacity/security qualification не переоценены. Проверки: make verify, dependency
+tree, make docs, README links/file maps/English/provenance и diff --check;
+локальные логи `.dev/camel-readme-audit/`.
+
+### README PSL adapter — 2026-11-12
+
+Оба исходных README adapter-psl пересмотрены и переведены на English; добавлен
+test-package README. Сверены classifier/domain port/feature extractor/policy,
+bootstrap wiring, POM/dependency tree и packaged Guava suffix data. Уточнены
+PRIVATE/public boundaries, порядок shortcuts/PSL, UNKNOWN, lexical IPv4 и onion
+validation limits, bare-host input и отсутствие network refresh; устаревшая
+stage-3 привязка заменена actual call chain. Локальный 15-case probe подтвердил
+добавленные граничные пояснения, без изменения Java/tests. Два original queue
+items verified, provenance сохранены, новый README отмечен companion. Закрыт
+только affected DOC cell; остальные goals/security qualification не переоценены.
+Проверки: make verify, dependency tree, make docs, README links/file maps/English,
+provenance/preservation и diff --check; локальные логи `.dev/psl-readme-audit/`.
+
+### README regex adapter — 2026-11-12
+
+Оба исходных README adapter-regex-re2j пересмотрены/переведены English; добавлен
+test-package README. Карты охватывают четыре production files и shared contract
+suite. Сверены compile/cursor helpers, domain port/consumers, POM/tree и bootstrap
+selection/configured-pattern tests. Уточнены lazy borrowed CharSequence и lifetime,
+UTF-16 half-open/full-match offsets, eager mutable findAll и caller-owned limits,
+native errors, common syntax и explicit JDK choice без automatic fallback.
+Локальный contract и bootstrap corpus отделены от universal equivalence и
+security/performance qualification. Два original queue items verified, input
+provenance сохранены, новый README отмечен companion; только affected DOC cell
+закрыт, остальные goals не переоценены. Проверки: make verify, dependency tree,
+make docs, README links/file maps/English/provenance/preservation и diff --check;
+локальные логи `.dev/regex-readme-audit/`.
+
+### README JDBC storage adapter — 2026-11-12
+
+Пересмотрены module/package README adapter-store-jdbc; добавлены English README
+dataframe/service SQL и test package. Карты охватывают 100 production, 32 test
+Java files и 26 SQL resources. Сверены ownership двух БД, Native transaction/
+receipt/id/slot boundaries, schema catalogs, connection PRAGMAs, thread-confined
+sessions, workspaces и health/test limits. Два original queue items verified,
+input provenance сохранены; три companion README отмечены в note, закрыт только
+affected DOC cell. OPS-15 (unchecked migration failure commits partial DDL at old
+user_version) воспроизведён isolated file-backed SQLite probe и добавлен EN/RU
+в KNOWN-ISSUES; проблема открыта, canonical rollback guarantee не распространён
+на мигратор. Other goals, load/security/deployment qualification не переоценены.
+Проверки: make verify, dependency tree, make docs, all README links/file maps,
+English/provenance/preservation и diff --check; логи `.dev/jdbc-readme-audit/`.
+
+### README SMB transport adapter — 2026-11-12
+
+Пересмотрены/переведены module/package README adapter-transport-smb, добавлен
+English test-package README. Карты охватывают 22 production и 17 test Java files.
+Сверены POM/compile+runtime tree, bootstrap shared pool/snapshot/watcher wiring,
+endpoint/session ownership, encryption/timeouts, marker-last publish и его пределы,
+managed probe/claim/materialization/disposition/retention, notifications и telemetry.
+Уточнены positive-only live encryption contract, разные cleanup scopes notify/import
+fixtures, partial credential profiles и фактический охват two-identity denial test.
+Два original queue items verified, provenance сохранены; companion отмечен в note,
+закрыт только affected DOC cell. OPS-8 и server/security/capacity qualification
+не переоценены; external contracts без provisioned target остаются skipped.
+Проверки: make verify, make doctor-core/docs, dependency trees, source README links/
+file maps, English/provenance/preservation, command syntax/selectors и diff --check;
+логи `.dev/smb-readme-audit/`. Java/POM/tests unchanged.
+
+### README bootstrap application — 2026-11-12
+
+Последовательно пересмотрены/переведены module, entry-package и bootstrap-package
+README ioc-app; добавлены 13 English companions для runtime resources/META-INF,
+Java test groups и consumer/golden/customer resources. Карты охватывают 135
+production и 96 test-tree Java files плюс 2 Java consumer source fixtures.
+Плоский production package из 134 files разложен по responsibility sections без
+переноса Java. Сверены main/early CLI/checkers, explicit config/registry admission,
+AppConfig/SyncConfig/import graph, lazy datasource ownership, required processing
+и policy pins, recovery-before-intake, worker phases/admission/stop boundaries,
+mutable/immutable output, event backstops, health/logging и packaged resources.
+Исправлены монолитная карта несуществующих subdirectories, прежняя sequential
+export cadence, stale event-publisher ownership и optional-router framing.
+Три original queue items verified, provenance сохранены; 13 companions отмечены
+в note. Exact consumer slices не дополнены README (membership — wire contract).
+Закрыт только affected DOC cell; live SMB/deployment/security/load acceptance и
+other module goals не переоценены. Java/POM/config/test behavior unchanged;
+previous README waves и OPS-15 сохранены. Проверки: make verify, doctor/docs,
+runtime dependency tree, все source README links/maps, English/provenance/
+preservation, command syntax/selectors и diff --check; логи `.dev/bootstrap-readme-audit/`.
+
+### README build-support quality tools — 2026-11-14
+
+Пересмотрены все 7 English README build-support: root, общие analyzer tools,
+test-quality и 4report POM owners. Сверены 9JDK-onlyJava sources/harnesses,
+root/report POM wiring, scope/ruleset/baseline/coverage/test registries и Make/CI.
+Разграничены 4Maven report projects и2non-reactor tool dirs, root synthetic checks
+и late real reports, exact SpotBugs versus CPD/PMD count ratchets, test-suite union
+versus executed cases, downstream coverage/floors, policy/watchlist и freshness.
+Исправлены пропущенный test-quality в root map, прежние 20PMD dependencies и
+неполное описание root harnesses; engine-reflection dependency filter bridge и
+missing-raw/late-check boundary описаны явно.7originalqueue items verified,
+provenance сохранены; отмечен только documentation scope (report POMs не имеют module cells), прочие goals/
+security/watchlist qualification не переоценены. Verifier Java, POMs, rules,
+thresholds, counts, baselines и CI не менялись. Проверки: root validate, make verify,
+make pmd-analysis, doctor/docs, source README links/maps, English/provenance/scope,
+command syntax/dry-run и diff --check; логи `.dev/build-support-readme-audit/`.
+
+### README application core — 2026-11-14
+
+Пересмотрены/переведены28originalREADME ioc-application, добавлены24English
+companions:52localreferences охватывают все production package dirs (486Javafiles)
+и74testJavafiles. Дополнены отсутствовавшие policy/observation/admission/maintenance/
+pipeline/port maps и12test references; classification namespace отмечен как marker,
+а actual classification — owning ioc-processing. Сверены POM/compile tree,
+workspace/streamed source and cursor lifetime, required plan/checkpoint, split
+prepare/promote, per-artifact document writes versus atomic managed-import promotion,
+canonical/lifecycle/export-slot/observation identities, durable ordering/replay,
+expiry/projection/admission, import contracts/mapping/receipts/terminal cleanup,
+immutable formation/recovery/cadence/retention и sync detection/delivery/retries.
+Исправлены stale batch-only pipeline, прежние monolith/ports-only claims и future
+publish-ledger framing. Framework-free не подменён отсутствием I/O: existing JDK NIO
+fetch/marker mechanics указаны; OPS-11/12 остаются открытыми. Test maps разграничивают
+local fake/NIO evidence и downstream TCK/parser/SMB/Camel/runtime qualification.
+28originalqueue items verified; provenance сохранены,24companions отмечены в module
+note. Закрыт только application DOC cell; QUAL/ARCH/RETIRE/TEST и resource/security/
+live acceptance не переоценены. Java/POM/tests/API unchanged; previous build-support
+slice сохранён. Проверки: make verify, dependency tree, doctor/docs, all source README
+links/package maps, English/provenance/preservation/command syntax-selectors/diff;
+логи `.dev/application-readme-audit/`.
+
+### README domain core — 2026-11-14
+
+Пересмотрены/переведены 8 original README ioc-domain; добавлены 3 English
+companions для test root, feature suites и literal-engine support. 11 local
+references охватывают 6 production capabilities (45 Java files), 11 Surefire
+suite classes и 1 test helper. Сверены POM/compile tree, capability DAG и outward
+regex/PSL seams, вызовы bootstrap/processing и workspace-backed application stages.
+Исправлены отсутствовавший feature в package map, несуществующий
+SourceContext.UNKNOWN, blanket external-implementation claim и batch-only карты.
+Разграничены materialized outcomes и streaming protocols, type priority versus
+source order, absolute UTF-16 offsets, invocation-owned claims, refang order/counts,
+NBSP/overlap marker precedence и inclusive attribution, normalization versus lexical
+validation, supported address forms/typed failures, source-preserving host/scheme
+derivation, bare-IP routing, declarative first-match/unmatched decisions и evidence
+limits literal/host-kind doubles. Все 8 original queue items verified, input provenance
+сохранены; 3 companions отмечены в module note. Закрыт только domain DOC cell;
+QUAL/ARCH/RETIRE/TEST и mutation/security/live/capacity qualification не переоценены.
+Java/POM/tests/API unchanged; previous build-support/application slices сохранены.
+Проверки: make verify, dependency tree, doctor/docs, all source README links/maps,
+English/provenance/preservation, command syntax/selectors и diff --check;
+логи `.dev/domain-readme-audit/`.
+
+### README processing core — 2026-11-14
+
+Пересмотрен original English README ioc-processing; добавлены 8 English companions:
+production namespace и 5 capability packages, test root и mapping suites. 9 local
+references охватывают 22 production Java files и 8 Surefire suites. Сверены
+POM/compile tree (только domain и platform-errors), module guard и реальные
+CSV/bootstrap/application callers. Разграничены domain composition и external
+route/view/workspace/storage ownership, neutral file versus network classification,
+ClassifiedIndicator consistency, exact-cell parsing после caller-owned refang,
+typed parse failures и limits synthetic extractor evidence. Описаны thread-confined
+session ownership/close, complete source/type classification keys, exact policy
+identity, current-source host reconstruction, LRU/charged retention/oversized bypass
+и отсутствие process-wide memory guarantee. Mapping reference покрывает column
+views/gates/constants/null/id cells, transform binding/order/lazy errors,
+source-label presentation, provider/filter/transform boundaries и typed located
+rejection versus programming failures. Test maps различают local semantic evidence
+и downstream CSV/regex/PSL/Camel/import/runtime qualification.
+1 original queue item verified, input provenance сохранены; 8 companions записаны
+в module note. Закрыт только processing DOC cell; QUAL/ARCH/RETIRE/TEST и общий
+release/security/capacity scope не переоценены. Java/POM/tests/API unchanged;
+предыдущие build-support/application/domain изменения сохранены. Проверки:
+make verify, dependency tree, doctor/docs, all source README links/maps, English,
+198-row provenance/preservation, command syntax/selectors и diff --check;
+логи `.dev/processing-readme-audit/`.
+
+### README core overview и application TCK — 2026-11-14
+
+Пересмотрены/переведены 7 original README: общий core overview и 6 TCK references;
+добавлены 2 English companions (TCK namespace и junit). 9 references охватывают
+все 15 TCK Java files: 6 abstract contracts, 5 composed annotations и 4 package-info.
+Core map дополнен ioc-processing; разделены 3 production modules и test-support
+artifact, directory grouping и root reactor ownership. Сверены POM/compile tree,
+все 47 inherited test methods и 7 concrete consumers (6 JDBC и file ingestion),
+fixture setup/cleanup и actual report wiring. Исправлена blanket identical-behavior
+claim: TCK проверяет named observable scenarios; migrations/physical races/failure
+matrices/live acceptance остаются adapter-owned. Описаны required factories и
+same-store fixture ports, canonical identity/epoch baseline, ingest observation
+versus content identity/terminal race, export CAS/exact replay/atomic progress,
+lifecycle time/deadline/revision/ID boundary и import FIFO/checkpoints/retention/
+receipt replay. Lifecycle test publicId относится к canonical storage ID, не к
+reusable immutable-export slots. Import-writer base не объявлен полным proof
+cross-artifact atomicity. JUnit reference различает inherited semantic tags,
+name-controlled discovery, external property gating и slow metadata; main-source
+TCK не считается самостоятельным executed suite или production denominator.
+7 original queue items verified, input provenance сохранены; 2 companions записаны
+в module note. Все исходные core README tasks теперь verified; закрыт только TCK
+DOC cell, остальные module/release goals не переоценены. Java/POM/tests/API unchanged;
+предыдущие README slices сохранены. Проверки: make verify, dependency tree,
+doctor/docs, all source README links/maps, inherited consumer report membership,
+English/198-row provenance/preservation, command syntax/selectors и diff --check;
+логи `.dev/core-tck-readme-audit/`.
+
+### README packaging scripts/templates — 2026-11-15
+
+Пересмотрены 2 original English README packaging и tests; добавлен templates
+companion. 3 references охватывают 7 shell lifecycle/release scripts, 5 host
+templates и packaging contract suite. Сверены GNU/systemd/JDK/native prerequisites,
+root/ordinary-user boundary, safe prefix/marker/account/source checks, installer
+versus local-deploy activation, config candidates/force, DB+WAL/SHM ACL/xattr backup,
+unit restoration/retention, rollback arm/initial-install limits, CLI versus daemon
+JVM/profile/port, storage health versus aggregate config-apply gate и no shared
+lifecycle lock. Release helper/workflow ownership уточнён: annotated remote-tag и
+exact checked-out source — workflow, не draft helper/dry-run. Избыточная процедура
+TTL cutover заменена owning guide links с сохранением ключевых backup/one-way
+ограничений; restored systemd-hardening anchor сохраняет security-registry citation.
+Подтверждён existing OPS-13; TOOL-11 (same-status edit/HEAD drift bypass) воспроизведён
+в temp Git repo и добавлен EN/RU. Скрипты/templates/Java/POM/tests не изменены;
+серверные install/deploy/config/publish операции не выполнялись.
+2 original queue items verified, input provenance сохранены; templates companion
+записан в module note. Packaging не Maven-модуль и не имеет отдельной module DOC
+cell; прочие cells/goals/stand/security/release acceptance не переоценены.
+Проверки: make lint-shell, explicit config-helper ShellCheck, source shell syntax,
+release-help/local validate/dry-run probes, make docs, source README links,
+provenance/scope и make verify; логи `.dev/packaging-readme-audit/`.
+
+### README platform concurrency — 2026-11-15
+
+Пересмотрен module English README; добавлены production package и test companions.
+3 references охватывают 12 public types (включая 2 implementations), package-info
+и 3 Surefire suites. Сверены all sources/tests, actual ingest/ledger/sync/import
+consumers, POM/compile tree, flattened consumer POM и library-publication archives;
+production Java совпадает с component tag ioc-platform-concurrency-v0.3.0-rc.1.
+Разграничены per-instance admission FIFO и separate synchronous guard exclusion,
+non-deduplicating equal keys, waiting versus dispatched work, key cardinality и
+worker queue/global capacity, exclusive asynchronous pool ownership и unsupported
+caller-runs/discard policies. Описаны rejection/dispatch-abandonment/runtime/Error
+paths, synchronous observer constraints, no default logger, drain versus join,
+same-thread reentrancy/cross-key nesting, approximate telemetry и wall-clock age.
+Tests map отмечает bounded cleanup и limits synthetic/reflection failure evidence;
+service ledgers/reconcile остаются correctness authorities. Published qualification
+не подменена local JAR examples и текущим reactor; TOOL-9/versioning scope сохранён.
+1 original queue item verified, input provenance сохранены; 2 companions отмечены
+в module note. Закрыт только concurrency DOC cell; QUAL/ARCH/RETIRE/TEST и другие
+library/release goals не переоценены. Java/POM/tests/API unchanged; previous
+packaging slice и TOOL-11 EN/RU сохранены. Проверки: make verify, publication-profile
+package/compile tree, consumer POM/archives, exact EN/RU guide examples against local
+JAR, doctor/docs, source README maps/links, English/provenance/preservation,
+command syntax/selectors и diff --check; логи `.dev/concurrency-readme-audit/`.
+
+### README platform IOC diagnostics — 2026-11-15
+
+Пересмотрены/переведены 5 original README; добавлен test-root companion.
+6 references охватывают 26 main Java files (22 types и 4 package-info) и
+4 Surefire suites. Сверены shared API/product metadata/error boundary,
+12 enum catalogs, explicit aggregate, renderer, producer/consumer imports,
+bootstrap redacting formatter/logging sink и POM/compile tree (API + errors).
+Исправлены stale DiagnosticCode message-template ownership, missing import/lifecycle
+maps, invented direct-import prohibition и registration/ArchUnit conflation.
+Описаны stable IDs/severity/impact/message metadata, OPERATION budget boundary,
+exact import-ID lookup, explicit static registration versus file-based test scan,
+generated docs ownership/update path и production-reference versus actual emission.
+Renderer reference разграничивает IOC fallback templates и literal generic IDs,
+missing/nonrecursive substitutions, formatter-only disclosure, no i18n loader,
+raw DiagnosticException message/context/cause и producer responsibility. Это не
+новая подтверждённая утечка и не изменение security disposition.
+5 original queue items verified, input provenance сохранены; 1 companion записан
+в module note. Закрыт только IOC diagnostics DOC cell; API/logging bridge modules
+и другие QUAL/ARCH/RETIRE/TEST/library/release goals не переоценены. Java/POM/tests/
+API/generated DIAGNOSTICS-CATALOG unchanged; previous packaging/concurrency
+изменения и known issues сохранены. Проверки: make verify, focused module tests
+including catalog generator comparison (без update), dependency tree, doctor/docs,
+all source README links/maps/English, provenance/preservation, command syntax/
+selectors и diff --check; логи `.dev/diagnostics-readme-audit/`.
+
+### README platform diagnostics API — 2026-11-15
+
+Пересмотрены 4 исходных английских README; добавлена общая карта тестов.
+5 references охватывают 18 публичных типов, внутренний валидатор маркеров,
+3 package-info и 9 Surefire suites. Сверены все исходники и тесты, фактические
+ETL/application/bootstrap/logging потребители, JDK-only граница и Maven-дерево.
+Уточнены ownership потребителя, равенство кодов/диагностик, неглубокие snapshots,
+nullable Result и чистые политики с явным применением решения до durable effects.
+Разведены stage N+2 и run N, OPERATION вне бюджета, сохраняемые rejecting signals,
+порядок замены, точные counts, batch versus display marker, единый reserved code,
+отсутствие dedup/replay protection и потеря деталей при меньшем stage budget.
+Описаны synchronous delivery, число вызовов сверх бюджета, частично принятый
+префикс при ошибке callback/overflow, containment RuntimeException versus Error,
+владение ресурсами и пределы гарантий памяти/потоков/доставки. Карта тестов
+разграничивает API witnesses, фактическую компиляцию guide sources и интеграцию.
+4 исходные задачи verified, все 198 строк/input provenance сохранены; 1 companion
+отмечен в module note. Закрыт только DOC cell; QUAL/RETIRE/ARCH/TEST и остальные
+library/release goals не переоценены. Production Java совпадает с component tag
+`ioc-platform-diagnostics-api-v0.3.0-rc.1`; историческая публикация не заменена
+локальной проверкой. Java/POM/tests/API и предыдущие изменения не затронуты.
+Проверки: make verify, 78 локальных тестов, package с library-publication/strict
+Javadoc и compile tree, parent-independent consumer POM/archives, три точных
+EN/RU примера на локальном JAR, doctor/docs, ссылки/карты всех Java sources,
+English/provenance/preservation, синтаксис команд/Make selectors и diff --check.
+Повторная remote qualification, публикация и отдельный security/PMD/PIT прогон
+не проводились; логи `.dev/diagnostics-api-readme-audit/`.
+
+### README platform diagnostics logging — 2026-11-15
+
+Переведены/переработаны 2 исходных README; добавлена общая карта тестов.
+3 references охватывают 2 production types + package-info и 3 Surefire suites.
+Сверены все исходники/тесты, фактическая композиция AppConfig, renderer,
+shared SLF4J builder/MDC/redactor, architecture rules и Maven compile tree.
+Уточнены internal product JAR versus reusable libraries, direct/transitive deps
+и test-scoped backend. Описаны typed fields и FATAL→ERROR mapping с сохранением
+severity, UNKNOWN outcome независимо от policy, generic category shielding,
+restoration и caller-owned correlation; renderer вызывается до level filtering.
+Redaction описана в границах подстановок context: точные indicator/item/value,
+original-value SHA-256 fingerprint при INFO+ и lexical sanitizer при DEBUG/TRACE,
+embedded literal copies, paths/fragments/scheme-less limits, неизменность исходной
+диагностики/Throwable и producer ownership остальных каналов. Это уточнение
+действующего контракта, не новая подтверждённая утечка или security disposition.
+Разведены direct sink failure propagation и service-owned resilient wrapper,
+synchronous latency/resources и отсутствие queue/retry/durable guarantee.
+Карта тестов отличает captured Logback event, formatter, substitute-sink pipeline
+MDC и отдельную bootstrap ECS integration; concurrency cleanup проверяется явно.
+2 исходные задачи verified; все 198 строк и input provenance сохранены;
+companion указан в module note. Закрыт только DOC cell; QUAL/RETIRE/ARCH/TEST,
+security и остальные library/release goals не переоценены. Java/POM/tests/API,
+генерируемые каталоги и предыдущие изменения не затронуты.
+Проверки: make verify, focused 37 tests, doctor/package/compile tree, make docs,
+все README links/Java maps/English, provenance/preservation, синтаксис команд,
+Make selectors и diff --check; логи `.dev/diagnostics-logging-readme-audit/`.
+Отдельные PMD/security/PIT прогоны и stand/provider qualification не выполнялись.
+
+### README platform ETL — 2026-11-15
+
+Пересмотрены 2 исходных английских README; добавлена общая карта тестов.
+3 references охватывают 10 public top-level types + package-info и 2 Surefire
+suites. Сверены все исходники/тесты, IocExtractionService typed composition и
+owned preparation, observer/logging consumers, architecture rules и compile tree.
+Подтверждён internal product JAR: diagnostics API + IOC diagnostics/errors,
+JDK-only closure, но не независимый catalog-free reusable kernel.
+Сохранены прежние ARCH-5 ограничения; дополнены direct/wildcard type ownership,
+nullable/shallow envelopes и metadata, helper-preserved counts versus complete-list
+constructor, initial-marker seeding, append-only delta validation, merge/delivery/
+compaction/policy ordering и точный outcome summary. Budget, OPERATION, retained
+samples, lifetime delivery и full policy history разграничены.
+Описаны after-stage policy/initial FATAL/empty chain, typed versus generic stage
+failure и runtime failures вне stage-body conversion, observer callbacks и
+try-with-resources cleanup, monotonic duration, terminal-summary failure identity.
+Сегменты runPreparation/continuation/finishPreparation отделены от ресурсного
+владения, транзакций, cancellation и dedup. Application prepare/checkpoint/write
+не приписан kernel. Карта тестов отличает local witnesses от неполной квалификации
+ARCH-5 и cross-module checkpoint/MDC/architecture evidence.
+2 исходные задачи verified; все 198 строк/input provenance сохранены; companion
+указан в module note. Закрыт только DOC cell; QUAL/RETIRE/ARCH/TEST, ARCH-5 и
+остальные goals не переоценены. Java/POM/tests/API/generated catalogs и предыдущие
+изменения не затронуты. Нового source defect/KNOWN-ISSUES disposition нет.
+Проверки: make verify, focused 28 tests, doctor/package/compile tree, make docs,
+ссылки/карты всех Java sources/English, provenance/preservation/scoped cell,
+синтаксис команд/Make selectors и diff --check; логи `.dev/etl-readme-audit/`.
+Отдельные PMD/security/PIT и external consumer/stand qualification не выполнялись.
+
+### README platform events — 2026-11-15
+
+Пересмотрен исходный английский module README; добавлены production/test package
+companions. 3 references охватывают 7 public types + package-info и 3 Surefire
+suites. Сверены все исходники/тесты, application event/publisher consumers,
+Spring adapter и bootstrap composition/listener, architecture rules и Maven tree.
+Описаны JDK-only publish-only/anti-broker boundary, consumer-owned payload и
+metadata, exact-text/positive-version/time/null validation, отсутствие ID/type
+registry/dedup/context propagation. Publication return/failure, partial delivery,
+telemetry callbacks и adapter-specific exception/timing semantics разграничены.
+No-ops/recorder проверяют event reference без metadata inspection; snapshot
+immutable/shallow, duplicates и mutable payload остаются видны. Описаны sequential
+versus overlapping order, concurrent recording, COW cost/unbounded retention,
+per-fixture ownership и отсутствие worker/close/reset/durable history.
+Разграничены same-version events core/adapter family, ещё действующий shared
+reactor version и service-owned metadata eventVersion. Published tag source
+совпадает с Java; historical publication evidence не заменено local qualification.
+1 исходная задача verified;198 строк/input provenance сохранены;2companions
+отмечены в module note. Закрыт только DOC cell; QUAL/RETIRE/ARCH/TEST и другие
+library/release goals не переоценены. Java/POM/tests/API/generated catalogs и
+предыдущие изменения сохранены; нового source defect/KNOWN-ISSUES disposition нет.
+Проверки: make verify, focused43tests, doctor/package с library-publication/strict
+Javadoc и compile tree, parent-independent dependency-free POM/archives, точный
+EN/RU guide source на local JAR и Java/XML parity, make docs, README links/maps/
+English, provenance/preservation/scoped cell, синтаксис команд/Make selectors,
+incoming anchors и diff --check; логи `.dev/events-readme-audit/`.
+Отдельные PMD/security/PIT, remote cold consumption, adapter family requalification,
+publication/deployment не выполнялись.
+
+### README platform SLF4J logging — 2026-11-15
+
+Пересмотрен исходный английский module README; добавлены основной production
+package, ECS/redaction и test package companions. 5 references охватывают
+8 public types, internal normalizer и 3 package-info, 7 suites + 2 test helpers.
+Сверены все исходники/тесты, IOC observability facades, diagnostics formatter,
+bootstrap encoder/recipe evidence owners, architecture rules и compile tree.
+Описаны key grammar/descriptor equality versus event identity, native scalar
+normalization/snapshots и rejected-update invariants, null declaration/omission
+versus ambient hiding, disabled-level validation и exact-key MDC collision scope.
+Same-thread/LIFO obligations, reverse first-touch restoration, untouched writes,
+worker reconstruction, provider/partial-cleanup failures и no automatic retry
+разграничены. Описаны scalar ECS versus helper semantics versus encoder metadata/
+dataset/error ownership; current synchronous mutable-event Boot recipe не расширен
+async library witness. Redaction описана как selected STRING transforms без
+severity bypass/whole-event/Throwable scrub; lexical URL limits сохранены.
+Карты тестов отличают API/provider capture, exact guide compilation, private MDC
+fault injection, async cleanup, Boot output bytes и packaged/remote qualification.
+Sole required compile dependency SLF4J подтверждена consumer/embedded POM;
+strict Javadoc и archives проверены. All main Java совпадает с published tag;
+historical signed evidence не заменено local JAR guide checks и reactor gate.
+1 исходная задача verified;198 строк/input provenance сохранены;4 companions
+отмечены в module note. Только DOC cell закрыт; QUAL/RETIRE/ARCH/TEST и library/
+release/security goals не переоценены. Java/POM/tests/API/generated catalogs и
+предыдущие изменения сохранены; нового source defect/KNOWN-ISSUES disposition нет.
+Проверки: make verify, focused112tests (включая actual 3 guide classes), doctor/
+package library-publication/strict Javadoc/compile tree, consumer POM/archives,
+plain+Boot EN/RU Java/XML/YAML parity, 3 exact plain sources + existing fixture
+driver на local JAR и только 3 external logging JARs; make docs, README links/maps/
+English, provenance/preservation/scoped cell, command syntax/Make selectors,
+incoming anchors и diff --check; логи `.dev/logging-readme-audit/`.
+Отдельные PMD/security/PIT, fresh-cache/remote consumer qualification,
+publication/deployment и другой provider/async encoder не выполнялись.
+
+### README platform IOC observability — 2026-11-15
+
+Пересмотрены 3 исходных английских README; добавлена общая карта тестов.
+4 references охватывают 9 public types + 2 package-info и 6 Surefire suites.
+Сверены все исходники/тесты, shared logging/ETL contracts, diagnostics bridge,
+AppConfig/tracer/typed selector/encoder, catalog generator/ratchet и compile tree.
+Разведены internal product facade и published generic logging library; actual
+production closure shared logging+ETL+diagnostics/errors+SLF4J, backend test-only.
+Описаны LogField descriptor binding, action/outcome wire helpers versus generic
+Enum.toString, catalog descriptions versus producer disclosure gates, ioc.event.type
+и skipped disposition ownership. Mode-label enum не выдан за bootstrap selector.
+MDC STRING-only catalog field с Object→text адаптацией, null/hide, caller-owned
+same-thread/LIFO scope и callback factory cleanup описаны отдельно от typed event
+normalization; original RuntimeException/Error и distinct/same cleanup identity
+сохранены в контракте. URL helper не выдан за fingerprint/whole-event scrub.
+Observer map уточняет run/source + optional source-path/mode attributes, stage
+scope, DEBUG start/complete versus ERROR failure и duration/cause ownership;
+callbacks не доказывают durable completion и могут fail after effects.
+Generated LOGGING-CATALOG остаётся authoritative inventory: normal comparison
+без update-флага, explicit regeneration path, taxonomy checks и EventAction
+bytecode-reference versus actual emission/LogField coverage разграничены.
+Карта тестов отличает local capture/fault injection/async witness от pipeline
+MDC, IOC JSON, bootstrap backend и standalone Boot recipe evidence.
+3 исходные задачи verified;198 строк/input provenance сохранены;1companion
+отмечен в module note. Только DOC cell изменён; QUAL/RETIRE/ARCH/TEST и release/
+library/security goals не переоценены. Java/POM/tests/API/generated catalogs и
+предыдущие изменения сохранены; нового source defect/KNOWN-ISSUES disposition нет.
+Проверки: make verify, focused29tests включая generator comparison без update,
+doctor/package/compile tree, make docs, README links/all Java maps/English,
+provenance/preservation/scoped cell, command syntax/Make selectors/incoming
+anchors и diff --check; логи `.dev/observability-readme-audit/`.
+Отдельные PMD/security/PIT, publication/stand/provider qualification не выполнялись.
+
+### README tools — 2026-11-15
+
+Рекурсивно пересмотрены 12 исходных README tools, два русских переведены
+на English; добавлять README в промежуточные src/main/java не потребовалось.
+Карта охватывает 43 implementation/fixture inputs: dev/CI scripts, standalone
+Java generator, семь независимых POM/consumer pairs, repository allowlist, tool
+pins и JDT preferences. tools не Maven-модуль; module DOC cells не менялись.
+
+Уточнены local Make versus workflow leaves/jobs, отсутствие consumers/Codecov
+в pre-push, отдельные verify/PMD receipts и invalidated при source drift даже
+с Maven exit zero. Описаны normalized .dev ownership/reset, app без workspace,
+explicit fixture paths/config overrides, PID/JAR и limited readiness checks,
+submission versus durable acceptance, generator input counts versus canonical
+rows, command dependencies и отдельные scopes heap/process RSS. Lifecycle
+TOOL-10 сохранён открытым; ложное обещание systemd memory ceiling удалено,
+canonical allocator checks не выданы за export-slot non-reuse.
+
+Для fixtures сохранены actual bilingual guide extraction и independent witnesses,
+empty-cache/settings/origin/hash checks, exact POM/graph profiles, routing failure
+controls, same-version events family и cleanup; local contracts не выданы за
+remote publication/second-service evidence. Central без --publish не описан
+как dry-run; signing/remote/recovery operations отсылают к owning procedure.
+
+12 исходных задач verified;198 строк/input provenance сохранены;107/126
+исходных README verified,19pending. QUAL/RETIRE/ARCH/TEST и release/library/
+security goals не переоценены. Все предыдущие изменения и 43 non-README inputs
+сохранены; scripts/Java/POM/tests/API/tool pins/generated catalogs unchanged.
+Проверки: doctor-core, ShellCheck+packaging/tools shell contracts, offline
+publication contracts, make docs, recursive README links/source maps/English,
+provenance/preservation/command syntax и make verify; логи `.dev/tools-readme-audit/`.
+Runtime/load scenarios, cold/remote consumers, publication, PMD/security/PIT
+повторно не запускались.
+
+### README Tika source adapter и platform errors — 2026-11-16
+
+Рекурсивно пересмотрены 4 исходных README двух модулей, три русских
+переведены на English; добавлен test-package README Tika. Все 7 Java files
+(3 main,4 integration suites) и 2 POM связаны с local source maps.
+Убраны устаревшие обещания untyped IocExtractorException/одного Tika класса
+и будущего module extraction. Подтверждены inward dependencies и JDK-only
+errors; broad Tika standard-parser closure отделён от HTML/DOCX mechanisms.
+
+Описаны caller-owned writer и partial output на failure, String materialization,
+SOURCE unsupported/read-failed cause/reason boundary, forced charset versus
+binary formats, current bootstrap region units/default, repair-region pruning,
+characters/nodes/depth/embedded-input rejection, reader interruption versus
+wall-clock budget. Конечный previous-parser corpus и synthetic format sentinels
+не выданы за universal format/resource/security/concurrency qualification.
+SRC-2/SRC-3 сохранены открытыми; base exception не назначает retry/rollback/
+severity policy, typed payload принадлежит IOC diagnostics.
+
+4 original tasks verified;198 строк/input provenance сохранены;111/126 original
+README verified,15pending. Новый companion отмечен в owning note. Только две
+affected DOC cells закрыты; QUAL/RETIRE/ARCH/TEST и global DOC/SEC/REL не
+переоценены. Остались общие README/indexes и отдельные ADR/security/release/
+redirect scopes. Java/POM/tests/API/generated references/baselines unchanged.
+Проверки: doctor-core, selected upstream package+compile dependency tree,
+Tika integration cohort, make verify, make docs, recursive README links/English/
+source maps, command syntax/Make selectors и queue/provenance/scope checks.
+Логи `.dev/source-errors-readme-audit/`; PMD/security/PIT/capacity/live deployment
+повторно не запускались.
 
 
-### Configuration C4 local publication qualification — 2026-10-24
+### Перевод исторических ADR — 2026-11-16
 
-The [C4 checkpoint](libs/configuration-library-design.md#c4-standalone-packaging-and-consumer-checkpoint--2026-10-24)
-records the standalone POM, full default/application-BOM dependency graphs,
-packaged inspection/migration and exact restricted-context guide, empty-cache
-repository-routing negatives/control, and older component regressions. The CI
-matrix and protected workflow accept the explicit `configuration` selector.
-Existing signed releases and tags are unchanged. Protected validation/publication,
-release-repository consumers and a deployed second service remain separate gates.
+По запросу пользователя выполнен translation-only пакет ADR-0000–0048 без
+проверки решений на текущую реализацию.20RU originals получили EN canonical;
+29EN originals побайтово сохранены и получили RU translations.49 counterparts
+размещены в docs/ADR/ru/, переводы явно помечены; статусы, даты, альтернативы,
+последствия, планы внедрения и датированные уточнения оставлены историческими.
+Fenced examples/diagram labels сохранены verbatim, без исполнения старых команд.
 
-### Configuration protected publication and local recovery — 2026-10-24
+Пользователь явно согласовал citation-only исключение при переносе RU originals:
+114 href occurrences в18файлах пересчитаны к тем же English canonical targets,
+без изменения текста решения. Точная правка — docs/ADR/translation-link-rebases.tsv;
+baseline/migration/output paths+SHA256 — docs/ADR/translation-provenance.tsv.
+Сохранена отдельная identity ранее согласованного URL-only repair ADR0025.
+Якоря исходных заголовков оставлены в переводах для прежних fragment links.
 
-PR 18 integrated configuration; protected validation `40087127800` and publication
-`40088095516` reused one signed bundle and Central deployment. Version
-`io.github.xorex-lc:ioc-config-spring-boot:0.3.0-rc.1` is published in both registries.
-GitHub's cold consumer passed. The original Central consumer failed because of
-same-URL repository filtering; `tee` concealed that failure from the job result.
-A local cold Central consumer passed after correcting routing, with unchanged
-release bytes. Two regressions cover routing and pipeline-failure propagation;
-121 publication tests pass. Tooling integration and a protected CI recovery run
-remain open, alongside the separate second-service deployment qualification.
-The [release record](libs/configuration-library-design.md#protected-publication-record--2026-10-24)
-retains identities and distinguishes the original failure from local recovery.
+English ADR index теперь содержит все49пар, включая отсутствовавшие0035–0038;
+добавлен English-only ru/README companion.49ADR tasks и1README task verified;
+198original rows/order/input_ref/hash/language сохранены;112/126original README
+verified,14pending.26/26module DOC cells не менялись. Global R030-DOC остаётся
+in-progress:14README+2отложенных security docs+15release records+6redirect scopes.
 
-### LIB-5 implementation resumed and E1 qualification — 2026-10-24
-
-The owner selected events extraction for future services, superseding its earlier
-deferral. The [E1 checkpoint](libs/lib-5-events-design.md#e1-jdk-contract-qualification--2026-10-24)
-retains the existing seven-type JDK API, precise metadata/publication/observation
-contracts, recording limitations, 43 focused tests and strict Javadoc. The exact
-consumer-guide example compiles/runs locally. No coordinate or dependency changes
-in E1; E2 extracts the Spring bridge and qualifies the three known corrections.
-E3–E5, standalone repository consumers and publication admission remain pending.
-The configuration workflow-recovery changes are recorded separately and
-need reviewed integration before extending publication tooling. ETL stays deferred.
+Проверки:49input/baseline Git snapshots,29unchanged EN originals,20RU copies
+с исключительно согласованными href edits,576heading structures,80verbatim fenced
+blocks,224historical href destinations,49provenance rows и5prior README hashes;
+make docs; recursive all-tracked Markdown + newRU fragment check (5623links,
+2105unique,0errors);git diff --check. Helpers/logs — .dev/adr-translation/ (ignored).
+Java/Javadoc/POM/tests/analyzer metadata/generated catalogs не менялись;
+Maven/PMD не перезапускались. Предыдущий verify passed на этомHEAD не является
+fresh для текущего dirtytree, PMD receipt также stale; это не новая release/runtime
+qualification. Commit/push не выполнялись.
 
 
-### LIB-5 E2 explicit Spring adapter — 2026-10-24
+### Исключение двух security-документов из baseline — 2026-11-16
 
-The [E2 checkpoint](libs/lib-5-events-design.md#e2-explicit-spring-adapter--2026-10-24)
-extracts reactor-local `ioc-events-spring`, migrates IOC composition and corrects
-ARCH-4/OBS-7/OBS-8. Tests cover partial synchronous dispatch, real annotated-listener
-Error propagation, observer/suppression boundaries and throwing fallback logging.
-Service multicaster/error-handler/executor ownership is preserved. All quality
-registries include the new JAR: 31 projects, 25 production groups, 24 local
-coverage reports; one integration suite is added, with existing floors intact.
-E3–E5 and any event registry publication remain pending.
+Пользователь явно исключил полный аудит/переработку/перевод SECURITY-ENGINEERING
+и THREAT-MODEL из 0.3.0: SDLC и модель угроз планируются в одной из следующих
+версий. Две исходные строки очереди сохранены с input provenance, state = N/A и
+явным scope disposition. Это не выполненный аудит и не незавершённый blocker
+DOC/release.198 исходных задач = 196 в scope (161 verified, 35 planned) + 2 N/A;
+оставшаяся DOC работа:14 README, 15 release paths, 6 compatibility entries.
+R030-DOC/R030-SEC и release roadmap согласованы с этим исключением.
+Security docs, применимые gates и отдельные findings не изменялись.
+Пакеты release/redirect этим обновлением не проверены и остаются planned.
 
 
-### LIB-5 E3 standalone publication packaging — 2026-10-24
+### Завершение оставшихся документационных пакетов — 2026-11-16
 
-Both events modules now use `io.github.xorex-lc` in the reactor and distribution
-POMs. Explicit `events`/`events-spring` selectors validate separate immutable
-bundles; core remains dependency-free, and the adapter requires core at exactly
-the same version plus Context 7.0.9 and SLF4J API 2.0.18. The report verifiers
-admit both new groups and reject the old coordinates. Consumer-less components
-cannot sign, publish or pass an empty consumer run; protected workflow choices
-remain limited to the four previously qualified components. E4 owns cold
-two-artifact consumers and repository routing; E5 and publication remain pending.
-See the [E3 checkpoint](libs/lib-5-events-design.md#e3-standalone-publication-packaging--2026-10-24).
+Проверены последние 35 задач: 14 общих README/индексов, 15 release paths и 6 старых
+адресов руководств. README переведены на English на месте, включая ru/indexes;
+русские руководства и записи выпуска сохраняют свой язык. Исправлены описания
+активной Camel-интеграции, IOC-specific platform-модулей, конфигурации, CSV,
+canonical/export identity и isolated developer commands. Старые heading anchors
+сохранены. Для redirect-страниц из последних полных Git-версий восстановлены
+section entry points, ведущие к maintained sections, без копий контракта.
 
-### LIB-5 E4 isolated consumers — 2026-10-25
+14 historical release records побайтово неизменны; EN/RU identities шести
+библиотек и local annotated tag→source проверены. 0.2.0 notes совпадают с тегом,
+0.1.0 сохраняет historical-import exception. Опубликованные hashes, даты,
+подписи, failed attempts и ограничения квалификации не обновлялись задним числом.
+Application draft 0.3.0 и RU companion переработаны вокруг operator impact:
+актуальные schema v12/v14, required routes/streaming/CSV, upgrade/rollback,
+known issues и различие historical evidence/final-candidate gates.
 
-Independent JDK/Spring projects now consume packaged artifacts from one selected
-local repository with empty caches, exact guide sources and four/eight-file
-hash/origin checks. The Spring fixture covers partial real listener delivery,
-Error/observer boundaries and service-owned dispatch. Whole-graph checks,
-application-BOM mediation, excluded/unavailable APIs, incompatible Spring and
-missing-target/missing-core routing have explicit positive and negative oracles.
-Regular CI requires both consumers; E5 still blocks signing/remote writes and
-protected-workflow admission. No scope/floor or production-code change is made.
-See the [E4 checkpoint](libs/lib-5-events-design.md#e4-isolated-packaged-consumers--2026-10-25).
+Проверки: doctor-core; Maven ReleaseNotesContractTest+DocumentationConventionTest
+(3 tests, 0 failure/error/skip); synthetic fixture 1000/seed 42, version, isolated extract
+(1000 extracted/899 retained, COMPLETED_WITH_WARNINGS), reputation-lists export;
+manifest/root+data hashes и DB user_version 12/14 проверены. Smoke использовал
+существующий development JAR (build 2026-11-16T13:19:11.981Z), не final candidate.
+Link/fragment checks, EN/RU draft code+issue parity, 14 historical byte snapshots,
+80 prior dirty-file hashes, input provenance и diff checks passed. Логи/снимки:
+.dev/final-doc-packages/ (ignored); временный transcript не добавлялся в roadmap.
 
-### LIB-5 E5 release admission — 2026-10-25
-
-The protected workflow admits both events selectors with separate tags/bundles.
-Adapter admission requires a successful same-version core publication and both
-repository-consumer receipts; exact core bytes are checked before privileged
-review and retained for build, signing, remote consumption and partial recovery.
-Recovery reuses both original bundles and rejects a replacement core-run input.
-API/version ownership and Java 21 / Context 7.0.9 / SLF4J 2.0.18 support are
-documented. No registry release occurs in this checkpoint; committed-candidate
-CI and current security evidence precede a separately authorized publication.
-See the [E5 checkpoint](libs/lib-5-events-design.md#e5-protected-release-admission--2026-10-25).
+Все 196 in-scope original tasks verified, 2 security docs N/A; 198 rows/order/
+input_ref/hash/language сохранены. R030-DOC verified в принятом baseline;
+остальные goals и 26 module cells не переоценены. Same-change documentation и
+окончательная курация notes продолжаются при изменении code/candidate.
+Java/Javadoc/POM/tests/analyzer metadata/generated catalogs не менялись;
+full verify/PMD/security/remote publication/deployment/load не повторялись,
+предыдущие verify/PMD receipts stale. Commit/push не выполнялись.

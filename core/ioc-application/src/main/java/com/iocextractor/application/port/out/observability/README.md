@@ -1,12 +1,19 @@
-# port/out/observability
+# Per-item decision trace port
 
-## Назначение
+## Purpose and boundary
 
-Outbound application boundary for structured per-item pipeline traces.
+Gate optional rendering of already-computed decisions without adding logging-framework dependencies to the application.
 
-## Контракты
+## Structure
 
-- producer checks `isEnabled()` before allocating trace DTOs or derived strings;
-- the implementation performs the final gate again before render/emission;
-- tracing is observational and does not participate in `FailurePolicy`,
-  diagnostics or completion status.
+| Entry points / files | Responsibility |
+|---|---|
+| [PipelineDecisionTracer](PipelineDecisionTracer.java) | Cheap current enablement check and observational emission. |
+
+## Contracts and maintenance
+
+Check `isEnabled()` before creating decision objects/derived strings. `trace` must not change processing outcomes; implementations own logger level, MDC, encoding, value masks and suppression of operational failures. No second extraction/classification may be performed solely for tracing.
+
+This seam is not diagnostic storage, a durable audit log or a broker. A disabled/no-op tracer is an explicit observation choice, not permission to skip business validation.
+
+[Capability internals](../../../../../../../../../../../docs/dev/observability.md) owns the cross-module flow. [Module map](../../../../../../../../../README.md) owns dependencies and verification; exact member guarantees remain in Javadoc.

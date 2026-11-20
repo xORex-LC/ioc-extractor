@@ -1,25 +1,22 @@
-# com.iocextractor.application.dataframeimport.contract
+# Import contract compilation and recognition
 
-## Purpose
+## Purpose and boundary
 
-Compiles untrusted typed configuration into an immutable, reference-complete
-source-contract catalog pinned by delivery fingerprints.
+Convert typed declarations into a reference-complete immutable catalog, then recognize exactly one contract allowed by a source. Spring binding and CSV decoding remain outside this package.
 
 ## Structure
 
-| File | Purpose |
+| Entry points / files | Responsibility |
 |---|---|
-| `DataframeImportCatalogDraft.java` | Framework-free source, authority, recognition and mapping shape |
-| `DataframeImportCatalogEnvironment.java` | Artifact/transform/endpoint reference catalog |
-| `DataframeImportCatalogCompiler.java` | Collect-all semantic validation and deterministic fingerprinting |
-| `DataframeImportCatalog.java` | Executable immutable catalog generation |
-| `CompiledDataframeImportContract.java` | One validated versioned contract and fingerprint |
-| `DataframeImportRecognizer.java` | Exact-one structural recognition inside one source allowlist |
-| `DelimitedInputReadException.java` | Safe parser-boundary failure and stable value-free reason shared with input adapters |
-| `ImportRecognitionException.java` | Safe critical recognition failure taxonomy |
-| `ImportContractViolation.java` | Safe configuration violation |
+| [DataframeImportCatalogDraft](DataframeImportCatalogDraft.java), [DataframeImportCatalogEnvironment](DataframeImportCatalogEnvironment.java) | Declaration model and allowed artifact/transform/endpoint environment. |
+| [DataframeImportCatalogCompiler](DataframeImportCatalogCompiler.java), [DataframeImportCatalog](DataframeImportCatalog.java), [CompiledDataframeImportContract](CompiledDataframeImportContract.java) | Collect violations, resolve policy and retain deterministic behavior fingerprints. |
+| [DataframeImportRecognizer](DataframeImportRecognizer.java) | Header-only structural selection through the reader port. |
+| [ImportContractViolation](ImportContractViolation.java), [DelimitedInputReadException](DelimitedInputReadException.java), [ImportRecognitionException](ImportRecognitionException.java) | Safe violations and stable parser/recognition reason taxonomy. |
 
-## Dependencies
+## Contracts and maintenance
 
-**Depends on:** `dataframeimport.model` and Java security primitives. **Must not
-depend on:** Spring binding, Commons CSV, filesystem, SMB or persistence types.
+Structural recognition is neither filename guessing nor content-type conversion. No match and ambiguity reject; the source allowlist limits which contracts participate. Contract version/fingerprint must remain pinned across staging retries.
+
+Compile provider/column/authority/route references before runtime use. Fingerprint content-affecting semantics without incorporating a delivery's runtime identity. Safe failure carriers carry stable reasons/positions, not source CSV values or arbitrary parser exception text.
+
+[Capability internals](../../../../../../../../../../docs/dev/dataframe-import.md) owns the cross-module flow. [Module map](../../../../../../../../README.md) owns dependencies and verification; exact member guarantees remain in Javadoc.

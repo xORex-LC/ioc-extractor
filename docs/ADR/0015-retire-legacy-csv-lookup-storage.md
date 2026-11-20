@@ -1,148 +1,168 @@
-# 0015 — Вывод legacy CSV lookup/storage-режима
+> English translation of the historical Russian record. Decision/status/dates are preserved. [Russian original](ru/0015-retire-legacy-csv-lookup-storage.md) (relative link addresses rebased on relocation).
 
-## Статус
+<a id="0015--вывод-legacy-csv-lookupstorage-режима"></a>
+# 0015 — Retire legacy CSV lookup/storage mode
 
-**Принято, реализуется фазами.** Решение фиксирует вывод из эксплуатации
-runtime lookup/storage через CSV после перехода dataframe truth на SQLite/JDBC.
-Рабочий план и найденные риски изначально велись в локальной scratch-note,
-которая намеренно не входит в публикуемую документацию. Устойчивые результаты
-реализации фиксируются ниже и в [KNOWN-ISSUES.md](../KNOWN-ISSUES.md).
+<a id="статус"></a>
+## Status
 
-**Обновление 2026-07-08. Реализовано полностью (фазы 0–6), `./mvnw verify`
-зелёный.** Удалены `adapter-lookup-csv`, `CsvIocSink`, `JdbcLookupRepository`,
-порт `LookupRepository`, `EventAction.LOOKUP_LOAD`; дедуп стадии — batch-local;
-id-baseline — schema-aware порт `ArtifactIdBaseline`; конфиг — `ioc.pipeline.
-deduplicate` + tombstone-валидация `ioc.lookup.*` и `storage.dataframe.type`.
-Контракт «повтор доходит до canonical repository и обновляет provenance»
-закреплён регрессами (адаптерные + сквозной двойной extract поверх golden).
-**Открытый вопрос 1 разрешён:** операторский seed import не нужен — ручные CSV
-окончательно ушли из runtime story; `JdbcLegacyArtifactImporter` и seed-хуки
-`install.sh` (`--lookup-seed`, `seed_lookup`) удалены. Header-эталоны схем в
-`dataframe/` остаются только как референс формата. Вопросы 2 (gapless id) и 3
-(CFG-4 strict binding → удаление tombstone) остаются открытыми.
+**Accepted, implemented in phases.** This decision records retirement of runtime
+CSV lookup/storage after moving dataframe truth to SQLite/JDBC. The work plan
+and identified risks were initially tracked in a local scratch note deliberately
+outside published documentation. Durable implementation outcomes are recorded
+below and in [KNOWN-ISSUES.md](../KNOWN-ISSUES.md).
 
-## Контекст
+**Update 2026-07-08. Fully implemented (phases 0–6), `./mvnw verify` green.**
+Removed `adapter-lookup-csv`, `CsvIocSink`, `JdbcLookupRepository`, the
+`LookupRepository` port and `EventAction.LOOKUP_LOAD`; stage deduplication is
+batch-local; the ID baseline uses schema-aware `ArtifactIdBaseline`; configuration
+uses `ioc.pipeline.
+deduplicate` + tombstone validation for `ioc.lookup.*` and `storage.dataframe.type`.
+The contract “a duplicate reaches the canonical repository and updates provenance”
+is protected by regressions (adapter tests + an end-to-end double extract over
+golden). **Open question 1 resolved:** operator seed import is unnecessary;
+hand-filled CSVs are permanently out of the runtime story. Removed
+`JdbcLegacyArtifactImporter` and `install.sh` seed hooks (`--lookup-seed`,
+`seed_lookup`). Schema header references in `dataframe/` remain format references
+only. Questions 2 (gapless IDs) and 3 (CFG-4 strict binding → tombstone removal)
+remain open.
 
-Ранние решения держали CSV-файлы не только как выходные артефакты, но и как
-lookup/storage reference: pipeline мог отбрасывать индикаторы через
-`LookupRepository.contains(...)`, а `maxId(...)` продолжал последовательность id
-из существующих CSV. После ING-4 и ADR 0012 целевой контур изменился:
-canonical business data живут в SQLite/JDBC, а `dataframe/*_generated.csv` —
-это generated projection/export.
+<a id="контекст"></a>
+## Context
 
-В коде при этом остался legacy fallback:
+Early decisions used CSV files as lookup/storage references as well as output
+artifacts: the pipeline could filter indicators through
+`LookupRepository.contains(...)`, while `maxId(...)` continued the ID sequence
+from existing CSVs. After ING-4 and ADR 0012, the target flow changed: canonical
+business data lives in SQLite/JDBC, and `dataframe/*_generated.csv` is generated
+projection/export.
 
-- `adapter-lookup-csv` реализует `LookupRepository` поверх CSV;
-- `AppConfig` выбирает CSV lookup/write branch для non-JDBC dataframe storage;
-- `ioc.lookup.type/path/artifacts` выглядят как поддерживаемый runtime contract;
-- docs/packaging всё ещё местами описывают hand-filled CSV как lookup reference.
+A legacy fallback nevertheless remained in code:
 
-Главный риск не сам лишний адаптер, а семантика `LookupRepository.contains`.
-При JDBC-пути pipeline отбрасывает уже известный IOC до canonical repository.
-Значит `JdbcCanonicalArtifactRepository` не получает повтор и не может обновить
-`<artifact>_sources`, хотя именно repository владеет keep-first через
-`row_key`/`ON CONFLICT(row_key) DO NOTHING` и provenance update.
+- `adapter-lookup-csv` implements `LookupRepository` over CSV;
+- `AppConfig` selects a CSV lookup/write branch for non-JDBC dataframe storage;
+- `ioc.lookup.type/path/artifacts` look like a supported runtime contract;
+- docs/packaging still sometimes describe hand-filled CSV as a lookup reference.
 
-## Решения
+The main risk is `LookupRepository.contains` semantics, not the extra adapter
+itself. On the JDBC path, the pipeline drops an already-known IOC before the
+canonical repository. Thus `JdbcCanonicalArtifactRepository` never receives the
+duplicate and cannot update `<artifact>_sources`, even though that repository
+owns keep-first through `row_key`/`ON CONFLICT(row_key) DO NOTHING` and provenance update.
 
-### 1. SQLite/JDBC dataframe storage — единственный production truth
+<a id="решения"></a>
+## Decisions
 
-Runtime CSV lookup/storage режим выводится из эксплуатации. CSV-файлы остаются
-только projection/export surface, а не системой записи и не источником dedup.
+<a id="1-sqlitejdbc-dataframe-storage--единственный-production-truth"></a>
+### 1. SQLite/JDBC dataframe storage is the only production truth
 
-Следствие: non-JDBC dataframe storage должен fail-fast до удаления старых
-веток. Это закрывает окно, где CSV oneshot fallback остаётся достижимым, но уже
-не имеет storage-level dedup после удаления `lookup.contains` из pipeline.
+Retire runtime CSV lookup/storage mode. CSV files remain only projection/export
+surfaces, neither a system of record nor a deduplication source.
 
-### 2. Storage-level dedup принадлежит canonical repository
+Consequence: non-JDBC dataframe storage must fail fast before removing old
+branches. This closes the window in which a CSV oneshot fallback remains
+reachable but loses storage-level deduplication after pipeline `lookup.contains`
+is removed.
 
-`lookup.contains` больше не является application policy. Cross-run/storage dedup
-делает canonical repository через durable identity:
+<a id="2-storage-level-dedup-принадлежит-canonical-repository"></a>
+### 2. Storage-level deduplication belongs to the canonical repository
 
-- `row_key` — business identity;
-- `ON CONFLICT(row_key) DO NOTHING` — keep-first public row;
-- `<artifact>_sources` — provenance/occurrence accounting.
+`lookup.contains` is no longer application policy. The canonical repository
+handles cross-run/storage deduplication through durable identity:
 
-Pipeline-дедуп остаётся только within-batch оптимизацией по
+- `row_key`: business identity;
+- `ON CONFLICT(row_key) DO NOTHING`: keep-first public row;
+- `<artifact>_sources`: provenance/occurrence accounting.
+
+Pipeline deduplication remains only a within-batch optimization through
 `Indicator.dedupKey()`.
 
-### 3. Batch-dedup остаётся осознанным контрактом
+<a id="3-batch-dedup-остаётся-осознанным-контрактом"></a>
+### 3. Batch deduplication remains a deliberate contract
 
-Внутрипакетные дубли не инкрементируют occurrences. Это не побочный эффект
-cleanup, а явное решение: batch dedup продолжает защищать writer от повторов в
-рамках одного extraction run. Если позже потребуется считать каждое появление в
-одном source, это будет отдельным изменением семантики pipeline.
+Within-batch duplicates do not increment occurrences. This is an explicit
+decision, not a cleanup side effect: batch deduplication continues protecting
+the writer from duplicates within one extraction run. Counting every appearance
+in one source, if needed later, requires a separate pipeline semantics change.
 
-### 4. `LookupRepository` разделяется, а не переименовывается
+<a id="4-lookuprepository-разделяется-а-не-переименовывается"></a>
+### 4. Split `LookupRepository` instead of renaming it
 
-`LookupRepository` смешивал две разные ответственности:
+`LookupRepository` combined two responsibilities:
 
-- existence check (`contains`) для storage dedup;
-- id baseline (`maxId`) для `id.start: auto`.
+- existence check (`contains`) for storage deduplication;
+- ID baseline (`maxId`) for `id.start: auto`.
 
-`contains` удаляется вместе с storage-level lookup. `maxId` переезжает в узкий
-порт, например `ArtifactIdBaseline.maxId(String artifactName)`, с JDBC-адаптером
-без hard-coded artifact names. Артефакты без id-колонки не должны делать SQL
-lookup baseline.
+Remove `contains` with storage-level lookup. Move `maxId` to a narrow port,
+for example `ArtifactIdBaseline.maxId(String artifactName)`, with a JDBC adapter
+without hardcoded artifact names. Artifacts without an ID column must not query
+SQL for a baseline.
 
-### 5. Id allocation не переносится в repository в этом cleanup
+<a id="5-id-allocation-не-переносится-в-repository-в-этом-cleanup"></a>
+### 5. Do not move ID allocation into the repository in this cleanup
 
-Текущий `IdGenerator` остаётся на первом cleanup-проходе. Возможные gaps при
-duplicate conflicts считаются допустимыми для unique ascending id: БД не
-увеличивает `MAX(id)` для конфликтной строки, межпрогонный baseline не ломается.
+Retain the current `IdGenerator` in the first cleanup pass. Possible gaps after
+duplicate conflicts are acceptable for unique ascending IDs: the database does
+not increase `MAX(id)` for the conflicting row, preserving the inter-run baseline.
 
-Gapless id или DB-owned id allocation — отдельное решение. Оно задевает старый
-контракт `ascending|descending` и не должно смешиваться с retirement CSV lookup.
+Gapless IDs or database-owned allocation are a separate decision. They affect
+the old `ascending|descending` contract and must not be mixed with CSV lookup retirement.
 
-### 6. Seed CSV — отдельный decision gate
+<a id="6-seed-csv--отдельный-decision-gate"></a>
+### 6. Seed CSV is a separate decision gate
 
-Hand-filled CSV больше не работают как runtime lookup в JDBC-режиме. Поэтому:
+Hand-filled CSVs no longer act as runtime lookup in JDBC mode. Therefore:
 
-- если requirement умер, docs/packaging очищаются, а
-  `JdbcLegacyArtifactImporter` удаляется как мёртвый migration helper;
-- если requirement жив, нужен явный import path (`ioc import` или startup/
-  migration task) в canonical DB, но не скрытый runtime CSV lookup.
+- if the requirement is dead, clean docs/packaging and remove
+  `JdbcLegacyArtifactImporter` as a dead migration helper;
+- if it remains live, provide an explicit canonical-DB import path (`ioc import`
+  or startup/migration task), not hidden runtime CSV lookup.
 
-## Следствия
+<a id="следствия"></a>
+## Consequences
 
-- `adapter-lookup-csv` будет удалён из Maven reactor и dependency graph.
-- `CsvIocSink` как прямой writer legacy non-JDBC режима будет удалён; модуль
-  `adapter-sink-csv` остаётся, потому что владеет CSV projection, export slice
-  writers, retention store и completed-slice catalog.
-- `ioc.lookup.type/path/artifacts` удаляются из живого config. Для старого
-  внешнего YAML нужен временный tombstone/fail-fast, особенно для
-  `lookup.deduplicate`, который переезжает в новый batch-dedup config key.
-- Документация и packaging перестают называть hand-filled CSV runtime lookup
-  reference.
-- ADR 0012 и ING-4 остаются источником модели "SQLite truth + generated CSV
-  projection"; этот ADR только снимает оставшийся legacy режим.
+- Remove `adapter-lookup-csv` from the Maven reactor and dependency graph.
+- Remove `CsvIocSink`, the direct writer for legacy non-JDBC mode; retain
+  `adapter-sink-csv` because it owns CSV projection, export-slice writers,
+  retention store and completed-slice catalog.
+- Remove `ioc.lookup.type/path/artifacts` from live configuration. Old external
+  YAML needs a temporary tombstone/fail-fast, particularly for
+  `lookup.deduplicate`, which moves to the new batch-dedup configuration key.
+- Docs and packaging stop calling hand-filled CSV a runtime lookup reference.
+- ADR 0012 and ING-4 remain the sources of the “SQLite truth + generated CSV
+  projection” model; this ADR only removes the remaining legacy mode.
 
-## Отклонённые варианты
+<a id="отклонённые-варианты"></a>
+## Rejected alternatives
 
-### Оставить CSV lookup как fallback
+<a id="оставить-csv-lookup-как-fallback"></a>
+### Keep CSV lookup as a fallback
 
-Отклонено: fallback поддерживает вторую storage-модель, которая уже не является
-production truth, и скрывает дефект provenance в JDBC-пути. Дальнейшая поддержка
-увеличивает тестовую матрицу без целевой пользы.
+Rejected: it maintains a second storage model that is no longer production
+truth and hides the JDBC provenance defect. Continued support expands the test
+matrix without a target benefit.
 
-### Сразу перенести id allocation внутрь repository
+<a id="сразу-перенести-id-allocation-внутрь-repository"></a>
+### Move ID allocation into the repository immediately
 
-Отклонено для текущего cleanup: технически это может уменьшить id gaps, но
-затрагивает `ascending|descending`, explicit id и legacy import semantics.
-Это отдельный дизайн, а не обязательное условие удаления CSV lookup.
+Rejected for this cleanup: technically it may reduce ID gaps, but affects
+`ascending|descending`, explicit IDs and legacy import semantics. This is a
+separate design, not a prerequisite for removing CSV lookup.
 
-### Вернуть storage dedup под новым именем
+<a id="вернуть-storage-dedup-под-новым-именем"></a>
+### Restore storage deduplication under a new name
 
-Отклонено: это сохранило бы главный дефект — повтор не дошёл бы до canonical
-repository и provenance не обновился бы. Dedup storage-level должен быть
-свойством durable write, а не pre-filter в pipeline.
+Rejected: preserves the central defect — duplicates would not reach the
+canonical repository and provenance would not update. Storage-level deduplication
+must be a durable-write property, not a pipeline prefilter.
 
-## Открытые вопросы
+<a id="открытые-вопросы"></a>
+## Open questions
 
-1. Нужен ли операторский seed import ручных списков в canonical DB, или ручные
-   CSV окончательно уходят из runtime story? — **Разрешён (2026-07-08):** уходят
-   окончательно, см. «Обновление 2026-07-08» в Статусе.
-2. Нужен ли в будущем gapless id / DB-owned id allocation, или unique ascending
-   id с gaps является достаточным контрактом?
-3. Когда CFG-4 strict binding удалит временные tombstone-поля для старых
-   `ioc.lookup.*` ключей?
+1. Is operator seed import of hand-filled lists into the canonical DB needed,
+   or do hand-filled CSVs permanently leave the runtime story? **Resolved
+   (2026-07-08):** permanently removed; see the “Update 2026-07-08” in Status.
+2. Will gapless IDs / DB-owned allocation be needed later, or are unique
+   ascending IDs with gaps sufficient?
+3. When will CFG-4 strict binding remove temporary tombstone fields for old
+   `ioc.lookup.*` keys?

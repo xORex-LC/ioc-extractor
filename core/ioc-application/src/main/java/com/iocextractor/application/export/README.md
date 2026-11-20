@@ -1,123 +1,28 @@
-# com.iocextractor.application.export
+# Immutable artifact emission
 
-## Назначение
+## Purpose and boundary
 
-Framework-free модель bounded context **Artifact Emission**. Пакет
-фиксирует словарь формирования неизменяемых локальных срезов:
-профиль и детерминированный план, metadata единого snapshot,
-versioned manifest, durable saga run/progress, change detection и forward recovery.
+Resolved plans, snapshot/manifest evidence, formation saga and forward recovery. This package does not encode CSV/JSON, access JDBC or manipulate filesystem paths.
 
-**Правило слоя:** модель описывает смысл и инварианты, но не
-знает, как строки читаются из JDBC, кодируются в CSV/JSON или
-атомарно публикуются в filesystem. Эти механики принадлежат driven
-adapters за портами `application.port.out.export`.
+## Structure
 
-## Структура
-
-| Файл / группа | Назначение |
+| Entry points / files | Responsibility |
 |---|---|
-| `ExportProfile`, `ExportMode` | Именованный, упорядоченный и неделимый набор артефактов; v1 исполняет только `COMPLETE` |
-| `ExportFormat`, `ExportRecordSeparator`, `ExportQuoting`, `ExportArtifactSpec`, `ExportPlan` | Полностью resolved-контракт публичных bytes; `planHash` покрывает format, schema, identity, active mapping и reusable-slot policy для artifacts с `id` |
-| `ArtifactSchemaFingerprint` | SHA-256 ordered public columns + normalized declared types (`schema:v1`) |
-| `SnapshotRequest`, `SnapshotMetadata`, `SnapshotArtifactMetadata`, `ArtifactCoverage` | Запрос и факты, захваченные в одном consistent read snapshot |
-| `SliceManifest`, `SliceArtifactManifest` | Versioned integrity root всего среза и checksums/coverage его файлов |
-| `ExportRun`, `ExportRunStatus` | Durable state machine только для formation saga |
-| `ExportProgress`, `ArtifactRevision` | Маркеры change detection между каноническим storage и последним успешным export |
-| `StagedSlice`, `AvailableSlice` | Проверенный результат до и после атомарной локальной публикации |
-| `SliceInspection`, `SliceInspectionState` | Типизированный результат inspection для forward recovery |
-| `SliceDescriptor` | Неделимая retention-единица, которую delivery-layer может запретить удалять |
-| `SliceRetentionService` | Profile-scoped age/count selection и guard check непосредственно перед delete |
-| `StandaloneSliceRetentionGuard` | Fail-open composition, когда remote delivery targets отсутствуют |
-| `ExportChangeDetector` | Чистая policy: revision/plan pre-gate, authoritative content-hash post-check и terminal progress |
-| `SliceCompleted` | Control event после durable `AVAILABLE -> COMPLETED` в normal export или recovery, payload только для callback lookup |
-| `ExportService` | Оркестрация одного run от global single-flight до `COMPLETED`/`SKIPPED` |
-| `ExportRunRecoveryService` | Forward recovery активных checkpoints только из ledger и filesystem evidence |
-| `NoopExportObserver` | Default implementation operational event boundary без framework/logging зависимости |
+| [ExportProfile](ExportProfile.java), [ExportMode](ExportMode.java), [ExportFormat](ExportFormat.java), [ExportArtifactSpec](ExportArtifactSpec.java), [ExportPlan](ExportPlan.java), [ArtifactSchemaFingerprint](ArtifactSchemaFingerprint.java) | Ordered public format/schema/identity/mapping and deterministic plan identity. |
+| [SnapshotRequest](SnapshotRequest.java), [SnapshotMetadata](SnapshotMetadata.java), [SnapshotArtifactMetadata](SnapshotArtifactMetadata.java), [ArtifactCoverage](ArtifactCoverage.java) | Consistent snapshot and exact revision/changed-at/upper-ID coverage. |
+| [SliceManifest](SliceManifest.java), [SliceArtifactManifest](SliceArtifactManifest.java), [StagedSlice](StagedSlice.java), [AvailableSlice](AvailableSlice.java), [SliceInspection](SliceInspection.java) | Versioned integrity root and verified staging/availability evidence. |
+| [ExportRun](ExportRun.java), [ExportRunStatus](ExportRunStatus.java), [ExportProgress](ExportProgress.java), [ArtifactRevision](ArtifactRevision.java) | Formation checkpoints and durable change-detection progress. |
+| [ExportService](ExportService.java), [ExportChangeDetector](ExportChangeDetector.java), [ExportRunRecoveryService](ExportRunRecoveryService.java) | Coordinate ports, decide redundancy and recover from durable evidence. |
+| [SliceDescriptor](SliceDescriptor.java), [SliceRetentionService](SliceRetentionService.java), [StandaloneSliceRetentionGuard](StandaloneSliceRetentionGuard.java), [SliceCompleted](SliceCompleted.java) | Whole-slice retention, delivery veto and post-completion hint. |
 
-## Инварианты
+## Contracts and maintenance
 
-- `sliceId == runId`; имена среза и файлов — один path segment, не путь.
-- Исходный CSV layout (CRLF/ALL/ALL) сохраняет manifest v1 и прежний plan hash.
-  Нестандартный layout требует manifest v2; все три CSV policy входят в plan hash.
-  Schema hash от форматирования не меняется.
-- Порядок artifacts и columns значим. Все byte-affecting поля входят в
-  length-prefixed SHA-256 `planHash`; runtime id/timestamp исключены.
-- `identityHash`, `schemaHash`, file checksum, manifest checksum и `planHash` —
-  lower-case SHA-256; identity epoch положителен.
-- `ArtifactCoverage` сохраняет `(revision, changedAt, upperId)` из того же
-  snapshot, что и rows. Для slotted active artifact `upperId` означает
-  максимальный active export slot, а не canonical row ID. Recovery не подменяет
-  coverage новым чтением БД.
-- State machine: `STARTED -> STAGED -> AVAILABLE -> COMPLETED`; из
-  `STARTED` допустим `SKIPPED`, из active states — `FAILED`.
-  `COMPLETED`, `SKIPPED`, `FAILED` terminal; states от `STAGED` требуют manifest hash.
-- Cheap pre-gate сравнивает exact ordered revisions и `planHash`; при полном
-  совпадении ledger row не создаётся. После materialization решение принимает
-  per-artifact content hash вместе с coverage revision из manifest.
-- Post-hash `SKIPPED` требует равенства plan, hashes и coverage revisions;
-  `lastSha256/lastSliceId` остаются от опубликованного среза. Более новая
-  revision всегда завершает новый slice, даже если public bytes совпали.
-- `SliceCompleted` публикуется только после durable `COMPLETED`; normal export и
-  forward recovery эмитят один и тот же факт. `SKIPPED` не создаёт delivery event.
-- Для artifacts с внешней `id` output-port `SnapshotSliceReader` обязан до
-  callback разрешить stable reusable slot mapping в namespace
-  `(profile, artifact)`. Application не знает SQL/registry schema; для него это
-  часть consistent snapshot contract. Артефакты без `id` не участвуют в policy.
+Formation is `STARTED -> STAGED -> AVAILABLE -> COMPLETED`, with typed terminal SKIPPED/FAILED outcomes. Validate the profile before acquiring the per-profile cross-process operation lease; hold it across recovery and formation alongside durable single-flight. Advance ledger checkpoints only after their durable side effects. A cheap unchanged revision/plan pre-gate can skip without creating a run.
 
-## Formation saga
+After materialization, SKIPPED requires equal plan, per-artifact bytes and covered revisions. A newer revision produces a new completed delivery even if reusable slots make bytes identical. The default CRLF/all-quoted layout retains manifest v1; other supported layouts use v2. Schema identity, mapping/plan hash, file hashes and manifest-marker hash are different proofs. Slot-based upper ID is not canonical row ID.
 
-`ExportService` получает resolved `ExportPlan`, но не знает его config-origin.
-После IO-free profile validation он захватывает cross-process operation lease,
-выполняет recovery, дешёво читает revisions/progress и захватывает DB-backed single-flight через
-`tryStart`, передаёт callback-stream напрямую от `SnapshotSliceReader` к
-`ArtifactSliceWriter` и фиксирует checkpoints строго после durable side effect:
+Recovery uses ledger plus inspected staging/final evidence, never a fresh canonical snapshot. It can finish a crash after rename or progress update; corrupt/conflicting evidence fails rather than being overwritten. `SliceCompleted` follows durable completion in normal and recovery paths; publisher failure is non-authoritative. Operational observers may be called after effects, so adapters must not pretend callback failure can roll back a completed write.
 
-1. валидный staging + `_SUCCESS` → `STARTED -> STAGED`;
-2. atomic staging-to-final rename → `STAGED -> AVAILABLE`;
-3. progress из manifest → атомарный `AVAILABLE -> COMPLETED`.
+Retention treats each integrity-valid completed directory as one unit and counts independently per profile. Recheck the delivery guard immediately before delete; a pinned slice can leave count limits best-effort. Formation state does not track remote delivery: publish ledger/retention guards already exist in `sync`. APPEND remains a declared future mode, not an implemented formation path.
 
-Если plan, bytes и coverage revisions candidate совпадают с предыдущим срезом,
-staging удаляется и получает `STARTED -> SKIPPED`. Более новая revision означает
-новую public lifecycle и проходит до `COMPLETED`. Неизменившийся pre-gate
-возвращает `SKIPPED` без run id, потому что durable run не создавался.
-
-## Crash recovery
-
-`ExportRunRecoveryService` не имеет зависимости на `SnapshotSliceReader`,
-поэтому технически не может перечитать mutable canonical truth. Он проверяет
-`SliceInspection` и продвигает только подтверждённые durable факты:
-
-- `STARTED` + valid staging повторяет post-hash против service `ExportProgress`:
-  candidate с одинаковыми plan, bytes и revisions удаляется и атомарно получает
-  `SKIPPED`; иначе recoverable manifest дописывает marker и фиксирует `STAGED`;
-- `STAGED` + staging выполняет atomic publish; final после crash rename
-  распознаётся идемпотентно;
-- `AVAILABLE` восстанавливает progress из manifest coverage/hash и завершает run;
-- missing/partial staging удаляется и получает `FAILED`; corrupt/conflicting
-  evidence не перезаписывается и также получает `FAILED` + `RECOVERY_FAILED`.
-
-После successful `AVAILABLE -> COMPLETED` recovery публикует `SliceCompleted`
-тем же framework-free `ControlEventPublisher`, что и normal export. Failure
-publisher-адаптера наблюдается/гасится и не откатывает уже durable terminal state;
-periodic publish reconcile остаётся correctness backstop.
-
-Operation lease удерживается и formation, и standalone startup recovery, поэтому
-второй живой CLI/daemon process не может восстанавливать активный run владельца.
-
-## Границы ответственности
-
-- JDBC, CSV, JSON, filesystem, Spring и абсолютные пути здесь запрещены.
-- Адаптер выводит пути из configured root/profile/immutable slice name.
-- `ExportRun` не описывает remote delivery. Его будущий владелец —
-  `publish_ledger` из design 0011.
-- Operational events уходят через `ExportObserver` и `ControlEventPublisher`;
-  application не импортирует SLF4J/ECS, Spring и не выбирает logging/delivery adapter.
-
-## Slice retention
-
-`SliceRetentionService` переиспользует чистую `RetentionPolicy`, но оперирует
-`SliceDescriptor`, а не filesystem leaf entries. Каждый profile образует
-отдельный count pool. Перед каждым delete service повторно вызывает
-`SliceRetentionGuard`; запрет не заменяется обходом следующего лимита и делает
-`max-count` best-effort. Проверка дерева и directory-as-unit delete остаются
-ответственностью filesystem adapter.
+[Capability internals](../../../../../../../../../docs/dev/artifact-export.md) owns the cross-module flow. [Module map](../../../../../../../README.md) owns dependencies and verification; exact member guarantees remain in Javadoc.

@@ -19,7 +19,7 @@ else
   exit 1
 fi
 exec "${LYCHEE_BIN}" --offline --no-progress \
-  docs tools README.md .github/release-notes \
+  docs tools README.md .github/release-notes .github/release-evidence \
   adapters/README.md bootstrap/README.md build-support/README.md \
   build-support/build-quality/README.md build-support/test-quality/README.md \
   configs/README.md core/README.md dataframe/README.md packaging/README.md \

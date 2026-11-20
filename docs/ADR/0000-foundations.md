@@ -1,34 +1,41 @@
-# 0000 — Фундаментальные решения
+> English translation of the historical Russian record. Decision/status/dates are preserved. [Russian original](ru/0000-foundations.md) (relative link addresses rebased on relocation).
 
-- **Статус:** принято (зафиксировано задним числом)
-- **Дата:** 2026-06-21 *(решения приняты на старте проекта)*
-- **Связано:** [../architecture.md](../ARCHITECTURE.md), [../principles.md](../PRINCIPLES.md)
+<a id="0000--фундаментальные-решения"></a>
+# 0000 — Foundational decisions
 
-## Контекст
+- **Status:** accepted (recorded retrospectively)
+- **Date:** 2026-06-21 *(decisions made at project inception)*
+- **Related:** [../architecture.md](../ARCHITECTURE.md), [../principles.md](../PRINCIPLES.md)
 
-Стартовые решения по стилю, стеку и первому набору артефактов, принятые до
-появления dev-журнала. Зафиксированы здесь для полноты истории.
+<a id="контекст"></a>
+## Context
 
-## Решения
+Initial decisions on style, stack and the first artifact set, made before the
+development journal existed. Recorded here to complete the history.
 
-| # | Вопрос | Выбор | Обоснование | Отклонено |
+<a id="решения"></a>
+## Decisions
+
+| # | Question | Choice | Rationale | Rejected |
 |---|---|---|---|---|
-| 1 | Архитектурный стиль | **Clean Hexagonal (порты и адаптеры) + Onion** | Изоляция домена, заменяемость инфраструктуры, тестируемость | Слоистый монолит; framework-centric |
-| 2 | Язык/тулчейн | **Java 21**, сборка **Maven** | Industry standard, records/sealed/switch-patterns; Maven — ubiquitous | Gradle (на старте не нужен) |
-| 3 | Runtime/DI | **Spring Boot** (CLI, без web) | Богатый конфиг (`@ConfigurationProperties`), DI, fat-jar; домен держим Spring-free | Micronaut; Guice; ручная сборка |
-| 4 | Движок regex | **RE2/J по умолчанию + JDK fallback** за портом `PatternEngine` | Линейное время/ReDoS-safe на мусорном вводе; JDK как запасной | Только JDK (backtracking-риск) |
-| 5 | Чтение источника | **Apache Tika** за портом `SourceReader` | Формат-агностично (.htm/.docx/.pdf/…), автоопределение | jsoup (только HTML) |
-| 6 | Выходные артефакты | **Раздельные CSV** по назначению: изначально сетевые маски + файловые хэши, затем `ip_list` и `address_blacklist` | Разные схемы/id/нормализация; маршрутизация по `IndicatorType` и artifact filters | Один общий артефакт |
-| 7 | CSV | **Apache Commons CSV**; диалект `;`+кавычки+`NULL` | Стандарт; `QuoteMode.ALL_NON_NULL`+`nullString` точно даёт нужный формат | Ручной парсер; univocity |
-| 8 | CLI | **picocli** (+ spring-boot-starter) | Декларативные команды, интеграция со Spring `IFactory` | Свой парсер аргументов |
-| 9 | STIX/OpenIOC как модель | **Нет** (своя лёгкая доменная модель; словарь типов выровнен под STIX) | Наши артефакты — CSV; STIX — будущий экспорт-адаптер | STIX 2.1 как внутренняя модель |
+| 1 | Architectural style | **Clean Hexagonal (ports and adapters) + Onion** | Domain isolation, replaceable infrastructure, testability | Layered monolith; framework-centric |
+| 2 | Language/toolchain | **Java 21**, **Maven** build | Industry standard, records/sealed/switch-patterns; Maven is ubiquitous | Gradle (unnecessary at inception) |
+| 3 | Runtime/DI | **Spring Boot** (CLI, no web) | Rich configuration (`@ConfigurationProperties`), DI, fat JAR; keep the domain Spring-free | Micronaut; Guice; manual wiring |
+| 4 | Regex engine | **RE2/J by default + JDK fallback** behind the `PatternEngine` port | Linear time/ReDoS-safe on messy input; JDK as a fallback | JDK only (backtracking risk) |
+| 5 | Source reading | **Apache Tika** behind the `SourceReader` port | Format-agnostic (.htm/.docx/.pdf/…), auto-detection | jsoup (HTML only) |
+| 6 | Output artifacts | **Separate CSVs** by purpose: initially network masks + file hashes, then `ip_list` and `address_blacklist` | Different schemas/IDs/normalization; routing by `IndicatorType` and artifact filters | One combined artifact |
+| 7 | CSV | **Apache Commons CSV**; `;`+quotes+`NULL` dialect | Standard; `QuoteMode.ALL_NON_NULL`+`nullString` yields exactly the required format | Handwritten parser; univocity |
+| 8 | CLI | **picocli** (+ spring-boot-starter) | Declarative commands, Spring `IFactory` integration | Custom argument parser |
+| 9 | STIX/OpenIOC as the model | **No** (a lightweight domain model of our own; type vocabulary aligned with STIX) | Our artifacts are CSV; STIX is a future export adapter | STIX 2.1 as the internal model |
 
-## Следствия
+<a id="следствия"></a>
+## Consequences
 
-- Фреймворки (Spring/Tika/RE2J/commons-csv/picocli/Guava) — только в `adapter`/
-  `bootstrap`; `domain`/`application` — без них ([boundaries.md](../BOUNDARIES.md)).
-- Эталоны/историю развития последующих решений см. в dev-документах 0001–0005.
+- Frameworks (Spring/Tika/RE2J/commons-csv/picocli/Guava) stay in `adapter`/
+  `bootstrap`; `domain`/`application` remain free of them ([boundaries.md](../BOUNDARIES.md)).
+- See development documents 0001–0005 for references and the history of subsequent decisions.
 
-## Открытые вопросы
+<a id="открытые-вопросы"></a>
+## Open questions
 
-Нет; последующие уточнения вынесены в профильные dev-документы.
+None; subsequent refinements are recorded in the relevant development documents.

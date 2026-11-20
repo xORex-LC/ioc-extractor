@@ -98,8 +98,8 @@ class LoggingBootRecipeIT {
 
     private void runRecipe(String scenario) throws Exception {
         var root = Path.of("../..").toAbsolutePath().normalize();
-        String plainGuide = Files.readString(root.resolve("docs/guides/logging-library.md"));
-        String bootGuide = Files.readString(root.resolve("docs/guides/logging-library-boot.md"));
+        String plainGuide = Files.readString(root.resolve("docs/guides/libraries/logging-slf4j.md"));
+        String bootGuide = Files.readString(root.resolve("docs/guides/libraries/logging-slf4j-boot.md"));
         var sources = new ArrayList<Path>();
         sources.addAll(javaSources(plainGuide));
         sources.addAll(javaSources(bootGuide));

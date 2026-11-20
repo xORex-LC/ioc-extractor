@@ -1,35 +1,20 @@
-# application.port.in.sync
+# Remote sync driving ports
 
-## Назначение
+## Purpose and boundary
 
-Inbound-порты для ручного CLI и daemon lifecycle синхронизации. Порты описывают
-операторские use cases, не transport details.
+Commands/results for explicit remote fetch/publish and event-driven execution of known work. Feature/filter selection can be validated before activating lazy transport/storage.
 
-## Структура
+## Structure
 
-| Файл | Ответственность |
+| Entry points / files | Responsibility |
 |---|---|
-| `RemoteFetchUseCase` | Запуск remote → inbox цикла со source-фильтром для CLI/scheduler isolation |
-| `ArtifactPublishUseCase` | Reconcile, full publish и slice-specific publish операции с profile/target-фильтрами |
-| `ValidateSyncSelectionUseCase` | IO-free preflight source/target/profile/endpoint перед lazy resolution |
-| `*Command` / `*Result` | Небольшие DTO на границе driving adapters |
+| [ValidateSyncSelectionUseCase](ValidateSyncSelectionUseCase.java), [RemoteFetchUseCase](RemoteFetchUseCase.java), [RemoteFetchCommand](RemoteFetchCommand.java), [RemoteFetchResult](RemoteFetchResult.java), [FetchRemoteObjectsCommand](FetchRemoteObjectsCommand.java) | IO-free preflight, explicit detection cycle and fetch of already detected identities. |
+| [ArtifactPublishUseCase](ArtifactPublishUseCase.java), [ArtifactPublishCommand](ArtifactPublishCommand.java), [ArtifactPublishResult](ArtifactPublishResult.java), [ArtifactPublishExecutionResult](ArtifactPublishExecutionResult.java), [PublishCompletedSliceCommand](PublishCompletedSliceCommand.java) | Reconcile durable work and execute selected/known-slice delivery. |
 
-## Инварианты
+## Contracts and maintenance
 
-- CLI/daemon вызывают use-case ports, не outbound adapters напрямую.
-- `dryRun` проходит через command, чтобы application layer владел побочными эффектами.
-- Source/profile/target filters optional; неизвестные значения отвергаются до transport IO.
-- `reconcile` materializes missing pairs без remote IO; `publish` обрабатывает
-  уже известное retryable ledger state без profile scan.
-- Driving adapters, которым нужен ручной полный цикл, вызывают `reconcile` перед
-  `publish` явно.
-- `PublishCompletedSliceCommand` является command handler input для control event
-  fast-path и не используется как transport/wire schema.
-- `dryRun` не меняет inbox, remote storage или ledgers.
-- Fetch and publish result models are intentionally small and CLI-friendly.
+Fetch is read-only against producer objects; managed import ownership is a separate capability. Detected-object execution is distinct from full listing. A dry-run may inspect/validate work without performing its durable mutation, as specified by each method; it is not a promise of zero reads.
 
-## Зависимости
+Local export formation, publish ledger state and work attempted by this invocation are different outcomes. Postcommit hints can be lost; the periodic detection/reconcile path stays active. Global/source/endpoint filters must be admitted before stateful work and do not change identity or fencing guarantees.
 
-**Зависит от:** JDK.
-
-**Не импортируется:** Spring, picocli, transport adapters, JDBC.
+[Capability internals](../../../../../../../../../../../docs/dev/sync.md) owns the cross-module flow. [Module map](../../../../../../../../../README.md) owns dependencies and verification; exact member guarantees remain in Javadoc.

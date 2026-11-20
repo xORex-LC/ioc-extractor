@@ -13,6 +13,8 @@ import java.util.concurrent.TimeUnit;
 /** Consumer assertions compiled solely against the resolved public library JAR. */
 public final class LibraryConsumer {
     public static void main(String[] args) throws Exception {
+        KeyedGuardExample.main(args);
+        KeyedExecutorExample.main(args);
         var guard = new SynchronousKeyedExecutionGuard();
         var key = WorkKey.of("consumer");
         require("result".equals(guard.execute(key, () -> guard.execute(key, () -> "result"))));

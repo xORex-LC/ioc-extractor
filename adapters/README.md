@@ -1,33 +1,47 @@
-# com.iocextractor.adapter
+# Adapters
 
-## Назначение
+<a id="comiocextractoradapter"></a>
+<a id="назначение"></a>
+<a id="структура"></a>
+<a id="зависимости"></a>
 
-Адаптеры — внешний слой ввода/вывода. Реализуют порты прикладного ядра поверх
-конкретных технологий. Здесь (и только здесь, наряду с `bootstrap`) живут внешние
-библиотеки: picocli, Apache Tika, RE2/J, Guava PSL, Commons CSV, Jackson,
-Spring JDBC/Integration, SQLite/HikariCP, SMBJ и Apache Camel.
+## Purpose and boundary
 
-**Правило слоя:** зависит внутрь — на `application` (порты) и `domain`. Ядро
-никогда не импортирует из `adapter`; адаптеры не зависят друг на друга.
+Adapters implement inbound or outbound ports at external integration boundaries.
+Bootstrap composes them with the framework-free core. Each module owns one
+coherent integration family; several cooperating libraries may belong to that
+family. Reusable configuration and event adapters have separate publication
+contracts; the remaining adapters are internal service modules.
 
-## Структура
+Core never imports adapters. Adapter modules do not depend on sibling adapters;
+bootstrap supplies collaborators through inward-facing contracts. Maven POMs,
+Enforcer and ArchUnit own the executable dependency rules; see
+[boundaries](../docs/BOUNDARIES.md).
 
-| Maven-модуль | Назначение |
+## Modules
+
+| Module | Responsibility |
 |---|---|
-| `adapter-config-spring-boot/` | Проверка имён параметров и наблюдения за источниками Spring Boot; schema и enforcement принадлежат сервису |
-| `adapter-events-spring/` | Явный Spring publisher событий, runtime containment и наблюдение результата; multicaster и recovery принадлежат сервису |
-| `adapter-cli-picocli/` | Driving CLI (`ioc extract`, `export`, `sync`, `import`, `health`) |
-| `adapter-regex-re2j/` | `PatternEngine`: RE2/J по умолчанию и JDK implementation |
-| `adapter-psl/` | Public Suffix List host classification на Guava |
-| `adapter-source-tika/` | `SourceReader`: Apache Tika |
-| `adapter-csv/` | Strict import parsing, mapping, mutable CSV projections и export CSV |
-| `adapter-processing-camel/` | R1: проверка и компиляция ограниченных планов в локальные маршруты Camel; подключение IOC-потоков следует позже |
-| `adapter-manifest-json-jackson/` | Deterministic versioned export manifest codec |
-| `adapter-store-jdbc/` | Canonical/lifecycle storage и durable coordination ledgers |
-| `adapter-transport-smb/` | SMB fetch/publish, managed-import transport и change notification |
-| `adapter-ingest/` | Spring Integration file-poll daemon и filesystem lifecycle |
+| [adapter-cli-picocli](adapter-cli-picocli/README.md) | Driving CLI: extract, export, sync, managed import and health |
+| [adapter-config-spring-boot](adapter-config-spring-boot/README.md) | Reusable name/declaration inspection; source loading, schema and enforcement stay service-owned |
+| [adapter-events-spring](adapter-events-spring/README.md) | Explicit Spring event publication; listeners, multicaster and recovery stay service-owned |
+| [adapter-regex-re2j](adapter-regex-re2j/README.md) | RE2/J and JDK implementations of the domain PatternEngine port |
+| [adapter-psl](adapter-psl/README.md) | Guava Public Suffix List host classification |
+| [adapter-source-tika](adapter-source-tika/README.md) | SourceReader document parsing, streaming HTML and parser admission |
+| [adapter-csv](adapter-csv/README.md) | Strict import parsing, row preparation, mutable projections and immutable CSV exports |
+| [adapter-processing-camel](adapter-processing-camel/README.md) | Embedded bounded plan execution, required by document and processed-import routing through bootstrap |
+| [adapter-manifest-json-jackson](adapter-manifest-json-jackson/README.md) | Deterministic versioned manifest serialization and parsing |
+| [adapter-store-jdbc](adapter-store-jdbc/README.md) | SQLite canonical/lifecycle state, migrations, projections and durable coordination ledgers |
+| [adapter-transport-smb](adapter-transport-smb/README.md) | Remote fetch/publish, managed-import transport and optional change notifications |
+| [adapter-ingest](adapter-ingest/README.md) | Spring Integration inbox polling, file ownership and daemon intake |
 
-## Зависимости
+## Dependencies and entry points
 
-**Зависит от:** `application`, `domain` (+ библиотеки адаптера).
-**Не импортируется** внутренними слоями.
+Most adapters consume application/domain/platform contracts. The technical Camel
+module is deliberately IOC-independent; bootstrap connects its neutral plan
+contracts to IOC behavior. Integration types stay outside core. Follow each
+module README for packages, ports, dependency scopes, ownership and tests.
+
+[Architecture](../docs/ARCHITECTURE.md) and
+[modularization](../docs/MODULARIZATION.md) describe cross-module relationships;
+[processing routes](../docs/guides/ioc-processing-routes.md) describes operator plans.

@@ -1,0 +1,45 @@
+# Reusable libraries
+
+[Russian-language guides](../ru/libraries/README.md)
+
+Use these libraries when a service needs the shared mechanics below. Each
+artifact has its own Maven coordinate under `io.github.xorex-lc`. Java packages
+keep their existing `com.iocextractor` names. All listed releases require Java 21.
+
+| Library | Use it for | Production dependency boundary | Guide |
+|---|---|---|---|
+| `ioc-platform-concurrency` | Serial work or synchronous exclusion per key | JDK only | [Concurrency](concurrency.md) |
+| `ioc-platform-diagnostics-api` | Structured diagnostics, failure policies and bounded detail | JDK only | [Diagnostics](diagnostics.md) |
+| `ioc-platform-logging-slf4j` | Typed SLF4J records, restoring MDC scopes and explicit masking | SLF4J API; service selects the provider | [Logging](logging-slf4j.md), [Boot ECS recipe](logging-slf4j-boot.md) |
+| `ioc-config-spring-boot` | Record-schema property-name inspection and migration observations | Spring Boot and Spring Core; service prepares sources and decides policy | [Configuration](config-spring-boot.md), [restricted-context recipe](config-spring-boot-check.md) |
+| `ioc-platform-events` | Local control-event metadata, publication contract and recording fixture | JDK only | [JDK contracts](events.md) |
+| `ioc-events-spring` | Explicit publication through a service-owned Spring publisher | Same-version events core, Spring Context and SLF4J API | [Spring adapter](events-spring.md) |
+
+All six artifacts have immutable `0.3.0-rc.1` release records and paired
+English/Russian guides here. [Publication records](../../../.github/release-notes/README.md)
+own the signed identities and historical repository results. Each page states
+its published version and qualification limits. ETL remains an internal module;
+extraction is deferred. Configuration's protected CI recovery is a separate open
+follow-up; see its guide and release record.
+
+## Where to look next
+
+- Follow [Developing and versioning libraries](development.md) before adding
+  another mechanism or changing a shared API. Independent library versions are
+  accepted; their Maven/CI activation is still pending as TOOL-9.
+- Start with a library guide for dependencies, working examples, errors and
+  resource ownership. Use the linked module README for its package map and
+  Javadoc for exact public contracts.
+- Read the linked ADRs for decision history and `docs/dev/` capability pages for
+  IOC's integration. A synthetic consumer does not qualify a second deployed
+  service or an untested framework version.
+- Follow the [publication procedure](../library-publication.md) to prepare a
+  new release or recover an existing immutable bundle.
+
+## Maintaining the guides
+
+English and Russian pages describe the same contract and link to each other.
+Keep runnable Java/YAML/XML blocks identical; comments inside them are English.
+Update both pages with a behavior change and check examples against the packaged
+public API. Current source behavior and an older published version must be
+distinguished explicitly. Worknotes are temporary planning material.

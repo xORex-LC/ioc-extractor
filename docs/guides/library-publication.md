@@ -1,5 +1,54 @@
 # Publishing reusable platform libraries
 
+[Русская версия](ru/library-publication.md)
+
+For choosing and using a library, start with the
+[library catalog](libraries/README.md). For reuse, API changes and version
+ownership, follow the [development guide](libraries/development.md) and
+[release policy](../RELEASE-PROCESS.md#reusable-library-versions).
+
+**Current publication implementation:** source versions and release admission
+remain product/library lockstep. Independent library versions are accepted in
+[ADR 0048](../ADR/0048-independent-library-versions-and-reuse.md), but their Maven
+and CI activation is pending as TOOL-9. The commands below describe the existing
+process. A global `-Drevision` or another `LIBRARY_VERSION` does not implement
+per-library versions, and a component version must still match the admitted
+product release branch. Component publication does not release the application.
+
+## Choose the operation and evidence
+
+| Stage | What it establishes | What remains |
+|---|---|---|
+| Local bundle and local consumer | Packaged API/POM/examples work from explicit bytes in an isolated project | No public repository qualification or release signing |
+| Unprivileged workflow build | Tagged source passes full verify, packaged consumer and the separate PMD profile | Protected review, signing and repository operations |
+| `operation=validate` | Protected signing and a USER_MANAGED upload validated by Central | Public publication and both destination consumers |
+| `operation=publish` | Publishes/reuses the same bundle, mirrors missing GitHub files and runs both consumers | Reviewed evidence and component release record; service/deployment acceptance remains separate |
+
+`validate` is a credentialed remote operation, not an offline dry run: it can
+create a Central deployment. Use local commands for development feedback.
+Local bundles may record dirty source/SNAPSHOT versions; release signing rejects
+them. Use a new output directory for each candidate. Signatures, coordinates and
+component tags of a published RC are as immutable as a final release.
+
+For a new release, follow account setup → release identity → protected validation
+→ preservation → publish/recovery → repository consumers. For an interrupted
+release, start from its retained signed bundle and deployment ID, not a new build.
+The historical notes below retain qualification limits for the admitted components.
+
+Concurrency's immutable first-release
+evidence is retained in its
+[release record](../../.github/release-notes/ioc-platform-concurrency-0.3.0-rc.1.md).
+Diagnostics has its own
+[release record](../../.github/release-notes/ioc-platform-diagnostics-api-0.3.0-rc.1.md),
+with the original tagged source, signed bundle and both repository consumers.
+Configuration's [release record](../../.github/release-notes/ioc-config-spring-boot-0.3.0-rc.1.md)
+separately retains the original Central CI failure and successful local recovery.
+Logging's [release record](../../.github/release-notes/ioc-platform-logging-slf4j-0.3.0-rc.1.md)
+retains its exact signed files and separate plain/Boot repository consumers. Events retain separate
+[core](../../.github/release-notes/ioc-platform-events-0.3.0-rc.1.md) and
+[adapter](../../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md) records,
+including the original qualified core handoff and immutable pair recovery.
+
 The reviewed components use Java 21 and have exact dependency contracts:
 
 | Component selector | Artifact (`io.github.xorex-lc`) | Module | Required main dependencies |
@@ -25,16 +74,12 @@ Release evidence owns each component's repository qualification. Adding a
 component does not authorize publishing it or republishing an existing version.
 New dependencies or versions require explicit contract review, not a broader
 allowlist. The older zero-dependency contracts remain enforced.
-
-Diagnostics `0.3.0-rc.1` passed protected publication and separate Central/GitHub
-Packages cold consumers in
-[run 39137777538](https://github.com/xORex-LC/ioc-extractor/actions/runs/39137777538).
 No version is claimed published until the repository checks below pass.
 
 Logging `0.3.0-rc.1` passed protected publication and separate Central/GitHub
 Packages cold plain Java and Boot consumers in
 [run 39455105300](https://github.com/xORex-LC/ioc-extractor/actions/runs/39455105300).
-Its [consumer guide](logging-library.md) supplies the released dependency;
+Its [consumer guide](libraries/logging-slf4j.md) supplies the released dependency;
 the [module reference](../../platform/platform-logging-slf4j/README.md) describes
 the qualified API/backend boundary. This does not qualify a later version.
 
@@ -47,7 +92,8 @@ Two additional selectors prepare separate bundles and run isolated consumers:
 | `events` | `ioc-platform-events` | None; JDK 21 only |
 | `events-spring` | `ioc-events-spring` | `ioc-platform-events` at the bundle's exact version, Spring Context 7.0.9, SLF4J API 2.0.18 |
 
-Both inherit the reactor's lockstep version and build settings during development.
+Both currently inherit the reactor's lockstep version and build settings during
+development. Independent-version activation preserves their shared family version.
 The flattened distribution POM resolves those settings and removes the parent,
 test dependencies and build configuration. This uses the existing
 [Flatten plugin behavior](https://www.mojohaus.org/flatten-maven-plugin/flatten-mojo.html).
@@ -70,7 +116,7 @@ Each bundle has four primary files and its own identity/hashes. The Spring bundl
 contains only the adapter; contracts are a normal dependency, never shaded or
 silently copied into it. A release must publish and qualify the contracts
 first in **each selected repository**, then release the adapter at the same
-version. Their component tags will be `ioc-platform-events-v<version>` and
+version. Their component tags use `ioc-platform-events-v<version>` and
 `ioc-events-spring-v<version>`; existing component tags and bundles are unchanged.
 
 The JDK fixture has no framework dependencies. The Spring fixture's **main**
@@ -126,9 +172,11 @@ The library maintains seven JDK public types and one explicit Spring publisher,
 including their documented validation, observation, failure and concurrency
 behavior. Services own event payloads, event type/version catalogs, timestamps,
 IDs, listeners, safe exception text and durable recovery. The metadata's event
-`version` describes a service-owned payload; it is unrelated to the Maven version.
+`eventVersion` describes a service-owned payload; it is unrelated to the Maven version.
 
-Product and library versions remain lockstep, including release candidates.
+The current POM/workflow implementation keeps product and library versions
+lockstep, including release candidates. ADR 0048 accepts independent library
+versions after TOOL-9; events retains a shared core/adapter family version.
 The adapter requires the exact same core version. A change to public signatures,
 validation or failure behavior needs contract review, regression/consumer checks
 and release notes. An already released coordinate is immutable: a correction uses
@@ -181,8 +229,12 @@ manifest; they do not independently authenticate arbitrary local JSON.
 No events version is published by release admission. Merge the reviewed changes,
 pass release-branch CI and create clean immutable release inputs before explicitly
 authorizing validation/signing and publication. Dirty SNAPSHOT bundles remain
-local test inputs. The first live runs still establish registry/signature
-acceptance and repository qualification for the selected version.
+local test inputs. Version `0.3.0-rc.1` is published and qualified in both
+repositories: [core run 40160627532](https://github.com/xORex-LC/ioc-extractor/actions/runs/40160627532)
+and [adapter run 40162675262](https://github.com/xORex-LC/ioc-extractor/actions/runs/40162675262)
+reused the original signed bundles after protected validation. Both actual
+consumer logs and qualification receipts were reviewed. This qualifies the
+documented Java/Spring baseline, not a second deployed service.
 
 ## Configuration library admission
 
@@ -194,10 +246,11 @@ URLs under a restrictive target filter. The shell also concealed the failure
 behind `tee`, so that workflow's green status is not Central qualification.
 A local recovery consumer passed on 2026-10-24 with corrected routing, the same
 signed bundle and empty caches. The workflow now propagates pipeline failures;
-these tooling corrections still need release-branch integration and a CI recovery
-run. The original failed log is retained. Its
-[consumer guide](configuration-library.md) supplies the released dependency
-and the [restricted-context recipe](configuration-library-check.md) qualifies
+PR 19 integrated these tooling corrections into `release-0.3.0`. A protected CI
+recovery run remains pending as [TOOL-8](../KNOWN-ISSUES.md). The original failed
+log is retained. Its
+[consumer guide](libraries/config-spring-boot.md) supplies the released dependency
+and the [restricted-context recipe](libraries/config-spring-boot-check.md) qualifies
 service-owned binding and validation. This evidence covers that version and the
 documented Boot baseline; it does not qualify a deployed second service.
 
@@ -208,11 +261,13 @@ The `configuration` selector prepares a parent-independent POM with exactly two
 required compile JAR dependencies: Boot 4.0.8 and Spring Core 7.0.9. The JAR's
 embedded POM must match it. Private parents, BOM imports, build/profiles/repository
 leaks, starters, extra dependencies and executable Boot packaging are rejected.
-Versions remain centrally managed in the reactor and lockstep with the product.
+The current POM/workflow implementation keeps versions centrally managed and
+lockstep with the product. Its independent version is an accepted target, pending
+the activation criteria in the release policy.
 
 The [standalone consumer](../../tools/fixtures/configuration-consumer/README.md)
 checks inspection/migration and the exact
-[closed-input guide](configuration-library-check.md) from packaged artifacts.
+[closed-input guide](libraries/config-spring-boot-check.md) from packaged artifacts.
 It qualifies the ten-JAR library closure plus application-owned SnakeYAML 2.6,
 then repeats the guide with the application's Boot 4.0.8 BOM. Default mediation
 selects Commons Logging 1.3.5 and JSpecify 1.0.0; the application BOM selects
@@ -283,9 +338,15 @@ the checkout, uses an empty Maven cache, and compares all four resolved artifact
 to the bundle manifest. The default concurrency fixture checks FIFO, queue
 rejection, independent keys, shutdown and synchronous nested execution/failure
 propagation. The diagnostics fixture runs the three
-[guide examples](diagnostics-library.md) with its own codes: results and policy
+[guide examples](libraries/diagnostics.md) with its own codes: results and policy
 decisions, bounded stage/run counts and delivery failure callbacks. Both consumer
 POMs stand alone, with no IOC parent or reactor class directories.
+
+The facade builds the selected module and upstreams with the publication profile,
+then prepares the bundle; it does not run the full release gate. `LIBRARY_VERSION`
+is passed through the existing shared reactor revision. Prepare/consume can run
+on a dirty development tree, recording that identity. No private key, publishing
+token, tag creation or registry write is needed for this local sequence.
 
 Logging runs two standalone consumers, each with its own empty cache. The plain
 SLF4J consumer executes the three actual guide classes. Its provider and
@@ -293,7 +354,7 @@ sources/Javadoc dependencies exclude SLF4J API so only the library's main POM
 can supply it. Two further offline checks use that warmed cache: excluding API
 must fail compilation, and selecting an unavailable API version must fail
 dependency resolution. An unrelated failure is not a passing negative check.
-The Boot consumer compiles the actual [recipe](logging-library-boot.md), loads
+The Boot consumer compiles the actual [recipe](libraries/logging-slf4j-boot.md), loads
 its YAML/XML and checks five JSON records plus encoder status. It selects its
 own Boot/Logback dependencies; these are not dependencies of the library.
 
@@ -343,6 +404,11 @@ regular file. These checks run before key import or repository access. Manifest
 hashes and a recorded signer fingerprint do not authenticate arbitrary JSON:
 recovery also relies on the original trusted Actions artifact and protected
 review. Preserve that provenance with the bundle.
+In particular, `check --signed` checks the manifest's signed state, configured
+fingerprint, clean identity, file inventory and hashes; it does not re-run GPG
+verification of each retained signature. Signing verifies signatures when they
+are created. Retained-file integrity and trusted provenance must both survive
+recovery; do not treat a supplied `identity.json` as its own trust root.
 
 When outbound HTTPS requires a proxy, the consumer translates `https_proxy` or
 `HTTPS_PROXY` into its temporary Maven settings. It still uses a fresh cache and
@@ -360,9 +426,11 @@ GitHub Environment **`LIBRARY PUBLISHING`**. Store these environment secrets:
 
 The configured public fingerprint is
 `F69BA7E0F7494982E6E1B483DF54073D8BBFA9F9`. Signing verifies the imported key
-against it. The reported key expiration is `2027-03-06T12:39:38Z`; the Central
-token expires on `2027-03-07`. Renew before those dates and review fingerprint
-changes explicitly. Publish the public key to a supported keyserver and verify
+against it. Initial-publication operating notes recorded key expiration
+`2027-03-06T12:39:38Z` and Central token expiration `2027-03-07`; these dates are
+historical notes, not a live credential check. Verify actual expiry/revocation
+before use, renew in time and review fingerprint changes explicitly. Publish the
+public key to a supported keyserver and verify
 that Central can retrieve it. Never put private keys or token values in Git,
 workflow inputs, command-line properties or evidence attachments.
 
@@ -385,6 +453,18 @@ publishing PAT is unnecessary. Existing `SECURITY CHECKS` remains independent.
 
 ## First release
 
+Use this sequence for the first publication of each new coordinate/version.
+Workflow input relationships are:
+
+| Input | Rule |
+|---|---|
+| `component` | One admitted selector; defaults to concurrency, so select it deliberately |
+| `release_tag` | Annotated selected-artifact tag; its commit is an ancestor of the selected release branch and its base version matches that branch |
+| `operation` | `validate` by default; `publish` is the public release operation |
+| `resume_run_id` | Empty for a new bundle; for recovery, a completed run of this workflow on the same release branch |
+| `central_deployment_id` | Empty without resume; required with resume and bound to that bundle's deployment name |
+| `events_core_run_id` | Successful qualified core run for the first adapter attempt only; empty for adapter recovery and all other components |
+
 1. Merge the implementation into `release-X.Y.Z` and pass its normal CI gates.
    Keep the publication workflow discovery copy on `main` current so GitHub
    registers the manual workflow and its component choices; this does not move
@@ -402,6 +482,8 @@ publishing PAT is unnecessary. Existing `SECURITY CHECKS` remains independent.
    The job builds
    and verifies without publishing credentials, runs the independent consumer,
    signs once, and retains `signed-library` before contacting either repository.
+   The build job has no publishing credentials. Signing/upload occur later in
+   the environment-protected publish job, including for `operation=validate`.
 4. Download and preserve `signed-library` and `central-deployment` artifacts.
    Record the source SHA, run ID, manifest hashes and Central deployment ID.
    `VALIDATED` means staged successfully; it does not mean publicly released.
@@ -468,12 +550,72 @@ After a version has passed publication qualification, add:
 ```
 
 The example uses the qualified concurrency pilot release. The
-[diagnostics guide](diagnostics-library.md) and
-[configuration guide](configuration-library.md) supply their released dependencies.
+[diagnostics guide](libraries/diagnostics.md) and
+[configuration guide](libraries/config-spring-boot.md) supply their released dependencies.
 Central needs no additional repository configuration. For GitHub Packages use
 `https://maven.pkg.github.com/xorex-lc/ioc-extractor` and matching Maven server
 credentials with package read access. Even public GitHub Maven packages require
 authentication; use the Central coordinate for ordinary public consumption.
+
+Outside Actions, GitHub Maven consumption uses a classic PAT with `read:packages`
+and access to the package. Keep it in an environment-backed settings file, with
+the same server ID as the POM repository; do not put credentials in the POM:
+
+```xml
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">
+  <servers>
+    <server>
+      <id>github-ioc</id>
+      <username>${env.PACKAGES_USER}</username>
+      <password>${env.PACKAGES_READ_TOKEN}</password>
+    </server>
+  </servers>
+</settings>
+```
+
+Add this repository fragment to the consumer POM when using GitHub Packages:
+
+```xml
+<repositories>
+  <repository>
+    <id>github-ioc</id>
+    <url>https://maven.pkg.github.com/xorex-lc/ioc-extractor</url>
+  </repository>
+</repositories>
+```
+
+Select that settings file with Maven `-s`. These are normal consumer settings,
+not the producer's empty-cache/origin-isolation qualification settings. In
+Actions, use `GITHUB_TOKEN` when the workflow repository has package access;
+cross-repository access must be granted explicitly. A public package still needs
+GitHub authentication. Central remains the simpler public-consumption path.
+
+## Diagnose a failed operation
+
+| Failure | Response |
+|---|---|
+| Existing bundle directory or missing primary file | Preserve the candidate; use a fresh path and build the selected publication profile. Do not hand-edit its manifest to fit missing bytes. |
+| Wrong selector, tag/branch version or unannotated tag | Align the reviewed component identity and release branch; do not override the product revision to bypass admission. |
+| Dirty/SNAPSHOT signing rejected | Keep it as development evidence; prepare clean, admitted release inputs after review. |
+| POM/package/dependency contract rejected | Correct the owning POM/source contract with tests; do not widen an allowlist merely to admit an unexpected transitive/API. |
+| Missing dependency bundle/core qualification | Supply exact same-version core and both repository receipts; adapter recovery must retain its original core. |
+| Key/token/reviewer or package permission failure | Check actual environment protection, key identity/expiry and namespace/package access without exposing credentials. A successful old run proves no current access. |
+| Network/proxy/plugin download failure | Fix that cause and rerun the failed check; it is not a passing dependency/routing negative case. |
+| Consumer fails after repository upload | Publication qualification remains incomplete. Keep the failed log and recover with the same signed bytes; do not rebuild the released coordinate. |
+| Central visibility partial, deployment pending or upload response lost | Preserve the ID/evidence, inspect Portal and allow propagation. Locate the existing bundle-named deployment before another upload. |
+| Original Actions artifact expired or provenance unavailable | Recover the externally retained original signed bundle/provenance; stop if it cannot be established. A rebuild or new signatures are not a substitute. |
+
+## Sources and maintenance
+
+The [Makefile](../../Makefile), [tool](../../tools/ci/library-publication.py),
+[workflow](../../.github/workflows/library-publication.yml),
+[CI consumer matrix](../../.github/workflows/ci.yml), selected module POMs and
+[offline contracts](../../tools/tests/library-publication-test.py) define current
+mechanisms. Run `make library-publication-test`, applicable bundle/consumer checks
+and `make docs`. Shell/XML syntax and mocked workflow tests do not qualify live
+account settings, credentials, registry behavior or a new release. Keep both
+languages aligned and permanent release facts in component records. TOOL-6/7/8/9
+retain their own acceptance criteria; this guide does not close them.
 
 Authoritative service documentation: [Central Publisher API](https://central.sonatype.org/publish/publish-portal-api/)
 and [GitHub Maven registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-apache-maven-registry).

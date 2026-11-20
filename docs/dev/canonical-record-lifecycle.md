@@ -1,5 +1,7 @@
 # Canonical record lifecycle
 
+[Русская версия](ru/canonical-record-lifecycle.md)
+
 Canonical record lifecycle keeps only currently valid IOC records in active
 storage while preserving bounded historical evidence. It starts after an
 accepted canonical transaction and ends when the persisted `valid_until`
@@ -29,6 +31,34 @@ The event path only reduces latency. SQLite deadlines, projection generations
 and the latest reconciliation checkpoint are the correctness authority after
 lost events or process restarts. An idle deadline refresh is read-only and does
 not create a reconciliation cycle.
+
+## Confirmation and activation
+
+The supported validity modes are `disabled` and `fixed`. The classpath default
+is `disabled`; the fresh production template selects `fixed` with `fixed-ttl`
+of `12h`. A fixed TTL must be positive; zero does not request migration or expiry.
+The deadline is confirmation time plus TTL, stored internally as absolute UTC
+epoch milliseconds in `_valid_until_epoch_ms`.
+
+The deadline controls logical visibility immediately at a read's captured
+`asOf`. Physical archive/delete and CSV replacement converge afterward. A due
+row can therefore still occupy SQLite pages or appear in an older CSV without
+being active in a new canonical read. A snapshot keeps its captured boundary
+for the whole operation; a long-running read does not resample UTC for each row.
+
+Confirmation after the processing checkpoint either renews an active lifecycle
+or closes an expired lifecycle and creates a new one. A retry of the same
+committed observation returns its durable result rather than granting another
+TTL. Changing `fixed-ttl` affects subsequent confirmations; it does not rewrite
+persisted deadlines or renew rows absent from the new observation.
+
+Activation uses `DISABLED_COMPATIBLE -> ACTIVATING -> ACTIVE`. With legacy rows,
+`existing-records: reject` refuses activation; explicit `expire` archives and
+removes them in bounded transactions. Already committed batches survive a
+failure, and restart resumes remaining work. Projection convergence precedes
+completion. Once activation starts, returning to `disabled` is rejected.
+`existing-records` governs this cutover, not ordinary expiry of active records.
+The [operator guide](../guides/canonical-record-lifecycle.md) owns the procedure.
 
 ## Mutable projection ownership
 
@@ -98,11 +128,13 @@ to one pinned ingestion event and must not be reused for a different payload.
    deletion. Immutable export `id` is a separate reusable slot governed by
    [ADR-0021](../ADR/0021-stable-reusable-export-slots.md).
 5. **Expiry is not an insert.** It does not advance `artifact_revision` or cause
-   an immutable export by itself. The next new-row-driven export observes the
-   current active membership.
+   an immutable export by itself. A later export admitted by public-data or
+   plan changes observes current active membership. Public-field changes from
+   managed import can advance revision without inserting a new row.
 6. **Public schemas stay stable.** Internal lifecycle columns are excluded from
-   CSV/export; `time_first_seen` and `time_last_seen` remain business fields and
-   remain `NULL` until a separate mapping contract is approved.
+   CSV/export. Lifecycle does not populate the business fields `time_first_seen`
+   and `time_last_seen`; shipped mappings leave them `NULL`. Changing exported
+   date semantics requires its own mapping and consumer contract.
 7. **Work is bounded.** Deadline and retention indexes feed fixed-size SQLite
    transactions; there is no timer, thread or job per IOC.
 
@@ -124,6 +156,22 @@ closed under the unchanged configured limits.
 | Upgrade with legacy rows | Compatibility start is non-destructive; explicit resumable activation archives legacy rows before intake/export | activation state and progress |
 | History retention failure | Active lifecycle remains correct; a later bounded pass retries cleanup | retained history plus scheduler |
 
+History, compact source evidence and complete confirmation receipts have
+bounded retention; the defaults are `30d`. They are not permanent audit storage.
+Receipt reuse requires compatible source/policy pins and an unexpired complete
+receipt. Cleanup never resets canonical or lifecycle ID allocators. Historical
+immutable slices have a separate retention policy and delivery guard.
+
+### Native reservation authority
+
+Row and lifecycle ID ranges are committed independently in the authoritative
+dataframe database before Native canonical mutation. They use shared writer
+admission and remain burned on failure or unused worst-case reservation.
+Mutation, provenance, lifecycle and receipt effects then commit together in the
+owning artifact transaction; there is no alternate mutation database or
+effect-journal backend. Private source/row preparation is described in
+[processing](processing.md).
+
 ## Extending the policy
 
 A future type/risk/source-aware lifetime extends `RecordValidityPolicy` and its
@@ -138,14 +186,21 @@ business fields requires a separate versioned consumer contract.
   [ADR-0021](../ADR/0021-stable-reusable-export-slots.md),
   [ADR-0022](../ADR/0022-revision-significant-identical-export.md) and
   [ADR-0023](../ADR/0023-bounded-lifecycle-reconciliation-runtime.md).
-- Application contracts: `core/ioc-application/.../artifact/lifecycle`.
+- Application contracts: [lifecycle package](../../core/ioc-application/src/main/java/com/iocextractor/application/artifact/lifecycle),
+  [runtime services tests](../../core/ioc-application/src/test/java/com/iocextractor/application/artifact/lifecycle/LifecycleRuntimeServicesTest.java).
 - SQLite schema and SQL: `adapter-store-jdbc` dataframe migration v4 for
   lifecycle, v5 for export slots, v6 for the bounded reconcile checkpoint, and
   adapter tests.
-- Production assembly/defaults: `AppConfig`, `IocProperties` and the classpath
-  `application.yml` in `bootstrap/ioc-app`.
+- Clock and active semantics: [JdbcLifecycleRuntimeIT](../../adapters/adapter-store-jdbc/src/test/java/com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleRuntimeIT.java),
+  [lifecycle TCK binding](../../adapters/adapter-store-jdbc/src/test/java/com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalRecordLifecycleContractIT.java).
+- Projection ownership: [GenerationOwnedArtifactProjectionTest](../../core/ioc-application/src/test/java/com/iocextractor/application/artifact/lifecycle/GenerationOwnedArtifactProjectionTest.java),
+  [MutableProjectionOwnershipIT](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/MutableProjectionOwnershipIT.java).
+- Production assembly/defaults: [AppConfig](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java),
+  [classpath configuration](../../bootstrap/ioc-app/src/main/resources/application.yml) and
+  [production template](../../packaging/templates/application.yml).
 - Operator behavior: [canonical record lifecycle guide](../guides/canonical-record-lifecycle.md).
-- Reproducible runtime evidence: `tools/dev/lifecycle-smoke.sh`.
+- Runtime harness: `tools/dev/lifecycle-smoke.sh`; its current terminal-filename
+  limitation is tracked as [TOOL-10](../KNOWN-ISSUES.md), not accepted smoke evidence.
 
 ## When to update this document
 
@@ -160,11 +215,3 @@ business fields requires a separate versioned consumer contract.
 - Export behavior: [artifact-export.md](artifact-export.md).
 - Ingestion confirmation point: [ingestion.md](ingestion.md).
 - Module map: [MODULARIZATION.md](../MODULARIZATION.md).
-### Native reservation authority
-
-Row and lifecycle ID ranges are committed independently in the authoritative
-dataframe database before Native canonical mutation. They use the shared writer
-admission and remain burned on failure. Mutation, provenance, lifecycle and
-receipt effects then commit together in the owning artifact transaction; there
-is no alternate mutation database or effect-journal backend. Private source/row
-preparation is described in [processing](processing.md).

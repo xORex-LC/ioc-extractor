@@ -1,43 +1,51 @@
-# 0005 — Сервисы, конвейер и защита границ
+> English translation of the historical Russian record. Decision/status/dates are preserved. [Russian original](ru/0005-services-and-pipeline.md) (relative link addresses rebased on relocation).
 
-- **Статус:** принято (дизайн)
-- **Дата:** 2026-06-21
-- **Связано:** [architecture](../ARCHITECTURE.md), [processing](../dev/processing.md),
+<a id="0005--сервисы-конвейер-и-защита-границ"></a>
+# 0005 — Services, pipeline and boundary enforcement
+
+- **Status:** accepted (design)
+- **Date:** 2026-06-21
+- **Related:** [architecture](../ARCHITECTURE.md), [processing](../dev/processing.md),
   [../boundaries.md](../BOUNDARIES.md), [../modularization.md](../MODULARIZATION.md)
 
-## Контекст
+<a id="контекст"></a>
+## Context
 
-Закрепляем DDD-вектор (чистая логика → изолированные сервисы), выбираем подход к
-ETL-конвейеру и детализируем защиту границ и нарезку на модули.
+Establish the DDD direction (pure logic → isolated services), select the ETL
+pipeline approach and detail boundary enforcement and module decomposition.
 
-## Решения
+<a id="решения"></a>
+## Decisions
 
-| # | Вопрос | Выбор | Обоснование | Отклонено |
+| # | Question | Choice | Rationale | Rejected |
 |---|---|---|---|---|
-| 1 | Организация логики | **Изолированные сервисы за портами** (DDD), каталог + карта | Поддержка, масштабируемость, параллельная разработка; вынос в модуль без переписывания | Монолитные сервисы; прямые связи реализаций |
-| 2 | Подход к конвейеру | **Pipes-and-Filters (EIP) + Envelope + Result/Either + функц. композиция** | Расширяемость стадий (OCP), диагностика-как-метаданные, collect-and-continue, единый batch/stream | Только императивный оркестратор; тяжёлый pipeline-фреймворк в ядре |
-| 3 | Фреймворк конвейера | **Своё тонкое ядро** (`Stage`/`Envelope`/`Result`); EIP-фреймворк (Spring Integration) — только на крае инжеста | Чистый гексагон, KISS; SI там, где он силён (приём файлов) | SI/Camel внутри ядра |
-| 4 | Result/Either | **Свой тонкий `Result`**; Vavr — опционально | Без лишней зависимости в ядре | Vavr обязательным |
-| 5 | Защита границ | **ArchUnit сейчас** (одномодуль) + enforcer при parent-pom | Дёшево, краснит сборку до нарезки модулей | Только ревью; ждать модулей |
-| 6 | Гранулярность модулей | **Укрупнённо, поэтапно**; сервисы уже module-ready за портами | Выгоды модульности без преждевременной сложности реактора | Модуль на каждый сервис сразу |
+| 1 | Logic organization | **Isolated services behind ports** (DDD), catalog + map | Maintainability, scalability, parallel development; extract a module without rewriting | Monolithic services; direct implementation coupling |
+| 2 | Pipeline approach | **Pipes-and-Filters (EIP) + Envelope + Result/Either + functional composition** | Extensible stages (OCP), diagnostics as metadata, collect-and-continue, unified batch/stream | Imperative orchestrator only; heavy pipeline framework in the core |
+| 3 | Pipeline framework | **Own thin core** (`Stage`/`Envelope`/`Result`); EIP framework (Spring Integration) only at the ingestion edge | Clean hexagon, KISS; SI where it is strong (file intake) | SI/Camel inside the core |
+| 4 | Result/Either | **Own thin `Result`**; Vavr optional | No unnecessary core dependency | Mandatory Vavr |
+| 5 | Boundary enforcement | **ArchUnit now** (single module) + enforcer with parent POM | Cheap, makes the build fail before module decomposition | Review only; wait for modules |
+| 6 | Module granularity | **Coarse, incremental**; services already module-ready behind ports | Modularity benefits without premature reactor complexity | A module for every service immediately |
 
-## Следствия
+<a id="следствия"></a>
+## Consequences
 
-- На момент решения появился отдельный каталог сервисов (каталог + карта) и
-  [processing.md](../dev/processing.md) (подход к конвейеру) как авторитетные доки.
-  **Обновление 2026-07-19:** каталог удалён как дорогая дублирующая проекция;
-  текущая карта ответственности живёт в [ARCHITECTURE.md](../ARCHITECTURE.md),
-  [MODULARIZATION.md](../MODULARIZATION.md) и module README.
-- `IocExtractionService` эволюционирует в явный `Pipeline` из `Stage`-ов с
-  `Envelope`/`Result`, не меняя доменные сервисы.
-- [boundaries.md](../BOUNDARIES.md) дополнен конкретными ArchUnit/enforcer-правилами;
-  [modularization.md](../MODULARIZATION.md) — картой «сервис → модуль» и гранулярностью.
-- Кандидаты модулей: `platform-{regex,diagnostics,errors}`, `ioc-domain`,
+- At decision time, a separate service catalog (catalog + map) and
+  [processing.md](../dev/processing.md) (pipeline approach) became authoritative
+  documents. **Update 2026-07-19:** the catalog was removed as a costly duplicate
+  projection; the current responsibility map lives in
+  [ARCHITECTURE.md](../ARCHITECTURE.md), [MODULARIZATION.md](../MODULARIZATION.md)
+  and module READMEs.
+- `IocExtractionService` evolves into an explicit `Pipeline` of `Stage`s with
+  `Envelope`/`Result`, without changing domain services.
+- [boundaries.md](../BOUNDARIES.md) gains specific ArchUnit/enforcer rules;
+  [modularization.md](../MODULARIZATION.md) gains a “service → module” map and granularity.
+- Module candidates: `platform-{regex,diagnostics,errors}`, `ioc-domain`,
   `ioc-application`, `adapter-{source-tika,sink-csv,lookup-csv,psl,ingest,cli}`,
   `ioc-app`.
 
-## Открытые вопросы
+<a id="открытые-вопросы"></a>
+## Open questions
 
-- Точная схема `Envelope.meta` (набор атрибутов) — уточняется при реализации стадий.
-- Когда инициировать parent-pom/реактор (этап 1 модульности) — по готовности к
-  параллельной разработке.
+- The precise `Envelope.meta` schema (attribute set) will be refined during stage implementation.
+- When to introduce the parent POM/reactor (modularity stage 1), according to
+  readiness for parallel development.

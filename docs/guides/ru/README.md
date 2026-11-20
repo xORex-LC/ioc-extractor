@@ -1,16 +1,25 @@
-# Гайды — русские версии
+# Russian operator and integration guides
 
-Русские переводы operator/integration-руководств из [../](../). При изменении
-поведения или конфигурации обе языковые версии обновляются вместе. Англоязычный
-[library publication guide](../library-publication.md) отдельного перевода пока
-не имеет.
+<a id="гайды--русские-версии"></a>
 
-| Гайд | О чём |
+This English-only index links the Russian counterparts of the
+[canonical guides](../README.md). Guide prose remains Russian; contract changes
+must update both language versions.
+
+| Russian guide | Purpose |
 |---|---|
-| [configuration.md](configuration.md) | Полный операторский справочник поддерживаемой конфигурации, допустимых значений и рекомендаций |
-| [deployment.md](deployment.md) | Установка, обновление, reconciliation конфигурации, backup, rollback, restore и uninstall |
-| [daemon-operations.md](daemon-operations.md) | Подача sources, health/logs, failed files, backlog, retention и recovery daemon |
-| [canonical-record-lifecycle.md](canonical-record-lifecycle.md) | Fresh-install TTL, двухэтапная activation, health, retention и rollback boundary |
-| [ioc-aggregate.md](ioc-aggregate.md) | Контракт IOC aggregate, empty-start activation, ordered names, health и coordinated rollback |
-| [dataframe-import.md](dataframe-import.md) | Настройка и эксплуатация contract-driven local/SMB CSV import, preview, status, replay и recovery |
-| [remote-storage-sync.md](remote-storage-sync.md) | Работа с удалённым хранилищем (SMB sync): устройство fetch/publish, конфигурация и подбор значений, права/сбои/восстановление, настройка SMB-шары на Linux и Windows |
+| [configuration](configuration.md) | Supported configuration and operator choices |
+| [deployment](deployment.md) | Installation, upgrade, configuration reconciliation and rollback |
+| [daemon-operations](daemon-operations.md) | Intake, health, failed work, stopping and backup |
+| [bulk-resource-sizing](bulk-resource-sizing.md) | Independent resource budgets and qualification limits |
+| [canonical-record-lifecycle](canonical-record-lifecycle.md) | Fresh validity preset and explicit existing-DB activation |
+| [ioc-aggregate](ioc-aggregate.md) | Aggregate feed, population, identity and rollback |
+| [dataframe-import](dataframe-import.md) | Managed local/SMB CSV contracts, preview, status and replay |
+| [ioc-processing-routes](ioc-processing-routes.md) | Document/processed-import plans and branch selection |
+| [remote-storage-sync](remote-storage-sync.md) | SMB fetch/publish setup, ownership and recovery |
+| [library-publication](library-publication.md) | Bundle preparation, protected publication and immutable recovery |
+
+The [Russian library guide index](libraries/README.md) links all six artifacts
+and their recipes. [Library development](libraries/development.md) explains
+reuse and version ownership. [Project documentation](../../README.md) maps
+capabilities, policies, generated references and historical decisions.

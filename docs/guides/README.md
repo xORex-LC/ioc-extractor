@@ -1,30 +1,39 @@
-# Гайды (guides)
+# Operator and integration guides
 
-Практические руководства для администраторов и разработчиков: «как настроить и
-эксплуатировать», простым языком, без привязки к внутренней реализации.
-Авторитетные описания архитектуры и поведения остаются в `docs/*.md`
-(например, [../sync.md](../dev/sync.md)); гайд не должен противоречить им — при
-изменении поведения обновляются оба.
+<a id="гайды-guides"></a>
 
-Основная версия operator/integration-гайдов — английская, в корне этого
-каталога; русские версии находятся в [ru/](ru/) и обновляются парой.
-Новые руководства по маршрутизации IOC, diagnostics API и публикации библиотек пока существуют
-только на английском; русские ссылки на них оставлены в смежных гайдах.
+Practical instructions for using, operating or extending the service. Internal
+flows belong in [capability docs](../README.md#developer-capabilities); system-wide
+rules belong in root policies. Each guide owns its configuration/actions and
+links to sources of truth rather than duplicating implementation inventories.
 
-| Гайд | Русская версия | О чём |
+English guides have Russian counterparts under ru/. Both versions change with
+the contract. README indexes are English-only in both directory trees.
+
+| Guide | Russian | Purpose |
 |---|---|---|
-| [configuration.md](configuration.md) | [ru/configuration.md](ru/configuration.md) | Полный операторский справочник всех поддерживаемых параметров, значений и рекомендаций; источник для настройки production template |
-| [deployment.md](deployment.md) | [ru/deployment.md](ru/deployment.md) | Установка, upgrade, reconciliation конфигурации, backup, rollback, restore и uninstall |
-| [bulk-resource-sizing.md](bulk-resource-sizing.md) | — | Ресурсный профиль массовой обработки, границы concurrency, измерение памяти/диска и завершение квалификации |
-| [daemon-operations.md](daemon-operations.md) | [ru/daemon-operations.md](ru/daemon-operations.md) | Повседневная эксплуатация daemon: подача файлов, health/logs, failed sources, backlog, retention и recovery |
-| [canonical-record-lifecycle.md](canonical-record-lifecycle.md) | [ru/canonical-record-lifecycle.md](ru/canonical-record-lifecycle.md) | Fresh-install TTL, двухэтапная activation для upgrade, health, retention и rollback boundary |
-| [ioc-aggregate.md](ioc-aggregate.md) | [ru/ioc-aggregate.md](ru/ioc-aggregate.md) | IOC aggregate contract, empty-start activation, ordered names, health и coordinated rollback |
-| [dataframe-import.md](dataframe-import.md) | [ru/dataframe-import.md](ru/dataframe-import.md) | Настройка и эксплуатация contract-driven local/SMB CSV import, preview, status, replay и recovery |
-| [ioc-processing-routes.md](ioc-processing-routes.md) | — | Включение именованных IOC-планов для документа и processed import, проверка результата и восстановление |
-| [remote-storage-sync.md](remote-storage-sync.md) | [ru/remote-storage-sync.md](ru/remote-storage-sync.md) | Работа с удалённым хранилищем: как устроены fetch/publish и push-уведомления, справочник конфигурации с подбором значений, права/сбои/восстановление/мониторинг, настройка SMB-шары на Linux (Samba) и Windows Server, чек-листы |
-| [library-publication.md](library-publication.md) | — | Публикация и проверка independently consumable Maven libraries |
-| [diagnostics-library.md](diagnostics-library.md) | — | Подключение общей diagnostics-библиотеки: коды сервиса, результаты, policy, bounded counts и обработка delivery failures |
-| [logging-library.md](logging-library.md) | — | Общий SLF4J API: каталог сервиса, typed fields, MDC, ECS helpers и явное маскирование |
-| [logging-library-boot.md](logging-library-boot.md) | — | Проверенный синхронный Boot ECS recipe: Java/YAML/XML, dataset/error ownership и ограничения backend |
-| [configuration-library.md](configuration-library.md) | — | Подключение проверки имён конфигурации: выбор источников, покрытие, наблюдение старых имён и решения сервиса |
-| [configuration-library-check.md](configuration-library-check.md) | — | Исполняемый пример ограниченного Spring-контекста с явными YAML/override-входами и запретом импортов |
+| [configuration](configuration.md) | [RU](ru/configuration.md) | Supported configuration and operator choices |
+| [deployment](deployment.md) | [RU](ru/deployment.md) | Installation, upgrade, configuration reconciliation and rollback |
+| [daemon-operations](daemon-operations.md) | [RU](ru/daemon-operations.md) | Intake, health, failed work, stopping and backup |
+| [bulk-resource-sizing](bulk-resource-sizing.md) | [RU](ru/bulk-resource-sizing.md) | Independent resource budgets and qualification limits |
+| [canonical-record-lifecycle](canonical-record-lifecycle.md) | [RU](ru/canonical-record-lifecycle.md) | Fresh validity preset and explicit existing-DB activation |
+| [ioc-aggregate](ioc-aggregate.md) | [RU](ru/ioc-aggregate.md) | Aggregate feed, population, identity and rollback |
+| [dataframe-import](dataframe-import.md) | [RU](ru/dataframe-import.md) | Managed local/SMB CSV contracts, preview, status and replay |
+| [ioc-processing-routes](ioc-processing-routes.md) | [RU](ru/ioc-processing-routes.md) | Document/processed-import plans and branch selection |
+| [remote-storage-sync](remote-storage-sync.md) | [RU](ru/remote-storage-sync.md) | SMB fetch/publish setup, ownership and recovery |
+| [library-publication](library-publication.md) | [RU](ru/library-publication.md) | Bundle preparation, protected publication and immutable recovery |
+
+## Reusable libraries
+
+Start with the [library catalog](libraries/README.md), or the
+[Russian guide index](ru/libraries/README.md). It covers concurrency, diagnostics,
+SLF4J logging and Boot ECS, configuration inspection and its restricted-context
+recipe, JDK control events and the explicit Spring adapter.
+[Development](libraries/development.md) ([Russian](ru/libraries/development.md))
+owns reuse/API/version changes; publication is the separate procedure above.
+
+## Compatibility paths
+
+Older `*-library*.md` paths are navigation pages to maintained guides under
+libraries/. Retain incoming historical links and useful anchors; keep normative
+content at its owning destination. A redirect page is not another contract copy.

@@ -1,5 +1,7 @@
 # Controlled configuration failure reports
 
+[Русская версия](ru/configuration-failure-reports.md)
+
 IOC turns configuration failures into operator reports containing fixed categories,
 declared field paths and corrective guidance. This boundary covers the YAML checker,
 the semantic checker and IOC's YAML/unknown-name failure analyses. It does not
@@ -63,17 +65,28 @@ from schema-qualified binding/validation failures.
 
 ## Failures and recovery
 
+The following categories describe the controlled command output. Normal startup
+uses the IOC-owned YAML/unknown-name analyses where applicable; this table does
+not promise that every ordinary Boot failure is rendered through the command's
+projection.
+
 | Situation | Controlled result | What remains unknown |
 |---|---|---|
+| Invalid checker invocation | `CONFIG.YAML_USAGE` or `CONFIG.SEMANTIC_USAGE`, exit 78 | No successful check; a blank YAML-only path uses `CONFIG.YAML_UNREADABLE` |
+| Missing/unreadable file or invalid path | `CONFIG.YAML_UNREADABLE`; invalid semantic path uses `CONFIG.SEMANTIC_UNREADABLE` | No successful parse, binding or validation |
 | YAML syntax failure | `CONFIG.YAML_INVALID`, optional one-based line/column, fixed apply guidance | Name, binding, semantic and registry checks have not completed |
+| Forbidden `spring.main.sources` declarations | `CONFIG.SEMANTIC_SOURCE_OVERRIDE` inside the semantic failure envelope | The restricted configuration source set was not accepted |
 | Unknown or removed IOC name | `CONFIG.UNKNOWN_PROPERTY`, names, applicable `CONFIG.LEGACY_*` hints | Successful binding and later checks |
 | Binding/conversion failure | `CONFIG.BINDING_FAILED`, schema-qualified path, type/token guidance | Semantic and registry results |
 | Field or global validation failure | `CONFIG.VALIDATION_FAILED`, distinct paths, constraint guidance | Complete acceptance and registry results |
 | Registry or processing-plan rejection | `CONFIG.REGISTRY`, fixed reference/plan guidance | Complete acceptance |
 | Unrecognized runtime failure | `CONFIG.CHECK_FAILED`, fixed investigation guidance | Failure category and validation completion |
 
-The semantic command retains its `CONFIG.SEMANTIC_INVALID` envelope and exit 78
-for failed checks. `CONFIG.CHECK_FAILED` is an incomplete check, not proof of an
+After syntax succeeds, context failures use the `CONFIG.SEMANTIC_INVALID`
+envelope and exit 78. Earlier usage/readability/syntax failures keep their own
+codes without that envelope. Success is `CONFIG.YAML_VALID` or
+`CONFIG.SEMANTIC_VALID` with exit 0; YAML-only success establishes syntax alone.
+`CONFIG.CHECK_FAILED` is an incomplete check, not proof of an
 operator mistake. JVM `Error` is not caught by this boundary. Detailed technical
 investigation needs a separate controlled diagnostic policy; copying the original
 throwable into this operator report would reopen the disclosure path.
@@ -82,6 +95,17 @@ Normal startup and third-party failure analyzers/loggers may still emit their ow
 exceptions. In particular, Spring YAML loading may log document contents at DEBUG;
 arbitrary logging appenders are outside console suppression. These reports do not
 establish a whole-process secret-output guarantee.
+
+For an operator, a rejected precheck means correcting a separate candidate and
+checking again before apply. Check every effective source: an environment/JVM
+override or imported document may cause the failure even when the candidate
+looks correct. An incomplete check requires investigation of source loading or
+the checker environment before claiming acceptance.
+
+These reports do not perform rollback. The installed helper owns atomic YAML
+replacement, restart, health checks and file restoration. A restored file does
+not undo runtime state changes or prove a healthy service; use the
+[operator procedure](../guides/configuration.md#how-configuration-is-applied).
 
 ## Extension contract
 
@@ -107,6 +131,8 @@ direct dependency declarations rather than depending on accidental transitives.
 - [Semantic checker tests](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/IocSemanticConfigurationCheckTest.java),
   [syntax checker tests](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/IocYamlSyntaxCheckTest.java)
   and [DEBUG reporter regression](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/IocYamlConfigurationFailureAnalyzerTest.java).
+- [Effective-source tests](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/IocConfigurationContextIT.java)
+  and [installed helper](../../packaging/templates/ioc-config).
 
 ## When to update this document
 

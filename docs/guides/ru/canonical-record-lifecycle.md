@@ -1,155 +1,206 @@
-# Жизненный цикл canonical-записей
+# Жизненный цикл канонических записей
 
-Этот гайд объясняет оператору, как включить и наблюдать фиксированный срок
-актуальности записей. Механизм управляет тем, какие canonical IOC-записи активны
-внутри ioc-extractor. Он не доставляет команды удаления в DNS/firewall и не
-считает отсутствие записи в одном source document её отзывом.
+[English version](../canonical-record-lifecycle.md)
+
+Руководство объясняет оператору включение и наблюдение фиксированного срока
+актуальности записей. Механизм управляет активностью канонических IOC внутри
+ioc-extractor. Он не доставляет команды удаления в DNS/firewall и не считает
+отсутствие строки в одном исходном документе её отзывом.
 
 ## Ожидаемое поведение
 
-Каждое успешное canonical confirmation назначает записи настроенный срок жизни.
-Повторное принятое наблюдение продлевает активный lifecycle. Если до deadline не
-поступило нового подтверждения, запись удаляется из active membership в SQLite,
-копируется в bounded history и исчезает из mutable CSV-проекций. Наблюдение
-после expiry создаёт новый lifecycle и новый непереиспользуемый canonical row
-ID. Поле `id` в immutable export отделено от него: это reusable export slot.
-Surviving active rows сохраняют slot, а slot expired lifecycle позднее может
-быть назначен новой lifecycle.
+Каждое успешное каноническое подтверждение назначает записи настроенный срок.
+Повторное принятое наблюдение продлевает активную lifecycle. На границе срока
+запись перестаёт быть активной, включая точное равенство. Ограниченная очистка
+позже переносит её в history и обновляет изменяемые CSV; эти файлы могут кратко
+отставать от канонических active reads. Наблюдение после истечения создаёт новую
+lifecycle и новый непереиспользуемый canonical row ID. Поле `id` в immutable
+export — отдельный переиспользуемый export slot: выжившие активные строки
+сохраняют слот, а освободившийся слот истёкшей lifecycle позднее может получить
+новая lifecycle.
 
-Active set может быть пустым — это нормальное состояние. Каждый source document
-считается неполной пачкой наблюдений: отсутствующие в новом документе записи не
-отзываются досрочно, а доживают оставшийся TTL.
+Активный набор может законно быть пустым. Каждый исходный документ считается
+неполным набором наблюдений: отсутствующие в последнем документе записи
+сохраняют оставшийся срок и не отзываются досрочно.
 
-Expiry обновляет mutable-проекции `dataframe/*_generated.csv`, включая файлы
-только с заголовком при пустом active set. При этом он намеренно **не** создаёт
-immutable export slice и не увеличивает insert-driven export revision. Когда
-следующий принятый source добавит новые строки, обычный export сформирует срез,
-содержащий только записи, активные на общем snapshot time. Если expired IOC
-вернутся как новые lifecycle, сервис завершит и передаст новый slice даже при
-совпадении CSV bytes с историческим: более новая covered revision означает
-новую значимую delivery occurrence.
+Истечение обновляет изменяемые `dataframe/*_generated.csv`, включая файлы только
+с заголовком при отсутствии активных строк. Оно намеренно **не** создаёт immutable
+export slice и не увеличивает export revision. Последующее публичное изменение,
+например вставка строки или изменение поля managed import, допускает обычный
+экспорт. Его срез содержит только записи, активные на общем времени snapshot.
+Если истёкшие IOC возвращаются как новые lifecycle, сервис завершает и доставляет
+новый срез даже при совпадении CSV со старым: более новая охваченная revision
+делает это отдельным значимым случаем доставки.
+
+Изменение `fixed-ttl` действует на последующие принятые подтверждения.
+Существующие сроки остаются прежними до нового подтверждения; отсутствующие
+строки не продлеваются. Повтор того же уже зафиксированного наблюдения не
+назначает свежий TTL.
 
 ## Новая установка
 
-Production packaging template включает режим `fixed` с TTL `12h`. History и
-complete confirmation receipts хранятся `30d`. В чистой БД legacy rows нет,
-поэтому безопасный guard `existing-records: reject` допускает activation без
-destructive migration.
+Production packaging template включает `fixed` с TTL `12h`. History и полные
+confirmation receipts хранятся `30d`. В чистой БД legacy rows нет, поэтому
+защитный `existing-records: reject` допускает активацию без разрушительной миграции.
 
-Встроенный classpath default остаётся `disabled`. Поэтому запуск jar без
-production template не включает TTL неожиданно.
+Встроенный classpath default остаётся `disabled`. Запуск jar без production
+template поэтому не включает TTL неожиданно.
 
 ## Обновление существующей установки
 
-Не совмещайте rollout нового binary и destructive legacy expiry в одном restart.
+Если фиксированный lifecycle уже активен, сохраняйте `fixed` и следуйте
+[процедуре deployment](deployment.md); не повторяйте legacy activation и не
+переходите в `disabled`. Следующая двухэтапная процедура предназначена для
+установки, чьи канонические записи ещё используют совместимость без TTL.
 
-1. Создайте единый recovery point из active immutable application, полной
-   operator configuration, `ioc-dataframe.db` и `ioc-service.db`. Включите SQLite
-   side files либо используйте SQLite-consistent backup при остановленном сервисе.
-2. Разверните новый binary, сохранив в существующей конфигурации
-   `mode: disabled` и `existing-records: reject`. Installer не перезаписывает
-   operator file, а помещает новый fresh-install template в
-   `application.yml.new` для review.
-3. Выполните первый startup и дождитесь local health `UP`. Compatibility start
-   применит additive schema migrations, но сохранит все legacy rows активными.
-4. Остановите intake и optional synchronization. Установите `mode: fixed`,
-   положительный `fixed-ttl` и `existing-records: expire`.
-5. Перезапустите сервис. Admission архивирует и удалит все pre-activation rows
-   до открытия intake, stateful oneshot/export и lifecycle scheduler. Пустой
-   active storage и projections только с заголовком являются корректным итогом.
-6. Дождитесь health `UP`, проверьте aggregate lifecycle counts и возобновите
-   producers. Новые принятые наблюдения заново наполнят active set.
+Не совмещайте выпуск нового binary и разрушительное истечение legacy rows в
+одном перезапуске.
 
-Activation сохраняется в БД и необратима для этой dataframe database. После неё
-простая смена configuration обратно на `disabled` приводит к startup failure.
+1. Приостановите producers и удалённый intake, остановите сервис и создайте
+   единую recovery point из активного неизменяемого приложения, полной
+   операторской конфигурации, обеих SQLite databases и owned recovery files.
+   Используйте SQLite-consistent backup либо сохраните согласованные side files;
+   не копируйте работающую основную БД без её WAL. Сохраните завершённые срезы,
+   необходимые для доставки.
+2. Разверните новый binary, оставив в существующей конфигурации `mode: disabled`
+   и `existing-records: reject`. Installer сохраняет операторский файл и
+   записывает новый шаблон установки как `application.yml.new` для проверки.
+3. Запустите один раз и потребуйте local health `UP`. Совместимый старт
+   применяет аддитивные schema migrations, но оставляет все legacy rows активными.
+4. Приостановите producers, остановите сервис и сохраните согласованную
+   pre-activation recovery point. Установите `mode: fixed`, выберите
+   положительный `fixed-ttl` и задайте `existing-records: expire`.
+5. Перезапустите. Admission архивирует и удаляет все pre-activation rows до
+   открытия intake, stateful oneshot/export и lifecycle scheduling. Пустое
+   активное хранилище и проекции только с заголовком являются допустимым итогом.
+6. Потребуйте health `UP`, проверьте агрегированные lifecycle counts и
+   возобновите producers. Новые принятые наблюдения наполнят активный набор.
+
+Активация сохраняется и однонаправленна для этой dataframe DB. После неё смена
+только конфигурации обратно на `disabled` приводит к отказу запуска. Если
+активация прервалась, оставьте intake на паузе, исправьте причину и перезапустите
+с той же принятой политикой. Уже архивированные batches не откатываются.
+Для проверки файла и его активации используйте
+[configuration check/apply](configuration.md); корректный файл сам по себе не
+доказывает database admission и не отменяет прежнюю каноническую транзакцию.
 
 ## Health и системные часы
 
 Сервис использует системные UTC-часы хоста через изолированную lifecycle clock
-boundary. Поддерживайте NTP/time synchronization и не откатывайте часы назад для
+boundary. Поддерживайте NTP/time synchronization и не откатывайте часы ради
 продления актуальности IOC.
 
 ```bash
 ioc health --component lifecycle
 ioc health --json
-curl --fail --silent \
+curl --noproxy '*' --silent --show-error \
   http://127.0.0.1:8081/actuator/health/lifecycle
 ```
 
-Lifecycle component показывает только агрегаты и не возвращает IOC или source
-identifiers.
+Lifecycle component показывает только агрегаты и не возвращает IOC или
+идентификаторы источников. Основные поля:
 
 | Поле | Значение |
 |---|---|
+| `admission` | Допуск к каноническим данным: `PENDING`, `PREPARING`, `ADMITTED` или `FAILED` |
 | `activation` | Сохранённое состояние `DISABLED_COMPATIBLE`, `ACTIVATING` или `ACTIVE` |
-| `clock` | Безопасное, временно clamped или unsafe effective UTC |
-| `dueRecords` | Физически присутствующие записи после active boundary |
-| `historyRecords` | Количество сохранённых закрытых lifecycle snapshots |
-| `pendingProjections` | Mutable projections, ожидающие convergence |
-| `dueBacklogAgeMs` | Возраст самой старой due-записи, ещё не перенесённой в history |
-| `artifacts` | Aggregate stored/due/history counts по артефактам |
+| `clock` | Безопасное, временно ограниченное или небезопасное effective UTC |
+| `dueRecords` | Физически присутствующие строки, уже вышедшие за активную границу |
+| `historyRecords` | Сохранённые snapshots закрытых lifecycle |
+| `pendingProjections` | Изменяемые проекции, ожидающие сходимости |
+| `dueBacklogAgeMs` | Возраст самой старой просроченной строки, ещё не архивированной |
+| `artifacts` | Агрегаты stored/due/history отдельно по артефактам |
+| `latestCycle`, `lastFailureCode` | Последнее состояние reconciliation и необязательный сохранённый код отказа |
+| `clockBackwardSkewMs`, `clockClampAgeMs` | Наблюдаемое обратное смещение и длительность ограничения часов |
 
-`DEGRADED` допустим только для краткого recoverable clamp или convergence lag.
-`DOWN` после clock rollback означает fail-closed: исправьте часы хоста и
-перезапускайте сервис только после восстановления достоверного UTC. Не правьте
-lifecycle timestamps или control rows вручную.
+CLI обращается к работающему daemon, а не локальной БД. Он возвращает `0` при
+`UP`, `1` при другом результате health, включая `DEGRADED`, и `2` при
+недоступном endpoint или непригодном ответе. Пример curl сохраняет JSON с
+состоянием degraded/down для изучения; успех curl сам по себе не означает
+приёмку health. Если установка использует другие host/port, измените адрес.
 
-## Retention и capacity
+`DEGRADED` может означать незавершённый admission, краткое ограничение часов,
+ожидающие проекции, старый due backlog или незавершённый/неудачный цикл reconcile.
+До возобновления intake после cutover потребуйте `UP`.
+`DOWN` после отката часов означает защитный отказ: исправьте часы и
+перезапускайте только после восстановления достоверного UTC. Не меняйте
+lifecycle timestamps и control rows вручную.
 
-Expiration и retention независимы. Expiration немедленно прекращает активное
-использование; history retention позднее удаляет audit snapshots индексированными
-bounded batches. Receipt retention управляет только кэшем ETL-skipping
-confirmation. Удаление history не сбрасывает lifecycle/canonical-ID allocators.
+## Retention и ёмкость
 
-У export slots другое правило. Expiration и history retention не
-перенумеровывают survivors. При следующем и без того допустимом export vanished
-lifecycle освобождают slots, новые lifecycle получают минимальные свободные
-положительные slots, а остаток выдаётся из durable high-water. Gaps допустимы до
-прихода новых rows; завершённые исторические slices никогда не переписываются.
+Истечение и retention независимы. Истечение немедленно прекращает активное
+использование; history retention позднее удаляет audit snapshots
+индексированными ограниченными batches. Полные receipts позволяют совместимое
+confirmation replay без повторения ETL; их срок истекает по отдельному
+retention contract. Это не неограниченный архив и не замена backup. Удаление
+history не сбрасывает lifecycle или canonical-ID allocators.
 
-Defaults рассчитаны на десятки тысяч и порядок ста тысяч active rows:
+У export slots другой контракт. Истечение и history retention не
+перенумеровывают выживших. При следующем и без того допустимом экспорте
+исчезнувшие lifecycle освобождают слоты, новые занимают минимальные свободные
+положительные номера; остаток выдаётся из сохранённого high-water. Пробелы
+допустимы до новых строк, исторические срезы никогда не переписываются.
 
-- `backstop-interval: 5s` повторяет correctness-проверку при потере deadline hint;
-- `batch-size: 1000` ограничивает одну SQLite writer transaction;
-- `history-cleanup-interval: 1h` задаёт частоту independent cleanup discovery;
-  существующий backlog продолжается immediate bounded follow-up tasks;
+Поставляемые runtime defaults:
+
+- `backstop-interval: 5s` повторяет проверку при потере deadline hint;
+- `batch-size: 1000` ограничивает каждую SQLite writer transaction;
+- `history-cleanup-interval: 1h` задаёт независимое обнаружение очистки;
+  существующий backlog продолжается немедленными ограниченными задачами;
 - history и receipt retention равны `30d`.
 
-Пустой backstop tick только перечитывает indexed nearest deadline: он не
-запускает reconcile cycle и не пишет heartbeat row. Material reconciliation и
-cleanup outcomes остаются видны в logs и aggregate health.
+Пустой backstop tick только перечитывает индексированный ближайший срок. Он не
+создаёт reconcile cycle или heartbeat row. Существенные итоги reconciliation и
+очистки видны в logs и aggregate health.
 
 Перед изменением batch size используйте aggregate health и query-plan/load
-evidence. Не создавайте job на каждую запись и не используйте размер SQLite-файла
-как доказательство retention: удалённые страницы могут оставаться в файле до
-обслуживания БД.
+evidence. Не создавайте задачу на запись и не считайте размер SQLite-файла
+доказательством retention: удалённые страницы могут оставаться до обслуживания БД.
 
 ## Граница rollback
 
-До activation обычный application rollback может вернуть matching binary и
-configuration, сохранив additive database schema. После activation rollback
-означает остановку сервиса и совместное восстановление matching pre-activation
-application, configuration и **обеих** SQLite databases. Восстановление только
-одной БД или только YAML создаёт неподдерживаемую смешанную точку.
+Активация lifecycle и миграция схемы — отдельные границы rollback. Даже до
+активации TTL совместимый старт может обновить БД за пределы поддерживаемого
+старым binary формата. Аддитивность миграции не доказывает обратную совместимость:
+migrator отвергает более новый `user_version`.
 
-Generated CSV/export можно перестроить, но уже доставленные remote files и
+Rollback только binary/configuration допустим лишь после квалификации именно
+этой комбинации против обеих текущих схем. Иначе остановите сервис и восстановите
+согласованную pre-upgrade recovery point. Отмена lifecycle activation требует
+согласованной pre-activation point с совместимыми binary, configuration,
+**обеими** БД и owned recovery files. Не уменьшайте `user_version`, не удаляйте
+control rows и не восстанавливайте только одну БД/YAML.
+
+Mutable CSV можно перестроить через владельца проекции. Историческим immutable
+slices нужны исходные проверенные файлы; экспорт текущих строк не воспроизводит
+старый snapshot или идентичность доставки. Уже доставленные remote files и
 sources, перемещённые после backup, требуют отдельной reconciliation.
 
-## Проверка на disposable host
+## Проверка на отдельном тестовом хосте
 
-Repository-local проверка не требует root:
+Проверка из репозитория не требует root.
+
+В текущем smoke/load harness известна ошибка terminal filename
+([TOOL-10](../../KNOWN-ISSUES.md)): он ждёт прежнее done-имя, а Native архивирует
+запечатанный source. Команда ниже задаёт целевой сценарий, но её timeout не
+доказывает отказ TTL и не является завершённой квалификацией. До исправления и
+повторного запуска используйте focused lifecycle/projection/export tests для
+их контрактов, сохраняя отсутствие end-to-end evidence.
 
 ```bash
 make lifecycle-smoke
-make lifecycle-load
 ```
 
-Harness подаёт данные через обычный daemon ingestion, проверяет переход
-active-to-history, bounded retention, projection convergence и отсутствие reuse
-внутренних identities, а environment/query-plan/throughput report сохраняет под
-`.dev/`. Отдельные focused export tests проверяют stable/reusable slots и
-неизменяемость исторических slices. Финальный release candidate всё равно требует packaging
-fresh-install/upgrade/rollback проверки на disposable systemd host.
+Целевой сценарий подаёт данные через обычный daemon ingestion и проверяет переход из
+active в history, ограниченную retention, сходимость проекций и
+непереиспользование внутренних ID. При успешном запуске отчёт
+environment/query-plan/throughput сохраняется под `.dev/`.
+Отдельные focused export tests проверяют стабильные
+переиспользуемые слоты и неизменность исторического отображения. Для отдельного
+дорогого reference profile на 100k канонических строк запустите
+`make lifecycle-load`; его результаты load/RSS относятся к записанному окружению,
+а не гарантируются smoke run. Итоговому release candidate также нужна проверка
+packaging fresh-install/upgrade/rollback на отдельном systemd host.
 
 См. также [deployment guide](deployment.md),
 [configuration reference](configuration.md) и

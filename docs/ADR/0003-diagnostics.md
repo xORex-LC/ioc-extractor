@@ -1,61 +1,70 @@
-# 0003 — Подсистема диагностики и логирование
+> English translation of the historical Russian record. Decision/status/dates are preserved. [Russian original](ru/0003-diagnostics.md) (relative link addresses rebased on relocation).
 
-- **Статус:** принято (дизайн); реализация ждёт
-- **Дата:** 2026-06-21
-- **Связано:** [observability](../dev/observability.md),
+<a id="0003--подсистема-диагностики-и-логирование"></a>
+# 0003 — Diagnostics subsystem and logging
+
+- **Status:** accepted (design); implementation pending
+- **Date:** 2026-06-21
+- **Related:** [observability](../dev/observability.md),
   [../principles.md](../PRINCIPLES.md), [0007-logging-observability.md](0007-logging-observability.md)
 
-> **Поправка ([0007](0007-logging-observability.md)):** решение №8 (собственная
-> версионируемая JSON-схема лога) **отменено** — структурный лог принят как
-> **ECS** ([observability](../dev/observability.md)). Логирование выделено в отдельную
-> подсистему **observability** (отдельный модуль `platform-observability`),
-> отдельную от диагностики. Формулировки про логи ниже читать с этой поправкой.
+> **Amendment ([0007](0007-logging-observability.md)):** decision 8 (a custom
+> versioned JSON log schema) is **revoked** — structured logging adopts **ECS**
+> ([observability](../dev/observability.md)). Logging becomes a separate
+> **observability** subsystem (a separate `platform-observability` module),
+> distinct from diagnostics. Read the logging statements below with this amendment.
 
-## Контекст
+<a id="контекст"></a>
+## Context
 
-Диагностика — отдельная бизнес-логика: сервисы лишь формируют и отдают **данные**
-(код + контекст), из которых отдельная подсистема строит сообщение/отчёт/лог/
-мета-инфо пайплайна. Нужно подобрать паттерны и референс, разграничить
-«каталог в коде» и «декларативные шаблоны для UX», и задать подход к логированию.
+Diagnostics is separate business logic: services only construct and return
+**data** (code + context), from which a separate subsystem builds a message/report/
+log/pipeline metadata. We need patterns and references, a boundary between
+“catalog in code” and “declarative UX templates”, and a logging approach.
 
-## Решения
+<a id="решения"></a>
+## Decisions
 
-| # | Вопрос | Выбор | Обоснование | Отклонено |
+| # | Question | Choice | Rationale | Rejected |
 |---|---|---|---|---|
-| 1 | Что отдаёт продюсер | **Данные**: `Diagnostic(code, context, severity, category)` — без текста | Развязка продюсера от доставки/формата; переиспользование в отчётах/логах/пайплайне | Готовая строка-сообщение в продюсере |
-| 2 | Источник истины по ошибкам | **Каталог кодов в коде** (перечислимый) | Добавить ошибку = константа; генерация карты ошибок; стабильные id | Только декларативный список (теряем типобезопасность/перечислимость) |
-| 3 | Тексты сообщений | **Шаблоны по коду**: дефолт в каталоге, переопределение декларативно (bundle/yaml) дозированно | UX/i18n рядом со спецификой, без перенасыщения | Хардкод текста; всё в конфиге |
-| 4 | Поток ошибок | **Гибрид**: восстановимое → `Result`/`Notification`; фатальное → `DiagnosticException` на границах | Реализует «отдаём данные» + collect-and-continue; фатальное явно | Только исключения; только данные |
-| 5 | Рендер сообщений | **Spring `MessageSource`** за портом `DiagnosticRenderer` | Индустриальный резолв шаблонов + i18n | Свой форматтер |
-| 6 | Логирование | **Богатый DEBUG/TRACE + MDC** сейчас; структурный JSON — позже | Трассировка при разработке и готовность к сборщикам логов | Скудный лог; сразу тяжёлый JSON-стек |
-| 7 | Модель диагностики | **Собственный `Diagnostic`** (с оглядкой на RFC 9457) | Легче, без HTTP-семантики; контроль над расширением | `zalando/problem`/`ProblemDetail` как есть |
-| 8 | Структурный лог | **Собственная версионируемая/расширяемая JSON-схема** (semver) | Контроль и эволюция полей, готовность к сборщикам | Чужая фиксированная схема |
+| 1 | Producer output | **Data**: `Diagnostic(code, context, severity, category)` — no text | Decouple producer from delivery/format; reuse in reports/logs/pipeline | Ready-made message string in the producer |
+| 2 | Error source of truth | **Code catalog in source** (enumerable) | Adding an error means adding a constant; generated error map; stable IDs | Declarative list only (loses type safety/enumerability) |
+| 3 | Message text | **Templates by code**: catalog default, measured declarative overrides (bundle/yaml) | UX/i18n near specific behavior, without excess | Hardcoded text; everything in configuration |
+| 4 | Error flow | **Hybrid**: recoverable → `Result`/`Notification`; fatal → `DiagnosticException` at boundaries | Implements “return data” + collect-and-continue; explicit fatal failures | Exceptions only; data only |
+| 5 | Message rendering | **Spring `MessageSource`** behind a `DiagnosticRenderer` port | Established template resolution + i18n | Custom formatter |
+| 6 | Logging | **Rich DEBUG/TRACE + MDC** now; structured JSON later | Development tracing and readiness for log collectors | Sparse logs; a heavy JSON stack immediately |
+| 7 | Diagnostic model | **Own `Diagnostic`** (informed by RFC 9457) | Lighter, without HTTP semantics; control over extension | Unmodified `zalando/problem`/`ProblemDetail` |
+| 8 | Structured log | **Own versioned/extensible JSON schema** (semver) | Control and field evolution, collector readiness | Someone else's fixed schema |
 
-## Паттерны
+<a id="паттерны"></a>
+## Patterns
 
 Catalog/Registry · Value Object + Builder · Notification (Fowler) · Result/Either ·
 Strategy (`FailurePolicy`, `DiagnosticRenderer`) · Ports & Adapters · Observer/Event ·
 Template/MessageFormat.
 
-## Референсы
+<a id="референсы"></a>
+## References
 
-- **RFC 9457 Problem Details** + **`zalando/problem`** — структурные данные ошибки + реестр типов.
-- **Apache Calcite `Resources`** — каталог ошибок в коде + шаблоны (`@BaseMessage`).
-- **Spring `MessageSource` / `ProblemDetail`** — декларативные шаблоны, i18n.
-- **M. Fowler — Notification** — накопление.
+- **RFC 9457 Problem Details** + **`zalando/problem`** — structured error data + type registry.
+- **Apache Calcite `Resources`** — catalog in code + templates (`@BaseMessage`).
+- **Spring `MessageSource` / `ProblemDetail`** — declarative templates, i18n.
+- **M. Fowler — Notification** — accumulation.
 
-## Следствия
+<a id="следствия"></a>
+## Consequences
 
-- Новые порты: `DiagnosticSink`, `DiagnosticRenderer`, `MessageCatalog`; адаптеры
+- New ports: `DiagnosticSink`, `DiagnosticRenderer`, `MessageCatalog`; adapters
   `LoggingDiagnosticSink`, `MessageSourceRenderer`, `ReportDiagnosticSink`.
-- Модель `Diagnostic` + каталоги кодов — агностичное ядро (кандидат
+- The `Diagnostic` model + code catalogs form an agnostic core (a candidate for
   `platform/diagnostics`).
-- Стадии конвейера получают возможность прикреплять диагностики (мета-инфо).
-- Возможные новые зависимости при реализации: `logstash-logback-encoder` (позже),
-  опц. `zalando/problem` (если возьмём его модель вместо собственной).
+- Pipeline stages can attach diagnostics (metadata).
+- Possible new dependencies during implementation: `logstash-logback-encoder`
+  (later), optional `zalando/problem` (if we adopt its model instead of our own).
 
-## Открытые вопросы
+<a id="открытые-вопросы"></a>
+## Open questions
 
-Существенных нет. Конкретный набор ключей `context` уточняется по мере добавления
-стадий/кодов; версионируемая схема лога зафиксирована в
+None of substance. The precise set of `context` keys evolves as stages/codes are
+added; the versioned log schema is established in
 [observability](../dev/observability.md).

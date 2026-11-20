@@ -3,8 +3,9 @@
 An unrelated collector uses only the adapter's main dependency; its published
 POM must supply the core event classes, Spring Context and SLF4J API. Documentation
 classifiers exclude those dependencies so they cannot repair a broken main POM.
-Both exact Java examples from the [guide](../../../docs/guides/events-library.md)
-are extracted at execution time. No Boot runtime, logging provider, IOC bootstrap
+Exact Java examples from the [JDK guide](../../../docs/guides/libraries/events.md)
+and [Spring guide](../../../docs/guides/libraries/events-spring.md) are extracted
+at execution time. No Boot runtime, logging provider, IOC bootstrap
 or shared test-support dependency is present.
 
 The fixture checks partial synchronous delivery, original Error propagation,
@@ -22,3 +23,31 @@ Routing probes use fresh caches: the whole selected target absent, then only cor
 absent. A populated alternate must not repair either filtered probe; unfiltered
 controls prove it can supply exactly the missing bytes. Temporary inputs/caches
 are removed on exit. Failure is fatal; this is not registry publication evidence.
+
+Java/XML blocks must match both Russian guides before compilation. The original
+independent real-context assertions remain intact; no fixture behavior is inferred
+from matching translations alone. The
+[release record](../../../.github/release-notes/ioc-events-spring-0.3.0-rc.1.md)
+retains the original core/adapter handoff and successful Central/GitHub evidence.
+Run `make library-publication-test` for extraction and parity guards.
+
+## Source map and ownership
+
+| Source | Responsibility |
+|---|---|
+| [pom.xml](pom.xml) | Standalone Java 21 compiler, packaged dependencies/repositories and executable entry point |
+| [src/main/java/LibraryConsumer.java](src/main/java/LibraryConsumer.java) | Independent consumer assertions and calls into prepared guide examples |
+
+The harness supplies `LocalEventsExample`, `SpringEventsExample`. Generated guide sources live only in the
+temporary copy; the tracked consumer remains an independent contract witness.
+
+The POM excludes main APIs from classifier dependencies and supplies mediation,
+missing/unavailable core/Context/SLF4J profiles. Core main classes must arrive
+transitively through the adapter; the direct core entries request documentation
+classifiers only. Independent Java assertions use real Spring contexts and an
+inline service-owned executor. They do not prove asynchronous task completion,
+thread-pool ordering or durable delivery.
+
+The [fixture overview](../README.md) owns preparation, caches, routing, cleanup
+and common evidence limits. The [tool test reference](../../tests/README.md)
+distinguishes offline harness contracts from actual packaged consumption.
