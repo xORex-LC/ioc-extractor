@@ -109,6 +109,9 @@ and [import writer](../adapters/adapter-store-jdbc/src/main/java/com/iocextracto
 <a id="ops-10"></a>
 ### OPS-10 — Import status fails on a NULL retry deadline
 
+**Release disposition, 2026-11-17:** the maintainer deferred remediation beyond
+0.3.0. The defect remains open; its impact and completion criteria below apply.
+
 **Open · owner: JDBC status/bootstrap health.** `JdbcImportStatusReader` reads SQL
 NULL with `getObject("next_attempt_at_ms", Long.class)`, which the selected SQLite
 driver rejects. A real CLI reproduction after replay into `SNAPSHOT_PINNED` failed
@@ -136,6 +139,10 @@ and [JDBC ledger](../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/
 
 <a id="ops-12"></a>
 ### OPS-12 — Fetch landing can overwrite a concurrent input
+
+**Release disposition, 2026-11-17:** the maintainer deferred remediation beyond
+0.3.0. The defect remains open; coordinate all inbox writers and preserve the
+landing restrictions below. Deferral does not provide no-replace ownership.
 
 **Open · owner: fetch/local landing.** `finalPathFor` checks absence before download;
 `Files.move(ATOMIC_MOVE)` does not guarantee no-replace if a target appears later.
@@ -165,6 +172,10 @@ and [deployment](guides/deployment.md).
 
 <a id="ops-15"></a>
 ### OPS-15 — Unchecked migration failure can commit partial DDL
+
+**Release disposition, 2026-11-17:** the maintainer deferred remediation beyond
+0.3.0. The defect remains open; coordinated backup/restore and the abnormal-failure
+handling below remain necessary. Deferral does not establish migration atomicity.
 
 **Open · owner: SQLite schema migration.** `SqliteUserVersionSchemaMigrator.apply`
 rolls back `SQLException`, but its `finally` restores auto-commit without an
@@ -459,6 +470,79 @@ See the [module reference](../platform/platform-etl/README.md),
 [Pipeline](../platform/platform-etl/src/main/java/com/iocextractor/platform/etl/Pipeline.java),
 [runner](../platform/platform-etl/src/main/java/com/iocextractor/platform/etl/PipelineRunner.java)
 and [observer](../platform/platform-etl/src/main/java/com/iocextractor/platform/etl/PipelineObserver.java).
+
+<a id="arch-6"></a>
+### ARCH-6 — Bootstrap capability boundaries and assembly coupling
+
+**Deferred · owner: bootstrap/composition architecture.** On 2026-11-18 the
+maintainer moved `QUAL-BOOT-1` and its structural refactoring outside 0.3.0.
+The remaining debt is recorded here independently of temporary release plans;
+no implementation version or completion date is promised.
+
+The flat composition package combines configuration inspection, processing,
+storage, lifecycle, import, sync/export and health. More significantly,
+`IocRouterConfiguration` calls `AppConfig.artifactDefinitions/artifactPreparers`,
+while `DataframeImportRuntimeConfiguration` calls its identity/schema/allocator
+factories. Preflight, compilers and router consumers share package-private types.
+These couplings make capability changes harder to isolate; moving files alone
+would retain the coupling or require broader public visibility.
+
+`ProcessingPolicyFingerprint.addValue` includes record class names and component
+identity. Relocating configuration records can therefore change durable policy
+identity without changing YAML. Preserve existing model FQCN and fingerprint
+bytes until a deliberate compatibility decision. This is a maintainability and
+relocation constraint, not proof of a new runtime failure.
+
+Return when a dedicated bootstrap maintenance slice is selected or capability
+changes require these boundaries. Close through separately verified changes:
+
+- Characterize current fingerprint bytes, restart/admission behavior, Spring
+  conditions/bean names and package-private collaborators before relocation.
+- Reuse existing catalogs/factories to isolate cohesive artifact
+  schema/identity/preparation assembly from neighboring configuration objects.
+- Organize cohesive capabilities with minimal visibility and matching tests;
+  keep health indicators with their capability. Separate moves from algorithm,
+  public API, Maven boundary and fingerprint-version changes.
+- Check resource/reflection/Spring FQCN, lifecycle/recovery behavior, affected
+  documentation and normal reactor/analyzer gates.
+
+See [AppConfig](../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java),
+[router composition](../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/IocRouterConfiguration.java),
+[import composition](../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/DataframeImportRuntimeConfiguration.java),
+[fingerprint](../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/ProcessingPolicyFingerprint.java)
+and the [bootstrap reading map](../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/README.md).
+
+<a id="code-6"></a>
+### CODE-6 — Deferred consolidation and orchestration refactoring
+
+**Deferred · owner: the capability maintainers below, coordinated by code-health
+review.** On 2026-11-18 the maintainer moved the following proposed refactoring
+outside 0.3.0 because its implementation and requalification scope is too large
+for this release. The findings remain debt; lower analyzer counts are not an
+acceptance criterion. The scope is finite, not a container for unrelated future
+cleanup. Bootstrap organization is tracked separately as [ARCH-6](#arch-6).
+
+| Retained intake / owner | Remaining debt | Return and acceptance boundary |
+|---|---|---|
+| `QUAL-CPD-14` / JDBC storage | Repeated schema-name indexing and ordered public-header knowledge | Shared package-private ownership after null/duplicate/order/error characterization; reuse `JdbcSql`; preserve SQL, transactions and migrations |
+| `QUAL-CPD-16` / application lifecycle | Repeated unique/nonblank artifact-catalog validation in projection, history and reconciliation | Compare all three contracts before sharing validation; preserve copy/order and distinct invalid-input outcomes; retain separate cadence/work/clock owners |
+| `QUAL-CPD-08` / daemon lifecycle | Repeated executor shutdown/await/interrupt protocol around different scheduler states | Local stop helper only after timeout/interruption/stop-versus-follow-up tests; timer/admission/cancellation remain local; no universal scheduler base |
+| `QUAL-CPD-02/03` / IOC observability and bootstrap | Repeated diagnostic-summary fields and common event metadata MDC | Share only common mapping; preserve handler-specific fields, scope restoration and failure behavior; keep application result types and IOC schema out of reusable libraries |
+| `QUAL-CPD-12` / CSV import | Repeated header/full-read parser opening and Reader stack | Local owned scope only after partial-initialization cleanup tests; preserve charset/separator/limit order, exception/cause/messages and consumer failures |
+| `QUAL-PMD-03/04/06/14` / export, ingest, extraction and import composition | Long constructor lists mix explicit ports with operational settings | Consider cohesive immutable settings where justified; preserve validation; no dependency bundle or builder solely to reduce arity |
+| `QUAL-PMD-01/02/05/07/10/11/15/16/17/19` / ingest, sync, import, storage and bootstrap | Complex durable workflows and fingerprint serialization | One behavior table and characterization per method, then bounded typed/private steps; preserve commit/recovery/idempotency, primary/suppressed failures and fingerprint bytes |
+
+Activate a selected slice when its capability changes or a dedicated maintenance
+iteration is accepted. Record the invariant, owner, compatibility boundary and
+meaningful tests before changing it. Existing accepted enum/model duplication,
+compatibility constructors and explicit port wiring are not automatically new
+refactoring tasks. Deferral changes no analyzer rule, suppression, coverage floor,
+test integrity check or release security obligation. Known runtime defects retain
+their own IDs and dispositions.
+
+See [storage](dev/storage.md), [lifecycle](dev/canonical-record-lifecycle.md),
+[ingestion](dev/ingestion.md), [observability](dev/observability.md) and
+[testing policy](TESTING.md) for the behavior that future slices must preserve.
 
 ### External-harness acceptance for TOOL-4
 

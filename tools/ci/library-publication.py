@@ -27,6 +27,11 @@ CENTRAL = 'https://repo.maven.apache.org/maven2'
 GITHUB = 'https://maven.pkg.github.com/xorex-lc/ioc-extractor'
 PORTAL = 'https://central.sonatype.com/api/v1/publisher'
 SUFFIXES = ('.pom', '.jar', '-sources.jar', '-javadoc.jar')
+# Match the application's admitted release syntax: SemVer core, optional rc.N
+# starting at 1, and a development-only SNAPSHOT suffix. Use ASCII digits.
+VERSION_NUMBER = r'(?:0|[1-9][0-9]*)'
+VERSION_BASE = rf'{VERSION_NUMBER}\.{VERSION_NUMBER}\.{VERSION_NUMBER}'
+VERSION_RELEASE = rf'{VERSION_BASE}(?:-rc\.[1-9][0-9]*)?'
 # Each component has an exact dependency contract; adding a component does not
 # relax the zero-dependency checks for the existing JDK-only libraries.
 COMPONENTS = {
@@ -125,7 +130,7 @@ def require_release_admission(component):
 
 
 def version_check(version, release=False):
-    require(re.fullmatch(r'\d+\.\d+\.\d+(?:-rc\.\d+|-SNAPSHOT)?', version), 'invalid version')
+    require(re.fullmatch(rf'{VERSION_BASE}(?:-rc\.[1-9][0-9]*|-SNAPSHOT)?', version), 'invalid version')
     require(not release or not version.endswith('-SNAPSHOT'), 'snapshot publication is not admitted')
     return version
 
@@ -134,8 +139,8 @@ def release_version(component_name, tag, branch):
     """Admit only this component's tag on its matching product release branch."""
     require(component_name in COMPONENTS, 'unknown component')
     artifact = COMPONENTS[component_name]['artifact']
-    tag_match = re.fullmatch(re.escape(artifact) + r'-v(\d+\.\d+\.\d+(?:-rc\.\d+)?)', tag)
-    branch_match = re.fullmatch(r'release-(\d+\.\d+\.\d+)', branch)
+    tag_match = re.fullmatch(re.escape(artifact) + rf'-v({VERSION_RELEASE})', tag)
+    branch_match = re.fullmatch(rf'release-({VERSION_BASE})', branch)
     require(tag_match is not None, 'invalid component tag')
     require(branch_match is not None, 'select a release-X.Y.Z branch')
     version = tag_match.group(1)

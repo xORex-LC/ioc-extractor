@@ -16,37 +16,53 @@ language: "ru"
 обоснованные зависимости; принятые проверяемые границы защищены автоматически.
 Модульные cells в [матрице](../status-matrix.md) остаются открытыми: обновление
 общих документов и публикация библиотек сами по себе их не закрывают.
+Шесть библиотечных cells зачтены 2026-11-17 по unchanged implementation,
+предыдущему scoped review и проверке текущих boundaries/tests;
+[evidence](../../../../.github/release-evidence/ru/0.3.0.md#module-hardening-reconciliation-2026-11-17).
 
 Текущие правила принадлежат [ARCHITECTURE](../../../ARCHITECTURE.md),
 [MODULARIZATION](../../../MODULARIZATION.md), [BOUNDARIES](../../../BOUNDARIES.md)
 и [CONVENTIONS](../../../CONVENTIONS.md).
 
-## Оставшаяся работа
+## Оставшаяся работа 0.3.0
 
-1. Для каждого согласованного модуля сверить текущую и целевую карту пакетов,
-   ownership, public/internal surface, cycles и dependency direction.
-2. Разобрать `QUAL-BOOT-1`: корневой `com.iocextractor.bootstrap` объединяет
-   configuration, storage, export, sync, health и lifecycle. Выбрать capability
-   grouping после анализа совместной package-private работы и композиции.
-3. Согласовать необходимые изменения с `R030-QUAL` и удалить доказанно мёртвые
-   поверхности через `R030-RETIRE` до лишнего relocation.
-4. Выполнять moves проверяемыми срезами; отдельно рассматривать API rename,
-   algorithm change и изменение Maven boundary.
+1. Сверить фактическую карту пакетов, ownership, public/internal surface,
+   dependency direction и cycles в оставшихся module scopes.
+2. Зачесть существующие boundary checks и scoped evidence; новые отклонения
+   получают owner и обоснованный disposition.
+3. Подтвердить архитектурные ограничения текущего supported deployment и
+   согласовать затронутую документацию/matrix с фактически проверенным scope.
+4. Выполнить применимые проверки для реальных изменений кандидата; не заявлять
+   выполненные package moves или исправления на основании их плана.
 
-## Критерии закрытия среза
+## Отложенная реорганизация
 
-- Назначение и reading map модуля понятны; нет необоснованных flat/god packages.
-- Dependency direction, cycles и visibility рассмотрены; отклонения имеют
-  владельца и принятое решение, enforceable boundaries защищены checks.
-- Production/test packages согласованы; Spring metadata, reflection, Logback,
-  serialization и resource FQCN проверены после moves.
-- Package-private collaboration сохранена либо изменение visibility обосновано;
-  крупные composition classes проверены на cohesion.
-- Characterization/architecture tests и применимые gates подтверждают сохранение
-  supported behavior; README/capability/root maps обновлены в том же срезе.
-- Целевая карта и verification evidence отражены в модульной cell.
+По явному решению пользователя 2026-11-18 весь предложенный structural/technical
+refactoring перенесён за пределы 0.3.0. `QUAL-BOOT-1` изменён с `fix-now` на
+`deferred`; bootstrap assembly extraction и capability package moves больше
+не являются обязательными изменениями этого релиза. Это accepted scope change,
+а не устранение связности либо закрытие всех module cells.
 
-## Граница и зависимости
+Постоянная проблема, source entry points, owners и критерии возврата сохранены
+в [ARCH-6](../../../KNOWN-ISSUES.md#arch-6); связанные catalog/shutdown/logging/
+CSV/constructor/orchestration slices — в [CODE-6](../../../KNOWN-ISSUES.md#code-6).
+В частности, будущие moves должны учитывать direct calls из router/import
+configuration к AppConfig helpers, package-private collaboration и включение
+record FQCN/component identity в durable processing-policy fingerprint.
+
+Будущая итерация выбирается отдельно, без обещания конкретной версии. Перед
+relocation нужны compatibility characterization, минимальная visibility,
+проверка Spring/resource/reflection FQCN и соответствующие lifecycle/recovery
+и analyzer gates. Model identity и algorithms не меняются попутно с moves.
+
+## Критерии закрытия 0.3.0 и граница
+
+Согласованный оставшийся scope review рассмотрен; responsibility/dependencies/
+visibility и отклонения имеют owner/disposition, применимые boundaries защищены
+checks. Отсрочки ARCH-6/CODE-6 учтены явно. Для выполненных изменений есть
+meaningful verification, affected docs и module evidence; отложенные изменения
+не выдаются за выполненные. Финальная source/binary/target квалификация
+остаётся обязательством R030-REL.
 
 Исходный reactor считается подходящим; repository-wide rename, JPMS, одинаковое
 дерево слоёв для всех модулей и service extraction не входят в цель. Новый модуль

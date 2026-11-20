@@ -15,6 +15,12 @@ process. A global `-Drevision` or another `LIBRARY_VERSION` does not implement
 per-library versions, and a component version must still match the admitted
 product release branch. Component publication does not release the application.
 
+Admitted versions use ASCII `X.Y.Z` without leading zeros and optionally
+`-rc.N`, where `N` starts at 1. Development bundles may use `X.Y.Z-SNAPSHOT`;
+release signing/publication reject that suffix. Other SemVer prerelease names
+and build metadata are not admitted. Component tags and `release-X.Y.Z` branches
+follow the same numeric rules.
+
 ## Choose the operation and evidence
 
 | Stage | What it establishes | What remains |

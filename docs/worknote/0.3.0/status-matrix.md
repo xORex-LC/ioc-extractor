@@ -8,7 +8,8 @@ language: "ru"
 
 # Матрица состояния релиза 0.3.0
 
-Состояние на консолидацию 2026-11-08; это roadmap, не отчёт fresh gate.
+Консолидация 2026-11-08; модульный зачёт уточнён 2026-11-17, scope переноса
+рефакторинга — 2026-11-18. Это roadmap, не отчёт fresh gate.
 Правила переходов: [execution-model](execution-model.md).
 Исторические outcomes и точные identities:
 [qualification record](../../../.github/release-evidence/ru/0.3.0.md) и
@@ -23,37 +24,38 @@ language: "ru"
 | R030-BUILD | verified | Tool adoption и ratchets приняты; required statuses активированы на main/release-0.3.0 и проверены в run 34679847573; fresh candidate gate всё равно обязателен |
 | R030-TEST global controls | verified | Lifecycle, coverage, regex, waits, external shells, pilots, Codecov и standalone consumers внедрены; module cells отдельны |
 | R030-LIB | verified | Шесть 0.3.0-rc.1 библиотек опубликованы и имеют отдельные records/consumers; TOOL-8 recovery, TOOL-6 API comparison и TOOL-9 versions остаются открытыми; ETL внутренний |
-| R030-QUAL | planned | Закрыть module review и актуальный intake в goal; зелёный analyzer не заменяет review |
-| R030-RETIRE | planned | Сверить поддерживаемые/history surfaces и выполнить RETIRE-APP-11; DEP-9/10 уже устранены |
-| R030-ARCH | planned | Подтвердить module/package maps и boundaries; QUAL-BOOT-1 остаётся review scope |
+| R030-QUAL | in-progress | Зачтены шесть library scopes; 20 module reviews открыты; structural/technical refactoring отложен решением 2026-11-18 в ARCH-6/CODE-6 |
+| R030-RETIRE | in-progress | Шесть library scopes keep-supported зачтены; RETIRE-APP-11 удалён, DEP-9/10 уже устранены; остальные module surfaces требуют review |
+| R030-ARCH | in-progress | Шесть library scopes зачтены с явным ARCH-LOG-1; QUAL-BOOT-1 deferred в ARCH-6; review фактических maps/boundaries остальных 20 scopes остаётся |
 | R030-SEC | in-progress | Старый dependency repair квалифицирован отдельно; SRC-3 и repository/workflow/publication-security review ещё открыты |
 | R030-DOC | verified | Документационный baseline закрыт:196 in-scope задач verified,2 security docs исключены пользователем (N/A); последующие code/candidate изменения требуют same-change обновлений |
 | R030-REL | planned | Все обязательные prerequisites, fresh security, compatibility/performance, packaging/upgrade/rollback и final release evidence |
 
 ## Module hardening matrix
 
-Сохранены состояния исходной матрицы; `planned` означает необходимость сверки
-owning DoD/evidence, а не доказанный дефект реализации. Старые `in-progress`
-также нужно сверить с фактическим компонентным scope. Публикация, глобальный
-TEST и обновление документа не закрывают прочие cells автоматически.
+`planned` означает незакрытый owning DoD, а не доказанный дефект реализации.
+2026-11-17 зачтены 24 cells шести библиотек: именованные scoped reviews,
+unchanged production/POM, проверенные test deltas, package/dependency/API и
+retirement dispositions. [Основания и границы](../../../.github/release-evidence/ru/0.3.0.md#module-hardening-reconciliation-2026-11-17).
+Публикация, глобальный TEST и README audit сами по себе cells не закрывают.
 
 | Maven module | `R030-QUAL` | `R030-RETIRE` | `R030-ARCH` | `R030-TEST` | affected `R030-DOC` |
 |---|---|---|---|---|---|
 | `platform/platform-errors` | `planned` | `planned` | `planned` | `planned` | `verified` |
-| `platform/platform-diagnostics-api` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `platform/platform-diagnostics-api` | `verified` | `verified` | `verified` | `verified` | `verified` |
 | `platform/platform-diagnostics` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `platform/platform-etl` | `planned` | `planned` | `planned` | `planned` | `verified` |
-| `platform/platform-events` | `planned` | `planned` | `planned` | `planned` | `verified` |
-| `platform/platform-concurrency` | `in-progress` | `planned` | `in-progress` | `in-progress` | `verified` |
-| `platform/platform-logging-slf4j` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `platform/platform-events` | `verified` | `verified` | `verified` | `verified` | `verified` |
+| `platform/platform-concurrency` | `verified` | `verified` | `verified` | `verified` | `verified` |
+| `platform/platform-logging-slf4j` | `verified` | `verified` | `verified` | `verified` | `verified` |
 | `platform/platform-observability` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `platform/platform-diagnostics-logging` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `core/ioc-domain` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `core/ioc-processing` | `planned` | `planned` | `planned` | `planned` | `verified` |
-| `core/ioc-application` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `core/ioc-application` | `planned` | `in-progress` | `planned` | `planned` | `verified` |
 | `core/ioc-application-tck` | `planned` | `planned` | `planned` | `planned` | `verified` |
-| `adapters/adapter-config-spring-boot` | `planned` | `planned` | `planned` | `planned` | `verified` |
-| `adapters/adapter-events-spring` | `planned` | `planned` | `planned` | `planned` | `verified` |
+| `adapters/adapter-config-spring-boot` | `verified` | `verified` | `verified` | `verified` | `verified` |
+| `adapters/adapter-events-spring` | `verified` | `verified` | `verified` | `verified` | `verified` |
 | `adapters/adapter-regex-re2j` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `adapters/adapter-psl` | `planned` | `planned` | `planned` | `planned` | `verified` |
 | `adapters/adapter-processing-camel` | `planned` | `planned` | `planned` | `planned` | `verified` |
@@ -68,23 +70,79 @@ TEST и обновление документа не закрывают проч
 
 ## Оставшаяся очередь
 
+Сверено 2026-11-18 с goals и принятыми scope changes. Это остаток проверки/
+квалификации, не список новых обязательных implementations. DOC закрыт,
+ARCH-5/6 и CODE-6 исключены из текущей implementation queue. Детальные
+findings без явного переноса ниже требуют решения о release impact; они не объявляются
+ни исправленными, ни автоматически обязательными к исправлению целиком.
+
 | Scope / item | Owner / goal | Следующий проверяемый результат |
 |---|---|---|
-| QUAL CPD/PMD intake, QUAL-BOOT-1 | QUAL/ARCH/TEST | Live characterization и disposition по компактным таблицам [QUAL](goals/R030-QUAL-code-health.md); метрики разрешают review, не механическое извлечение |
-| RETIRE-APP-11 StableArtifactId | RETIRE / application artifact | Подтвердить отсутствие Java/resource/reflection/API use, отдельное удаление declaration и obsolete reference с gates |
+| QUAL/ARCH review и dispositions | QUAL/ARCH/TEST | Подтвердить оставшийся scope review с зачётом evidence; реализация предложенного рефакторинга, включая QUAL-BOOT-1, deferred за 0.3.0 в [ARCH-6/CODE-6](../../KNOWN-ISSUES.md#arch-6) |
 | Supported/history retirement surfaces | RETIRE / owning modules | Сохранить migrations/ledger replay, engine fallback, SMB, maintenance, publish/TCK до принятого retirement; [контракт](goals/R030-RETIRE-retirement.md) |
+| Repository/workflow/publication security | SEC / repository and CI owners | Проверить фактические branch/review/status/tag/environment protections, CODEOWNERS, Actions pins/permissions/triggers, untrusted-PR isolation, credentials/secrets, suppressions/expiry и immutable provenance. Исторический activation run не доказывает текущие external settings |
 | Security: SRC-3 | SEC / dependency owners | Датированная affected-version матрица сохранена; reachability/owner disposition либо qualified remediation и fresh security evidence ещё нужны |
 | SEC-LOG-1 | SEC / observability | При отложенном аудите SECURITY-ENGINEERING сверить broad redaction statement с formatter-only structured-context contract; free message/Throwable/cause/suppressed требуют producer ownership; это не доказательство новой утечки |
-| DOC baseline | DOC / owning documents | [198 исходных задач](documentation/remaining-work.tsv):49 ADR,126 README,15 release paths и6 compatibility entries verified;2 security docs N/A по решению пользователя. Результат не закрывает SEC/REL и не заменяет final-candidate qualification |
-| Publication follow-ups | LIB/SEC/REL | TOOL-6 API comparison, TOOL-7 provenance, TOOL-8 protected configuration CI recovery, TOOL-9 independent-version Maven/CI transition; не повторная публикация исходных RC |
-| External target qualification | DATA/REL / operators | OPS-8 H5 две identities; неподтверждённые server/platform claims остаются skips; source default disabled |
-| Operational/source findings | Owning capabilities / REL | OPS-10…15, OUT-4, ING-11/13/15/16, SRC-3 и TOOL-10 сохраняются в [KNOWN-ISSUES](../../KNOWN-ISSUES.md); retirement записок не закрывает их |
-| Internal ETL reuse | QUAL/ARCH / ETL | Перед внешним reuse/publication сверить direct construction, compacted-policy input, post-effect observer failures и resource budget; текущие ограничения закреплены в README/Javadoc, ARCH-5 |
-| Final release comparison | REL | Повторить representative workloads с сопоставимым boundary; latency/RSS regression и unavailable checks получают явный disposition |
+| TOOL-8 configuration qualification | LIB/SEC/REL | Зафиксировать protected recovery оригинального RC с исходными signed files/tag/deployment и фактическими Central/GitHub consumer logs; local consumer не закрывает obligation; новая публикация/rebuild исходного coordinate не разрешены |
+| Conditional library/tooling obligations | LIB/SEC/REL | Выбрать application-only либо changed-component release scope. TOOL-6 — до следующего library release; TOOL-9 — до первого independently versioned release. TOOL-7 signing-fixture failure требует owner disposition; все три не считаются реализованными и не становятся автоматически новыми app gates |
+| Operational/source dispositions | Owning capabilities / REL | ING-11/13, OUT-3, SRC-2, OPS-11/13/14 не получили defer 2026-11-17/18: определить fix/accepted limitation/explicit scope change по supported scenarios. OPS-10/12/15 уже deferred; не переоткрывать их implementation |
+| Resource/harness/provenance gaps | DATA/REL / tooling and operators | ING-15/16 и OUT-4: complete-cycle capacity/clock/budget acceptance. TOOL-10: текущий lifecycle runner не прошёл весь сценарий. TOOL-11: status-only guard не подтверждает source-content identity local deploy. Проверить применимый путь либо явно ограничить claim допустимым disposition |
+| Final comparison and target qualification | REL / operators | Повторить согласованные representative workloads; оценить latency/memory/build/test/startup/FD/DB-output changes. Квалифицировать заявленные OS/SMB families на exact bundle; OPS-8 H5 остаётся target-specific defer, import default disabled |
+| Final candidate and go/no-go | REL / release owner | Clean source/version/toolchain/targets, fresh verify/PMD/docs/lint-shell, compatibility matrix, bundle/digest/build info, install/upgrade/coordinated rollback, notes/evidence и residual risks; publication отдельно авторизуется |
+
+Ближайший самостоятельный пакет — SEC: actual controls, SRC-3 и SEC-LOG-1,
+без переработки двух исключённых security docs. Затем свести оставшиеся
+module/known-issue/publication dispositions и выбрать candidate scope/targets;
+после фиксации source/bundle выполнить comparison и финальные gates/stand checks.
+Порядок фиксирует существующие obligations, не принимает новые fixes или defer.
 
 QUAL-REGEX-1 закрыт TEST-REGEX-03, QUAL-CSV-1 — POM metadata correction.
 RETIRE-DEP-9 (application→platform-errors) и RETIRE-DEP-10 (CSV→commons-io)
-уже устранены. Они не остаются кандидатами на повторное исправление.
+уже устранены. RETIRE-APP-11 удалён 2026-11-17 с README/notes и clean rebuild.
+Они не остаются кандидатами на повторное исправление.
+
+## Остаток по 20 модулям после зачёта — 2026-11-17
+
+Ниже — конкретные границы следующих срезов после сверки POM, source/test
+inventory и reading maps. Это не требование переписать каждый модуль.
+DATA, глобальные TEST/BUILD, regex и предыдущие fixes используются в исходном
+scope; полный module DoD требует ещё behavior/resource/visibility/retirement
+review. Упоминания CPD/PMD — навигация для review/disposition: реализация
+структурного рефакторинга перенесена в ARCH-6/CODE-6. Findings вне выбранного
+среза сохраняют owner/disposition из реестра; defer конкретного OPS не требует
+его повторного исправления для закрытия этой очереди.
+
+| Модуль | Что уже учитывается | Недостающий проверяемый результат |
+|---|---|---|
+| platform-errors | Internal JDK-only base; typed DiagnosticException consumers, module README | Проверить constructor/cause semantics и supported consumers; отсутствие собственной suite не является retirement rationale |
+| platform-diagnostics | LIB-2 оставил IOC codes/catalogs/rendering локально; существующие catalog tests | Проверить disclosure/exception/catalog invariants, public/internal surface и роль retained errors base |
+| platform-etl | LIB-2 D2 исправил self-suppression и terminal summary precedence; runner tests | Scoped review remaining observer/resource/failure-policy ordering; ARCH-5 остаётся условием внешнего reuse, не обязательством публиковать ETL |
+| platform-observability | LIB-3 закрыл OBS-9/10 и оставил IOC catalogs/observer здесь; JSON integration | Сверить service field ownership, MDC restoration и observer failure/resource boundaries; не переоткрывать исправленные ECS cases |
+| platform-diagnostics-logging | LIB-2 resilient sink и logging migration; bridge suites | Проверить severity/disclosure/throwable/delivery failure contracts в составе service boundary |
+| ioc-domain | TEST-REGEX-03, corpus/parity tests, domain PIT pilot | Зачесть конкретные invariant/boundary cases; проверить оставшиеся refang/attribute/classify/extract contracts, EXT-2/3 dispositions и API visibility |
+| ioc-processing | Pure mapping/classification, selected-plan и aggregate integration | Проверить providers/transforms/conditions, invalid/absent values, copy/ordering и field-mapping contracts; без нового framework/core coupling |
+| ioc-application | DATA/lifecycle/import/aggregate, recovery tests; RETIRE-APP-11 removed | По capability проверить authority/partial commits/recovery/resource bounds; ING-11/13, OUT-3, lifecycle intake, PMD-03…07/15…17/20…22 и CPD-16 остаются scoped review |
+| ioc-application-tck | Shared contract annotations/suites исполняются adapter consumers; вне production denominator | Проверить consumer discovery, oracle independence и поддерживаемые port obligations; отсутствие собственных suites не повод удаления |
+| adapter-regex-re2j | TEST-REGEX-03 закрыл fallback/composition; pattern parity | Проверить flags/offset/error boundaries и direct/runtime fallback consumers; RETIRE-REGEX-4 keep-supported |
+| adapter-psl | Guava boundary и registrable/subdomain tests | Проверить host normalization/invalid-input contracts и layer/API surface; dependency advisories относятся к SEC отдельно |
+| adapter-source-tika | Parser suites, independent PDF/DOCX/XLSX sentinels и boundary faults; README audit | Сверить complete writer/cause/cancellation/embedded-resource contracts; SRC-2/3 и ING-15 не закрыты corpus pass |
+| adapter-csv | DATA/aggregate/CSV-format checks; direct commons-io удалён | Import/export reader ownership, invalid/layout bytes и CPD-12; не выдавать CSV projection за canonical authority |
+| adapter-processing-camel | Required selected-plan routing, runtime lifecycle и budget suites | Проверить plan/admission/cancellation/partial result/resource behavior; OUT-4 остаётся отдельной workload qualification |
+| adapter-manifest-json-jackson | Manifest mapping/round-trip и export integration | Проверить independent consumer shape/unsupported versions/parse failures и port visibility; Jackson remediation — отдельный SRC-3 scope |
+| adapter-store-jdbc | DATA TCK, migration/receipt/identity/slots integration; SQL keep-history | Review authorities/transaction/resource evidence; OPS-14 требует release disposition, OPS-10/15 уже deferred; CPD/PMD refactoring — CODE-6, без обязательного package splitting |
+| adapter-transport-smb | Encryption/change-notify/protocol suites; auth helper consolidation | Пересмотреть session/stream/cancel/lease ownership, PMD-02/12/18 и external skips; OPS-8 не выдавать за live pass |
+| adapter-ingest | ING-10 ordering/guard, file-ledger and startup tests | Hash/claim/retry/terminal paths, ING-11/13 и PMD-01; RETIRE-INGEST-1 keep-supported до support-window решения |
+| adapter-cli-picocli | Command/exit-code/JSON behavior и ранний CLI help | Review stateful command failures и stream/disclosure evidence; OPS-10 remediation deferred, CPD-02 refactoring — CODE-6 |
+| ioc-app | DATA packaged history, config/E2E/health tests, LIB integration | Review текущих collaborators/boundaries, worker shutdown и recovery evidence; QUAL-BOOT-1, assembly/package moves и предложенный CPD/PMD refactoring deferred в ARCH-6/CODE-6 |
+
+Рекомендуемый порядок: оставшиеся малые platform/core scopes → application
+capability slices с risk-based JDBC/ingest/sync проверками → adapters/bootstrap.
+OPS-10/12/15 остаются известными рисками, но их исправления по решению пользователя
+2026-11-17 не входят в текущую очередь 0.3.0. Наличие этих дефектов не разрешает
+механически менять соседние recovery/transaction contracts при refactoring.
+Предложенные package/layout/helper/workflow refactorings перенесены за 0.3.0
+решением 2026-11-18. Будущие package moves и изменения поведения выполняются
+разными срезами; текущий review и final gates этим переносом не закрываются.
 
 ## Принятые defer
 
@@ -93,6 +151,20 @@ RETIRE-DEP-9 (application→platform-errors) и RETIRE-DEP-10 (CSV→commons-io)
 | DATA-IMPORT-01 / ADR 0025 H5 / OPS-8 | Нет двухидентичного live fixture; это не pass и не расширение SMB support claim | Opt-in SmbManagedImportHardeningContractTest на конкретном family: denial, capability/namespace, claim, reconnect, disposition, exact purge |
 | Multi-daemon ingestion lease/fencing | 0.3.0 поддерживает single-daemon; process-local ING-10 guard не cross-process ownership | Реальный multi-daemon deployment requirement и отдельное durable fencing решение |
 | Security documents | По решению пользователя 2026-11-16 полный аудит/переработка/перевод SECURITY-ENGINEERING и THREAT-MODEL исключены из baseline 0.3.0 (N/A), не блокируют DOC/release closure | SDLC и модель угроз — отдельный scope одной из следующих версий; существующие security checks и отдельные findings не закрываются этим исключением |
+| OPS-10/12/15 remediation | Пользователь 2026-11-17 перенёс исправления в следующие релизы; дефекты open, impact/mitigations сохраняются; это не defer всех OPS | Отдельные исправления с regression tests по completion criteria KNOWN-ISSUES; в 0.3.0 достаточно сохранять честный residual-risk/support claim |
+| Structural/technical refactoring | Пользователь 2026-11-18 перенёс весь предложенный пакет за 0.3.0; QUAL-BOOT-1 из fix-now в deferred; проблема не устранена | Отдельно выбрать будущие slices по owners/risks/acceptance в [ARCH-6](../../KNOWN-ISSUES.md#arch-6) и [CODE-6](../../KNOWN-ISSUES.md#code-6); не обещание конкретной версии и не waiver release checks |
+| Internal ETL reuse / ARCH-5 | ETL остаётся внутренним; библиотечный consumer review не входит в текущую app implementation queue | Возврат до внешнего reuse/publication по [ARCH-5](../../KNOWN-ISSUES.md#arch-5); текущие внутренние contracts и tests сохраняются |
+| Diagnostic infrastructure expansion | TOOL-4 centralized external harness и TOOL-5 расширение PIT — ранее принятые отдельные scopes | Их trigger/acceptance в KNOWN-ISSUES; существующие external-skip dispositions и pilots не заменяются новыми обязательными платформами |
+
+## Свежесть и ещё не выбранный кандидат — 2026-11-18
+
+Вход сверки: docs/quality, `202cb3345c6ea37c08c915816028c8c2ae684f69`,
+`0.3.0-SNAPSHOT`, tracked worktree dirty, runtime stopped. Последние source gates
+passed на этом HEAD: verify `2026-11-17T13:53:47Z`, PMD
+`2026-11-17T13:54:10Z`; оба fresh=false после следующих doc changes.
+Эта запись не является fresh candidate verification. Финальные clean source,
+version/bundle/digest и targets ещё не выбраны; historical DATA/RC/live evidence
+сохраняет исходные identities и не прикрепляется автоматически к новым bytes.
 
 ## Обновление
 

@@ -145,7 +145,7 @@ Maven artifacts, plugins и Actions — исполняемый сторонни�
 
 | Угроза | Вектор | Контроль | Остаточный риск |
 |---|---|---|---|
-| **T** — известная уязвимость в dependency | vulnerable transitive/direct artifact | `SEC-SCA-1..4`: centralized versions, Enforcer, Dependabot, weekly + candidate Dependency-Check | сила зависит от operational activation (`SEC-SCA-2/3` = `Configured`) |
+| **T** — известная уязвимость в dependency | vulnerable transitive/direct artifact | `SEC-SCA-1..4`: centralized versions, Enforcer, Dependabot, Dependency-Check через день + на candidate | сила зависит от operational activation и свежести отчёта для выбранного source |
 | **S/T** — компрометация Maven-артефакта/плагина | artifact с ожидаемыми coordinates/version содержит иные байты | версии закреплены, transport checksums проверяют целостность загрузки | **GAP:** нет project-owned independently trusted digest/provenance verification. `SEC-SCA-5` = `Planned`; механизм выбирается отдельно |
 | **T** — компрометация GitHub Action | mutable tag ref переезжает на вредоносный коммит | `SEC-CI-3`: full-SHA pinning + version comment, tools contract отклоняет tag refs, Dependabot обновляет | — |
 | **D/E** — сторонний build code истощает runner или использует его права | dependency/plugin выполняется во время build | pinning версий/SHA, read-only permissions, isolated hosted runner | Maven artifacts/plugins пока не имеют independent trusted digest verification (`SEC-SCA-5`) |
@@ -163,7 +163,7 @@ Workflow code, runner, caches, artifacts, `GITHUB_TOKEN` и environment secrets
 | **I** — утечка secret в лог/artifact | echo секрета, широкий scope | `SEC-CI-2`/§9: step-local `NVD_API_KEY`, Environment `SECURITY CHECKS`, secret не выводится | — |
 | **T** — untrusted checkout через privileged trigger | `pull_request_target`, chained `workflow_run` | §9 п.6: privileged triggers не выполняют недоверенный код без threat review; release использует `persist-credentials: false` | — |
 | **T** — release-integrity: подмена опубликованных байтов | rerun заменяет asset иными байтами | build-once + byte-equality gate в publish-draft; digest promotion | — |
-| **D** — тихая смерть scheduled security-скана | для public repository GitHub может отключить scheduled workflow после 60 дней без repository activity | — | **GAP:** оператор не получает project-owned сигнал о пропуске weekly-скана. Roadmap L0; обязательный candidate scan остаётся release backstop |
+| **D** — тихая смерть scheduled security-скана | для public repository GitHub может отключить scheduled workflow после 60 дней без repository activity | — | **GAP:** оператор не получает project-owned сигнал о пропуске scheduled scan. Roadmap L0; обязательный candidate scan остаётся release backstop |
 
 ## Граница 5 — операторская конфигурация
 
@@ -172,7 +172,7 @@ Workflow code, runner, caches, artifacts, `GITHUB_TOKEN` и environment secrets
 | Угроза | Вектор | Контроль | Остаточный риск |
 |---|---|---|---|
 | **T/E** — неизвестное/несогласованное значение продолжает работу | опечатка в `ioc.*`/`IOC_*`, устаревший ключ | `SEC-CFG-1`: strict startup preflight на всех каналах, typed binding, `CONFIG.*` failure analysis | — |
-| **I** — секрет в POM/YAML defaults/Git | commit credential | §9 п.1: secret только в Environment/host-owned config; `SEC-LOG-1` redaction | нет автоматического detecting-контроля: `SEC-CI-5` secret scanning = `Planned` |
+| **I** — секрет в POM/YAML defaults/Git | commit credential | §9 п.1: secret только в Environment/host-owned config; `SEC-LOG-1` redaction; `SEC-CI-5`: GitHub secret scanning и push protection включены, maintainer обрабатывает alerts | detection ограничено поддерживаемыми patterns; отсутствие alerts не доказывает отсутствие всех секретов |
 | **I** — ввод или secret в сообщении config failure | parser alias, converter exception, validator message/arguments, DEBUG cause | `SEC-LOG-1`: [контролируемые отчёты](dev/configuration-failure-reports.md), schema paths без dynamic map keys, fixed categories, typed name transport, owned analyses без исходного cause; regression tests | filenames и unknown names видимы по IOC policy; произвольные framework startup/DEBUG-логи и appenders вне этой гарантии |
 | **E** — daemon от привилегированного пользователя | запуск от root | `SEC-OPS-1`: dedicated non-root user, `NoNewPrivileges`, systemd sandbox | — |
 | **E** — actuator наружу | публичный bind health/info | `SEC-OPS-2`: loopback bind, health/info only, без shutdown endpoint | появление публичного HTTP — изменение attack surface, требует отдельного review (`SEC-VER-2` пересматривается) |
@@ -204,7 +204,7 @@ candidate scan. Она пересматривается вместе с exposure
 | 3 | Maven dependencies/plugins не проверяются по independently trusted digest | T/E | Medium | reduce: `SEC-SCA-5` (Planned), механизм выбирается отдельным design spike |
 | 4 | Нет систематического negative/fuzz-корпуса вокруг parsing/paths/manifests | T/D | Medium | reduce: `SEC-VER-3` (Planned) |
 | 5 | Scheduled security-скан public repository может тихо отключиться | D | Low | candidate gate — backstop; project-owned monitoring Planned |
-| 6 | Нет secret scanning / push protection | I | Medium | reduce: `SEC-CI-5` (Planned) |
+| 6 | Secret scanning не распознаёт все возможные форматы секретов | I | Medium | reduce: `SEC-CI-5` включён для поддерживаемых patterns; maintainer разбирает alerts и отзывает/ротирует раскрытые secrets |
 | 7 | Ряд remote/config/host-контролей — Manual | T/I/E | Low–Medium | operator-owned; `SEC-OPS-3`, guides и release evidence |
 | 8 | Release artifact не имеет signature/provenance | S/T/R | Medium | Planned Level 2; SHA-256 + trusted release channel — текущий контроль |
 

@@ -1,0 +1,27 @@
+{
+  "name": "Release tag immutability",
+  "target": "tag",
+  "enforcement": "active",
+  "bypass_actors": [
+    {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}
+  ],
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/tags/v*",
+        "refs/tags/ioc-platform-concurrency-v*",
+        "refs/tags/ioc-platform-diagnostics-api-v*",
+        "refs/tags/ioc-platform-logging-slf4j-v*",
+        "refs/tags/ioc-config-spring-boot-v*",
+        "refs/tags/ioc-platform-events-v*",
+        "refs/tags/ioc-events-spring-v*"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {"type": "deletion"},
+    {"type": "non_fast_forward"},
+    {"type": "update"}
+  ]
+}

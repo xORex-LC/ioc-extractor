@@ -14,7 +14,10 @@ language: "ru"
 
 Доказанно dead/unwired/obsolete surfaces удаляются целиком; supported compatibility,
 accepted migrations и recovery/audit history сохраняются. Модульные cells
-[матрицы](../status-matrix.md) остаются открытыми. Исходные support obligations и
+[матрицы](../status-matrix.md) остаются открытыми у 20 модулей; шесть библиотек
+зачтены 2026-11-17 с `keep-supported` для опубликованного API и без новых
+remove-now candidates. [Evidence](../../../../.github/release-evidence/ru/0.3.0.md#module-hardening-reconciliation-2026-11-17).
+Исходные support obligations и
 завершённые dependency removals сохранены в
 [release evidence](../../../../.github/release-evidence/0.3.0.md#build-and-test-adoption).
 
@@ -32,19 +35,17 @@ accepted migrations и recovery/audit history сохраняются. Модул
 | `RETIRE-TCK-8` | `ioc-application-tck`: `keep-supported`; contracts исполняются adapter consumers, artifact вне production denominator | `R030-TEST`; отсутствие собственных suites не делает reusable TCK dead code |
 | `RETIRE-DEP-9` | Direct `ioc-application → ioc-platform-errors`: `removed`, POM remediation завершена | `R030-BUILD`; не переоткрывать исходный declared-unused candidate |
 | `RETIRE-DEP-10` | Direct `adapter-csv → commons-io`: `removed`, POM remediation завершена | `R030-BUILD`; не путать удаление direct edge с отсутствием transitive library |
-| `RETIRE-APP-11` | `application.artifact.StableArtifactId`: `remove-now`, **pending**; live refs ограничены declaration и package README | Application/artifact; отдельный срез удаления record и README entry после повторной wiring/consumer проверки |
+| `RETIRE-APP-11` | `application.artifact.StableArtifactId`: `removed`, 2026-11-17; declaration и obsolete README reference удалены после tracked source/resource/metadata/consumer проверки | Application/artifact; internal unpublished module, ID/SQL/CSV behavior не менялся; clean rebuild, application tests и reactor gates; полный RETIRE модуля остаётся открытым |
 
 ## Оставшаяся работа
 
 1. Для каждого модуля сверить candidates, supported source versions, external
    consumers и operational/persistence/history роль. Сравнение с released
    `v0.2.0` не объявляет автоматически весь reactor API внешним контрактом.
-2. Для `RETIRE-APP-11` подтвердить отсутствие compile, dynamic/resource,
-   reflection/serialization и external consumers; удалить только record и
-   ставшую ложной README entry. Artifact/public-ID behavior не менять.
-3. Выполнить symbol/reference absence check, application tests и clean reactor
-   gate; зафиксировать результат, docs/notes и module cell.
-4. Новые candidates оценивать по `remove-now`, `keep-supported`, `keep-history`,
+2. Не переоткрывать RETIRE-APP-11: absence/rebuild evidence и intentional
+   internal API removal сохранены в release record/notes. Полный review
+   остальных application surfaces остаётся самостоятельным обязательством.
+3. Новые candidates оценивать по `remove-now`, `keep-supported`, `keep-history`,
    `deprecate-first` или `defer-uncertain`. Для последних двух нужны owner,
    transition plan либо точное missing evidence и условие возврата.
 

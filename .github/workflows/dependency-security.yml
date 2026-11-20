@@ -2,8 +2,9 @@ name: Dependency Security
 
 on:
   schedule:
-    # Monday 08:17 in Asia/Irkutsk (GitHub Actions cron is UTC).
-    - cron: "17 0 * * 1"
+    # Check the alternate-day cadence at 08:17 in Asia/Irkutsk (00:17 UTC).
+    # A day-of-month */2 cron would reset its interval at month boundaries.
+    - cron: "17 0 * * *"
   workflow_dispatch:
 
 permissions:
@@ -14,8 +15,47 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  cadence:
+    name: Select security scan day
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      scan: ${{ steps.cadence.outputs.scan }}
+      refs: ${{ steps.cadence.outputs.refs }}
+    steps:
+      - name: Select security scan targets and day
+        id: cadence
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SELECTED_REF: ${{ github.ref_name }}
+          SELECTED_REF_TYPE: ${{ github.ref_type }}
+        run: |
+          scan=true
+          if [[ "${EVENT_NAME}" == schedule ]]; then
+            refs='["main","release-0.3.0"]'
+            epoch_day=$(( $(date -u +%s) / 86400 ))
+            if (( epoch_day % 2 != 0 )); then
+              scan=false
+            fi
+          else
+            if [[ "${SELECTED_REF_TYPE}" != branch || ( "${SELECTED_REF}" != main && "${SELECTED_REF}" != release-* ) ]]; then
+              echo '::error::Select main or a release-* branch for a candidate scan'
+              exit 1
+            fi
+            refs=$(python3 -c 'import json, os; print(json.dumps([os.environ["SELECTED_REF"]]))')
+          fi
+          printf 'scan=%s\n' "${scan}" >> "${GITHUB_OUTPUT}"
+          printf 'refs=%s\n' "${refs}" >> "${GITHUB_OUTPUT}"
+
   dependency-check:
-    name: OWASP Dependency-Check
+    name: OWASP Dependency-Check (${{ matrix.ref }})
+    needs: cadence
+    if: needs.cadence.outputs.scan == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        ref: ${{ fromJSON(needs.cadence.outputs.refs) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment:
@@ -24,6 +64,28 @@ jobs:
       DEPENDENCY_CHECK_DATA: ${{ github.workspace }}/.dependency-check-data
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.ref }}
+          persist-credentials: false
+
+      - name: Record the selected scan source
+        env:
+          SCAN_REF: ${{ matrix.ref }}
+          WORKFLOW_COMMIT: ${{ github.workflow_sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          source = {
+              'ref': os.environ['SCAN_REF'],
+              'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              'workflow_commit': os.environ['WORKFLOW_COMMIT'],
+              'run_id': os.environ['GITHUB_RUN_ID'],
+          }
+          path = pathlib.Path('target/security-scan-source.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(source, indent=2) + '\n')
+          print(json.dumps(source))
+          PY
 
       - name: Set up JDK 21
         uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
@@ -37,9 +99,9 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.DEPENDENCY_CHECK_DATA }}
-          key: dependency-check-${{ runner.os }}-${{ github.run_id }}
+          key: dependency-check-${{ runner.os }}-${{ matrix.ref }}-${{ github.run_id }}
           restore-keys: |
-            dependency-check-${{ runner.os }}-
+            dependency-check-${{ runner.os }}-${{ matrix.ref }}-
 
       - name: Update Dependency-Check data
         env:
@@ -69,8 +131,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: dependency-check-report-${{ github.run_number }}
+          name: dependency-check-report-${{ matrix.ref }}-${{ github.run_number }}
           path: |
+            target/security-scan-source.json
             target/dependency-check-report.html
             target/dependency-check-report.json
           if-no-files-found: warn

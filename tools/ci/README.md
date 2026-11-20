@@ -75,9 +75,27 @@ environment-variable name. `scan` uses `autoUpdate=false`, HTML/JSON output and
 a CVSS 7 failure threshold, with Assembly and OSS Index analyzers disabled.
 `DEPENDENCY_CHECK_DATA` selects an isolated cache; a missing explicit cache fails
 with an update instruction. Without an override, Maven's default data directory
-applies. The weekly/manual workflow caches `.dependency-check-data/` and runs
-update and scan as separate steps. `report` only prints existing root report paths;
-it neither scans nor establishes their freshness.
+applies. The workflow checks its cadence daily at 08:17 Asia/Irkutsk and scans on
+even-numbered UTC days since the Unix epoch, preserving the two-day interval
+across month/year boundaries. Explicit candidate runs always scan. GitHub's
+scheduler can delay or drop a run; this is not a guaranteed 48-hour execution SLA.
+Schedule changes take effect after the workflow reaches the default branch.
+
+The scheduled target list in [dependency-security.yml](../../.github/workflows/dependency-security.yml)
+selects `main` and the active release branch. Update that explicit list when the
+active release changes; historical release branches are not selected automatically.
+Manual dispatch scans only its selected `main`/`release-*` branch. Target jobs run
+sequentially, continue after another target fails, and use separate cache keys
+and report artifact names. Each report includes `security-scan-source.json` with
+the checked-out commit, target ref, workflow commit and run ID. Reports retain
+their existing 30-day lifetime; they are not permanent release evidence.
+
+The `SECURITY CHECKS` environment permits `main` and branches matching `release-*`
+without reviewer approval, independently of their branch-protection status. It
+retains the step-local NVD key. The workflow caches
+`.dependency-check-data/` and runs update and scan as separate steps. `report`
+only prints existing root report paths; it neither scans nor establishes their
+freshness.
 
 ## Library publication tooling
 
@@ -88,6 +106,11 @@ copies already built main/POM/sources/Javadoc files into a new bundle and record
 hashes/source identity. `check` validates the retained bundle; `--signed` additionally
 requires signed metadata and a clean recorded source. The Make `library-bundle`
 target builds before `prepare`; it refuses to overwrite an existing bundle.
+
+Version admission uses ASCII `X.Y.Z` with no leading zeros, optional `-rc.N`
+starting at `N=1`, or development-only `-SNAPSHOT`. Other SemVer prerelease/build
+suffixes are outside the admitted publication format. Component tags and
+`release-X.Y.Z` branches use the same numeric rules as application releases.
 
 `consume` uses the [standalone fixtures](../fixtures/README.md) with temporary
 settings/projects/caches, actual guide examples and per-file hash/origin checks.

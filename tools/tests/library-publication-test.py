@@ -55,6 +55,31 @@ class GpgFixtureTest(unittest.TestCase):
         self.assertNotIn('private-passphrase', str(raised.exception))
 
 
+class VersionContractTest(unittest.TestCase):
+    def test_admitted_release_and_development_versions(self):
+        for version in ('0.0.0', '0.3.0', '1.20.300', '0.3.0-rc.1', '1.2.3-rc.12'):
+            with self.subTest(version=version):
+                self.assertEqual(PUB.version_check(version, release=True), version)
+        self.assertEqual(PUB.version_check('0.3.0-SNAPSHOT'), '0.3.0-SNAPSHOT')
+
+    def test_noncanonical_and_unsupported_versions_are_rejected(self):
+        for version in ('00.3.0', '0.03.0', '0.3.00', '0.3.0-rc.0', '0.3.0-rc.01',
+                        '0.3.0-rc.1-SNAPSHOT', '0.3.0-alpha.1', '0.3.0+build.1',
+                        '0.3.0\n', '０.３.０'):
+            with self.subTest(version=version), self.assertRaisesRegex(ValueError, 'invalid version'):
+                PUB.version_check(version)
+
+    def test_every_component_rejects_noncanonical_tags_and_branches(self):
+        for name, component in PUB.COMPONENTS.items():
+            artifact = component['artifact']
+            for version in ('00.3.0', '0.03.0', '0.3.00', '0.3.0-rc.0', '0.3.0-rc.01', '０.３.０'):
+                with self.subTest(component=name, version=version), self.assertRaisesRegex(ValueError, 'component tag'):
+                    PUB.release_version(name, artifact + '-v' + version, 'release-0.3.0')
+            for branch in ('release-00.3.0', 'release-0.03.0', 'release-0.3.00', 'release-０.３.０'):
+                with self.subTest(component=name, branch=branch), self.assertRaisesRegex(ValueError, 'release-X.Y.Z'):
+                    PUB.release_version(name, artifact + '-v0.3.0-rc.1', branch)
+
+
 class BundleContract:
     component_name = 'concurrency'
     def setUp(self):

@@ -35,10 +35,14 @@ language: "ru"
 
 1. Сверить незакрытые cells и intake с текущим кодом/контрактами; не открывать
    заново уже устранённые regex/POM/dependency findings.
-2. Выполнять module hardening от platform/core к adapters/bootstrap. Анализ
-   внешнего модуля допустим раньше, изменение dependency direction — только
-   после архитектурного решения. Risk evidence может изменить порядок.
-3. Параллельно независимым scopes закрывать SEC, DOC и publication follow-ups.
+2. Завершить оставшийся module review/dispositions с зачётом прежнего evidence
+   от platform/core к adapters/bootstrap. Реализация ARCH-6/CODE-6 исключена
+   решением 2026-11-18; OPS-10/12/15 — решением 2026-11-17. Конкретные новые
+   gaps получают отдельный disposition, не обязательный общий refactoring.
+3. Закрыть SEC и применимые publication/tooling obligations; DOC baseline уже
+   verified, обновляются только affected contracts/notes. TOOL-6 относится к
+   следующему library release, TOOL-9 — к независимому versioning; определить
+   applicability выбранного app/component scope до новой implementation.
 4. Выполнить final compatibility/performance/packaging/upgrade/rollback,
    security и release gate R030-REL на выбранном candidate.
 

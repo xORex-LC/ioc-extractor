@@ -20,6 +20,20 @@ language: "ru"
 
 ## Оставшаяся работа
 
+Сверка 2026-11-18: DOC baseline и шесть библиотечных module scopes зачтены;
+у остальных 20 scopes остаётся review/disposition, не обязательная реализация
+отложенных refactorings. Принятые исключения baseline — два security docs,
+OPS-10/12/15, ARCH-6/CODE-6, target-specific H5 и multi-daemon scope — сохраняются
+в [release contract](../engineering-release.md). Они не закрывают SRC-3,
+SEC-LOG-1, actual repository controls, остальные findings и final qualification.
+
+До release checks определить application-only либо changed-library scope:
+TOOL-6 нужен до следующего library release, TOOL-9 — до первого independently
+versioned release. TOOL-8 protected CI recovery остаётся незакрытой qualification:
+нужен её результат либо явное принятое изменение scope. TOOL-7 остаётся
+unexplained fixture finding и требует owner disposition. Local/старый pass
+не становится protected evidence. Все исходные RC immutable.
+
 1. Завершить обязательные goals и module cells [матрицы](../status-matrix.md)
    либо принять явный scope change. Закрытие глобальных BASE/BUILD/TEST/LIB
    не заменяет QUAL/RETIRE/ARCH/DOC и оставшийся security review.

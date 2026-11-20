@@ -164,11 +164,11 @@ supported contract не входят. Их появление является �
 | `SEC-SCA-3` | OWASP Dependency-Check aggregate по effective reactor graph | Enforced | Offline aggregate завершает job ошибкой при CVSS ≥ 7.0, а unused suppression rule блокирует scan. [Exact-HEAD run 34374294199](https://github.com/xORex-LC/ioc-extractor/actions/runs/34374294199) для 0.3.0 commit `3307d1e2` прошёл: 129 dependencies, 0 неподавленных findings и две действующие JBIG2 suppressions; сохранён report artifact `10113370027` |
 | `SEC-SCA-4` | Узкие Dependency-Check suppressions без stale rules | Enforced | tracked [dependency-check-suppressions.xml](../dependency-check-suppressions.xml), `failBuildOnUnusedSuppressionRule=true` |
 | `SEC-SCA-5` | Independently trusted artifact verification для Maven dependencies/plugins | Planned | desired outcome — проверять resolved bytes по project-owned trusted digest/provenance, а не только repository-provided checksum ([Maven Resolver distinction](https://maven.apache.org/resolver/expected-checksums.html)); механизм и безопасный update workflow выбираются отдельным design spike. Trigger — trusted CI release builder, публикация reactor-модулей или внешний supply-chain requirement |
-| `SEC-CI-1` | Tests, golden E2E, boundaries и docs links на push/PR | Enforced | [ci.yml](../.github/workflows/ci.yml) запускает project-owned gates. Branch protection с `strict=true` и admin enforcement требует `build`, `packaging-contracts`, `doc-links` для `main`, а также `pmd-source-policy` и `library-consumer` для `release-0.3.0`; force-push и удаление обеих веток запрещены. `Codecov advisory` остаётся non-required signal |
-| `SEC-CI-2` | NVD secret isolation и read-only security job | Enforced | job явно привязан к Environment `SECURITY CHECKS`, `NVD_API_KEY` доступен только explicit update step; следующий offline scan не получает secret, token permissions ограничены `contents: read`; Environment требует reviewer approval, а update/cache/scan/report path подтверждён [запуском 34374294199](https://github.com/xORex-LC/ioc-extractor/actions/runs/34374294199) |
-| `SEC-CI-3` | Явные минимальные workflow permissions и immutable full-SHA pinning Actions | Enforced | все workflows default к `contents: read`, write выдаётся только release job; remote Actions закреплены полным SHA с version comment, а tools contract отклоняет tag refs; Dependabot сохраняет update path |
+| `SEC-CI-1` | Tests, golden E2E, boundaries и docs links на push/PR | Enforced | [Branch ruleset](../.github/repository-controls/branch-ruleset.json) требует PR без reviewer approval, strict `build`/`packaging-contracts`/`doc-links` от GitHub Actions, запрещает force-push/delete для `main` и всех `release-*`, без bypass actors. Создание новой ветки не ждёт первоначальных checks. Classic protection сохраняет дополнительные `pmd-source-policy` и `library-consumer` для `release-0.3.0`; [ci.yml](../.github/workflows/ci.yml) выполняет gates, `Codecov advisory` остаётся non-required signal |
+| `SEC-CI-2` | NVD secret isolation и read-only security job | Enforced | job явно привязан к Environment `SECURITY CHECKS`, `NVD_API_KEY` доступен только explicit update step; следующий offline scan не получает secret, token permissions ограничены `contents: read`. Environment разрешает `main` и branches `release-*` без reviewer approval независимо от их branch-protection status; автоматические проверки не ждут ручного подтверждения. Исторический update/cache/scan/report path подтверждён [запуском 34374294199](https://github.com/xORex-LC/ioc-extractor/actions/runs/34374294199); он не подтверждает свежесть текущего candidate |
+| `SEC-CI-3` | Явные минимальные workflow permissions и immutable full-SHA pinning Actions | Enforced | все workflows default к `contents: read`, write выдаётся только release job; remote Actions закреплены полным SHA с version comment. [Repository setting](../.github/repository-controls/actions-permissions.json) требует full SHA до выполнения Actions; tools contract также отклоняет tag refs. Dependabot сохраняет update path; отдельный reusable-workflow или Maven integrity contract этим не устанавливается |
 | `SEC-CI-4` | Dependency Review на PR dependency changes | Planned | trigger — добавление blocking PR control после baseline/dry run |
-| `SEC-CI-5` | Secret scanning и push protection | Planned | trigger — подтверждённая доступность функции для repository и согласованный response workflow |
+| `SEC-CI-5` | Secret scanning и push protection | Monitored + Enforced для поддерживаемых patterns | GitHub settings проверены 2026-11-20: secret scanning и push protection включены. Maintainer разбирает alerts по §6; при раскрытии отзывает/ротирует secret и проверяет logs/history по §9. Контроль не обнаруживает все возможные форматы секретов; отсутствие alerts не является полным secrets audit |
 | `SEC-CI-6` | Внешний Codecov coverage reporting | Operational upload; external status publication unavailable | run `33980664036` подтвердил least-privilege OIDC job, verified artifact handoff и обработанный aggregate upload; auto-search/plugins/telemetry выключены, PR comment выключен, три informational context настроены и не required, но `codecov/*` contexts не опубликованы в GitHub — owner/admin должен проверить GitHub App integration; отсутствие внешнего status не блокирует PR/release |
 | `SEC-VER-1` | Java/GitHub Actions SAST | Planned | сначала non-blocking baseline и noise triage; blocking policy вводится отдельно; generic SpotBugs из build-quality контура не закрывает этот security control без отдельно принятого security ruleset |
 | `SEC-VER-2` | Generic web DAST | Not applicable | нет публичного HTTP/auth surface; пересмотреть при появлении внешнего network API/UI |
@@ -185,6 +185,17 @@ supported contract не входят. Их появление является �
 | `SEC-OPS-1` | Dedicated non-root daemon и systemd sandbox/resource limits | Enforced для packaged deployment | `NoNewPrivileges`, filesystem/device/kernel/namespace restrictions, `LimitCORE`, memory/CPU/task limits; [packaging README](../packaging/README.md#systemd-hardening) |
 | `SEC-OPS-2` | Actuator не публикуется наружу по умолчанию | Enforced defaults | loopback bind, health/info only, без shutdown endpoint; [application.yml](../bootstrap/ioc-app/src/main/resources/application.yml) |
 | `SEC-OPS-3` | Least-privilege SMB operation и credential redaction | Manual + Enforced parts | operator guides минимальных прав, host-owned secret config, redacted settings/log context; [remote sync](guides/remote-storage-sync.md), [managed import](guides/dataframe-import.md) |
+
+Редактируемые запросы настроек и границы применения находятся в
+[repository controls](../.github/repository-controls/README.md). Их наличие в Git
+не доказывает remote enforcement: после применения требуется API read-back.
+
+В составе `SEC-REL-1` active [tag ruleset](https://github.com/xORex-LC/ioc-extractor/rules/19423734)
+защищает `v*` и `<artifactId>-v*` всех допущенных библиотек от update/delete.
+Шаблоны выбирают защищаемые теги; допустимые версии и соответствие source
+проверяются publication tooling. Administrative bypass остаётся разрешённым,
+поэтому ruleset не является запретом подмены для самого администратора и не
+подтверждает всю цепочку release qualification.
 
 ## 5. Dependency security contract
 
@@ -205,7 +216,7 @@ Dependabot и Dependency-Check решают разные задачи и при�
 |---|---|---|---|
 | Обычный PR/branch CI | push / pull request | нет | быстрый deterministic feedback: tests, boundaries, docs |
 | Dependabot | GitHub service | управляется GitHub | непрерывные alerts и update proposals |
-| Scheduled security | weekly | да, key + cache | обнаружить новый advisory/CPE drift |
+| Scheduled security | через день, 08:17 Asia/Irkutsk; `main` + выбранный активный release | да, key + cache | обнаружить новый advisory/CPE drift |
 | Release candidate | manual на exact commit | да, обязательна | blocker перед final version/tag |
 | Tag release | `v*` | не должен впервые обращаться к NVD | build/publish уже проверенного candidate |
 
@@ -213,6 +224,21 @@ PR CI намеренно не зависит от live NVD: outage, rate limit �
 cache не должны останавливать обычную разработку. Недоступность NVD во время
 release candidate gate является отсутствием обязательного evidence, а не
 доказательством безопасности.
+
+Workflow ежедневно проверяет чётность UTC-дня от Unix epoch; scan выполняется
+через день без сброса интервала на границе месяца. Manual candidate run не
+пропускается по этому календарю. Изменения расписания действуют после попадания
+workflow в default branch; GitHub может задержать или пропустить scheduled run,
+поэтому расписание не является гарантией запуска строго каждые 48 часов.
+
+Default-branch workflow проверяет `main` и явно выбранную активную release-ветку
+последовательно, с отдельными cache keys и report artifacts. При смене активного
+релиза обновляется список в [workflow](../.github/workflows/dependency-security.yml).
+Manual dispatch проверяет только выбранную `main`/`release-*` ветку. Report
+содержит отдельные commit identities проверенного source и workflow; failure
+одной цели не отменяет проверку другой. Новая cadence/матрица требует первого
+успешного remote run после интеграции в default branch; локальные contracts не
+являются такой operational qualification.
 
 ### 5.2. Update policy
 
@@ -321,13 +347,20 @@ condition. Suppression может технически скрыть повтор
 | Design нового boundary | определить assets, trust boundary, abuse/resource cases | неизвестна модель доверия или ownership | design doc/ADR/issue |
 | Code/PR | tests, boundaries, config/docs consistency | красный `verify`, нарушенная граница, secret в diff | CI run и review |
 | Dependency change | tree, advisory/release notes, compatibility tests | необработанный новый Critical/High или непонятный graph drift | PR + scan/tree summary |
-| Weekly security | Dependabot + aggregate Dependency-Check | job failure требует triage, но не ломает обычный PR CI | GitHub alert/run/report |
+| Scheduled security | Dependabot weekly + aggregate Dependency-Check через день | job failure требует triage, но не ломает обычный PR CI | GitHub alert/run/report |
 | Release candidate | fresh exact-commit scan, unused suppression check, full release gate | нет отчёта либо есть untriaged Critical/High | workflow URL + HTML/JSON artifact |
 | Publication | tag/version/commit identity, build once, SHA-256 | identity mismatch или изменившиеся bytes | GitHub Release assets |
 | Deployment | checksum, host-owned config/secrets, sandbox, health | digest mismatch, invalid config, failed storage health | deployment log/health/digest |
 | Incident | contain, preserve evidence, rotate exposed secret, remediate, review recurrence | incident не имеет owner/status | issue/advisory/postmortem |
 
 ## 9. Secrets и GitHub Actions
+
+Текущая модель ответственности — один maintainer. Изменения в защищённые
+`main` и все `release-*` проходят через PR с обязательным CI, без требования
+одобрения вторым человеком. Maintainer проверяет diff и принимает решение о
+merge. Публикация требует его отдельного подтверждения: protected environment
+`LIBRARY PUBLISHING` для библиотек либо ручное продвижение application draft.
+Успешный CI и создание draft сами по себе не являются разрешением публикации.
 
 1. Secret хранится в GitHub Environment/repository secret либо в host-owned
    runtime config, но не в POM, YAML defaults, shell history example или Git.
@@ -421,11 +454,11 @@ Roadmap определяет порядок и triggers, но не выдаёт 
 
 - активировать Dependabot/workflow в default branch;
 - выполнить первый manual Dependency Security run;
-- проверить report/cache artifacts и weekly cadence;
+- проверить report/cache artifacts и автоматическую cadence через день;
 - учесть хрупкость: для public repository GitHub автоматически отключает
   scheduled workflows после 60 дней без repository activity
   ([GitHub Docs](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/disable-and-enable-workflows));
-  weekly-скан может перестать идти без project-owned сигнала, поэтому candidate
+  scheduled scan может перестать идти без project-owned сигнала, поэтому candidate
   scan остаётся обязательным release gate;
 - продолжать exact-candidate scan перед release;
 - поддерживать suppression contract и актуальность этой политики.
@@ -435,8 +468,8 @@ Roadmap определяет порядок и triggers, но не выдаёт 
 - добавить Dependency Review для PR, сначала в observation/dry-run режиме;
 - добавить ownership/review для `.github/workflows`, release и suppression
   boundaries;
-- включить secret scanning/push protection вместе с понятным response process,
-  если функция доступна repository.
+- поддерживать включённые secret scanning/push protection и обработку alerts
+  maintainer'ом по §6/§9; учитывать ограничения поддерживаемых patterns.
 
 ### Уровень 2 — release supply chain
 

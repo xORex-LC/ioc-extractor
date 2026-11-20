@@ -113,6 +113,9 @@ lifecycle и реального aggregate import. См. [эксплуатаци�
 <a id="ops-10"></a>
 ### OPS-10 — Import status падает на NULL retry deadline
 
+**Решение по релизу, 2026-11-17:** владелец перенёс исправление за пределы
+0.3.0. Дефект остаётся открытым; его последствия и критерии закрытия ниже актуальны.
+
 **Open · владелец: JDBC status/bootstrap health.** `JdbcImportStatusReader` читает
 SQL NULL через `getObject("next_attempt_at_ms", Long.class)`, что отвергает выбранный
 SQLite driver. Реальный CLI после replay в `SNAPSHOT_PINNED` получил
@@ -140,6 +143,10 @@ in-flight registry и JDBC primary key используют только `(path,
 
 <a id="ops-12"></a>
 ### OPS-12 — Fetch landing может заменить конкурентный вход
+
+**Решение по релизу, 2026-11-17:** владелец перенёс исправление за пределы
+0.3.0. Дефект остаётся открытым; согласуйте всех писателей inbox и сохраняйте
+ограничения landing ниже. Отсрочка не обеспечивает no-replace ownership.
 
 **Open · владелец: fetch/local landing.** `finalPathFor` проверяет отсутствие
 до скачивания; `Files.move(ATOMIC_MOVE)` не гарантирует no-replace при позднем
@@ -169,6 +176,10 @@ unit/helpers/current/баз. См. [скрипт активации](../../packa
 
 <a id="ops-15"></a>
 ### OPS-15 — Unchecked-сбой миграции может зафиксировать часть DDL
+
+**Решение по релизу, 2026-11-17:** владелец перенёс исправление за пределы
+0.3.0. Дефект остаётся открытым; согласованный backup/restore и описанная ниже
+обработка нештатного отказа сохраняются. Отсрочка не доказывает атомарность миграций.
 
 **Открыто · владелец: миграции SQLite schema.** `SqliteUserVersionSchemaMigrator.apply`
 откатывает `SQLException`, но в `finally` восстанавливает auto-commit без
@@ -470,6 +481,79 @@ scopes и владения ресурсами. См. [описание моду�
 [Pipeline](../../platform/platform-etl/src/main/java/com/iocextractor/platform/etl/Pipeline.java),
 [runner](../../platform/platform-etl/src/main/java/com/iocextractor/platform/etl/PipelineRunner.java)
 и [observer](../../platform/platform-etl/src/main/java/com/iocextractor/platform/etl/PipelineObserver.java).
+
+<a id="arch-6"></a>
+### ARCH-6 — Границы возможностей bootstrap и связность сборки
+
+**Deferred · владелец: архитектура bootstrap/composition.** 2026-11-18 владелец
+перенёс `QUAL-BOOT-1` и связанный структурный рефакторинг за пределы 0.3.0.
+Долг сохранён здесь независимо от временных релизных планов; версия реализации
+и срок завершения не назначены.
+
+Плоский composition package объединяет проверку конфигурации, processing,
+storage, lifecycle, import, sync/export и health. Более существенная связь:
+`IocRouterConfiguration` вызывает `AppConfig.artifactDefinitions/artifactPreparers`,
+а `DataframeImportRuntimeConfiguration` — его identity/schema/allocator
+factories. Preflight, compilers и router consumers используют общие
+package-private типы. Эти связи затрудняют изоляцию изменений возможностей;
+простой перенос файлов сохранит связность либо потребует расширить public visibility.
+
+`ProcessingPolicyFingerprint.addValue` включает имена классов records и
+идентичность компонентов. Перенос configuration records может изменить durable
+policy identity при прежнем YAML. Сохраняйте существующие model FQCN и байты
+fingerprint до отдельного compatibility решения. Это ограничение сопровождения
+и relocation, не доказательство нового runtime-сбоя.
+
+Возврат — выбранный срез сопровождения bootstrap либо изменение capability,
+требующее этих границ. Закрытие выполняется отдельно проверяемыми изменениями:
+
+- До relocation зафиксировать текущие fingerprint bytes, restart/admission
+  behavior, Spring conditions/bean names и package-private collaborators.
+- Использовать существующие catalogs/factories для выделения связной сборки
+  artifact schema/identity/preparation из соседних configuration objects.
+- Организовать cohesive capabilities с минимальной visibility и соответствующими
+  тестами; health indicators оставить рядом со своей capability. Отделить moves
+  от algorithm/public API/Maven boundary и fingerprint-version изменений.
+- Проверить resource/reflection/Spring FQCN, lifecycle/recovery, затронутую
+  документацию и обычные reactor/analyzer gates.
+
+См. [AppConfig](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java),
+[router composition](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/IocRouterConfiguration.java),
+[import composition](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/DataframeImportRuntimeConfiguration.java),
+[fingerprint](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/ProcessingPolicyFingerprint.java)
+и [карту bootstrap](../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/README.md).
+
+<a id="code-6"></a>
+### CODE-6 — Отложенное объединение механизмов и рефакторинг orchestration
+
+**Deferred · владельцы: сопровождающие capabilities ниже, координация через
+code-health review.** 2026-11-18 владелец перенёс следующие предложенные
+рефакторинги за пределы 0.3.0 из-за большого объёма реализации и повторной
+квалификации. Findings остаются долгом; уменьшение analyzer counts не является
+критерием приёмки. Scope конечный, не общий контейнер будущей уборки.
+Организация bootstrap отдельно закреплена в [ARCH-6](#arch-6).
+
+| Сохранённый intake / владелец | Оставшийся долг | Граница возврата и приёмки |
+|---|---|---|
+| `QUAL-CPD-14` / JDBC storage | Повторяемые schema-name index и ordered public-header knowledge | Общий package-private owner после characterization null/duplicate/order/error; reuse `JdbcSql`; сохранить SQL, transactions и migrations |
+| `QUAL-CPD-16` / application lifecycle | Повторяемая unique/nonblank validation artifact catalogs в projection, history и reconciliation | Сравнить три contracts перед объединением; сохранить copy/order и разные invalid-input outcomes; cadence/work/clock owners остаются отдельными |
+| `QUAL-CPD-08` / daemon lifecycle | Повторяемый shutdown/await/interrupt protocol при разных состояниях schedulers | Local stop helper после timeout/interruption/stop-versus-follow-up tests; timer/admission/cancellation остаются локальными; без универсального scheduler base |
+| `QUAL-CPD-02/03` / IOC observability и bootstrap | Повторяемые diagnostic-summary fields и общая event metadata MDC | Объединить только общее mapping; сохранить handler-specific fields, восстановление scope и поведение отказов; application result types и IOC schema не попадают в reusable libraries |
+| `QUAL-CPD-12` / CSV import | Повторяемое открытие parser/Reader stack для header/full read | Локальный owned scope после cleanup tests частичной инициализации; сохранить charset/separator/limit order, exception/cause/messages и consumer failures |
+| `QUAL-PMD-03/04/06/14` / export, ingest, extraction и import composition | Длинные списки конструкторов смешивают явные ports и operational settings | Рассмотреть cohesive immutable settings при обосновании; сохранить validation; не вводить dependency bundle/builder только ради arity |
+| `QUAL-PMD-01/02/05/07/10/11/15/16/17/19` / ingest, sync, import, storage и bootstrap | Сложные durable workflows и fingerprint serialization | Отдельная таблица поведения и characterization на метод, затем ограниченные typed/private steps; сохранить commit/recovery/idempotency, primary/suppressed failures и fingerprint bytes |
+
+Возврат к выбранному срезу — изменение его capability либо отдельно принятая
+итерация сопровождения. До изменения зафиксировать invariant, owner,
+compatibility boundary и meaningful tests. Принятая enum/model duplication,
+compatibility constructors и явная port wiring не становятся автоматически
+новыми задачами. Отсрочка не меняет analyzer rules, suppressions, coverage floors,
+test integrity checks и security-обязательства релиза. Runtime-дефекты сохраняют
+свои ID и dispositions.
+
+См. [storage](../dev/ru/storage.md), [lifecycle](../dev/ru/canonical-record-lifecycle.md),
+[ingestion](../dev/ru/ingestion.md), [observability](../dev/ru/observability.md) и
+[политику тестирования](TESTING.md) для поведения, сохраняемого будущими срезами.
 
 ### Критерии внешнего harness для TOOL-4
 

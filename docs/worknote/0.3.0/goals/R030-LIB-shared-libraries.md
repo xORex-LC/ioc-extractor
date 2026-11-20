@@ -17,6 +17,8 @@ qualification. Точные tags, signed bundle/recovery/repository identities �
 ограничения сохранены в [release evidence](../../../../.github/release-evidence/0.3.0.md#dependency-and-publication-evidence)
 и [component release records](../../../../.github/release-notes/README.md).
 Глобальное завершение не закрывает модульные QUAL/ARCH/TEST/DOC cells.
+Отдельной сверкой 2026-11-17 зачтены четыре hardening cells всех шести
+библиотек; это scoped code/test/API evidence, не новый remote publication pass.
 
 | Artifact (`io.github.xorex-lc`, `0.3.0-rc.1`) | Record |
 |---|---|
@@ -49,6 +51,13 @@ reactor parent/placeholders, sources/Javadoc разрешаются, project-own
   но Maven/CI пока используют shared source version. Автоматизированное API
   comparison и активация новой versioning scheme остаются отдельными задачами в
   [KNOWN-ISSUES](../../../KNOWN-ISSUES.md).
+- Applicability для кандидата: TOOL-6 требуется перед следующим library release,
+  TOOL-9 — перед первым independently versioned release. Application-only выпуск
+  не разрешает автоматически вводить новые automation gates или перепубликовывать
+  исходные RC; выбрать component scope и сохранить соответствующий disposition.
+- `TOOL-7`: unexplained временный signing-key fixture failure остаётся отдельным
+  publication-tooling finding; зелёный повтор без root-cause/disposition его не
+  закрывает. Факты и acceptance сохранены в KNOWN-ISSUES.
 - Второй развёрнутый service — отдельная qualification; публикация и consumer
   fixture не доказывают его operational acceptance.
 - ETL остаётся внутренним. Diagnostics/logging bridges, error root, correlation,

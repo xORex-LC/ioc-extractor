@@ -17,6 +17,11 @@ classification, pilots, Codecov и repository consumers квалифициров
 [release evidence](../../../../.github/release-evidence/0.3.0.md#build-and-test-adoption).
 Модульные cells [матрицы](../status-matrix.md) остаются самостоятельной работой.
 Наличие coverage/gates не доказывает полноту review каждого модуля.
+2026-11-17 зачтены шесть библиотечных module scopes: named release-source
+qualification, unchanged production/POM, проверенные test deltas и текущие
+deterministic suites/boundaries. [Evidence и пределы](../../../../.github/release-evidence/ru/0.3.0.md#module-hardening-reconciliation-2026-11-17).
+Остальные 20 scopes требуют проверки остатка по риску, с зачётом DATA/regex/
+TCK/pilot результатов; повторное внедрение глобальных controls не требуется.
 
 Обязательные правила и команды принадлежат [TESTING](../../../TESTING.md) и
 [build quality](../../../dev/build-quality.md); goal сохраняет объём 0.3.0.

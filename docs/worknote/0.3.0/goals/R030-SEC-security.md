@@ -20,11 +20,44 @@ repository/workflow/publication gap analysis и release dispositions не зав
 [THREAT-MODEL](../../../THREAT-MODEL.md) и
 [KNOWN-ISSUES](../../../KNOWN-ISSUES.md#src-3).
 
+## Подтверждённый repository-control срез — 2026-11-20
+
+Принята модель одного maintainer: PR и обязательный CI без второго reviewer;
+публикацию maintainer подтверждает отдельно. Через API применены и перечитаны
+[branch ruleset 27737840](https://github.com/xORex-LC/ioc-extractor/rules/27737840)
+для `main`/всех `release-*`, tag ruleset `19423734` для application и шести
+component prefixes, а также repository-wide full-SHA admission Actions.
+Новые release-ветки разрешено создавать до первых checks; дальнейшие изменения
+требуют PR. Старые classic protections и дополнительные checks 0.3.0 сохранены.
+`SECURITY CHECKS` допускает `main`/`release-*` без ручного approval;
+`LIBRARY PUBLISHING` по-прежнему требует подтверждения владельца.
+
+Редактируемые requests находятся в
+[repository controls](../../../../.github/repository-controls/README.md).
+API read-back проверил effective rules для существующих и будущей release-ветки,
+исключение рабочей ветки и сохранность настроек publication/секретов. Тестовых
+push/delete и реальной публикации не выполнялось. `SEC-CI-5` уточнён по текущим
+settings: secret scanning и push protection включены, maintainer обрабатывает
+alerts; это не полный исторический secrets audit.
+
+В рабочем дереве подготовлен scan через день для `main` и активной
+`release-0.3.0`, с раздельными source identities, reports и cache keys.
+Workflow ещё должен попасть в default branch и получить первый remote run;
+эта cadence/матрица пока не operational pass. Приведён к общей application/library
+форме version admission: ASCII SemVer core без ведущих нулей, `rc.N` от 1,
+SNAPSHOT только для разработки. Исходные RC, versions и bytes не менялись.
+231 offline publication tests, shell contracts, calendar/ref selection и local
+docs checks прошли. Fresh verify/PMD, vulnerability scan, stand и protected
+publication qualification этим не заявляются; SRC-3, SEC-LOG-1, TOOL-8 и прочие
+оставшиеся obligations сохраняются.
+
 ## Оставшаяся работа
 
-- Сверить фактические branch/review/status/tag/environment protections и
-  CODEOWNERS; repository text не доказывает внешние settings. Required checks
-  должны соответствовать принятым project-owned blocking gates.
+- После интеграции workflow подтвердить новый automatic multi-target run и
+  перечитать фактические branch/status/tag/environment protections для final
+  candidate. Наличие versioned requests не заменяет remote read-back;
+  required checks должны соответствовать принятым blocking gates. Отдельный
+  CODEOWNERS/reviewer gate в принятой single-maintainer модели не требуется.
 - Проверить pinned Actions, permissions/triggers, untrusted-PR isolation,
   credentials, retention, immutable inputs и contracts внешних CI/reporting
   services: доступ, отправляемые данные, outage и enforcement.
