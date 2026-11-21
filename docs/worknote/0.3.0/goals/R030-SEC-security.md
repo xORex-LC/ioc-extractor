@@ -64,9 +64,12 @@ publication qualification этим не заявляются; SRC-3, SEC-LOG-1, 
 - Завершить dependency/source-security review: review/update automation,
   воспроизводимый offline scan, secret scanning, justified suppressions с
   owner/expiry и residual-risk dispositions.
-- Разобрать `SRC-3`: актуальная advisory applicability, достижимые input paths,
-  remediations/accepted risks и согласованное release решение. Исторический
-  dependency scan не закрывает новые либо найденные позднее runtime advisories.
+- Для `SRC-3` учесть [разбор остатка](../../../../.github/release-evidence/ru/0.3.0.md#src-3-residual-review).
+  Повтор текущего SNAPSHOT с исходными правилами прошёл. Правило JBIG2
+  срабатывает, а правило для Camel-адаптера привязано к SNAPSHOT и блокирует
+  RC при смене версии. Решения по находкам Camel, Processing Foundation и
+  нативному SQLite записаны в отчёте. До закрытия нужны сверка правила на
+  выбранной версии и проходящий security run релизного коммита.
 - Пересмотреть statement `SEC-LOG-1`: сверить обещанную redaction с фактическими
   owned reports, log catalog и границами raw IOC/URL/credential handling;
   обновить registry/threat claims и tests при расхождении.

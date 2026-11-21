@@ -38,7 +38,7 @@ DB backup. Перед production upgrade создайте и проверьте 
 SQLite встроен через sqlite-jdbc; для штатной работы не нужны DB server или
 системная команда `sqlite3`. Native library нужен доступный для записи и загрузки
 временный каталог. Mount с `noexec` или неподдерживаемые CPU/libc могут сорвать
-старт; см. [native loader](https://github.com/xerial/sqlite-jdbc/blob/3.53.2.0/src/main/java/org/sqlite/SQLiteJDBCLoader.java).
+старт; см. [native loader](https://github.com/xerial/sqlite-jdbc/blob/3.54.1.0/src/main/java/org/sqlite/SQLiteJDBCLoader.java).
 Для поддерживаемых HTML/PDF/DOCX/XLSX не нужны установленные Office/LibreOffice;
 границы форматов описаны в [processing](../../dev/ru/processing.md).
 

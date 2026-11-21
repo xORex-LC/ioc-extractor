@@ -38,7 +38,7 @@ checkout's installer is not necessarily compatible with an older JAR.
 SQLite is embedded through sqlite-jdbc; no DB server or system `sqlite3` command
 is needed for normal operation. Its native library needs a writable, loadable
 temporary location: a `noexec` mount or unsupported architecture/libc can prevent
-startup. See [native loader behavior](https://github.com/xerial/sqlite-jdbc/blob/3.53.2.0/src/main/java/org/sqlite/SQLiteJDBCLoader.java).
+startup. See [native loader behavior](https://github.com/xerial/sqlite-jdbc/blob/3.54.1.0/src/main/java/org/sqlite/SQLiteJDBCLoader.java).
 Document parsing needs no Office/LibreOffice installation for the supported
 HTML/PDF/DOCX/XLSX contract; [processing](../dev/processing.md) owns format limits.
 

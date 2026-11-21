@@ -201,8 +201,8 @@ and [storage adapter](../adapters/adapter-store-jdbc/README.md).
 <a id="src-3"></a>
 ### SRC-3 — Runtime advisory matches need security disposition
 
-**Open · owner: dependency/security review and affected adapters.** The retained
-application JAR contains Jackson core/databind 2.21.5 and 3.1.5, Junrar 7.6.0,
+**Open · owner: dependency/security review and affected adapters.** The JAR from
+the November 7 screen contained Jackson core/databind 2.21.5 and 3.1.5, Junrar 7.6.0,
 Guava 33.3.1-jre and jsoup 1.23.1. The 2026-11-07 OSV refresh of its 171 external
 coordinates returned 11 advisory IDs across these seven coordinates. This is an
 affected-version screen, not proof that every vulnerable API is reachable in IOC.
@@ -212,6 +212,15 @@ Examples: [Guava](https://github.com/advisories/GHSA-xxph-c9ww-hj94),
 
 The [dated affected-version matrix](../.github/release-evidence/0.3.0.md#src-3-dated-affected-version-screen)
 retains all eleven advisory IDs, seven packaged coordinates and the screened JAR identity.
+
+The release source now selects Jackson 2.21.7 and 3.1.7, Junrar 7.6.1, Guava
+33.7.2-jre and jsoup 1.23.2 for those matches. The [November Dependency-Check
+report for main](https://github.com/xORex-LC/ioc-extractor/actions/runs/43816366946)
+also flagged SQLite. The release source selects sqlite-jdbc 3.54.1.0 with SQLite
+3.54.1, which includes the fixes for ten reported engine CVEs. CVE-2026-119586
+concerns the separate `sqlite3` recovery CLI. The application uses the embedded
+JDBC library and never invokes `.recover`. The fresh candidate security gate
+remains open. See the [SQLite advisory table](https://www.sqlite.org/cves.html).
 
 Close with owner-reviewed reachability/disposition for each match or compatible
 updates, regression/consumer checks and a fresh release security gate. Deployment
