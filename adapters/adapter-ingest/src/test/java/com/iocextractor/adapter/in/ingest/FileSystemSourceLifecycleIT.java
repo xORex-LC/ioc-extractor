@@ -336,6 +336,39 @@ class FileSystemSourceLifecycleIT {
         }
     }
 
+    @Test
+    void pendingReconcilesTerminalAdmissionAfterRegistrationFinalizationFails() throws Exception {
+        var lifecycle = new FileSystemSourceLifecycle(
+                tempDir.resolve("processing"), tempDir.resolve("done"), tempDir.resolve("failed"));
+        var registrations = new MemoryRegistrationStore();
+        Clock clock = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC);
+        Path journalPath = tempDir.resolve("admission-journal");
+        var journal = new FileDocumentAdmissionJournal(journalPath);
+        var service = new DocumentAdmissionService(journal, registrations, clock);
+        var id = new ObservationId("delivery-terminal-recovery");
+        Path source = Files.writeString(tempDir.resolve("terminal-recovery.html"), "ioc-data");
+        var handler = handler(journalPath, lifecycle, registrations, clock);
+        var admitted = handler.admit(source, id, clock.instant());
+
+        registrations.failTerminalMark = true;
+        assertThatThrownBy(() -> handler.complete(id, DocumentTerminalOutcome.REJECTED))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Synthetic registration finalization failure");
+        var interrupted = service.find(id).orElseThrow();
+        assertThat(interrupted.terminalOutcome()).contains(DocumentTerminalOutcome.REJECTED);
+        assertThat(interrupted.registrationFinalized()).isFalse();
+
+        registrations.failTerminalMark = false;
+        var restarted = handler(journalPath, lifecycle, registrations, clock);
+        assertThat(restarted.pending(10)).isEmpty();
+        var completed = service.find(id).orElseThrow();
+        assertThat(completed.terminalOutcome()).contains(DocumentTerminalOutcome.REJECTED);
+        assertThat(completed.registration()).contains(admitted.registration());
+        assertThat(completed.registrationFinalized()).isTrue();
+        assertThat(restarted.pending(10)).isEmpty();
+        assertThat(service.find(id)).contains(completed);
+    }
+
     private OrderedDocumentAdmissionHandler handler(Path journalPath,
                                                     FileSystemSourceLifecycle lifecycle,
                                                     ObservationRegistrationStore registrations,
@@ -350,6 +383,7 @@ class FileSystemSourceLifecycleIT {
         private static final String NAMESPACE = "0123456789abcdef0123456789abcdef";
         private final Map<ObservationId, RegisteredObservation> values = new LinkedHashMap<>();
         private long nextOrder = 1;
+        private boolean failTerminalMark;
 
         @Override
         public RegisteredObservation registerNew(ObservationId id, ObservationOrigin origin) {
@@ -368,6 +402,9 @@ class FileSystemSourceLifecycleIT {
         @Override
         public void markTerminal(ObservationId id, String expectedNamespace) {
             resume(id, expectedNamespace);
+            if (failTerminalMark) {
+                throw new IllegalStateException("Synthetic registration finalization failure");
+            }
         }
 
         @Override
