@@ -71,6 +71,22 @@ idempotent quarantine/disposition for each pre-claim/pre-hash window, real sourc
 evidence and a supported recovery interface. See [daemon operations](guides/daemon-operations.md)
 and [ingestion](dev/ingestion.md#receipts-and-retry).
 
+<a id="ing-18"></a>
+### ING-18 — Rejected sealed document can remain in processing
+
+**Open · owner: document admission and source lifecycle.** After preparation
+fails through the retry limit, the daemon can finalize the admission as
+`REJECTED` and record the ingest failure while leaving the sealed input in
+`processing` without a failed `.error` sidecar. If promotion has not created
+the ingest record, rejection searches for archived-style filenames containing
+the content key. The sealed claim still uses the token-only `__pending__` name.
+The retained file occupies disk space and the operator sees a terminal status
+without the expected failed-file evidence.
+
+Close with disposition driven by the durable admission and its owned source.
+Qualify idempotent recovery across the move, sidecar write and terminal ledger
+updates. See [ingestion](dev/ingestion.md#receipts-and-retry).
+
 <a id="2-обогащение-вывода-out"></a>
 <a id="out-3"></a>
 ### OUT-3 — Legacy mapped-key collisions with fixed lifecycle

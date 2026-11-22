@@ -100,9 +100,11 @@ supported contract не входят. Их появление является �
    release или полезную работу.
 5. **Untrusted data stays at the boundary.** Core не зависит от parser,
    transport и storage frameworks; внешние библиотеки изолируются adapters.
-6. **No secret in source or telemetry.** Secrets не коммитятся, не передаются
-   literal-аргументами и не выводятся в logs/reports. Чувствительные значения
-   редактируются до INFO и выше.
+6. **No secret in source or telemetry.** Secrets запрещены в исходном коде,
+   literal-аргументах и выводе приложения. Producer отвечает за допустимый
+   контекст, текст и исключения, включая причины и suppressed exceptions.
+   Правила маскирования зарегистрированных полей и видимости исходных путей
+   описаны в [observability](dev/observability.md#disclosure-and-redaction).
 7. **CVSS is a signal, not a verdict.** Версия и score определяют приоритет
    исследования, но applicability подтверждается dependency path, scope,
    vendor advisory, используемым API и фактической exposure.
@@ -149,7 +151,7 @@ supported contract не входят. Их появление является �
 | `SEC-INP-3` | Параметризованный durable-write contract | Enforced + Monitored | шесть regression-тестов останавливают build при ослаблении известных trust boundaries: business values bind'ятся, configured identifiers соответствуют `[A-Za-z][A-Za-z0-9_]*`, internal identifiers — `[A-Za-z_][A-Za-z0-9_]*` и quote-ятся, SQL types allowlisted; health PRAGMA закрыты typed enum + literal execute-sites. SpotBugs автоматически сигнализирует о новых non-constant JDBC entry points, а exact-baseline gate блокирует их до исправления или явного reviewed disposition |
 | `SEC-INP-4` | Bounded managed CSV intake и source authority ceiling | Enforced | strict charset/dialect/header recognition, snapshot/field/record/row/column bounds, formula rejection, declarative artifact/routing/merge ceiling и safe row diagnostics; [dataframe import](dev/dataframe-import.md) |
 | `SEC-OUT-1` | CSV spreadsheet formula-injection applicability contract | Manual + Enforced defaults | для shipped default profile path `not_applicable`: marker matches начинаются с `БИБ`/`Письмо`, остальные колонки ограничены indicator/value/const contract; универсальной output-neutralization нет, configuration-dependent seam отслеживается как `OUT-2`; будущий фикс обязан учитывать machine-consumer semantics |
-| `SEC-LOG-1` | Redaction чувствительных IOC/URL components и transport credentials | Enforced | `SensitiveLogValueSanitizer`, diagnostic formatter и regression tests; [observability.md](dev/observability.md). [Configuration reports](dev/configuration-failure-reports.md) исключают произвольный parser/exception/validation text и исходный cause в owned Boot analyses; сторонние DEBUG-логи этим не санитизируются |
+| `SEC-LOG-1` | Маскирование зарегистрированных IOC-полей и контролируемые сообщения об ошибках | Enforced для описанных путей | Форматтер заменяет `indicator`/`value`/`item` на отпечатки при INFO и выше, URL-helper обрабатывает распознанные user-info/query. Контролируемые отчёты и диагностики ошибок конфигурации, чтения документов, отклонения строки при маппинге и SMB ограничивают вывод на стороне producer. Область действия и проверки описаны в [observability](dev/observability.md#disclosure-and-redaction) и [configuration failure reports](dev/configuration-failure-reports.md). |
 | `SEC-DATA-1` | Atomic durable protocols и checksummed immutable export slices | Enforced | ledgers, manifests, `_SUCCESS`, checksum verification и recovery contracts; [sync.md](dev/sync.md) |
 | `SEC-DATA-2` | Managed-import ownership, immutable evidence и exactly-once promotion | Enforced | local atomic move либо SMB server-side rename, private hashed snapshot, sealed stage, one-transaction promotion и dataframe receipt; protected source/report terminal unit |
 | `SEC-DATA-3` | Managed-import SMB private namespace и bounded remote terminal evidence | Designed | ADR-0025 требует operator-provisioned namespace, source capability gate, producer-denial negative test и exact remote-first terminal purge с ledger-last recovery; implementation gaps зарегистрированы как `OPS-3`/`OPS-9`, server-family evidence — `OPS-8` |

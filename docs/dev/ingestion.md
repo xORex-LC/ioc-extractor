@@ -129,8 +129,10 @@ Execution attempts and retry-after are durable in the selected admission journal
 failure retains the private source and original observation/rank. Retries use
 bounded configured backoff without sleeping on the poller. Once a verified
 content key exists, exhausted failure uses the existing source rejection/dead-letter
-lifecycle. Each failed attempt emits a typed diagnostic with its cause; terminal
-logging is observation only and cannot retry a successful canonical operation.
+lifecycle. Each failed attempt emits a typed diagnostic. Document read errors
+carry the controlled reason described in [observability](observability.md#disclosure-and-redaction).
+Terminal logging observes the outcome. Physical disposition of a sealed document
+after preparation failure has an open [ING-18](../KNOWN-ISSUES.md#ing-18) gap.
 
 Document admission progress timestamps never precede the record's durable
 `updatedAt`. A backward wall-clock step therefore cannot prevent claim, retry
