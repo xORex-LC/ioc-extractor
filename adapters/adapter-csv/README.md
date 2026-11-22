@@ -56,6 +56,10 @@ mapping, without inferring processing plans from provider names. Providers,
 transforms and predicates live in `ioc-processing`; semantic reuse/classification
 is not repeated per mapped column.
 
+An expected mapping rejection reports the artifact, occurrence, column and
+configured component. `SINK.ROW_MAPPING_FAILED` omits the raw indicator, source
+label and extension exception details, including on fail-fast runs.
+
 See [processing](../../docs/dev/processing.md), [import internals](../../docs/dev/dataframe-import.md), [artifact export](../../docs/dev/artifact-export.md) and [CSV output format](../../docs/dev/csv-output-format.md).
 Output-format settings and import-contract dialects are separate policies.
 

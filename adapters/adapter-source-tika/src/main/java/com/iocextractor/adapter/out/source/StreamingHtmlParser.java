@@ -33,6 +33,34 @@ final class StreamingHtmlParser extends AbstractEncodingDetectorParser {
     private static final Set<String> REPAIR_REGIONS = Set.of("table", "b", "i", "a", "strong", "em", "font", "template");
     private final int maximumRegionCharacters;
 
+    /** Finds an adapter-owned rejection through the wrappers added by Tika and jsoup. */
+    static String controlledFailureReason(Throwable failure) {
+        Throwable current = failure;
+        for (int depth = 0; depth < 8 && current != null; depth++) {
+            if (current instanceof HtmlContentFailure || current instanceof HtmlInputFailure) {
+                return current.getMessage();
+            }
+            current = current.getCause();
+        }
+        return "document parsing or text streaming failed";
+    }
+
+    private static final class HtmlContentFailure extends SAXException {
+        private static final long serialVersionUID = 1L;
+
+        private HtmlContentFailure(String reason) {
+            super(reason);
+        }
+    }
+
+    private static final class HtmlInputFailure extends IOException {
+        private static final long serialVersionUID = 1L;
+
+        private HtmlInputFailure(String reason) {
+            super(reason);
+        }
+    }
+
     StreamingHtmlParser(int maximumRegionCharacters) { this.maximumRegionCharacters = maximumRegionCharacters; }
     public Set<MediaType> getSupportedTypes(ParseContext context) {
         return Set.of(MediaType.text("html"), MediaType.application("xhtml+xml"),
@@ -80,7 +108,7 @@ final class StreamingHtmlParser extends AbstractEncodingDetectorParser {
     private void validateRegion(Element element) throws SAXException {
         int ancestors = 0;
         for (Element parent = element; parent != null; parent = parent.parent()) {
-            if (++ancestors > 256) { throw new SAXException("HTML nesting exceeds admitted parser working limit"); }
+            if (++ancestors > 256) { throw new HtmlContentFailure("HTML nesting exceeds admitted parser working limit"); }
         }
         long characters = 0;
         int nodes = 0;
@@ -88,11 +116,11 @@ final class StreamingHtmlParser extends AbstractEncodingDetectorParser {
         while (iterator.hasNext()) {
             var node = iterator.next();
             if (++nodes > maximumRegionCharacters / 4 + 1) {
-                throw new SAXException("HTML node count exceeds admitted parser working limit");
+                throw new HtmlContentFailure("HTML node count exceeds admitted parser working limit");
             }
             characters += retainedCharacters(node);
             if (characters > maximumRegionCharacters) {
-                throw new SAXException("HTML region exceeds admitted parser working limit");
+                throw new HtmlContentFailure("HTML region exceeds admitted parser working limit");
             }
         }
     }
@@ -119,7 +147,7 @@ final class StreamingHtmlParser extends AbstractEncodingDetectorParser {
         int common = 0;
         while (common < opened.size() && common < ancestors.size() && opened.get(common) == ancestors.get(common)) { common++; }
         if (common < opened.size() && opened.get(common) != element) {
-            throw new SAXException("HTML repair changed an already emitted ancestor");
+            throw new HtmlContentFailure("HTML repair changed an already emitted ancestor");
         }
         for (int index = common; index < ancestors.size(); index++) {
             var ancestor = ancestors.get(index);
@@ -156,12 +184,12 @@ final class StreamingHtmlParser extends AbstractEncodingDetectorParser {
         RegionReader(Reader reader, int maximum) { this.reader = reader; this.maximum = maximum; }
         public int read(char[] chars, int offset, int length) throws IOException {
             java.util.Objects.checkFromIndexSize(offset, length, chars.length);
-            if (Thread.currentThread().isInterrupted()) { throw new IOException("HTML parsing interrupted"); }
+            if (Thread.currentThread().isInterrupted()) { throw new HtmlInputFailure("HTML parsing interrupted"); }
             int allowance = maximum - sinceProgress;
             if (length == 0) { return 0; }
             if (allowance <= 0) {
                 if (reader.read() == -1) { return -1; }
-                throw new IOException("HTML region exceeds admitted parser working limit");
+                throw new HtmlInputFailure("HTML region exceeds admitted parser working limit");
             }
             int read = reader.read(chars, offset, Math.min(length, allowance));
             if (read > 0) { sinceProgress += read; }
@@ -183,7 +211,7 @@ final class StreamingHtmlParser extends AbstractEncodingDetectorParser {
             if (name.equals("BODY") || name.equals("FRAMESET") || bodyDepth > 0) { bodyDepth++; }
             if (mapper.isDiscardElement(name) || discardDepth > 0) { discardDepth++; }
             if (element.hasAttr("srcdoc") || element.attr("src").stripLeading().regionMatches(true, 0, "data:", 0, 5)) {
-                throw new SAXException("Embedded HTML attributes require a bounded separate document");
+                throw new HtmlContentFailure("Embedded HTML attributes require a bounded separate document");
             }
             if (bodyDepth > 0 && discardDepth == 0) {
                 String safe = mapper.mapSafeElement(name);

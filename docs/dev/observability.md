@@ -266,6 +266,21 @@ causes and suppressed exceptions in its stack trace. Producers own disclosure of
 all those channels; do not infer full redaction from a sanitized human message.
 Generic codes render as literal IDs, not as templates exposing context.
 
+Application-owned failure diagnostics apply disclosure rules before emission:
+
+| Path | Published details |
+|---|---|
+| Document source read | A `SOURCE.*` code, source path and a fixed reason or filename extension hint. The parser's message and exception tree are discarded at the adapter boundary. The resulting failure can be logged by the pipeline and CLI and stored as a daemon retry or rejection reason. |
+| CSV row mapping rejection | `SINK.ROW_MAPPING_FAILED`, artifact, occurrence ordinal, indicator type, column and configured provider or transform. The diagnostic excludes the raw indicator, source label and provider or transform exception text, including when fail-fast promotes it to an exception. |
+| SMB operation failure | Adapter-owned error kind, operation and logical endpoint. An adapter-owned explanation may add a remote path or a protocol condition. Mapped library failures and their cleanup errors carry controlled messages. |
+| Configuration failure | [Configuration failure reports](configuration-failure-reports.md) use fixed categories and controlled locations. |
+
+`SourceFailureLoggingIT` checks full console, CLI stderr and decoded ECS output,
+including stack traces, with synthetic parser failures. The daemon case also
+checks retry and rejection reasons. Third-party loggers can emit their own
+messages directly through the backend. Their output is outside these producer
+contracts.
+
 Operational fields exclude transport host/share/username/password. Managed-import
 reports, health and INFO records exclude raw CSV cells, producer filename/path,
 snapshot digest and contract-sensitive payload. They use safe delivery/sequence,

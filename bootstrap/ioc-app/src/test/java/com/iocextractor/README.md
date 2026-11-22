@@ -25,6 +25,7 @@ module's own source tree.
 | [ApplicationContextIT](ApplicationContextIT.java), [OneshotLazyInitializationIT](OneshotLazyInitializationIT.java) | Default graph and lazy command construction without premature JDBC initialization. |
 | [DaemonRuntimeModeIT](DaemonRuntimeModeIT.java), [DaemonManagementEndpointIT](DaemonManagementEndpointIT.java), [DataframeStorageDaemonRuntimeModeIT](DataframeStorageDaemonRuntimeModeIT.java), [JdbcLedgerDaemonRuntimeModeIT](JdbcLedgerDaemonRuntimeModeIT.java), [SyncEnabledDaemonRuntimeModeIT](SyncEnabledDaemonRuntimeModeIT.java) | Daemon, loopback actuator, explicit storage/ledger choices and enabled sync/import graph; no live SMB qualification. |
 | [GoldenPipelineIT](GoldenPipelineIT.java), [CustomerRoutingPipelineIT](CustomerRoutingPipelineIT.java) | Synthetic pipeline/golden wires and explicitly selected customer routing. |
+| [SourceFailureLoggingIT](adapter/out/source/SourceFailureLoggingIT.java) | Tika failure through CLI stderr, service console, ECS stack traces and daemon retry/rejection records. |
 | [DaemonIngestE2EIT](DaemonIngestE2EIT.java), [OnDemandExportIntegrationIT](OnDemandExportIntegrationIT.java), [ReusableExportSlotIntegrationIT](ReusableExportSlotIntegrationIT.java) | Composed intake, immutable export/recovery and sparse reusable slot behavior. |
 
 ## Discovery, isolation and limits

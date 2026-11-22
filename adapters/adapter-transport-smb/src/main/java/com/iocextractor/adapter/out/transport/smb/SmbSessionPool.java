@@ -85,7 +85,11 @@ public final class SmbSessionPool implements AutoCloseable {
                 if (mapped.kind() == RemoteErrorKind.TRANSIENT
                         || mapped.kind() == RemoteErrorKind.UNREACHABLE
                         || mapped.kind() == RemoteErrorKind.RESOURCE_EXHAUSTED) {
-                    closeClient(endpoint);
+                    try {
+                        closeClient(endpoint);
+                    } catch (RuntimeException closeFailure) {
+                        SmbExceptionMapper.addCleanupFailure(mapped, closeFailure, "close", endpoint);
+                    }
                 }
                 throw mapped;
             }

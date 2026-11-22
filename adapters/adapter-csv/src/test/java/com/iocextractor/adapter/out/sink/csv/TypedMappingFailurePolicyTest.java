@@ -120,7 +120,7 @@ class TypedMappingFailurePolicyTest {
                     .containsEntry("column", "mask")
                     .containsEntry("componentKind", "provider")
                     .containsEntry("componentName", "validated")
-                    .containsEntry("indicator", "bad.example");
+                    .containsKey("ordinal");
         });
     }
 
@@ -132,9 +132,11 @@ class TypedMappingFailurePolicyTest {
 
         assertThatThrownBy(() -> runner(FailurePolicy.failFast()).run(
                 input(), pipeline(preparer(ids, typedRejectingProvider()), repository, projections)))
-                .isInstanceOf(DiagnosticException.class)
-                .extracting("diagnostic.code")
-                .isEqualTo(SinkDiagnosticCodes.ROW_MAPPING_FAILED);
+                .isInstanceOfSatisfying(DiagnosticException.class, failure -> {
+                    assertThat(failure.diagnostic().code()).isEqualTo(SinkDiagnosticCodes.ROW_MAPPING_FAILED);
+                    assertThat(failure).hasNoCause();
+                    assertThat(failure.getMessage()).doesNotContain("bad.example", "synthetic-provider-detail");
+                });
 
         assertThat(repository.writes).isZero();
         assertThat(projections).hasValue(0);
@@ -165,7 +167,7 @@ class TypedMappingFailurePolicyTest {
     private ValueProvider typedRejectingProvider() {
         return classified -> {
             if (classified.indicator().value().startsWith("bad")) {
-                throw new MappingValueException("value violates provider contract");
+                throw new MappingValueException("synthetic-provider-detail");
             }
             return classified.indicator().value();
         };

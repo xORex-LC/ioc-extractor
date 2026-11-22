@@ -60,8 +60,9 @@ final class SmbjChangeNotifySessionFactory implements SmbChangeNotifySessionFact
                     DIRECTORY_OPTIONS);
             return new SmbjChangeNotifySession(settings.name(), client, share, directory);
         } catch (RuntimeException | IOException failure) {
-            SmbjShareClientFactory.closeAfterFailure(client, failure);
-            throw SmbExceptionMapper.map(failure, "watch", settings.name());
+            var mapped = SmbExceptionMapper.map(failure, "watch", settings.name());
+            SmbjShareClientFactory.closeAfterFailure(client, mapped, settings.name());
+            throw mapped;
         }
     }
 
@@ -97,6 +98,14 @@ final class SmbjChangeNotifySessionFactory implements SmbChangeNotifySessionFact
 
         @Override
         public void close() {
+            try {
+                closeResources();
+            } catch (RuntimeException failure) {
+                throw SmbExceptionMapper.map(failure, "close watch", endpoint);
+            }
+        }
+
+        private void closeResources() {
             try {
                 directory.close();
             } catch (RuntimeException ignored) {
@@ -148,7 +157,11 @@ final class SmbjChangeNotifySessionFactory implements SmbChangeNotifySessionFact
 
         @Override
         public boolean cancel() {
-            return future.cancel(true);
+            try {
+                return future.cancel(true);
+            } catch (RuntimeException failure) {
+                throw SmbExceptionMapper.map(failure, "cancel watch", endpoint);
+            }
         }
     }
 }

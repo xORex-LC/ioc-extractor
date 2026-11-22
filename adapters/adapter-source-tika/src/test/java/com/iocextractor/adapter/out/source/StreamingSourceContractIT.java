@@ -1,8 +1,12 @@
 package com.iocextractor.adapter.out.source;
 
 import com.iocextractor.application.tck.junit.IntegrationTest;
+import com.iocextractor.diagnostics.DiagnosticException;
+import com.iocextractor.diagnostics.codes.SourceDiagnosticCodes;
 import com.iocextractor.platform.diagnostics.DiagnosticFactory;
+import java.io.IOException;
 import java.io.StringWriter;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -112,15 +116,14 @@ class StreamingSourceContractIT {
     void excessiveHtmlDepthIsRejectedBeforeSilentParserStackTruncation() throws Exception {
         Path source = directory.resolve("deep.html");
         Files.writeString(source, "<html><body>" + "<div>".repeat(300) + "10.0.0.1" + "</div>".repeat(300) + "</body></html>");
-        assertThatThrownBy(() -> stream(source, 32768)).hasRootCauseMessage("HTML nesting exceeds admitted parser working limit");
+        assertReadFailure(source, "HTML nesting exceeds admitted parser working limit");
     }
 
     @Test
     void denseRepairRegionRejectsAnExcessiveNodeGraph() throws Exception {
         Path source = directory.resolve("dense.html");
         Files.writeString(source, "<html><body><b>" + "x<i/>".repeat(5000) + "</b></body></html>");
-        assertThatThrownBy(() -> stream(source, 32768))
-                .hasRootCauseMessage("HTML node count exceeds admitted parser working limit");
+        assertReadFailure(source, "HTML node count exceeds admitted parser working limit");
     }
 
     @Test
@@ -143,7 +146,12 @@ class StreamingSourceContractIT {
         try (var reader = new StreamingHtmlParser.RegionReader(source, 4)) {
             assertThat(reader.read(chars, 0, 4)).isEqualTo(4);
             assertThatThrownBy(() -> reader.read(chars, 0, 4))
-                    .hasMessage("HTML region exceeds admitted parser working limit");
+                    .isInstanceOfSatisfying(IOException.class, failure -> {
+                        assertThat(failure).hasMessage("HTML region exceeds admitted parser working limit");
+                        var wrapped = new UncheckedIOException("synthetic wrapper message", failure);
+                        assertThat(StreamingHtmlParser.controlledFailureReason(wrapped))
+                                .isEqualTo("HTML region exceeds admitted parser working limit");
+                    });
         }
         assertThatThrownBy(source::read).hasMessage("Stream closed");
     }
@@ -184,11 +192,20 @@ class StreamingSourceContractIT {
     void oversizedUnclosedRegionAndEmbeddedHtmlFailInsteadOfReturningPartialText() throws Exception {
         Path source = directory.resolve("large.html");
         Files.writeString(source, "<html><body><p>" + "a".repeat(32769));
-        assertThatThrownBy(() -> stream(source, 32768)).hasRootCauseMessage("HTML region exceeds admitted parser working limit");
+        assertReadFailure(source, "HTML region exceeds admitted parser working limit");
         Files.writeString(source, "<html><body><iframe srcdoc='10.0.0.1'></iframe></body></html>");
-        assertThatThrownBy(() -> stream(source, 32768)).hasRootCauseMessage("Embedded HTML attributes require a bounded separate document");
+        assertReadFailure(source, "Embedded HTML attributes require a bounded separate document");
         Files.writeString(source, "<html><body><iframe src=' DATA:text/html,10.0.0.1'></iframe></body></html>");
-        assertThatThrownBy(() -> stream(source, 32768)).hasRootCauseMessage("Embedded HTML attributes require a bounded separate document");
+        assertReadFailure(source, "Embedded HTML attributes require a bounded separate document");
+    }
+
+    private static void assertReadFailure(Path source, String reason) {
+        assertThatThrownBy(() -> stream(source, 32768))
+                .isInstanceOfSatisfying(DiagnosticException.class, failure -> {
+                    assertThat(failure.diagnostic().code()).isEqualTo(SourceDiagnosticCodes.READ_FAILED);
+                    assertThat(failure.diagnostic().context()).containsEntry("reason", reason);
+                    assertThat(failure).hasNoCause();
+                });
     }
 
     private static String stream(Path source, int limit) {

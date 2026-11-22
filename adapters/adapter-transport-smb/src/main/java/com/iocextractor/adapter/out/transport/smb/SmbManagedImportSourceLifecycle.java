@@ -1,6 +1,5 @@
 package com.iocextractor.adapter.out.transport.smb;
 
-import com.iocextractor.application.dataframeimport.DataframeImportConsistencyException;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
 import com.iocextractor.application.dataframeimport.model.ImportManagedObjectId;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshotReference;
@@ -191,24 +190,24 @@ public final class SmbManagedImportSourceLifecycle
             boolean producerExists = client.fileExists(producerPath);
             boolean claimedExists = client.fileExists(claimedPath);
             if (producerExists && claimedExists) {
-                throw new IocExtractorException("SMB import ownership destination collision");
+                throw managedOperationFailure("SMB import ownership destination collision");
             }
             if (!claimedExists) {
                 SmbRemoteEntry current = client.stat(producerPath)
                         .filter(SmbRemoteEntry::regularFile)
-                        .orElseThrow(() -> new IocExtractorException(
+                        .orElseThrow(() -> managedOperationFailure(
                                 "SMB import candidate disappeared before claim"));
                 if (!candidate.matches(current)) {
-                    throw new IocExtractorException("SMB import candidate changed before claim");
+                    throw managedOperationFailure("SMB import candidate changed before claim");
                 }
                 client.rename(producerPath, claimedPath);
             }
             SmbRemoteEntry claimed = client.stat(claimedPath)
                     .filter(SmbRemoteEntry::regularFile)
-                    .orElseThrow(() -> new IocExtractorException(
+                    .orElseThrow(() -> managedOperationFailure(
                             "SMB import claimed object is missing"));
             if (!candidate.matchesContent(claimed)) {
-                throw new IocExtractorException(
+                throw managedOperationFailure(
                         "SMB import claimed object does not match reserved candidate");
             }
             return null;
@@ -232,18 +231,18 @@ public final class SmbManagedImportSourceLifecycle
             var destinationEntry = client.stat(destination);
             if (claimedEntry.filter(entry -> !entry.regularFile()).isPresent()
                     || destinationEntry.filter(entry -> !entry.regularFile()).isPresent()) {
-                throw new IocExtractorException(
+                throw managedOperationFailure(
                         "SMB import disposition object is not a regular file");
             }
             boolean claimedExists = claimedEntry.isPresent();
             boolean destinationExists = destinationEntry.isPresent();
             if (claimedExists && destinationExists) {
-                throw new IocExtractorException("SMB import disposition destination collision");
+                throw managedOperationFailure("SMB import disposition destination collision");
             }
             if (claimedExists) {
                 client.rename(claimed, destination);
             } else if (!destinationExists) {
-                throw new IocExtractorException("SMB import claimed object is missing during disposition");
+                throw managedOperationFailure("SMB import claimed object is missing during disposition");
             }
             return null;
         });
@@ -264,7 +263,7 @@ public final class SmbManagedImportSourceLifecycle
                         ? "terminal" : "quarantine"), token);
         sessions.withClient(source.endpoint(), "import-retention", client -> {
             if (client.stat(processing).isPresent() || client.stat(other).isPresent()) {
-                throw new DataframeImportConsistencyException(
+                throw managedOperationFailure(
                         "SMB import terminal source evidence is contradictory");
             }
             var entry = client.stat(expected);
@@ -272,7 +271,7 @@ public final class SmbManagedImportSourceLifecycle
                 return null;
             }
             if (!entry.orElseThrow().regularFile()) {
-                throw new DataframeImportConsistencyException(
+                throw managedOperationFailure(
                         "SMB import terminal source object is not a regular file");
             }
             client.deleteRegularFile(expected);
@@ -293,7 +292,7 @@ public final class SmbManagedImportSourceLifecycle
             SmbRemoteEntry remote = sessions.withClient(source.endpoint(), "import-stat-claimed",
                     client -> client.stat(claimedPath)
                             .filter(SmbRemoteEntry::regularFile)
-                            .orElseThrow(() -> new IocExtractorException(
+                            .orElseThrow(() -> managedOperationFailure(
                                     "SMB import claimed object is missing")));
             if (remote.size() > maximumSnapshotBytes) {
                 throw new IocExtractorException("SMB import snapshot exceeds configured byte limit");
@@ -318,12 +317,17 @@ public final class SmbManagedImportSourceLifecycle
             SmbRemoteEntry after = sessions.withClient(source.endpoint(), "import-stat-after-download",
                     client -> client.stat(claimedPath)
                             .filter(SmbRemoteEntry::regularFile)
-                            .orElseThrow(() -> new IocExtractorException(
+                            .orElseThrow(() -> managedOperationFailure(
                                     "SMB import claimed object disappeared during materialization")));
             if (!sameRemoteEvidence(remote, after)) {
                 throw new IocExtractorException(
                         "SMB import claimed object changed during materialization");
             }
+    }
+
+    /** Preserves adapter-defined failure details across the session pool's exception mapping. */
+    private static RemoteTransportException managedOperationFailure(String message) {
+        return new RemoteTransportException(RemoteErrorKind.TRANSIENT, message);
     }
 
     private String managed(SmbImportSourceDefinition source, String phase) {

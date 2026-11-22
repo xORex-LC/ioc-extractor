@@ -104,7 +104,7 @@ class SmbjShareClientFactoryTest {
 
     @Test
     void cleanupFailureIsSuppressedOnThePrimaryConnectionFailure() {
-        RuntimeException primary = new IllegalStateException("connect failed");
+        var primary = new RemoteTransportException(RemoteErrorKind.AUTH_FAILED, "connect failed");
         RuntimeException cleanup = new IllegalStateException("client close failed");
         SMBClient client = new SMBClient() {
             @Override
@@ -113,9 +113,10 @@ class SmbjShareClientFactoryTest {
             }
         };
 
-        SmbjShareClientFactory.closeAfterFailure(client, primary);
+        SmbjShareClientFactory.closeAfterFailure(client, primary, "primary");
 
-        assertThat(primary.getSuppressed()).containsExactly(cleanup);
+        assertThat(primary.getSuppressed()).singleElement().satisfies(failure ->
+                assertThat(failure).hasMessage("SMB close failed for 'primary' (TRANSIENT)").hasNoCause());
     }
 
     private SmbEndpointSettings settings() {

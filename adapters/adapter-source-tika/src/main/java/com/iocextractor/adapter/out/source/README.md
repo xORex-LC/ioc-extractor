@@ -31,10 +31,11 @@ UTF-16 offsets and later refanging.
 A directly thrown `UnsupportedFormatException` becomes
 `SOURCE.UNSUPPORTED_FORMAT`, with the extension (or `unknown`) as diagnostic
 context. The extension is a context hint, not the detected MIME type. Other caught
-exceptions become `SOURCE.READ_FAILED`, including input opening, path-name and
-writer/parser failures. Blank exception messages fall back to the simple class
-name as `reason`; the original cause is retained. JVM `Error` is not caught here.
-`SOURCE_READ` logs successful parsing; it is not a canonical commit event.
+exceptions become `SOURCE.READ_FAILED`, with fixed reasons for path validation,
+stream opening and parsing or text streaming. The adapter preserves its own HTML
+limit and admission reasons. The original exception tree and
+message are dropped at this boundary. JVM `Error` propagates. `SOURCE_READ`
+records successful decoding and input closure before canonical processing.
 
 Per-read objects do not imply that the shared third-party parser graph has been
 qualified under arbitrary concurrent use. The local suites exercise synchronous

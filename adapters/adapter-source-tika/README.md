@@ -47,10 +47,11 @@ prove extraction, not equal memory/cancellation guarantees across those formats.
 Daemon inbox extension admission is separately owned by ingestion.
 
 The reader reports `SOURCE.UNSUPPORTED_FORMAT` for a directly reported Tika
-`UnsupportedFormatException`, and `SOURCE.READ_FAILED` for other caught read/parse
-exceptions. These are `DiagnosticException` failures with the original cause;
-canonical rollback/rejection and retry are caller policy. Output already written
-before failure is not rolled back by this adapter.
+`UnsupportedFormatException` and `SOURCE.READ_FAILED` for other caught read or
+parse exceptions. The `DiagnosticException` carries the path and a controlled
+reason or extension hint. The adapter drops the original exception and its
+message. The caller owns rollback, rejection, retries and disposal of partial
+text already written to its writer.
 
 ## Resource and security limits
 

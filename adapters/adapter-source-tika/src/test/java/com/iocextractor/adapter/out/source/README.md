@@ -8,7 +8,7 @@ server, operator document or deployed service.
 | Suite | Observable evidence |
 |---|---|
 | [TikaSourceReaderCharsetIT.java](TikaSourceReaderCharsetIT.java) | Forced Windows-1251 decodes legacy HTML; a deliberately wrong ASCII choice proves that the override takes effect |
-| [TikaSourceReaderDiagnosticIT.java](TikaSourceReaderDiagnosticIT.java) | Unsupported extension/no-extension context, missing input and filesystem-root failure, preserved cause and useful reason for null/empty/blank parser messages |
+| [TikaSourceReaderDiagnosticIT.java](TikaSourceReaderDiagnosticIT.java) | Typed unsupported-format, missing input and filesystem-root failures, fixed reasons, and exclusion of parser messages and exception chains |
 | [TikaSourceReaderFormatContractIT.java](TikaSourceReaderFormatContractIT.java) | Independently constructed PDF/DOCX/XLSX containers yield sentinel text; shared ZIP helpers build DOCX streaming fixtures |
 | [StreamingSourceContractIT.java](StreamingSourceContractIT.java) | Full text equality against a separate default `AutoDetectParser`; HTML repair/EOF/whitespace/supplementary characters and DOCX runs/tables/tabs/hyperlinks/header/footer/footnotes |
 

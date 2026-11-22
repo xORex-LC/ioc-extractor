@@ -75,7 +75,7 @@ class SmbFileTransportIT {
                 localSlice,
                 "_SUCCESS")))
                 .isInstanceOf(RemoteTransportException.class)
-                .hasMessageContaining("simulated upload failure");
+                .hasMessage("SMB publish failed for 'primary' (TRANSIENT)").hasNoCause();
 
         FakeSmbShareClient client = factory.openedClients.getFirst();
         assertThat(client.directoryExists("export/profile/slice-1")).isFalse();
@@ -97,12 +97,10 @@ class SmbFileTransportIT {
                 localSlice,
                 "_SUCCESS")))
                 .isInstanceOf(RemoteTransportException.class)
-                .hasMessageContaining("simulated upload failure")
+                .hasMessage("SMB publish failed for 'primary' (TRANSIENT)").hasNoCause()
                 .satisfies(failure -> {
-                    assertThat(failure.getCause()).isNotNull();
-                    assertThat(failure.getCause().getSuppressed())
-                            .extracting(Throwable::getMessage)
-                            .containsExactly("simulated cleanup failure");
+                    assertThat(failure.getSuppressed()).singleElement().satisfies(cleanup -> assertThat(cleanup)
+                            .hasMessage("SMB publish cleanup failed for 'primary' (TRANSIENT)").hasNoCause());
                 });
     }
 

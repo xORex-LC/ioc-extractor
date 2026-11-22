@@ -862,17 +862,6 @@
         </suppression>
         <rationale>Reviewed policy signal: a failed reconcile cycle is durably marked failed and the original runtime failure is preserved for the scheduler and health boundary.</rationale>
     </finding>
-    <finding id="SB04-091" module="adapters/adapter-transport-smb" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="94ece55bd8105af5894ae60a0ce84620" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-B; source=adapters/adapter-transport-smb/src/main/java/com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java; tests=adapters/adapter-transport-smb/src/test/java/com/iocextractor/adapter/out/transport/smb/SmbFileTransportIT.java" review="cleanup-ownership-accounting-change">
-        <class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
-        <method name="publish" signature="(Lcom/iocextractor/adapter/out/transport/smb/SmbShareClient;Lcom/iocextractor/application/sync/PublishAtomicallyRequest;)Lcom/iocextractor/application/sync/PublishReceipt;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="153" bytecode="414" />
-        <suppression>
-            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
-            <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
-            <Method name="publish" />
-        </suppression>
-        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its runtime failure contract; publish-cleanup failures are attached to the primary failure and pinned by regression evidence under C2-EX-B.</rationale>
-    </finding>
     <finding id="DATA-IMPORT-P8-SB-001" module="adapters/adapter-transport-smb" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="dc137b0ff7d60ed5b9f8da8b2502cb0a" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P8-CHANGE-NOTIFY; source=adapters/adapter-transport-smb/src/main/java/com/iocextractor/adapter/out/transport/smb/SmbImportChangeSignalSource.java; tests=adapters/adapter-transport-smb/src/test/java/com/iocextractor/adapter/out/transport/smb/SmbImportChangeSignalSourceTest.java" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.adapter.out.transport.smb.SmbImportChangeSignalSource" />
         <method name="start" signature="(Ljava/util/function/Consumer;)V" />

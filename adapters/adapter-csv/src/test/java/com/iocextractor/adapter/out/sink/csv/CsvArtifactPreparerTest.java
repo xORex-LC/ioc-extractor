@@ -114,14 +114,13 @@ class CsvArtifactPreparerTest {
                 .satisfies(diagnostic -> {
                     assertThat(diagnostic.code()).isEqualTo(SinkDiagnosticCodes.ROW_MAPPING_FAILED);
                     assertThat(diagnostic.context())
-                            .containsEntry("indicator", "bad")
                             .containsEntry("type", IndicatorType.MD5)
-                            .containsEntry("source", "source-key")
                             .containsEntry("artifact", "hashes")
                             .containsEntry("ordinal", 0)
                             .containsEntry("column", "value")
                             .containsEntry("componentKind", "provider")
-                            .containsEntry("componentName", "validated");
+                            .containsEntry("componentName", "validated")
+                            .doesNotContainKeys("indicator", "source", "reason");
                     assertThat(diagnostic.cause()).isEmpty();
                 });
         assertThat(result.value().rows().snapshot()).hasSize(1);
