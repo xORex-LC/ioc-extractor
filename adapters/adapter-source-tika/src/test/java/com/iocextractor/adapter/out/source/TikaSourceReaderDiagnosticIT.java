@@ -34,7 +34,7 @@ class TikaSourceReaderDiagnosticIT {
     @org.junit.jupiter.params.provider.ValueSource(strings = {"sample.unknown", "sample"})
     void preserves_unsupported_format_as_typed_run_failure(String name) throws Exception {
         Path source = Files.writeString(tempDir.resolve(name), "data");
-        var failure = new UnsupportedFormatException("unsupported");
+        var failure = new UnsupportedFormatException("test-format-detail");
         var reader = new TikaSourceReader(new FailingParser(failure), null,
                 new DiagnosticFactory(Clock.systemUTC()));
 
@@ -46,7 +46,8 @@ class TikaSourceReaderDiagnosticIT {
                     assertThat(typed.diagnostic().context())
                             .containsEntry("source", source)
                             .containsEntry("format", "unknown");
-                    assertThat(typed.getCause()).isSameAs(failure);
+                    assertThat(typed.diagnostic().cause()).isEmpty();
+                    assertThat(typed).hasNoCause().hasMessageNotContaining("test-format-detail");
                 });
     }
 
@@ -60,8 +61,10 @@ class TikaSourceReaderDiagnosticIT {
                 .satisfies(thrown -> {
                     var typed = (DiagnosticException) thrown;
                     assertThat(typed.diagnostic().code()).isEqualTo(SourceDiagnosticCodes.READ_FAILED);
-                    assertThat(typed.diagnostic().context()).containsEntry("source", missing);
-                    assertThat(typed.getCause()).isInstanceOf(IOException.class);
+                    assertThat(typed.diagnostic().context())
+                            .containsEntry("source", missing)
+                            .containsEntry("reason", "could not open input stream");
+                    assertThat(typed).hasNoCause();
                 });
     }
 
@@ -76,24 +79,29 @@ class TikaSourceReaderDiagnosticIT {
                 .satisfies(thrown -> {
                     var typed = (DiagnosticException) thrown;
                     assertThat(typed.diagnostic().code()).isEqualTo(SourceDiagnosticCodes.READ_FAILED);
-                    assertThat(typed.diagnostic().context()).containsEntry("source", filesystemRoot);
-                    assertThat(typed.getCause()).isInstanceOf(IllegalArgumentException.class);
-                    assertThat(typed.getCause().getMessage()).contains("source path must name a file");
+                    assertThat(typed.diagnostic().context())
+                            .containsEntry("source", filesystemRoot)
+                            .containsEntry("reason", "invalid source path");
+                    assertThat(typed).hasNoCause();
                 });
     }
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.NullAndEmptySource
-    @org.junit.jupiter.params.provider.ValueSource(strings = " ")
-    void messageLessParserFailureStillHasAUsefulTypedReason(String message) throws Exception {
+    @org.junit.jupiter.params.provider.ValueSource(strings = {" ", "test-parser-detail"})
+    void parserFailureReportsOnlyTheControlledReason(String message) throws Exception {
         Path source = Files.writeString(tempDir.resolve("broken.html"), "data");
-        var failure = new org.apache.tika.exception.TikaException(message);
+        var failure = new org.apache.tika.exception.TikaException(message, new IOException("test-cause-detail"));
+        failure.addSuppressed(new IOException("test-suppressed-detail"));
         var reader = new TikaSourceReader(new FailingParser(failure), null, new DiagnosticFactory(Clock.systemUTC()));
         assertThatThrownBy(() -> reader.readText(source)).satisfies(thrown -> {
             var diagnostic = (DiagnosticException) thrown;
             assertThat(diagnostic.diagnostic().code()).isEqualTo(SourceDiagnosticCodes.READ_FAILED);
-            assertThat(diagnostic.diagnostic().context()).containsEntry("reason", "TikaException");
-            assertThat(diagnostic.getCause()).isSameAs(failure);
+            assertThat(diagnostic.diagnostic().context())
+                    .containsEntry("reason", "document parsing or text streaming failed");
+            assertThat(diagnostic.diagnostic().cause()).isEmpty();
+            assertThat(diagnostic).hasNoCause().hasMessageNotContaining("test-parser-detail");
+            assertThat(diagnostic.getSuppressed()).isEmpty();
         });
     }
 

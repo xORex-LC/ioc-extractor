@@ -23,6 +23,7 @@ final class SmbExceptionMapper {
     private SmbExceptionMapper() {
     }
 
+    /** Classifies a library failure before publishing controlled operation and endpoint details. */
     static RemoteTransportException map(Throwable failure, String operation, String endpoint) {
         if (failure instanceof RemoteTransportException remote) {
             return remote;
@@ -30,8 +31,15 @@ final class SmbExceptionMapper {
         RemoteErrorKind kind = classify(failure);
         return new RemoteTransportException(
                 kind,
-                "SMB " + operation + " failed for endpoint '" + endpoint + "': " + safeMessage(failure),
-                failure);
+                "SMB " + operation + " failed for '" + endpoint + "' (" + kind.name() + ")");
+    }
+
+    /** Preserves a secondary cleanup failure in the same controlled form as the primary. */
+    static void addCleanupFailure(RemoteTransportException primary, RuntimeException failure,
+                                  String operation, String endpoint) {
+        if (failure != primary) {
+            primary.addSuppressed(map(failure, operation, endpoint));
+        }
     }
 
     static RemoteErrorKind classify(Throwable failure) {
@@ -104,10 +112,5 @@ final class SmbExceptionMapper {
             return RemoteErrorKind.TRANSIENT;
         }
         return null;
-    }
-
-    private static String safeMessage(Throwable failure) {
-        String message = failure.getMessage();
-        return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
     }
 }

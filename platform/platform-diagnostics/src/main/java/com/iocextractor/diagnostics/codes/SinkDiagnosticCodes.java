@@ -12,7 +12,7 @@ public enum SinkDiagnosticCodes implements IocDiagnosticCode {
     WRITE_FAILED(DiagnosticSeverity.FATAL, DiagnosticImpact.RUN, "sink.write-failed",
             "Sink {sink} failed to write artifact {artifact}: {reason}"),
     ROW_MAPPING_FAILED(DiagnosticSeverity.ERROR, DiagnosticImpact.ELEMENT, "sink.row-mapping-failed",
-            "Sink {sink} failed to map row for indicator {indicator}: {reason}"),
+            "Sink {sink} could not map occurrence {ordinal}: column {column} rejected by {componentKind} {componentName}"),
     CHARSET_UNMAPPABLE(DiagnosticSeverity.WARN, DiagnosticImpact.OPERATION, "sink.charset-unmappable",
             "Artifact {artifact} projection to {charset} replaced unrepresentable values: "
                     + "{affectedValues} data value(s), {affectedHeaderValues} header value(s) "

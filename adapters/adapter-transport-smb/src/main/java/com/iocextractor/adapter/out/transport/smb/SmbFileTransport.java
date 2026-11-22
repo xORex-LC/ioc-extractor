@@ -124,7 +124,11 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
                 .filter(file -> file.leafName().equals(request.commitMarkerName()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("commit marker is not a regular file: " + localMarker));
-        cleanup(client, temporaryPath);
+        try {
+            cleanup(client, temporaryPath);
+        } catch (RuntimeException ignored) {
+            // Preflight cleanup is best-effort. The upload below owns its failure outcome.
+        }
         try {
             client.createDirectories(temporaryPath);
             for (UploadFile file : files) {
@@ -149,8 +153,13 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
             }
             return new PublishReceipt(remotePath, "committed marker " + localMarkerValue + ", files=" + files.size());
         } catch (RuntimeException failure) {
-            cleanup(client, temporaryPath, failure);
-            throw failure;
+            RemoteTransportException mapped = SmbExceptionMapper.map(failure, "publish", request.endpoint());
+            try {
+                cleanup(client, temporaryPath);
+            } catch (RuntimeException cleanupFailure) {
+                SmbExceptionMapper.addCleanupFailure(mapped, cleanupFailure, "publish cleanup", request.endpoint());
+            }
+            throw mapped;
         }
     }
 
@@ -209,21 +218,8 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
     }
 
     private static void cleanup(SmbShareClient client, String remotePath) {
-        cleanup(client, remotePath, null);
-    }
-
-    private static void cleanup(SmbShareClient client,
-                                String remotePath,
-                                RuntimeException primaryFailure) {
-        try {
-            if (client.directoryExists(remotePath)) {
-                client.deleteTree(remotePath);
-            }
-        } catch (RuntimeException cleanupFailure) {
-            if (primaryFailure != null && cleanupFailure != primaryFailure) {
-                primaryFailure.addSuppressed(cleanupFailure);
-            }
-            // Preflight cleanup is best-effort; failure cleanup is retained on the primary error.
+        if (client.directoryExists(remotePath)) {
+            client.deleteTree(remotePath);
         }
     }
 

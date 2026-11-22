@@ -44,10 +44,12 @@ final class SmbjShareClient implements SmbShareClient {
 
     private final SMBClient client;
     private final DiskShare share;
+    private final String endpoint;
 
-    SmbjShareClient(SMBClient client, DiskShare share) {
+    SmbjShareClient(SMBClient client, DiskShare share, String endpoint) {
         this.client = client;
         this.share = share;
+        this.endpoint = endpoint;
     }
 
     @Override
@@ -93,7 +95,7 @@ final class SmbjShareClient implements SmbShareClient {
              OutputStream output = Files.newOutputStream(localDestination)) {
             input.transferTo(output);
         } catch (IOException e) {
-            throw SmbExceptionMapper.map(e, "download", remotePath);
+            throw SmbExceptionMapper.map(e, "download", endpoint);
         }
     }
 
@@ -141,7 +143,7 @@ final class SmbjShareClient implements SmbShareClient {
              InputStream input = remote.getInputStream()) {
             return new String(input.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw SmbExceptionMapper.map(e, "read", remotePath);
+            throw SmbExceptionMapper.map(e, "read", endpoint);
         }
     }
 
@@ -190,7 +192,7 @@ final class SmbjShareClient implements SmbShareClient {
              OutputStream output = remote.getOutputStream()) {
             Files.copy(localFile, output);
         } catch (IOException e) {
-            throw SmbExceptionMapper.map(e, "upload", remotePath);
+            throw SmbExceptionMapper.map(e, "upload", endpoint);
         }
     }
 
@@ -226,6 +228,14 @@ final class SmbjShareClient implements SmbShareClient {
 
     @Override
     public void close() {
+        try {
+            closeResources();
+        } catch (RuntimeException failure) {
+            throw SmbExceptionMapper.map(failure, "close", endpoint);
+        }
+    }
+
+    private void closeResources() {
         try {
             share.close();
         } catch (IOException ignored) {

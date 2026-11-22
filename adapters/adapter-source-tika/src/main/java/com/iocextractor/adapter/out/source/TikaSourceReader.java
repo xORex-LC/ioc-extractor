@@ -9,6 +9,7 @@ import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
 import com.iocextractor.observability.logging.LogEvents;
 import org.apache.tika.detect.EncodingDetector;
+import org.apache.tika.exception.TikaException;
 import org.apache.tika.exception.UnsupportedFormatException;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.metadata.TikaCoreProperties;
@@ -18,7 +19,9 @@ import org.apache.tika.parser.Parser;
 import org.apache.tika.sax.BodyContentHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.xml.sax.SAXException;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
@@ -31,7 +34,9 @@ import java.util.Objects;
  * document type (.docx / .htm / .pdf / .xlsx …) and writes plain text into the
  * caller-owned writer without Tika's default 100k-character truncation. HTML
  * prunes completed subtrees; DOCX uses the SAX extractor. The finite-batch
- * convenience overload explicitly materializes a String.
+ * convenience overload explicitly materializes a String. Read failures expose
+ * the source path and controlled diagnostic details for use in logs and status
+ * records. Parser messages and exception chains stay within the adapter.
  *
  * <p>Charset handling (boundary 1 of {@code ioc.source.charset}): with
  * {@code auto} the text/HTML charset is detected by Tika/ICU; an explicit charset
@@ -93,31 +98,31 @@ public final class TikaSourceReader implements SourceReader {
         String resourceName;
         try {
             resourceName = resourceName(source);
-        } catch (Exception failure) {
-            throw readFailure(source, failure);
+        } catch (RuntimeException failure) {
+            throw readFailure(source, "invalid source path");
         }
 
-        try (InputStream in = Files.newInputStream(source)) {
+        InputStream input = openSource(source);
+        try (input) {
             BodyContentHandler handler = new BodyContentHandler(output);
             Metadata metadata = new Metadata();
             metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, resourceName);
-            parser.parse(in, handler, metadata, parseContext());
-            LogEvents.info(log)
-                    .action(EventAction.SOURCE_READ)
-                    .outcome(EventOutcome.SUCCESS)
-                    .field(LogField.IOC_SOURCE_PATH, source)
-                    .message("source read")
-                    .log();
+            parser.parse(input, handler, metadata, parseContext());
         } catch (UnsupportedFormatException failure) {
             var diagnostic = diagnosticFactory.create(SourceDiagnosticCodes.UNSUPPORTED_FORMAT)
                     .with("source", source)
                     .with("format", extension(resourceName))
-                    .cause(failure)
                     .build();
             throw new DiagnosticException(diagnostic);
-        } catch (Exception failure) {
-            throw readFailure(source, failure);
+        } catch (IOException | SAXException | TikaException | RuntimeException failure) {
+            throw readFailure(source, StreamingHtmlParser.controlledFailureReason(failure));
         }
+        LogEvents.info(log)
+                .action(EventAction.SOURCE_READ)
+                .outcome(EventOutcome.SUCCESS)
+                .field(LogField.IOC_SOURCE_PATH, source)
+                .message("source read")
+                .log();
     }
 
     private static String extension(String resourceName) {
@@ -133,17 +138,18 @@ public final class TikaSourceReader implements SourceReader {
         return fileName.toString();
     }
 
-    private static String reason(Exception failure) {
-        return failure.getMessage() == null || failure.getMessage().isBlank()
-                ? failure.getClass().getSimpleName()
-                : failure.getMessage();
+    private InputStream openSource(Path source) {
+        try {
+            return Files.newInputStream(source);
+        } catch (IOException | RuntimeException failure) {
+            throw readFailure(source, "could not open input stream");
+        }
     }
 
-    private DiagnosticException readFailure(Path source, Exception failure) {
+    private DiagnosticException readFailure(Path source, String reason) {
         var diagnostic = diagnosticFactory.create(SourceDiagnosticCodes.READ_FAILED)
                 .with("source", source)
-                .with("reason", reason(failure))
-                .cause(failure)
+                .with("reason", reason)
                 .build();
         return new DiagnosticException(diagnostic);
     }

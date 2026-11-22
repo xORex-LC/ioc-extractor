@@ -7,7 +7,6 @@ import ch.qos.logback.core.read.ListAppender;
 import com.iocextractor.platform.diagnostics.Diagnostic;
 import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
-import com.iocextractor.diagnostics.codes.SinkDiagnosticCodes;
 import com.iocextractor.diagnostics.render.TemplateDiagnosticRenderer;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
@@ -100,8 +99,8 @@ class LoggingDiagnosticSinkTest {
     void redacts_raw_indicator_from_error_message_without_mutating_policy_context() {
         var appender = appender();
         String rawIndicator = "https://example.test/path?token=secret";
-        var diagnostic = Diagnostic.builder(SinkDiagnosticCodes.ROW_MAPPING_FAILED, CLOCK)
-                .with("sink", "masks")
+        var diagnostic = Diagnostic.builder(PipelineDiagnosticCodes.STAGE_FAILED, CLOCK)
+                .with("stage", "map")
                 .with("indicator", rawIndicator)
                 .with("reason", "invalid row for " + rawIndicator)
                 .build();
@@ -121,11 +120,11 @@ class LoggingDiagnosticSinkTest {
     @Test
     void keeps_raw_indicator_for_explicit_debug_diagnostic() {
         String rawIndicator = "example.test";
-        var diagnostic = Diagnostic.builder(SinkDiagnosticCodes.ROW_MAPPING_FAILED, CLOCK)
+        var diagnostic = Diagnostic.builder(PipelineDiagnosticCodes.STAGE_FAILED, CLOCK)
                 .severity(DiagnosticSeverity.DEBUG)
-                .with("sink", "masks")
+                .with("stage", "map")
                 .with("indicator", rawIndicator)
-                .with("reason", "traceable")
+                .with("reason", "traceable " + rawIndicator)
                 .build();
         var renderer = new TemplateDiagnosticRenderer(new RedactingDiagnosticContextFormatter());
 
@@ -136,9 +135,9 @@ class LoggingDiagnosticSinkTest {
     @MethodSource("allSeverities")
     void hides_query_and_credentials_at_every_severity(DiagnosticSeverity severity) {
         String rawIndicator = "http://user:secret@evil.example/path?token=abc#frag";
-        var diagnostic = Diagnostic.builder(SinkDiagnosticCodes.ROW_MAPPING_FAILED, CLOCK)
+        var diagnostic = Diagnostic.builder(PipelineDiagnosticCodes.STAGE_FAILED, CLOCK)
                 .severity(severity)
-                .with("sink", "masks")
+                .with("stage", "map")
                 .with("indicator", rawIndicator)
                 .with("reason", "rejected " + rawIndicator)
                 .build();

@@ -150,7 +150,7 @@ class SmbChangeNotifyWatcherTest {
         }
 
         assertThat(factory.sessions).hasSize(1);
-        assertThat(handler.lastFailure).hasMessageContaining("connect denied");
+        assertThat(handler.lastFailure).hasMessageContaining("SMB watch failed", "TRANSIENT").hasNoCause();
     }
 
     @Test
@@ -195,7 +195,7 @@ class SmbChangeNotifyWatcherTest {
         }
 
         assertThat(handler.signals).hasValue(0);
-        assertThat(handler.lastFailure).hasMessageContaining("delete pending");
+        assertThat(handler.lastFailure).hasMessageContaining("SMB watch failed", "TRANSIENT").hasNoCause();
         assertThat(factory.sessions).hasSizeGreaterThanOrEqualTo(2);
     }
 

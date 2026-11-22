@@ -10,6 +10,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.EOFException;
+import java.io.IOException;
 import java.net.ConnectException;
 import java.net.NoRouteToHostException;
 import java.net.SocketTimeoutException;
@@ -64,15 +65,17 @@ class SmbExceptionMapperTest {
     }
 
     @Test
-    void suppliesFailureTypeWhenMappedFailureHasNoMessage() {
-        IllegalStateException failure = new IllegalStateException();
+    void reportsOnlyControlledDetailsFromLibraryFailure() {
+        var failure = new IllegalStateException("test-smb-detail", new IOException("test-cause-detail"));
+        failure.addSuppressed(new IOException("test-cleanup-detail"));
 
         RemoteTransportException mapped = SmbExceptionMapper.map(failure, "list", "delivery");
 
         assertThat(mapped.kind()).isEqualTo(RemoteErrorKind.TRANSIENT);
         assertThat(mapped)
-                .hasMessage("SMB list failed for endpoint 'delivery': IllegalStateException")
-                .hasCause(failure);
+                .hasMessage("SMB list failed for 'delivery' (TRANSIENT)")
+                .hasNoCause();
+        assertThat(mapped.getSuppressed()).isEmpty();
     }
 
     @ParameterizedTest

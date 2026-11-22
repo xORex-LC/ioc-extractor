@@ -87,7 +87,7 @@ class SmbManagedImportSourceLifecycleIT {
         assertThatThrownBy(() -> fixture.lifecycle.claim(new ClaimImportSourceCommand(
                 DELIVERY, SOURCE, candidate.candidateToken())))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("connection reset");
+                .hasMessage("SMB import-materialize failed for 'primary' (TRANSIENT)").hasNoCause();
 
         var recovered = fixture.lifecycle.claim(new ClaimImportSourceCommand(
                 DELIVERY, SOURCE, candidate.candidateToken()));
@@ -126,7 +126,7 @@ class SmbManagedImportSourceLifecycleIT {
         assertThatThrownBy(() -> fixture.lifecycle.claim(new ClaimImportSourceCommand(
                 DELIVERY, SOURCE, candidate.candidateToken())))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("sharing violation");
+                .hasMessage("SMB import-claim failed for 'primary' (TRANSIENT)").hasNoCause();
 
         assertThat(fixture.remote.operations).noneMatch(operation -> operation.startsWith("download:"));
         assertThat(fixture.remote.files).containsKey("incoming/feed.csv");

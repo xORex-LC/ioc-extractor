@@ -28,20 +28,19 @@ final class SmbjShareClientFactory implements SmbShareClientFactory {
             Connection connection = connect(client, settings);
             Share connectedShare = authenticate(connection, settings).connectShare(settings.share());
             DiskShare share = requireDiskShare(connectedShare, settings);
-            return new SmbjShareClient(client, share);
+            return new SmbjShareClient(client, share, settings.name());
         } catch (IOException | RuntimeException failure) {
-            closeAfterFailure(client, failure);
-            throw SmbExceptionMapper.map(failure, "connect", settings.name());
+            RemoteTransportException mapped = SmbExceptionMapper.map(failure, "connect", settings.name());
+            closeAfterFailure(client, mapped, settings.name());
+            throw mapped;
         }
     }
 
-    static void closeAfterFailure(SMBClient client, Throwable primaryFailure) {
+    static void closeAfterFailure(SMBClient client, RemoteTransportException primaryFailure, String endpoint) {
         try {
             client.close();
         } catch (RuntimeException closeFailure) {
-            if (closeFailure != primaryFailure) {
-                primaryFailure.addSuppressed(closeFailure);
-            }
+            SmbExceptionMapper.addCleanupFailure(primaryFailure, closeFailure, "close", endpoint);
         }
     }
 
@@ -77,7 +76,7 @@ final class SmbjShareClientFactory implements SmbShareClientFactory {
             try {
                 encrypted = session.shouldEncryptData();
             } catch (IOException failure) {
-                throw securityPolicyFailure(settings, failure);
+                throw securityPolicyFailure(settings);
             }
             requireEncryption(settings, connection.getNegotiatedProtocol().getDialect(), encrypted);
         }
@@ -88,27 +87,22 @@ final class SmbjShareClientFactory implements SmbShareClientFactory {
                                   com.hierynomus.mssmb2.SMB2Dialect dialect,
                                   boolean encrypted) {
         if (settings.encryption().requiresEncryption() && (!dialect.isSmb3x() || !encrypted)) {
-            throw securityPolicyFailure(settings, null);
+            throw securityPolicyFailure(settings);
         }
     }
 
-    private static RemoteTransportException securityPolicyFailure(
-            SmbEndpointSettings settings, Throwable cause) {
-        String message = "SMB3 encryption is required for endpoint '" + settings.name()
-                + "' but was not negotiated";
-        return cause == null
-                ? new RemoteTransportException(RemoteErrorKind.SECURITY_POLICY_UNMET, message)
-                : new RemoteTransportException(RemoteErrorKind.SECURITY_POLICY_UNMET, message, cause);
+    private static RemoteTransportException securityPolicyFailure(SmbEndpointSettings settings) {
+        return new RemoteTransportException(RemoteErrorKind.SECURITY_POLICY_UNMET,
+                "SMB3 encryption is required for endpoint '" + settings.name()
+                        + "' but could not be verified");
     }
 
     static DiskShare requireDiskShare(Share share, SmbEndpointSettings settings) {
         if (share instanceof DiskShare diskShare) {
             return diskShare;
         }
-        String actualType = share == null ? "null" : share.getClass().getSimpleName();
         throw new RemoteTransportException(
                 RemoteErrorKind.NOT_FOUND,
-                "SMB share '" + settings.share() + "' for endpoint '" + settings.name()
-                        + "' is not a disk share (actual type: " + actualType + ")");
+                "SMB target for endpoint '" + settings.name() + "' is not a disk share");
     }
 }

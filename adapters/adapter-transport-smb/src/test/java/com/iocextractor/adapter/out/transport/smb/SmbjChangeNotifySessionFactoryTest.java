@@ -96,7 +96,7 @@ class SmbjChangeNotifySessionFactoryTest {
         assertThatThrownBy(() -> pending.await(Duration.ofMillis(10)))
                 .isInstanceOfSatisfying(RemoteTransportException.class, failure -> {
                     assertThat(failure.kind()).isEqualTo(RemoteErrorKind.TRANSIENT);
-                    assertThat(failure.getCause()).isInstanceOf(IOException.class);
+                    assertThat(failure).hasMessage("SMB watch failed for 'primary' (TRANSIENT)").hasNoCause();
                 });
     }
 

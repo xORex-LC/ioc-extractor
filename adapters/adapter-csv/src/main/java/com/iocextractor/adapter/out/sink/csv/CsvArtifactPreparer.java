@@ -162,11 +162,8 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
                 .with(DiagnosticContextKeys.COLUMN, failure.column())
                 .with(DiagnosticContextKeys.COMPONENT_KIND, failure.componentKind().value())
                 .with(DiagnosticContextKeys.COMPONENT_NAME, failure.componentName())
-                .with(DiagnosticContextKeys.INDICATOR, classified.indicator().value())
                 .with(DiagnosticContextKeys.TYPE, classified.indicator().type())
-                .with(DiagnosticContextKeys.SOURCE, sourceKey(classified))
                 .with(DiagnosticContextKeys.ORDINAL, ordinal)
-                .with("reason", failure.getMessage())
                 .build();
     }
 

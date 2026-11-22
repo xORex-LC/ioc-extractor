@@ -56,6 +56,11 @@ encryption. Custom TCP ports apply to both pooled operations and watches.
 Connect, request and idle timeouts have distinct purposes, described in the
 production README.
 
+Mapped SMBJ failures expose a `RemoteErrorKind`, operation and endpoint alias.
+The original library exception tree stays inside the adapter. When connection
+or publication cleanup also fails, the primary failure retains a separately
+classified cleanup failure with controlled details.
+
 Publish uploads into a temporary sibling directory, writes the marker last,
 checks remote sizes and renames to the final slice path. Matching committed
 markers are idempotent success. Marker-less final directories are treated as
