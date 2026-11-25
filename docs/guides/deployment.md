@@ -376,22 +376,19 @@ Run this command as an ordinary user:
 
 It rejects a dirty checkout unless `--allow-dirty` is explicit, runs the full
 Maven gate, verifies that the build did not change the checkout, creates a
-release identified by commit and build time, then uses that new jar to validate
-the effective installed configuration as the service account. A validation
-failure leaves the running service and SQLite databases untouched. Only after
-that gate does deployment back up both databases and the previous systemd unit,
-atomically switch `current`, start the service and run a local health gate. On
-failure it restores the previous symlink, unit and DB backup, including the
-database POSIX ACLs and extended attributes. `--port PORT` becomes the daemon's
-high-precedence `--server.port` value, not merely the probe address.
+release identified by commit and build time, then checks the effective installed
+configuration with the candidate JAR as the service account. The running service,
+`current`, unit, CLI helpers and databases keep their original state through
+this check. After validation, deployment stops the service, saves both databases
+and the previous active files, installs the staged files, and starts and checks
+the candidate. `--port PORT` sets the daemon's `--server.port` override and the
+probe port. Wait for deployment to finish before running `ioc-config apply`.
 
-Known pre-activation limitation (`OPS-13`): rejection leaves the process/current
-link/DBs in place, but the unit and CLI helpers may already have been refreshed.
-An explicit failure exit bypasses the unit-restoration error trap. Before the
-next restart, inspect the unit against `backups/<failed-release-id>-unit.service`
-and restore matching unit/helpers if needed; reload systemd after unit restore.
-A rejected deployment does not promise that every host file is unchanged.
-Track the fix in [known issues](../KNOWN-ISSUES.md).
+If activation fails, use the reported recovery result and attempt directory.
+Automatic recovery restores the old unit, `current` and CLI helpers and returns
+the service to its previous running or stopped state. It restores the databases
+after a candidate start attempt. A failed deployment still returns an error even
+when recovery succeeds. [Packaging reference](../../packaging/README.md#deploy-localsh)
 
 The build JVM is checked before Maven starts. If the host default is older than
 21, select a JDK 21 installation explicitly for the deployment shell:
@@ -414,39 +411,28 @@ optional synchronization before a rollback-sensitive migration.
 
 ## Manual application rollback
 
-If an `install.sh` upgrade fails but the data schema is known to be compatible:
+If an upgrade needs manual recovery, pause external writers and stop the service.
+For a local deployment, use the exact `backups/local-deploy.<release-id>.<suffix>/`
+printed by the script. Read `attempt.properties` for the previous target, service
+state and probe port. The set contains `unit.service`, the previous `current`
+symlink and any CLI helpers that existed before activation. `db.tar` is the
+verified stopped snapshot. If `candidate-start-attempted` exists, assume the
+candidate could have written data. After `SIGKILL` or loss of power, inspect the
+attempt and live files before restarting. A missing or incomplete snapshot
+requires the coordinated operator backup. Older local versions use
+`<release-id>-unit.service` and `<release-id>-db.tar`. An `install.sh` upgrade
+uses the operator's saved recovery set.
 
-1. stop the service;
-2. point a temporary symlink at the previous immutable release;
-3. atomically replace `current`;
-4. restore the matching DB backup if the failed release may have written data;
-5. restore the matching systemd unit and reload systemd;
-6. restore matching config/environment and required service-owned files, then
-   start and validate the service.
+1. Select the previous immutable release with a temporary symlink and atomically replace `current`.
+2. Restore both databases together if the candidate could have written data.
+3. Restore the matching unit and both CLI helpers with their recorded metadata.
+   Remove a helper if it was absent before activation. Run `systemctl daemon-reload`.
+4. Reconcile the operator configuration, environment and service-owned files.
+5. Restart the previously active service and check health on its previous port.
 
-The symlink example below assumes compatible DBs and unchanged configuration;
-otherwise keep the service stopped until coordinated restore is complete.
-The `*-unit.service` sidecar is created by local deployment. For `install.sh`,
-use the unit saved in the external backup instead; its temporary recovery copy
-does not survive installer exit. Also check restored helpers and Java selection.
-
-```bash
-sudo systemctl stop ioc-extractor
-cd /opt/ioc-extractor
-sudo ln -s "releases/<previous-release-id>" .current.rollback
-sudo mv -Tf .current.rollback current
-sudo install -o root -g root -m 0644 \
-  "backups/<failed-release-id>-unit.service" \
-  /etc/systemd/system/ioc-extractor.service
-sudo systemctl daemon-reload
-sudo systemctl start ioc-extractor
-sudo ./bin/ioc health
-```
-
-Never combine an old application release with an arbitrary newer database or
-unit. Application, unit, configuration and database backup form one rollback
-point. The unit sidecar uses the release ID of the deployment being rolled back
-because it contains that deployment's previous unit.
+Moved sources, a file-based ingestion ledger, CSV projections, export slices and
+SMB effects may need separate reconciliation. Keep the old application stopped
+until its compatible configuration and storage are ready.
 
 ## Restore databases
 
@@ -459,13 +445,13 @@ because it contains that deployment's previous unit.
 ```bash
 sudo systemctl stop ioc-extractor
 sudo mv /opt/ioc-extractor/var/db /opt/ioc-extractor/var/db.failed
-sudo tar --acls --xattrs -C /opt/ioc-extractor/var -xf \
-  "/opt/ioc-extractor/backups/<failed-release-id>-db.tar"
+sudo tar --acls --xattrs -p -C /opt/ioc-extractor/var -xf \
+  "/opt/ioc-extractor/backups/<attempt-directory>/db.tar"
 sudo systemctl start ioc-extractor
 ```
 
-This archive name belongs to local deployment. The manual upgrade example backs
-up the whole prefix in `prefix.tar`; restore its coordinated state and saved
+Select the matching archive from the reported local deployment attempt. The manual
+upgrade example backs up the whole prefix in `prefix.tar`. Restore its coordinated state and saved
 unit instead. Do not mix archive layouts or restore just one DB. Restore to an
 empty destination while stopped, preserve the failed state, and validate the
 restored ownership/ACLs rather than applying a blanket permission reset.
@@ -497,7 +483,7 @@ curl --noproxy '*' --silent --show-error --max-time 5 \
 | Schema/identity/lifecycle incompatibility | Stop before further writes; follow the selected release's migration or coordinated restore procedure. Never hand-edit version metadata or point an older binary at newer DBs. |
 | Local storage gate passed, SMB failed | Verify server/port/credentials/ACLs and effective encryption separately. A local promotion is not remote qualification. See [remote storage](remote-storage-sync.md). |
 | Import health/status fails on a pending head | Known `OPS-10` can fail nullable-deadline status reads; it is not proof of failed canonical commit. Follow [managed import](dataframe-import.md); do not patch ledger SQL. |
-| Rejected local deployment, unexpected unit/helpers | Follow the `OPS-13` preflight limitation above before restarting. Preserve the failed release ID and backup evidence. |
+| Local deployment reports incomplete recovery | Keep intake paused. Use the reported attempt directory and follow [manual application rollback](#manual-application-rollback). |
 
 Known fetch identity/landing limits (`OPS-11`/`OPS-12`) require disjoint remote
 paths/final filenames and coordinated inbox writers until fixed; see the remote

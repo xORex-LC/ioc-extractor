@@ -31,7 +31,7 @@ ID и перенесите результат со свидетельствам�
 его ID строчными буквами, например `KNOWN-ISSUES.md#ops-11`.
 
 Сначала устраняйте возможную потерю/пропуск входа и несогласованную активацию
-([OPS-11](#ops-11), [OPS-12](#ops-12), [OPS-13](#ops-13), [OPS-14](#ops-14), [OPS-15](#ops-15)),
+([OPS-11](#ops-11), [OPS-12](#ops-12), [OPS-14](#ops-14), [OPS-15](#ops-15)),
 параллельно рассматривая безопасность [SRC-3](#src-3). Затем — отказы повторов/
 статуса и оставшуюся ресурсную/эксплуатационную квалификацию. Новое обогащение,
 форматы и инструменты не заменяют эту работу.
@@ -174,21 +174,6 @@ CLI не разделяет полосу демона. Закрытие: ато�
 детерминированные регрессии endpoint/внешнего writer и сохранение crash-window
 идемпотентности. См. [fetch service](../../core/ioc-application/src/main/java/com/iocextractor/application/sync/RemoteFetchService.java)
 и [remote operations](../guides/ru/remote-storage-sync.md).
-
-<a id="ops-13"></a>
-### OPS-13 — Неуспешный preflight оставляет новые host-файлы
-
-**Open · владелец: локальная активация/packaging.** `deploy-local-root.sh` обновляет
-systemd unit и `bin/ioc{,-config}` до semantic preflight. Явный `die` обходит
-ERR trap восстановления. Процесс, `current` и базы остаются прежними, но последующий
-restart/CLI может совместить новые host-файлы со старым JAR. Воспроизведение
-использовало реальный участок исходника с подменёнными привилегиями/systemd.
-
-До restart сравните unit с `backups/<failed-release-id>-unit.service`, восстановите
-соответствующие unit/helpers из rollback point и перечитайте systemd. Закрытие:
-единый путь отказа либо staging до preflight, тесты rejection/restart с проверкой
-unit/helpers/current/баз. См. [скрипт активации](../../packaging/deploy-local-root.sh)
-и [развёртывание](../guides/ru/deployment.md).
 
 <a id="ops-15"></a>
 ### OPS-15 — Unchecked-сбой миграции может зафиксировать часть DDL
@@ -632,6 +617,7 @@ pilots и рассмотренной политики. Differential analysis р�
 | <a id="ing-14"></a>ING-14 | `closed` | Отказы quiet-period возвращаются в WatchService retry set; полный polling остаётся штатным correctness path. [интеграционный тест фильтра](../../adapters/adapter-ingest/src/test/java/com/iocextractor/adapter/in/ingest/IngestFileListFilterIT.java) |
 | <a id="ing-17"></a>ING-17 | `closed` | Эквивалентный terminal CAS принимает только неизменные authority/evidence и проверяет registration даже при finalized retry. Регрессии и записанный исправленный прогон 100 DOCX подтверждают закрытие; неуспешные load windows остаются неуспешными. [тесты completion](../../core/ioc-application/src/test/java/com/iocextractor/application/ingest/admission/DocumentAdmissionCompletionTest.java) [история](../dev/ru/native-capacity.md) |
 | <a id="ops-1"></a>OPS-1 | `closed` | Исходная проверка нескольких/новых файлов покрыта записанным intake 100 DOCX; deterministic running-daemon/watch тесты заново прошли 2026-11-07. Полный polling по умолчанию, watcher — ускоритель. Multi-endpoint identity/landing остаются OPS-11/12. [тесты демона](../../bootstrap/ioc-app/src/test/java/com/iocextractor/DaemonIngestE2EIT.java) [история batch](../dev/ru/native-capacity.md) |
+| <a id="ops-13"></a>OPS-13 | `closed` | Локальное развёртывание держит unit и оба CLI-скрипта в staging до успешной проверки. При сбое активации восстанавливаются активная ссылка и предыдущие файлы. После попытки запуска восстанавливается снимок остановленных баз из этой попытки. [Регрессия активации](../../packaging/tests/deploy-local-activation-test.sh) · [Ручное восстановление](../guides/ru/deployment.md#ручной-application-rollback) |
 | <a id="obs-d1"></a>OBS-D1 | `closed` | Диагностики ADR-0017, bounded outcomes, exactly-once runner delivery и prepare→checkpoint→commit; producer ratchet пуст. [наблюдаемость](../dev/ru/observability.md) |
 | <a id="obs-d3"></a>OBS-D3 | `closed` | Локальные scalar fields события передаются типизированными SLF4J key/value; ambient correlation принадлежит MDC. Boot 4 encoder сохраняет контракт. [наблюдаемость](../dev/ru/observability.md) |
 | <a id="obs-1"></a>OBS-1 | `closed` | Шесть severity→log-level описаны/проверены, включая FATAL/ERROR→error. [наблюдаемость](../dev/ru/observability.md) |

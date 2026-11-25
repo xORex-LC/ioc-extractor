@@ -58,7 +58,7 @@ operator: their locks do not provide one shared host-lifecycle transaction.
 ├── current -> releases/<id>     # relative active-release link
 ├── bin/ioc, bin/ioc-config      # rendered root-owned helpers
 ├── etc/                        # operator YAML/env and installation marker
-├── backups/                    # local deployment DB archives and unit sidecars
+├── backups/                    # per-attempt local deployment recovery sets
 ├── var/
 │   ├── db/                     # canonical/service SQLite DBs and WAL/SHM
 │   ├── document-preparation/   # private streamed-source/preparation scratch, created by runtime
@@ -123,22 +123,26 @@ provide source provenance. See [TOOL-11](../docs/KNOWN-ISSUES.md#tool-11).
 The privileged phase verifies supplied/staged JAR checksums and writes local
 release metadata; it does not itself verify embedded commit identity or a tag.
 
-For an existing installation, the root phase prepares config candidates, refreshes
-unit/helpers and stages the release. It then validates effective installed config
-with the new JAR as the service account, before stopping the active process. This
-is configuration-only validation, not DB migration or transport qualification.
-The stop/backup/activation path archives the complete `var/db` with ACLs/xattrs,
-switches `current`, starts and checks storage health. Unit and DB sidecars share
-the incoming release ID; retention prunes those backup files as pairs.
+For an existing installation, the root phase holds the deployment lock and the
+`ioc-config apply` lock. It stages the JAR, unit and both CLI helpers, then checks
+the effective installed config with the new JAR as the service account. Only
+after validation can it stop the service and replace active files. The check
+exercises configuration binding and semantics. Proposed `.new` templates and
+the versioned candidate JAR may remain available after a rejected preflight.
 
-The armed ERR path restores the previous link, previous unit and DB archive when
-available, preserves failed DB state separately and attempts restart/health.
-That rollback scope does not include refreshed CLI helpers, Java, operator YAML,
-source moves, projections, export slices or remote effects. Explicit preflight
-`die` exits can bypass restoration and leave new host files beside the old JAR:
-[OPS-13](../docs/KNOWN-ISSUES.md#ops-13) remains open. Inspect/reconcile the saved
-unit and matching helpers before a later restart. Initial bootstrap has no prior
-release to restore and stops an unhealthy first deployment.
+Each attempt records the old link, unit, CLI helpers and service state in
+`backups/local-deploy.<release-id>.<suffix>/`. After confirming the service is
+stopped, the script archives and compares the full `var/db` with ACLs and xattrs.
+It replaces active files individually, reloads systemd, starts the new release
+and checks storage health. Recovery restores the old files and verifies health
+if the service had been active. If candidate start was attempted, recovery first
+confirms the candidate stopped, restores this attempt's DB archive and preserves
+the candidate DB files separately. An incomplete recovery reports the attempt
+path and retains its evidence. Retention prunes completed attempts and legacy
+backup pairs. It protects the immediately previous release and keeps incomplete
+attempts. See the [operator rollback procedure](../docs/guides/deployment.md#manual-application-rollback)
+for scope and interrupted recovery. Initial bootstrap stops an unhealthy first
+deployment.
 
 `--port` always becomes the unit's CLI `--server.port` override and the probe port.
 Installer `--server-port` renders that override only when explicitly supplied;

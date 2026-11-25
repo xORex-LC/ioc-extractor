@@ -5,9 +5,11 @@
 [packaging-contract-test.sh](packaging-contract-test.sh) checks installation-layout
 helpers, source declarations and rendered host templates using temporary fixtures.
 It sources `install-layout.sh`, not the privileged installer/activation entry points.
-It never provisions an account/JDK, starts the installed daemon or deletes a real
-installation. Treat source-presence assertions as narrower evidence than executing
-a complete failure/rollback scenario.
+[deploy-local-activation-test.sh](deploy-local-activation-test.sh) executes the
+local activation script with its host paths redirected to a disposable fixture.
+It substitutes systemd, ownership-changing commands and the health endpoint.
+The fixture uses real SQLite files and GNU tar. The tests run without provisioning
+an account or starting the installed daemon.
 
 ## Fixtures and exercised contracts
 
@@ -18,9 +20,11 @@ a complete failure/rollback scenario.
 | Account | UID 0 rejected |
 | Production preset | Fresh versus classpath lifecycle, import dirs, event/reconcile/stability settings and config preservation declarations |
 | Candidate conflict | Paths, timestamps/digests and review commands without leaking synthetic config contents |
-| Recovery declarations | Unit sidecar, tar ACL/xattr capture/restore and paired backup pruning remain present in source |
+| Preflight and privileged activation | Reject config or a concurrent config apply before reaching stop. Verify staged files, load order and the healthy candidate |
+| Recovery | Fail stop, archive creation and verification, file replacement, reload, start and health. Check signal rollback, prior inactivity, missing helper, both DBs, POSIX file modes and extended attributes |
+| Recovery identity and retention | Retry a release ID after failure, retain the matching previous release and incomplete attempts, report stop/restore faults without starting the previous binary |
 | Rendering | Explicit server-port argument and key sandbox/ExecCondition settings; no unresolved config-helper tokens; staged YAML suffix and validation environment |
-| Ordering/syntax | Config preflight source position precedes stop/backup; shell syntax checks |
+| Syntax | Shell syntax checks and `systemd-analyze verify` when available |
 
 Scratch uses `mktemp` and an ignored `packaging/target` fixture for symlink tests;
 EXIT cleanup removes the owned fixture directories. `systemd-analyze verify` runs
@@ -35,9 +39,10 @@ Run from the repository root:
 make lint-shell
 ```
 
-For a focused rerun use `packaging/tests/packaging-contract-test.sh`.
+For a focused rerun use `packaging/tests/packaging-contract-test.sh` or
+`packaging/tests/deploy-local-activation-test.sh`.
 The Make target calls [tools/ci/packaging.sh](../../tools/ci/packaging.sh): ShellCheck over
-its declared script globs, then this suite and tools-layer contracts. The leaf's
+its declared script globs, then both packaging suites and tools-layer contracts. The leaf's
 ShellCheck arguments currently include `templates/ioc`; `templates/ioc-config`
 is rendered and syntax-checked here but is not in that ShellCheck glob. Run an
 explicit ShellCheck on it when changing that helper.
@@ -47,8 +52,9 @@ checks YAML binding/semantic/registry contracts through Maven. Tools contracts
 check release-workflow tag-source wiring; they do not execute a real GitHub draft
 publication. A valid local helper dry-run is not remote-tag/asset qualification.
 
-Full install, upgrade, failure injection, DB/config recovery, permissions, host
-sandbox/native loading and live transport still need an isolated systemd target.
-[OPS-13](../../docs/KNOWN-ISSUES.md#ops-13) and [TOOL-11](../../docs/KNOWN-ISSUES.md#tool-11)
-remain open despite a green static/synthetic gate. See the
+Qualify the installed account, real systemd activation, permissions, sandbox,
+native loading and live transport on a designated target. The shell suites prove
+the local activation and failure contract for
+[OPS-13](../../docs/KNOWN-ISSUES.md#ops-13). Build provenance has a separate open
+[TOOL-11](../../docs/KNOWN-ISSUES.md#tool-11) limitation. See the
 [packaging reference](../README.md) and [deployment guide](../../docs/guides/deployment.md).

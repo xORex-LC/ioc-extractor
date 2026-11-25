@@ -29,7 +29,7 @@ and move the outcome and evidence to the archive. Link to an item with its lower
 ID anchor, for example `KNOWN-ISSUES.md#ops-11`.
 
 Address possible lost/skipped input and inconsistent activation first
-([OPS-11](#ops-11), [OPS-12](#ops-12), [OPS-13](#ops-13), [OPS-14](#ops-14), [OPS-15](#ops-15)),
+([OPS-11](#ops-11), [OPS-12](#ops-12), [OPS-14](#ops-14), [OPS-15](#ops-15)),
 alongside the security disposition in [SRC-3](#src-3). Then address retry/status
 failures and outstanding resource/deployment qualification. New enrichment,
 formats and tooling options do not replace this operational work.
@@ -170,21 +170,6 @@ not share the daemon lane. Close with atomic ownership/no-replace landing,
 deterministic endpoint/external-writer regressions and preserved crash-window
 idempotency. See [fetch service](../core/ioc-application/src/main/java/com/iocextractor/application/sync/RemoteFetchService.java)
 and [remote operations](guides/remote-storage-sync.md).
-
-<a id="ops-13"></a>
-### OPS-13 — Failed deployment preflight leaves new host files
-
-**Open · owner: local activation/packaging.** `deploy-local-root.sh` refreshes the
-systemd unit and `bin/ioc{,-config}` before semantic preflight. Explicit `die` exits
-bypass the ERR restoration trap. The running process, `current` and databases
-remain old, but a later restart/CLI can combine new host files with the old JAR.
-The reproduction used the actual source segment with stubbed privileges/systemd.
-
-Before restart compare the unit with `backups/<failed-release-id>-unit.service`,
-restore matching unit/helpers from the rollback point and reload systemd. Close
-with one failure path or staging before preflight, plus rejection/restart tests
-checking unit/helpers/current/databases. See [activation script](../packaging/deploy-local-root.sh)
-and [deployment](guides/deployment.md).
 
 <a id="ops-15"></a>
 ### OPS-15 — Unchecked migration failure can commit partial DDL
@@ -618,6 +603,7 @@ features or resource budgets are complete. Dated qualification remains dated.
 | <a id="ing-14"></a>ING-14 | `closed` | Quiet-period discards re-enter the WatchService retry set; default full polling remains correctness path. [Filter integration test](../adapters/adapter-ingest/src/test/java/com/iocextractor/adapter/in/ingest/IngestFileListFilterIT.java) |
 | <a id="ing-17"></a>ING-17 | `closed` | Equivalent terminal CAS accepts only unchanged authority/evidence and verifies registration even on finalized retry. Completion regressions and the recorded corrected 100-DOCX run support closure; failed load windows remain failed. [Completion tests](../core/ioc-application/src/test/java/com/iocextractor/application/ingest/admission/DocumentAdmissionCompletionTest.java), [history](dev/native-capacity.md) |
 | <a id="ops-1"></a>OPS-1 | `closed` | Original multi-file/new-file verification is covered by recorded 100-DOCX intake; deterministic running-daemon/watch tests were freshly rechecked 2026-11-07. Full polling is the default; watcher is an accelerator. This does not qualify multi-endpoint identity/landing (OPS-11/12). [Daemon tests](../bootstrap/ioc-app/src/test/java/com/iocextractor/DaemonIngestE2EIT.java), [batch history](dev/native-capacity.md) |
+| <a id="ops-13"></a>OPS-13 | `closed` | Local deployment stages the unit and both CLI helpers through preflight. A failed activation recovers their prior versions, the active link and, after a start attempt, the stopped database snapshot for that attempt. [Activation regression](../packaging/tests/deploy-local-activation-test.sh) · [Rollback procedure](guides/deployment.md#manual-application-rollback) |
 | <a id="obs-d1"></a>OBS-D1 | `closed` | ADR-0017 diagnostics, bounded outcomes, exactly-once runner delivery and prepare→checkpoint→commit; empty producer ratchet. [Observability](dev/observability.md) |
 | <a id="obs-d3"></a>OBS-D3 | `closed` | Event-local scalar fields use typed SLF4J key/value; MDC owns ambient correlation. Current Boot 4 encoder preserves the contract. [Observability](dev/observability.md) |
 | <a id="obs-1"></a>OBS-1 | `closed` | Six-level severity→log-level mapping documented/tested, including FATAL/ERROR→error. [Observability](dev/observability.md) |
