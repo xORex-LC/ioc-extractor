@@ -2,8 +2,8 @@
 # Execute the local upgrade path against synthetic files and real SQLite/tar.
 set -Eeuo pipefail
 
-TEST_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-PACKAGING_DIR="$(cd -- "${TEST_DIR}/.." >/dev/null 2>&1 && pwd)"
+TEST_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
+PACKAGING_DIR="$(cd -- "${TEST_DIR}/.." >/dev/null 2>&1 && pwd -P)"
 mkdir -p "${PACKAGING_DIR}/target"
 scratch="$(mktemp -d "${PACKAGING_DIR}/target/local-activation.XXXXXX")"
 trap 'rm -rf -- "${scratch}"' EXIT
@@ -17,13 +17,15 @@ fail() {
 mkdir "${scratch}/commands"
 ln -s "${PACKAGING_DIR}/install-layout.sh" "${scratch}/install-layout.sh"
 ln -s "${PACKAGING_DIR}/templates" "${scratch}/templates"
-# Redirect only fixed host paths and the entry-point UID check. There are no
-# path/command overrides in the privileged production entry point.
+# Redirect host paths and privileges in the disposable copy. The activation
+# fixture must use its own canonical prefix, even inside a checkout under /home.
+# The production prefix policy is covered by packaging-contract-test.sh.
 # shellcheck disable=SC2016
 sed -e 's|^UNIT=.*|UNIT="${CASE_DIR}/systemd/ioc-extractor.service"|' \
     -e 's|^DEPLOY_LOCK=.*|DEPLOY_LOCK="${CASE_DIR}/deploy.lock"|' \
     -e 's|^CONFIG_LOCK=.*|CONFIG_LOCK="${CASE_DIR}/config.lock"|' \
     -e '/^\[\[ "${EUID}" -eq 0 \]\]/d' \
+    -e '/^ioc_validate_prefix /c\[[ "${PREFIX}" == "${TEST_PREFIX}" \&\& "$(realpath -m -- "${PREFIX}")" == "${PREFIX}" ]] || die "unsafe fixture prefix"\nIOC_VALIDATED_PREFIX="${TEST_PREFIX}"' \
     "${PACKAGING_DIR}/deploy-local-root.sh" > "${scratch}/deploy-local-root.sh"
 
 cat > "${scratch}/commands/fixture-db" <<'PY'
@@ -144,15 +146,17 @@ chmod +x "${scratch}/commands/stub" "${scratch}/commands/fixture-db"
 for command in chown curl install journalctl mv stat systemctl systemd-run tar; do
   ln -s stub "${scratch}/commands/${command}"
 done
+# The systemd stub never invokes Java. Resolve the fixture launcher outside
+# the checkout, as systemd would require for the installed runtime.
+ln -s /usr/bin/true "${scratch}/commands/java"
 export PATH="${scratch}/commands:${PATH}"
 
 arrange() {
   local fixture="${2:-$1}"
   export FAULT="$1" CASE_DIR="${scratch}/${fixture}" TEST_PREFIX="${scratch}/${fixture}/host"
   mkdir -p "${CASE_DIR}/original" "${CASE_DIR}/systemd" \
-    "${TEST_PREFIX}"/{bin,etc,jdk/bin,backups,releases/previous,var/db}
-  touch "${CASE_DIR}/events" "${TEST_PREFIX}/jdk/bin/java"
-  chmod +x "${TEST_PREFIX}/jdk/bin/java"
+    "${TEST_PREFIX}"/{bin,etc,backups,releases/previous,var/db}
+  touch "${CASE_DIR}/events"
   printf '%s\n' active > "${CASE_DIR}/state"
   printf '%s\n' 'ExecStart=/old/java --server.port=19090' > "${CASE_DIR}/original/unit"
   printf '%s\n' 'old ioc' > "${CASE_DIR}/original/ioc"
@@ -211,11 +215,13 @@ exec 7>"${CASE_DIR}/config.lock"
 flock 7
 activate 1
 exec 7>&-
+grep -q 'a configuration apply is already running' "${CASE_DIR}/output" || fail 'wrong config lock failure'
 [[ ! -s "${CASE_DIR}/events" ]] || fail 'concurrent config apply reached systemd'
 assert_previous_files
 
 arrange preflight
 activate 1
+grep -q 'rejected the effective installed configuration' "${CASE_DIR}/output" || fail 'wrong preflight failure'
 [[ "$(< "${CASE_DIR}/events")" == preflight ]] || fail 'preflight failure reached service activation'
 [[ -z "$(find "${TEST_PREFIX}/backups" -mindepth 1 -print -quit)" ]] || fail 'rejected preflight created a rollback set'
 assert_previous_files

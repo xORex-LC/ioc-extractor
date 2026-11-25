@@ -7,6 +7,8 @@ helpers, source declarations and rendered host templates using temporary fixture
 It sources `install-layout.sh`, not the privileged installer/activation entry points.
 [deploy-local-activation-test.sh](deploy-local-activation-test.sh) executes the
 local activation script with its host paths redirected to a disposable fixture.
+The copied script accepts only that fixture's canonical prefix, including in a
+checkout under `/home`. The layout suite exercises the production prefix policy.
 It substitutes systemd, ownership-changing commands and the health endpoint.
 The fixture uses real SQLite files and GNU tar. The tests run without provisioning
 an account or starting the installed daemon.
