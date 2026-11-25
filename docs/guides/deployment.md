@@ -485,9 +485,9 @@ curl --noproxy '*' --silent --show-error --max-time 5 \
 | Import health/status fails on a pending head | Known `OPS-10` can fail nullable-deadline status reads; it is not proof of failed canonical commit. Follow [managed import](dataframe-import.md); do not patch ledger SQL. |
 | Local deployment reports incomplete recovery | Keep intake paused. Use the reported attempt directory and follow [manual application rollback](#manual-application-rollback). |
 
-Known fetch identity/landing limits (`OPS-11`/`OPS-12`) require disjoint remote
-paths/final filenames and coordinated inbox writers until fixed; see the remote
-storage guide. Record unavailable capabilities explicitly during acceptance.
+Review the [fetch ledger cutover](remote-storage-sync.md#cut-over-the-legacy-fetch-ledger)
+when upgrading a service DB with fetch history. Coordinate writers of the inbox
+for [OPS-12](../KNOWN-ISSUES.md#ops-12) and record uncovered capabilities during acceptance.
 
 ## Uninstall
 

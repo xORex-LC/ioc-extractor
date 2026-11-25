@@ -28,8 +28,8 @@ class SyncValueObjectsTest {
         Instant modifiedAt = Instant.parse("2026-06-28T00:00:00Z");
         RemoteObject object = new RemoteObject("/incoming/a.htm", 42, modifiedAt);
 
-        assertThat(object.identity())
-                .isEqualTo(new RemoteObjectIdentity("/incoming/a.htm", 42, modifiedAt));
+        assertThat(object.identity("src"))
+                .isEqualTo(new RemoteObjectIdentity("src", "/incoming/a.htm", 42, modifiedAt));
     }
 
     @Test
@@ -206,20 +206,20 @@ class SyncValueObjectsTest {
         assertThatThrownBy(() -> new RemoteObject("/a", 0, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("modifiedAt");
-        assertThatThrownBy(() -> new RemoteObjectIdentity(null, 0, NOW))
+        assertThatThrownBy(() -> new RemoteObjectIdentity("src", null, 0, NOW))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("path");
-        assertThatThrownBy(() -> new RemoteObjectIdentity("/a", -1, NOW))
+        assertThatThrownBy(() -> new RemoteObjectIdentity("src", "/a", -1, NOW))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("size");
-        assertThatThrownBy(() -> new RemoteObjectIdentity("/a", 0, null))
+        assertThatThrownBy(() -> new RemoteObjectIdentity("src", "/a", 0, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("modifiedAt");
     }
 
     @Test
     void fetchedLedgerRecordRequiresCompletedLocalEvidence() {
-        RemoteObjectIdentity identity = new RemoteObjectIdentity("/a", 1, NOW);
+        RemoteObjectIdentity identity = new RemoteObjectIdentity("src", "/a", 1, NOW);
         assertThat(new RemoteFetchRecord(
                 identity, RemoteFetchStatus.FAILED, null, 0, "failed", null, NOW))
                 .extracting(RemoteFetchRecord::status)

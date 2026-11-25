@@ -75,8 +75,8 @@ work -> durable idempotency ledger / authoritative state
 
 Backstop зависит от durable state и сохранённых входов. Он не восстанавливает
 необнаруженный remote file, удалённый до следующего scan, и не исправляет неверный
-ключ идемпотентности. Текущие fetch namespace/collision defects — `OPS-11`/`OPS-12`
-в [известных проблемах](../../KNOWN-ISSUES.md); event architecture их не устраняет.
+ключ идемпотентности. Детекция, admission и журнал fetch используют ключ с ID
+источника. Конкурентные писатели всё ещё могут выбрать один путь. [OPS-12](../../KNOWN-ISSUES.md#ops-12)
 
 ## Контракт keyed execution
 

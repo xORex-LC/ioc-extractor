@@ -10,7 +10,9 @@ import com.iocextractor.application.port.out.sync.RemoteFetchLedger;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
@@ -27,6 +29,7 @@ import java.util.Objects;
 public final class RemoteFetchService implements RemoteFetchUseCase {
 
     private static final String STAGING_DIR = ".sync-staging";
+    private static final int MAX_INBOX_NAME_BYTES = 255;
 
     private final FileTransport transport;
     private final RemoteFetchLedger ledger;
@@ -59,6 +62,7 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
         FetchCounters counters = new FetchCounters();
         for (RemoteFetchSource source : RemoteFetchSources.selected(sources, command)) {
             RemoteFetchSources.SourceMatchers matchers = RemoteFetchSources.compileMatchers(source);
+            int previousReviewCount = counters.reviewRequired;
             for (RemoteObject object : list(source)) {
                 if (!matchers.matches(object)) {
                     counters.skipped++;
@@ -66,6 +70,7 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
                 }
                 fetchOne(source, object, command.dryRun(), counters);
             }
+            reportLegacyReview(source, counters.reviewRequired - previousReviewCount);
         }
         return counters.toResult();
     }
@@ -78,15 +83,21 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
         for (RemoteObject object : command.objects()) {
             fetchOne(source, object, command.dryRun(), counters);
         }
+        reportLegacyReview(source, counters.reviewRequired);
         return counters.toResult();
     }
 
     private void fetchOne(RemoteFetchSource source, RemoteObject object, boolean dryRun, FetchCounters counters) {
-        RemoteObjectIdentity identity = object.identity();
+        RemoteObjectIdentity identity = object.identity(source.sourceId());
         if (ledger.find(identity)
                 .filter(record -> record.status() == RemoteFetchStatus.FETCHED)
                 .isPresent()) {
             counters.skipped++;
+            return;
+        }
+        if (ledger.requiresLegacyReview(identity)) {
+            counters.failed++;
+            counters.reviewRequired++;
             return;
         }
         if (dryRun) {
@@ -95,7 +106,7 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
         }
         Path staging = null;
         try {
-            Path finalPath = finalPathFor(object);
+            Path finalPath = finalPathFor(identity);
             Files.createDirectories(inbox);
             Path stagingDir = inbox.resolve(STAGING_DIR);
             Files.createDirectories(stagingDir);
@@ -142,43 +153,49 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
                         "No sync fetch source matches detected batch: " + command.source()));
     }
 
-    private Path finalPathFor(RemoteObject object) {
-        String leaf = RemoteFetchSources.leafName(object.path());
-        Path candidate = inbox.resolve(leaf).normalize();
-        if (!inbox.equals(candidate.getParent())) {
-            throw new IllegalArgumentException("remote object leaf escapes inbox: " + object.path());
+    private void reportLegacyReview(RemoteFetchSource source, int count) {
+        if (count > 0) {
+            diagnosticReporter.reportLegacyReview(source.sourceId(), count);
         }
-        if (!Files.exists(candidate)) {
-            return candidate;
-        }
-        String suffixed = suffix(leaf, object.identity());
-        Path suffixedCandidate = inbox.resolve(suffixed).normalize();
-        if (!inbox.equals(suffixedCandidate.getParent())) {
-            throw new IllegalArgumentException("remote object suffix escapes inbox: " + object.path());
-        }
-        if (Files.exists(suffixedCandidate)) {
-            throw new IllegalStateException("Inbox file already exists for remote identity: " + suffixedCandidate);
-        }
-        return suffixedCandidate;
     }
 
-    private String suffix(String leaf, RemoteObjectIdentity identity) {
-        String digest = stableDigest(identity).substring(0, 12);
-        int dot = leaf.lastIndexOf('.');
-        if (dot <= 0) {
-            return leaf + "__" + digest;
+    private Path finalPathFor(RemoteObjectIdentity identity) throws IOException {
+        String leaf = RemoteFetchSources.leafName(identity.path());
+        Path candidate = inbox.resolve(landingName(leaf, identity)).normalize();
+        if (!inbox.equals(candidate.getParent())) {
+            throw new IllegalArgumentException("remote object leaf escapes inbox");
         }
-        return leaf.substring(0, dot) + "__" + digest + leaf.substring(dot);
+        if (Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Remote fetch landing name is occupied");
+        }
+        return candidate;
+    }
+
+    private String landingName(String leaf, RemoteObjectIdentity identity) {
+        String digest = stableDigest(identity).substring(0, 32);
+        int dot = leaf.lastIndexOf('.');
+        String stem = dot <= 0 ? leaf : leaf.substring(0, dot);
+        String extension = dot <= 0 ? "" : leaf.substring(dot);
+        String suffixed = stem + "__" + digest + extension;
+        if (suffixed.getBytes(StandardCharsets.UTF_8).length <= MAX_INBOX_NAME_BYTES) {
+            return suffixed;
+        }
+        // SMB can return names that fit the filesystem limit only before suffixing.
+        String shortName = (leaf.startsWith(".") ? "." : "") + digest;
+        return (shortName + extension).getBytes(StandardCharsets.UTF_8).length <= MAX_INBOX_NAME_BYTES
+                ? shortName + extension : shortName;
     }
 
     private String stableDigest(RemoteObjectIdentity identity) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            digest.update(identity.path().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            digest.update(identity.sourceId().getBytes(StandardCharsets.UTF_8));
             digest.update((byte) 0);
-            digest.update(Long.toString(identity.size()).getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            digest.update(identity.path().getBytes(StandardCharsets.UTF_8));
             digest.update((byte) 0);
-            digest.update(identity.modifiedAt().toString().getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            digest.update(Long.toString(identity.size()).getBytes(StandardCharsets.US_ASCII));
+            digest.update((byte) 0);
+            digest.update(identity.modifiedAt().toString().getBytes(StandardCharsets.US_ASCII));
             return HexFormat.of().formatHex(digest.digest());
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is not available", e);
@@ -216,6 +233,7 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
         private int fetched;
         private int skipped;
         private int failed;
+        private int reviewRequired;
 
         private RemoteFetchResult toResult() {
             return new RemoteFetchResult(fetched, skipped, failed);

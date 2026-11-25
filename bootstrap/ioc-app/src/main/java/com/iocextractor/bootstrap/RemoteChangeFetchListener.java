@@ -43,7 +43,7 @@ public final class RemoteChangeFetchListener {
     @EventListener
     public void onRemoteChangeBatchDetected(RemoteChangeBatchDetected event) {
         Objects.requireNonNull(event, "event");
-        List<RemoteObject> claimed = inFlight.claim(event.objects());
+        List<RemoteObject> claimed = inFlight.claim(event.sourceId(), event.objects());
         if (claimed.isEmpty()) {
             return;
         }
@@ -53,17 +53,17 @@ public final class RemoteChangeFetchListener {
                 try (var ignored = mdc(event)) {
                     fetch(event, claimed);
                 } finally {
-                    inFlight.release(claimed);
+                    inFlight.release(event.sourceId(), claimed);
                 }
             });
         } catch (RuntimeException failure) {
-            inFlight.release(claimed);
+            inFlight.release(event.sourceId(), claimed);
             healthState.recordFetchFailure(event.sourceId(), event.endpoint(), failure);
             observer.dispatchFailed(event, HANDLER, failure);
             return;
         }
         if (!admission.accepted()) {
-            inFlight.release(claimed);
+            inFlight.release(event.sourceId(), claimed);
             IllegalStateException failure = new IllegalStateException(
                     "remote fetch work rejected for endpoint " + event.endpoint());
             observer.dispatchFailed(event, HANDLER, failure);

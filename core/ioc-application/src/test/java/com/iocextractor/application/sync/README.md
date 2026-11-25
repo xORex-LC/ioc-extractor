@@ -9,6 +9,6 @@ Typed retry/monitor/delivery decisions, plus temporary local staging/landing and
 | [ArtifactPublishServiceTest](ArtifactPublishServiceTest.java) | Ledger pair reconciliation, in-progress/retry/committed-marker outcomes and retention coordination. |
 | [CompletedSliceTest](CompletedSliceTest.java), [SyncValueObjectsTest](SyncValueObjectsTest.java) | Verified local-slice metadata and transport-neutral constructor/state contracts. |
 
-Remote file operations are faked; there is no live SMB server, encryption negotiation or target ACL qualification. Temporary NIO success does not establish portable no-replace landing or cross-process fencing. [OPS-11](../../../../../../../../../docs/KNOWN-ISSUES.md#ops-11) and [OPS-12](../../../../../../../../../docs/KNOWN-ISSUES.md#ops-12) remain open even while ordinary local suites pass. Add independent regressions when those contracts are repaired; do not reinterpret repeated polling as a fix for wrong identity.
+Remote file operations are faked; there is no live SMB server, encryption negotiation or target ACL qualification. Temporary NIO success does not establish portable no-replace landing or cross-process fencing. See the [residual landing race](../../../../../../../../../docs/KNOWN-ISSUES.md#ops-12).
 
 [Test map](../README.md) owns commands/evidence limits; [TESTING.md](../../../../../../../../../docs/TESTING.md) owns lifecycle and test quality.

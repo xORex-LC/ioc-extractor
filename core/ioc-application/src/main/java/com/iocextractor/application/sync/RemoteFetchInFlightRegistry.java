@@ -19,12 +19,12 @@ public final class RemoteFetchInFlightRegistry {
     private final Set<RemoteObjectIdentity> claimed = ConcurrentHashMap.newKeySet();
 
     /** Atomically claims identities not already in flight and returns their objects in input order. */
-    public List<RemoteObject> claim(Collection<RemoteObject> objects) {
+    public List<RemoteObject> claim(String sourceId, Collection<RemoteObject> objects) {
         Objects.requireNonNull(objects, "objects");
         List<RemoteObject> newlyClaimed = new ArrayList<>(objects.size());
         for (RemoteObject object : objects) {
             RemoteObject required = Objects.requireNonNull(object, "objects must not contain null");
-            if (claimed.add(required.identity())) {
+            if (claimed.add(required.identity(sourceId))) {
                 newlyClaimed.add(required);
             }
         }
@@ -37,10 +37,10 @@ public final class RemoteFetchInFlightRegistry {
     }
 
     /** Releases identities after success, failure or rejected admission. */
-    public void release(Collection<RemoteObject> objects) {
+    public void release(String sourceId, Collection<RemoteObject> objects) {
         Objects.requireNonNull(objects, "objects");
         for (RemoteObject object : objects) {
-            claimed.remove(Objects.requireNonNull(object, "objects must not contain null").identity());
+            claimed.remove(Objects.requireNonNull(object, "objects must not contain null").identity(sourceId));
         }
     }
 }

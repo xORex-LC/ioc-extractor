@@ -458,9 +458,9 @@ curl --noproxy '*' --silent --show-error --max-time 5 \
 | Import health/status падает при pending head | Известный `OPS-10` касается nullable-deadline reader, а не доказывает failed canonical commit. Следуйте [managed import](dataframe-import.md), не исправляйте ledger SQL вручную. |
 | Локальное развёртывание сообщает о незавершённом восстановлении | Оставьте приём приостановленным. Используйте каталог попытки и [процедуру ручного восстановления](#ручной-application-rollback). |
 
-До исправления fetch identity/landing `OPS-11`/`OPS-12` используйте непересекающиеся
-remote paths/final filenames и согласованных inbox writers; см. remote storage.
-При приёмке явно указывайте недоступные capabilities.
+При обновлении service DB с историей fetch пройдите [переход журнала](remote-storage-sync.md#переход-с-прежнего-журнала-fetch).
+Согласуйте писателей inbox для [OPS-12](../../KNOWN-ISSUES.md#ops-12).
+При приёмке явно указывайте недоступные возможности.
 
 ## Удаление
 

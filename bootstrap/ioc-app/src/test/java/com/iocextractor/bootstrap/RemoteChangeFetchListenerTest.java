@@ -83,7 +83,7 @@ class RemoteChangeFetchListenerTest {
                 .satisfies(failure -> assertThat(failure).hasMessageContaining("endpoint-a"));
         assertThat(healthState.fetchSnapshots()).isEmpty();
         assertThat(event.objects()).allSatisfy(object ->
-                assertThat(inFlight.contains(object.identity())).isFalse());
+                assertThat(inFlight.contains(object.identity(event.sourceId()))).isFalse());
     }
 
     @Test
@@ -99,7 +99,7 @@ class RemoteChangeFetchListenerTest {
         listener.onRemoteChangeBatchDetected(event);
 
         assertThat(event.objects()).allSatisfy(object ->
-                assertThat(inFlight.contains(object.identity())).isTrue());
+                assertThat(inFlight.contains(object.identity(event.sourceId()))).isTrue());
         listener.onRemoteChangeBatchDetected(event);
         assertThat(executor.submissions).isEqualTo(1);
 
@@ -107,7 +107,7 @@ class RemoteChangeFetchListenerTest {
 
         assertThat(fetcher.commands).hasSize(1);
         assertThat(event.objects()).allSatisfy(object ->
-                assertThat(inFlight.contains(object.identity())).isFalse());
+                assertThat(inFlight.contains(object.identity(event.sourceId()))).isFalse());
     }
 
     @Test

@@ -31,7 +31,7 @@ ID и перенесите результат со свидетельствам�
 его ID строчными буквами, например `KNOWN-ISSUES.md#ops-11`.
 
 Сначала устраняйте возможную потерю/пропуск входа и несогласованную активацию
-([OPS-11](#ops-11), [OPS-12](#ops-12), [OPS-14](#ops-14), [OPS-15](#ops-15)),
+([OPS-12](#ops-12), [OPS-14](#ops-14), [OPS-15](#ops-15)),
 параллельно рассматривая безопасность [SRC-3](#src-3). Затем — отказы повторов/
 статуса и оставшуюся ресурсную/эксплуатационную квалификацию. Новое обогащение,
 форматы и инструменты не заменяют эту работу.
@@ -142,20 +142,6 @@ reader; этот отказ статуса не доказывает неусп�
 deadline и реальных CLI/health на nonterminal work. Не подменяйте timestamps
 в БД для сокрытия ошибки. См. [reader](../../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcImportStatusReader.java)
 и [эксплуатацию import](../guides/ru/dataframe-import.md).
-
-<a id="ops-11"></a>
-### OPS-11 — Fetch identity не включает пространство имён источника/endpoint
-
-**Open · владелец: fetch identity/ledger.** `RemoteObjectIdentity`, локальный
-in-flight registry и JDBC primary key используют только `(path,size,mtime)`.
-Два endpoint с одинаковым tuple, но разным содержимым воспроизводят тихий пропуск
-второго без GET. Polling/reconcile не исправляет неверную идентичность.
-
-До исправления используйте непересекающиеся remote paths/имена; это ограничение,
-а не межпроцессный fencing. Закрытие: явный namespace-контракт, совместимая
-миграция ledger/in-flight и регрессии двух endpoint с одинаковым tuple и restart.
-См. [identity](../../core/ioc-application/src/main/java/com/iocextractor/application/sync/RemoteObjectIdentity.java)
-и [JDBC ledger](../../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcRemoteFetchLedger.java).
 
 <a id="ops-12"></a>
 ### OPS-12 — Fetch landing может заменить конкурентный вход
@@ -458,7 +444,7 @@ recovery identity, точная версия events family и потреблен
 | <a id="ops-3"></a>OPS-3 | `partial`: Generic sync не имеет полного capability gate; managed import уже имеет blocking per-source probes/health | Потребность расширить generic preflight; share/ACL принадлежат оператору, producer-denial qualification остаётся OPS-8 | SMB/sync; [import](../dev/ru/dataframe-import.md) |
 | <a id="ops-4"></a>OPS-4 | `deferred`: Базовая event/reconcile/keyed координация есть; durable outbox/broker и high/low-water hysteresis нет | Реальная межпроцессная доставка или измеренное давление; события остаются подсказками, ledgers/reconcile — источником истины | Sync/events; [координация](../dev/ru/event-coordination.md) |
 | <a id="ops-5"></a>OPS-5 | `deferred`: Retention истории fetch и targeted discovery | Ограничить рост ledger с рассмотренным idempotency retention; оптимизировать listing только по detection-duration evidence | Fetch/storage; [sync](../dev/ru/sync.md) |
-| <a id="ops-6"></a>OPS-6 | `deferred`: Внутри endpoint fetch последовательный; параллельность между endpoint есть | Измеренное нарушение SLO batch одной шары; bounded sessions/admission/health, сначала OPS-11/12. Полная parallel safety не доказана | SMB/concurrency; [sync](../dev/ru/sync.md) |
+| <a id="ops-6"></a>OPS-6 | `deferred`: Внутри endpoint fetch последовательный; параллельность между endpoint есть | Измеренное нарушение SLO batch одной шары; bounded sessions/admission/health, сначала OPS-12. Полная parallel safety не доказана | SMB/concurrency; [sync](../dev/ru/sync.md) |
 | <a id="src-1"></a>SRC-1 | `deferred`: Tika umbrella parser set шире квалифицированных HTML/PDF/DOCX/XLSX | Измеренная польза размера/безопасности оправдывает потерю best-effort форматов; сравнить явные modules и качество extraction | Source/packaging; [чтение источника](../../adapters/adapter-source-tika/src/main/java/com/iocextractor/adapter/out/source/TikaSourceReader.java) |
 | <a id="tool-1"></a>TOOL-1 | `deferred`: Безопасный affected-test accelerator; taxonomy/module targets уже работают | Измеренная цена локального цикла; staged/unstaged/untracked и upstream/downstream closure, полный gate для unknown/shared изменений | Сборка; [тестирование](TESTING.md) |
 | <a id="tool-2"></a>TOOL-2 | `deferred`: Нет детерминированного Java formatter/fmt-check; SpotBugs/CPD/PMD существуют отдельно | Отдельный mechanical-change срез после review formatter/diff; включать check после чистого baseline | Сборка/стиль; [качество сборки](../dev/ru/build-quality.md) |
@@ -616,7 +602,8 @@ pilots и рассмотренной политики. Differential analysis р�
 | <a id="ing-12"></a>ING-12 | `closed` | Ограниченные hash retries и типизированная terminal-диагностика нечитаемого источника; физическая судьба pre-claim остаётся ING-13. [ingestion](../dev/ru/ingestion.md) |
 | <a id="ing-14"></a>ING-14 | `closed` | Отказы quiet-period возвращаются в WatchService retry set; полный polling остаётся штатным correctness path. [интеграционный тест фильтра](../../adapters/adapter-ingest/src/test/java/com/iocextractor/adapter/in/ingest/IngestFileListFilterIT.java) |
 | <a id="ing-17"></a>ING-17 | `closed` | Эквивалентный terminal CAS принимает только неизменные authority/evidence и проверяет registration даже при finalized retry. Регрессии и записанный исправленный прогон 100 DOCX подтверждают закрытие; неуспешные load windows остаются неуспешными. [тесты completion](../../core/ioc-application/src/test/java/com/iocextractor/application/ingest/admission/DocumentAdmissionCompletionTest.java) [история](../dev/ru/native-capacity.md) |
-| <a id="ops-1"></a>OPS-1 | `closed` | Исходная проверка нескольких/новых файлов покрыта записанным intake 100 DOCX; deterministic running-daemon/watch тесты заново прошли 2026-11-07. Полный polling по умолчанию, watcher — ускоритель. Multi-endpoint identity/landing остаются OPS-11/12. [тесты демона](../../bootstrap/ioc-app/src/test/java/com/iocextractor/DaemonIngestE2EIT.java) [история batch](../dev/ru/native-capacity.md) |
+| <a id="ops-1"></a>OPS-1 | `closed` | Исходная проверка нескольких/новых файлов покрыта записанным intake 100 DOCX; deterministic running-daemon/watch тесты заново прошли 2026-11-07. Полный polling по умолчанию, watcher — ускоритель. Multi-endpoint identity/landing остаются OPS-12. [тесты демона](../../bootstrap/ioc-app/src/test/java/com/iocextractor/DaemonIngestE2EIT.java) [история batch](../dev/ru/native-capacity.md) |
+| <a id="ops-11"></a>OPS-11 | `closed` | ID источника входит в ключ детектора, in-flight и JDBC. Равные метаданные с параллельных endpoint дают отдельные файлы. Миграция v15 сохраняет историю и требует явных решений при переходе. [Регрессия с перезапуском](../../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/RemoteFetchSourceIsolationIT.java) · [Переход](../guides/ru/remote-storage-sync.md#переход-с-прежнего-журнала-fetch) |
 | <a id="ops-13"></a>OPS-13 | `closed` | Локальное развёртывание держит unit и оба CLI-скрипта в staging до успешной проверки. При сбое активации восстанавливаются активная ссылка и предыдущие файлы. После попытки запуска восстанавливается снимок остановленных баз из этой попытки. [Регрессия активации](../../packaging/tests/deploy-local-activation-test.sh) · [Ручное восстановление](../guides/ru/deployment.md#ручной-application-rollback) |
 | <a id="obs-d1"></a>OBS-D1 | `closed` | Диагностики ADR-0017, bounded outcomes, exactly-once runner delivery и prepare→checkpoint→commit; producer ratchet пуст. [наблюдаемость](../dev/ru/observability.md) |
 | <a id="obs-d3"></a>OBS-D3 | `closed` | Локальные scalar fields события передаются типизированными SLF4J key/value; ambient correlation принадлежит MDC. Boot 4 encoder сохраняет контракт. [наблюдаемость](../dev/ru/observability.md) |

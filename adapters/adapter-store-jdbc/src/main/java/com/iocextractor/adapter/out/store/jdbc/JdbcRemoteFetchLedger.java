@@ -29,18 +29,21 @@ public final class JdbcRemoteFetchLedger implements RemoteFetchLedger {
     public Optional<RemoteFetchRecord> find(RemoteObjectIdentity identity) {
         Objects.requireNonNull(identity, "identity");
         return jdbc.sql("""
-                        SELECT remote_path, remote_size, remote_mtime, status,
+                        SELECT source_id, remote_path, remote_size, remote_mtime, status,
                                local_path, attempts, last_error, fetched_at, updated_at
                         FROM remote_fetch_ledger
-                        WHERE remote_path = :remote_path
+                        WHERE source_id = :source_id
+                          AND remote_path = :remote_path
                           AND remote_size = :remote_size
                           AND remote_mtime = :remote_mtime
                         """)
+                .param("source_id", identity.sourceId())
                 .param("remote_path", identity.path())
                 .param("remote_size", identity.size())
                 .param("remote_mtime", identity.modifiedAt().toString())
                 .query((rs, rowNum) -> new RemoteFetchRecord(
                         new RemoteObjectIdentity(
+                                rs.getString("source_id"),
                                 rs.getString("remote_path"),
                                 rs.getLong("remote_size"),
                                 Instant.parse(rs.getString("remote_mtime"))),
@@ -51,6 +54,31 @@ public final class JdbcRemoteFetchLedger implements RemoteFetchLedger {
                         parseNullable(rs.getString("fetched_at")),
                         Instant.parse(rs.getString("updated_at"))))
                 .optional();
+    }
+
+    @Override
+    public boolean requiresLegacyReview(RemoteObjectIdentity identity) {
+        Objects.requireNonNull(identity, "identity");
+        return jdbc.sql("""
+                        SELECT EXISTS (
+                            SELECT 1 FROM remote_fetch_ledger_legacy
+                            WHERE remote_path = :remote_path
+                              AND remote_size = :remote_size
+                              AND remote_mtime = :remote_mtime AND status = 'FETCHED'
+                        ) AND NOT EXISTS (
+                            SELECT 1 FROM remote_fetch_legacy_replay
+                            WHERE source_id = :source_id
+                              AND remote_path = :remote_path
+                              AND remote_size = :remote_size
+                              AND remote_mtime = :remote_mtime
+                        )
+                        """)
+                .param("source_id", identity.sourceId())
+                .param("remote_path", identity.path())
+                .param("remote_size", identity.size())
+                .param("remote_mtime", identity.modifiedAt().toString())
+                .query(Boolean.class)
+                .single();
     }
 
     @Override
@@ -83,12 +111,12 @@ public final class JdbcRemoteFetchLedger implements RemoteFetchLedger {
         Objects.requireNonNull(identity, "identity");
         jdbc.sql("""
                         INSERT INTO remote_fetch_ledger(
-                            remote_path, remote_size, remote_mtime, status,
+                            source_id, remote_path, remote_size, remote_mtime, status,
                             local_path, attempts, last_error, fetched_at, updated_at)
                         VALUES (
-                            :remote_path, :remote_size, :remote_mtime, :status,
+                            :source_id, :remote_path, :remote_size, :remote_mtime, :status,
                             :local_path, :attempts, :last_error, :fetched_at, :updated_at)
-                        ON CONFLICT(remote_path, remote_size, remote_mtime) DO UPDATE SET
+                        ON CONFLICT(source_id, remote_path, remote_size, remote_mtime) DO UPDATE SET
                             status = excluded.status,
                             local_path = excluded.local_path,
                             attempts = CASE
@@ -99,6 +127,7 @@ public final class JdbcRemoteFetchLedger implements RemoteFetchLedger {
                             fetched_at = excluded.fetched_at,
                             updated_at = excluded.updated_at
                         """)
+                .param("source_id", identity.sourceId())
                 .param("remote_path", identity.path())
                 .param("remote_size", identity.size())
                 .param("remote_mtime", identity.modifiedAt().toString())

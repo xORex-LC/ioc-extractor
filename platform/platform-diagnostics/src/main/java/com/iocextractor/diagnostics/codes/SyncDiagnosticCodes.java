@@ -21,6 +21,8 @@ public enum SyncDiagnosticCodes implements IocDiagnosticCode {
             "Remote resources are exhausted on sync endpoint {endpoint}: {reason}"),
     TRANSPORT_TRANSIENT(DiagnosticSeverity.WARN, "sync.transport-transient",
             "Transient transport failure on sync endpoint {endpoint}: {reason}"),
+    FETCH_LEGACY_REVIEW_REQUIRED(DiagnosticSeverity.WARN, "sync.fetch-legacy-review-required",
+            "Fetch source {sourceId} has {count} objects requiring a legacy ledger cutover decision"),
     PUBLISH_VERIFY_FAILED(DiagnosticSeverity.ERROR, "sync.publish-verify-failed",
             "Published slice {sliceId} for target {targetId} failed verification: {reason}"),
     LOCAL_SLICE_INVALID(DiagnosticSeverity.ERROR, "sync.local-slice-invalid",
