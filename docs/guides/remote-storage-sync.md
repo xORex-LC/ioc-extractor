@@ -38,62 +38,18 @@ first file. [OPS-12](../KNOWN-ISSUES.md#ops-12)
 
 ### Cut over the legacy fetch ledger
 
-For an upgrade from service schema v14 or older, preserve a stopped, coordinated
-recovery point for the old binary and both DBs. Rehearse the migration with the
-candidate and a copy of the service DB. Schema v15 keeps all old records in
-`remote_fetch_ledger_legacy`. It holds exact matches to old `FETCHED` rows until
-their source is confirmed or replay is approved. New tuples continue normally.
-`ioc sync fetch --source SOURCE --dry-run` reports held matches in its failed
-count and logs `SYNC.FETCH_LEGACY_REVIEW_REQUIRED`. It leaves the inbox and fetch
-records untouched. Opening a copied DB may apply the schema migration.
+Before upgrading, preserve a stopped recovery point with the old binary and
+both databases. Rehearse the migration on a copy of the service database.
+Schema v17 removes the former fetch history without a source ID and any replay
+approvals for that history. Existing fetch entries with a source ID are
+preserved.
 
-Inventory historical `FETCHED` tuples and match them to the configured sources
-using the source listing and deployment or transfer records. Record each
-confirmed owner and each replay candidate. A single source in today's config
-does not establish historical ownership. A replay may create a new observation,
-renew TTL or affect fields ordered by admission.
-
-```sql
-SELECT remote_path, remote_size, remote_mtime, local_path, fetched_at
-FROM remote_fetch_ledger_legacy
-WHERE status = 'FETCHED'
-ORDER BY remote_path, remote_size, remote_mtime;
-```
-
-With the daemon and manual sync stopped, apply the reviewed decisions to the
-migrated service DB in a transaction. Bind `:source_id`, `:remote_path`,
-`:remote_size` and `:remote_mtime` to each reviewed entry. Verify that each insert
-affects one row. An existing decision or scoped entry should be reconciled before
-another update. Leave entries without a decision held and retain the legacy table.
-
-For a confirmed historical owner, copy its existing success to that source only.
-
-```sql
-INSERT INTO remote_fetch_ledger (
-    source_id, remote_path, remote_size, remote_mtime, status,
-    local_path, attempts, last_error, fetched_at, updated_at)
-SELECT :source_id, remote_path, remote_size, remote_mtime, status,
-       local_path, attempts, last_error, fetched_at, updated_at
-FROM remote_fetch_ledger_legacy
-WHERE remote_path = :remote_path AND remote_size = :remote_size
-  AND remote_mtime = :remote_mtime AND status = 'FETCHED';
-```
-
-For an explicitly approved redownload, record a replay decision for that source.
-
-```sql
-INSERT INTO remote_fetch_legacy_replay (
-    source_id, remote_path, remote_size, remote_mtime, approved_at)
-SELECT :source_id, remote_path, remote_size, remote_mtime,
-       strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-FROM remote_fetch_ledger_legacy
-WHERE remote_path = :remote_path AND remote_size = :remote_size
-  AND remote_mtime = :remote_mtime AND status = 'FETCHED';
-```
-
-Run a dry-run per source to check the remaining held counts before resuming
-normal operation. Restore the coordinated pre-upgrade point when rolling back
-to a binary that expects the old schema. [Deployment recovery](deployment.md#manual-application-rollback)
+After upgrade, any eligible file still listed on a share can be downloaded
+if its source-scoped key lacks a successful record. This includes files
+recorded only in the former journal. A repeat download can create a new
+observation, renew TTL or change fields ordered by admission. Review the
+source listings before enabling fetch. For rollback, restore the coordinated
+pre-upgrade recovery point. [Deployment recovery](deployment.md#manual-application-rollback)
 
 ### Producer handoff and push notifications
 
@@ -476,7 +432,6 @@ follow [TESTING](../TESTING.md); an offline skip is not live SMB qualification.
 
 | Symptom | First checks |
 |---|---|
-| `SYNC.FETCH_LEGACY_REVIEW_REQUIRED` | Review the exact old tuple for the named source and record a cutover decision. [Cutover](#cut-over-the-legacy-fetch-ledger) |
 | Two fetched outcomes, one inbox file | `OPS-12`: same final name and concurrent writers; retain logs/ledger before retry |
 | Persistent DOWN | Component details, failed delivery pairs, credentials/ACL/encryption and local slice integrity |
 | Resource exhaustion / smbTransport DEGRADED | Planned vs owned demand and server quotas/current usage; avoid reconnect storms |

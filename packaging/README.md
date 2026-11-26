@@ -138,9 +138,9 @@ and checks storage health. Recovery restores the old files and verifies health
 if the service had been active. If candidate start was attempted, recovery first
 confirms the candidate stopped, restores this attempt's DB archive and preserves
 the candidate DB files separately. An incomplete recovery reports the attempt
-path and retains its evidence. Retention prunes completed attempts and legacy
-backup pairs. It protects the immediately previous release and keeps incomplete
-attempts. See the [operator rollback procedure](../docs/guides/deployment.md#manual-application-rollback)
+path and retains its evidence. Retention prunes completed
+`local-deploy.*` attempts. It protects the immediately previous release and
+keeps incomplete attempts. See the [operator rollback procedure](../docs/guides/deployment.md#manual-application-rollback)
 for scope and interrupted recovery. Initial bootstrap stops an unhealthy first
 deployment.
 

@@ -40,13 +40,9 @@ by detection, in-flight admission and release, CLI and event-driven fetch, and
 the SQLite lookup and upsert. The endpoint name remains the executor lane key.
 A re-upload in the same source is new when its listed path, size or mtime changes.
 
-Service migration v15 preserves the unscoped ledger as `remote_fetch_ledger_legacy`.
-A matching historical `FETCHED` tuple without a scoped success or an explicit
-replay approval holds work for the affected source. Other source IDs have their
-own decisions. The fetch summary counts held objects as failed, and the batch
-reports `SYNC.FETCH_LEGACY_REVIEW_REQUIRED` with a source ID and count. This
-also applies to CLI dry-run. Legacy `FAILED` and `SKIPPED` rows remain history.
-See the [operator cutover](../guides/remote-storage-sync.md#cut-over-the-legacy-fetch-ledger).
+Service migration v17 removes unscoped fetch history. Fetch eligibility uses
+the source-scoped ledger introduced in v15. See the
+[upgrade behavior](../guides/remote-storage-sync.md#cut-over-the-legacy-fetch-ledger).
 
 Fetch writes and forces staging bytes, then atomically moves the file into the
 inbox before marking it fetched. Every name has a deterministic 128-bit

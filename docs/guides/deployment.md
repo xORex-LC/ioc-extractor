@@ -419,9 +419,8 @@ symlink and any CLI helpers that existed before activation. `db.tar` is the
 verified stopped snapshot. If `candidate-start-attempted` exists, assume the
 candidate could have written data. After `SIGKILL` or loss of power, inspect the
 attempt and live files before restarting. A missing or incomplete snapshot
-requires the coordinated operator backup. Older local versions use
-`<release-id>-unit.service` and `<release-id>-db.tar`. An `install.sh` upgrade
-uses the operator's saved recovery set.
+requires the coordinated operator backup. An `install.sh` upgrade uses
+the operator's saved recovery set.
 
 1. Select the previous immutable release with a temporary symlink and atomically replace `current`.
 2. Restore both databases together if the candidate could have written data.

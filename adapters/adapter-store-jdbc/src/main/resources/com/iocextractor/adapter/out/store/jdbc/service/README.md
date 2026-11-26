@@ -24,14 +24,15 @@ current catalog ends at version 15. A new file requires a matching catalog entry
 | [v12__document_processing_policy.sql](v12__document_processing_policy.sql) | Pinned document processing policy and unfinalized-admission lookup |
 | [v13__export_profile_single_flight.sql](v13__export_profile_single_flight.sql) | Replace global export single-flight with per-profile active-run uniqueness |
 | [v14__document_execution_admission.sql](v14__document_execution_admission.sql) | Durable document execution attempts, retry deadline/failure and ordered lookup |
-| [v15__source_scoped_remote_fetch.sql](v15__source_scoped_remote_fetch.sql) | Scope fetch identity by source, archive old tuples and record explicit per-source replay approvals |
+| [v15__source_scoped_remote_fetch.sql](v15__source_scoped_remote_fetch.sql) | Scope fetch identity by source and introduce the historical cutover tables |
 | [v16__document_rejection.sql](v16__document_rejection.sql) | Preserve admission rows and store physical rejection evidence, allowing rejection without a content key |
+| [v17__remove_unscoped_remote_fetch.sql](v17__remove_unscoped_remote_fetch.sql) | Drop unscoped fetch history and its replay approvals |
 
 Historical table names describe upgrade steps, not supported current aggregation
 or partition-staging features. Keep the chain so older supported DBs can advance.
 The nullable `import_delivery.public_mutations` column is not populated/read by
 the current delivery ledger; canonical mutation evidence is dataframe-owned.
-See the [fetch cutover](../../../../../../../../../../../../docs/guides/remote-storage-sync.md#cut-over-the-legacy-fetch-ledger) for historical unscoped records.
+See the [fetch cutover](../../../../../../../../../../../../docs/guides/remote-storage-sync.md#cut-over-the-legacy-fetch-ledger) for upgrade behavior.
 
 ## Execution and failure boundaries
 

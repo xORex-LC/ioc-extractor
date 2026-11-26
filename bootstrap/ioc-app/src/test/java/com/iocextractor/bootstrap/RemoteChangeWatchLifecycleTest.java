@@ -206,11 +206,6 @@ class RemoteChangeWatchLifecycleTest {
     private static final class FakeLedger implements RemoteFetchLedger {
 
         @Override
-        public boolean requiresLegacyReview(RemoteObjectIdentity identity) {
-            return false;
-        }
-
-        @Override
         public Optional<RemoteFetchRecord> find(RemoteObjectIdentity identity) {
             return Optional.empty();
         }

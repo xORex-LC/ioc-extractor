@@ -99,18 +99,13 @@ prune_releases() {
 prune_backup_sets() {
   local backups="$1" entry attempt
   local -a entries=()
-  # Retain incomplete attempts for manual recovery. Include legacy archive pairs
-  # in the same retention budget as completed attempt directories.
-  mapfile -t entries < <(find "${backups}" -maxdepth 2 -type f \
-    \( -path "${backups}/local-deploy.*/completed" -o -name '*-db.tar' \) -printf '%T@ %p\n' \
+  # Retain incomplete attempts for manual recovery.
+  mapfile -t entries < <(find "${backups}" -mindepth 2 -maxdepth 2 -type f \
+    -path "${backups}/local-deploy.*/completed" -printf '%T@ %p\n' \
     | sort -nr | awk -v keep="${BACKUP_RETENTION}" 'NR > keep { sub(/^[^ ]+ /, ""); print }')
   for entry in "${entries[@]}"; do
     attempt="${entry%/*}"
-    if [[ "${entry##*/}" == completed && "${attempt%/*}" == "${backups}" ]]; then
-      [[ "${attempt}" == "${ATTEMPT_DIR}" ]] || rm -rf -- "${attempt}"
-    elif [[ "${attempt}" == "${backups}" && "${entry}" == *-db.tar ]]; then
-      rm -f -- "${entry}" "${entry%-db.tar}-unit.service"
-    fi
+    [[ "${attempt}" == "${ATTEMPT_DIR}" ]] || rm -rf -- "${attempt}"
   done
 }
 

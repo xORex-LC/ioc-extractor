@@ -253,8 +253,9 @@ or historical-SQL checksum enforcement is implemented by the normal migrator.
 Service ledgers implement local CAS/idempotency facts; application schedules and
 recovers them. Document/import admission references retain dataframe registration
 identity without becoming the rank authority. Export terminal progress commits
-with its ledger checkpoint. Fetch v15 scopes idempotency by source and retains
-the historical unscoped ledger. Document admission v16 records durable rejection
+with its ledger checkpoint. Fetch v15 scopes idempotency by source. Migration
+v17 drops unscoped fetch history and preserves scoped records. Document admission
+v16 records durable rejection
 intent and supports rejected occurrences without a content key.
 Nullable import status handling (OPS-10) and ordered-field whitespace validation
 (OPS-14) remain [open issues](../../../../../../../../../../../docs/KNOWN-ISSUES.md).

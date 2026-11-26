@@ -6,6 +6,8 @@ import com.iocextractor.application.sync.RemoteObjectIdentity;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 import java.nio.file.Path;
@@ -94,8 +96,9 @@ class JdbcRemoteFetchLedgerIT {
         }
     }
 
-    @Test
-    void migrationRetainsUnscopedHistoryAndHoldsOnlyMatchingFetchedTuples() {
+    @ParameterizedTest
+    @ValueSource(ints = {14, 16})
+    void migrationRemovesUnscopedFetchStateAndKeepsScopedRecords(int previousVersion) {
         try (HikariDataSource dataSource = dataSource("fetch-upgrade.db")) {
             var migrations = ServiceSchemaMigrations.sqlite();
             new SqliteUserVersionSchemaMigrator(dataSource, migrations.subList(0, 14)).migrate();
@@ -103,50 +106,40 @@ class JdbcRemoteFetchLedgerIT {
             jdbc.sql("""
                     INSERT INTO remote_fetch_ledger (remote_path, remote_size, remote_mtime,
                         status, local_path, attempts, fetched_at, updated_at)
-                    VALUES ('/incoming/a.htm', 42, :mtime, 'FETCHED', 'old/a.htm', 3, :now, :now),
-                           ('/incoming/b.htm', 42, :mtime, 'FAILED', NULL, 2, NULL, :now),
-                           ('/incoming/c.htm', 42, :mtime, 'SKIPPED', NULL, 0, NULL, :now)
+                    VALUES ('/incoming/a.htm', 42, :mtime, 'FETCHED', 'old/a.htm', 3, :now, :now)
                     """).param("mtime", MTIME.toString()).param("now", NOW.toString()).update();
-
-            migrate(dataSource);
-            var ledger = new JdbcRemoteFetchLedger(dataSource);
             var first = new RemoteObjectIdentity("source-a", "/incoming/a.htm", 42, MTIME);
             var second = new RemoteObjectIdentity("source-b", "/incoming/a.htm", 42, MTIME);
-            assertThat(ledger.find(first)).isEmpty();
-            assertThat(ledger.find(second)).isEmpty();
-            assertThat(ledger.requiresLegacyReview(first)).isTrue();
-            assertThat(ledger.requiresLegacyReview(second)).isTrue();
-            assertThat(ledger.requiresLegacyReview(new RemoteObjectIdentity("source-b", "/incoming/a.htm", 43, MTIME)))
-                    .isFalse();
-            assertThat(ledger.requiresLegacyReview(new RemoteObjectIdentity("source-b", "/incoming/b.htm", 42, MTIME)))
-                    .isFalse();
-            assertThat(ledger.requiresLegacyReview(new RemoteObjectIdentity("source-b", "/incoming/c.htm", 42, MTIME)))
-                    .isFalse();
-            assertThat(jdbc.sql("SELECT status FROM remote_fetch_ledger_legacy ORDER BY remote_path")
-                    .query(String.class).list()).containsExactly("FETCHED", "FAILED", "SKIPPED");
+            var ledger = new JdbcRemoteFetchLedger(dataSource);
+            if (previousVersion == 16) {
+                new SqliteUserVersionSchemaMigrator(dataSource, migrations.subList(0, 16)).migrate();
+                ledger.markFetched(first, "inbox/a-from-first.htm", NOW);
+                jdbc.sql("""
+                        INSERT INTO remote_fetch_legacy_replay (
+                            source_id, remote_path, remote_size, remote_mtime, approved_at)
+                        VALUES ('source-b', '/incoming/a.htm', 42, :mtime, :now)
+                        """).param("mtime", MTIME.toString()).param("now", NOW.toString()).update();
+            }
 
-            // An operator established ownership for A and separately approved a replay for B.
-            jdbc.sql("""
-                    INSERT INTO remote_fetch_ledger (source_id, remote_path, remote_size, remote_mtime,
-                        status, local_path, attempts, last_error, fetched_at, updated_at)
-                    SELECT 'source-a', remote_path, remote_size, remote_mtime,
-                        status, local_path, attempts, last_error, fetched_at, updated_at
-                    FROM remote_fetch_ledger_legacy WHERE remote_path = '/incoming/a.htm' AND status = 'FETCHED'
-                    """).update();
-            jdbc.sql("""
-                    INSERT INTO remote_fetch_legacy_replay (source_id, remote_path, remote_size, remote_mtime, approved_at)
-                    VALUES ('source-b', '/incoming/a.htm', 42, :mtime, :now)
-                    """).param("mtime", MTIME.toString()).param("now", NOW.toString()).update();
+            var result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
 
-            assertThat(ledger.find(first)).hasValueSatisfying(record -> {
-                assertThat(record.status()).isEqualTo(RemoteFetchStatus.FETCHED);
-                assertThat(record.localPath()).isEqualTo("old/a.htm");
-                assertThat(record.attempts()).isEqualTo(3);
-            });
+            assertThat(result.previousVersion()).isEqualTo(previousVersion);
+            assertThat(result.currentVersion()).isEqualTo(17);
+            assertThat(jdbc.sql("""
+                    SELECT name FROM sqlite_schema
+                    WHERE type = 'table' AND name IN ('remote_fetch_ledger_legacy', 'remote_fetch_legacy_replay')
+                    """).query(String.class).list()).isEmpty();
+            if (previousVersion == 16) {
+                assertThat(ledger.find(first)).hasValueSatisfying(record -> {
+                    assertThat(record.identity()).isEqualTo(first);
+                    assertThat(record.status()).isEqualTo(RemoteFetchStatus.FETCHED);
+                    assertThat(record.localPath()).isEqualTo("inbox/a-from-first.htm");
+                });
+            } else {
+                assertThat(ledger.find(first)).isEmpty();
+            }
             assertThat(ledger.find(second)).isEmpty();
-            assertThat(ledger.requiresLegacyReview(second)).isFalse();
-            var third = new RemoteObjectIdentity("source-c", "/incoming/a.htm", 42, MTIME);
-            assertThat(ledger.requiresLegacyReview(third)).isTrue();
+            assertThat(ledger.markFetched(second, "inbox/a-from-second.htm", NOW).identity()).isEqualTo(second);
         }
     }
 

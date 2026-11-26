@@ -179,7 +179,7 @@ See [artifact export](artifact-export.md) and
 ## Schema and recovery
 
 Versioned migrations use `user_version`, followed by configured artifact-schema
-reconciliation. Native dataframe format 12 and service format 16 are the
+reconciliation. Native dataframe format 12 and service format 17 are the
 supported current formats. The normal migrator rejects newer/experimental
 formats; it does not reinterpret or lower their version.
 
@@ -189,8 +189,9 @@ reconciliation checkpoint, v7 named match identities, v9 import receipts,
 v10 ordered registrations/field origins, and v11 ordered receipt positions/origin history and v12 accepted import warnings. Service v9 owns managed deliveries, v10 document
 admission, v11 import observation reservations, v12 document-policy pins, v13
 export-profile single flight, v14 bounded document execution, v15 source-scoped
-fetch and v16 document rejection intent including terminal outcomes without a
-content key. Service v16 preserves prior admission rows and their ranks.
+fetch, v16 document rejection intent including terminal outcomes without a
+content key, and v17 removal of unscoped fetch history. Service v16 preserves
+prior admission rows and their ranks.
 A document or import retry resumes its original rank; an unreserved legacy
 import occurrence cannot silently acquire a different rank after restart.
 
