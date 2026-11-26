@@ -69,7 +69,7 @@ public final class EarlyCliLauncher {
         if ("health".equals(leaf)) {
             return OptionalInt.of(healthCommandLine().execute(args));
         }
-        if ("sync".equals(leaf)) {
+        if ("sync".equals(leaf) || "ingest".equals(leaf)) {
             path.get(path.size() - 1).usage(out);
             return OptionalInt.of(0);
         }

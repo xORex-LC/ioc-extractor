@@ -91,13 +91,15 @@ class SourceFailureLoggingIT {
         assertThat(sourceFailures).isEqualTo(2);
         assertThat(stageFailureFound).isTrue();
 
+        String rejectedObservation;
         try (var connection = DriverManager.getConnection(serviceDb(directory));
              var statement = connection.createStatement();
              var ledger = statement.executeQuery("""
-                     SELECT processing_path, archived_path, reason
+                     SELECT observation_id, processing_path, archived_path, reason
                      FROM ingestion_ledger WHERE status = 'FAILED'
                      """)) {
             assertThat(ledger.next()).isTrue();
+            rejectedObservation = ledger.getString("observation_id");
             Path archived = Path.of(ledger.getString("archived_path"));
             assertThat(Path.of(ledger.getString("processing_path"))).doesNotExist();
             assertThat(archived).hasContent("<p>example.test</p>");
@@ -119,6 +121,11 @@ class SourceFailureLoggingIT {
             }
             assertThat(failedRuns).isEqualTo(2);
         }
+
+        launch(0, "ingest", "status", "--observation", rejectedObservation);
+        assertThat(readSafeOutput(directory.resolve("stdout.log")))
+                .contains("Observation: " + rejectedObservation, "Outcome: REJECTED",
+                        "Code: DOCUMENT_PREPARATION_FAILED");
     }
 
     private void launch(int expectedExit, String... arguments) throws Exception {
@@ -153,6 +160,11 @@ class SourceFailureLoggingIT {
     }
 
     public static void main(String[] arguments) {
+        if (arguments.length > 0 && "ingest".equals(arguments[0])) {
+            System.setProperty("ioc.ingestion.ledger.type", "jdbc");
+            IocExtractorApplication.main(arguments);
+            return;
+        }
         var application = new SpringApplication(IocExtractorApplication.class, FailingReaderConfiguration.class);
         boolean daemon = arguments.length == 0;
         String[] startupArgs = daemon ? new String[]{

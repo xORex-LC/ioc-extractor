@@ -97,7 +97,8 @@ Retries use durable deadlines. The detector returns after a short claim.
 A verified oversized file bypasses sealing and hashing. Exhausted failures can
 reject by observation ID, including those without a content key. If ownership
 or the promotion outcome is uncertain, the retained head blocks later promotion
-and makes capacity health DOWN. Partial-run resume (ING-11) remains a
+and makes capacity health DOWN. The operator can request another check by
+observation ID and exact version. Partial-run resume (ING-11) remains a
 [known limitation](../../../../../../../../../../docs/KNOWN-ISSUES.md).
 Document commits can succeed for earlier artifacts before a later failure;
 this adapter does not provide whole-document rollback.

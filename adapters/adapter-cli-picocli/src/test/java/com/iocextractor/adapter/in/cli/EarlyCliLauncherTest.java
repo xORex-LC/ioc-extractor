@@ -98,6 +98,16 @@ class EarlyCliLauncherTest {
     }
 
     @Test
+    void ingestHelpAndValidationUseTheSameVersionOptionAsExecution() {
+        assertThat(launcher.executeIfHandled("ingest", "resume", "--help")).hasValue(0);
+        assertThat(out.toString()).contains("Usage: ioc ingest resume", "--at-version", "--observation");
+        assertThat(launcher.executeIfHandled("ingest", "resume", "--observation", "id")).hasValue(2);
+        assertThat(err.toString()).contains("--at-version");
+        assertThat(launcher.executeIfHandled(
+                "ingest", "resume", "--observation", "id", "--at-version", "7")).isEmpty();
+    }
+
+    @Test
     void delegatesValidBusinessCommandToSpring() {
         OptionalInt result = launcher.executeIfHandled("extract", "--source", "source.htm");
 

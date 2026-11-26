@@ -95,6 +95,7 @@ import com.iocextractor.application.export.StandaloneSliceRetentionGuard;
 import com.iocextractor.application.ingest.IngestionService;
 import com.iocextractor.application.ingest.IngestionLifecycleSupport;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
+import com.iocextractor.application.ingest.admission.DocumentAdmissionOperations;
 import com.iocextractor.application.observation.ObservationOrderedExtractionDecorator;
 import com.iocextractor.application.observation.ManagedImportObservationAdmission;
 import com.iocextractor.application.observation.ObservationOrderingPolicy;
@@ -523,8 +524,25 @@ public class AppConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.ONESHOT_VALUE,
+            matchIfMissing = true)
+    DocumentAdmissionOperations documentAdmissionOperations(
+            IocProperties props, ObjectProvider<LazyServiceStorage> serviceStorage, Clock clock) {
+        return new DocumentAdmissionOperations(() -> {
+            if (props.ingestion().ledger().type() == IngestionLedgerType.JDBC) {
+                return new JdbcDocumentAdmissionJournal(serviceStorage.getObject().dataSource());
+            }
+            return fileAdmissionJournal(props);
+        }, clock);
+    }
+
+    @Bean
     @ConditionalOnFileLedger
     public DocumentAdmissionJournal fileDocumentAdmissionJournal(IocProperties props) {
+        return fileAdmissionJournal(props);
+    }
+
+    private static FileDocumentAdmissionJournal fileAdmissionJournal(IocProperties props) {
         return new FileDocumentAdmissionJournal(
                 Path.of(props.ingestion().ledger().path()).resolve("document-admission"));
     }

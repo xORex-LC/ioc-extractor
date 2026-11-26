@@ -807,16 +807,16 @@
         </suppression>
         <rationale>Reviewed policy signal: stateful one-shot extraction marks the observation terminal on every outcome while preserving the exact primary runtime failure and attaching cleanup failure as suppressed. D1 adds the diagnostic-delivery fallback lambda earlier in AppConfig, renumbering this unchanged lifecycle lambda and its exact selector.</rationale>
     </finding>
-    <finding id="DATA-TTL-P4-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="9011c888e6a5fa18b9eccf2726590f1c" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="LIB-2-D1/P4-FAILURE-CONTRACT; source=bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java; tests=bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/PreparedDocumentPromotionIT.java,bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/LifecycleRuntimeObserverTest.java" review="lifecycle-failure-contract-change">
+    <finding id="DATA-TTL-P4-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="2cf346b48315edac143589e9fc180a3f" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="LIB-2-D1/P4-FAILURE-CONTRACT; source=bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java; tests=bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/PreparedDocumentPromotionIT.java,bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/LifecycleRuntimeObserverTest.java" review="lifecycle-failure-contract-change">
         <class name="com.iocextractor.bootstrap.AppConfig" />
-        <method name="lambda$prepareLifecycleAdmissionUseCase$8" signature="(Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionService;Lcom/iocextractor/bootstrap/LifecycleRuntimeObserver;)Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionResult;" />
-        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="918" bytecode="19" />
+        <method name="lambda$prepareLifecycleAdmissionUseCase$9" signature="(Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionService;Lcom/iocextractor/bootstrap/LifecycleRuntimeObserver;)Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionResult;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="937" bytecode="19" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.bootstrap.AppConfig" />
-            <Method name="lambda$prepareLifecycleAdmissionUseCase$8" />
+            <Method name="lambda$prepareLifecycleAdmissionUseCase$9" />
         </suppression>
-        <rationale>Reviewed policy signal: bootstrap reports admission failure and deliberately rethrows the exact runtime failure so startup and command admission remain fail-closed. D1 adds the diagnostic-delivery fallback lambda earlier in AppConfig, renumbering this unchanged lifecycle lambda and its exact selector.</rationale>
+        <rationale>Reviewed policy signal: bootstrap reports admission failure and deliberately rethrows the exact runtime failure so startup and command admission remain fail-closed. The document operator journal supplier renumbers this unchanged lifecycle lambda.</rationale>
     </finding>
     <finding id="DATA-TTL-P4-SB-007" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="a4671c0c8959d51cfacdf4d3f12a5e8" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P4-FAILURE-CONTRACT; source=core/ioc-application/src/main/java/com/iocextractor/application/artifact/lifecycle/ArtifactProjectionConvergenceService.java; tests=core/ioc-application/src/test/java/com/iocextractor/application/artifact/lifecycle/LifecycleRuntimeServicesTest.java" review="lifecycle-failure-contract-change">
         <class name="com.iocextractor.application.artifact.lifecycle.ArtifactProjectionConvergenceService" />

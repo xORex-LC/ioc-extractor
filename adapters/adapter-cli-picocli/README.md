@@ -42,7 +42,7 @@ its ports; the dependency must continue pointing inward.
 
 ## Entry points and contracts
 
-The command root is `ioc`, with `extract`, `export`, `import`, `sync` and `health`.
+The command root is `ioc`, with `extract`, `export`, `import`, `sync`, `health` and `ingest`.
 There are two execution paths:
 
 1. Bootstrap calls `EarlyCliLauncher` before starting Spring. Annotated command

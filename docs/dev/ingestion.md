@@ -150,7 +150,8 @@ recreates an incomplete or missing sidecar. A conflicting target, unknown
 ownership, missing evidence, or a source record that leaves canonical effects
 uncertain keeps the admission at its original rank. A held head prevents later
 promotions and sets `dataProcessingCapacity` to `DOWN`. The [operator
-procedure](../guides/daemon-operations.md#understand-outcomes) describes triage and recovery. Reconciliation of canonical effects remains tracked as
+procedure](../guides/daemon-operations.md#understand-outcomes) explains exact-version
+resume. Reconciliation of canonical effects remains tracked as
 [ING-11](../KNOWN-ISSUES.md#ing-11).
 
 Document admission progress timestamps never precede the record's durable

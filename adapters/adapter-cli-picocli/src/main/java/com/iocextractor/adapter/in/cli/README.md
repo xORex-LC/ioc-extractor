@@ -61,6 +61,8 @@ metadata handling.
 | `import validate` | Resolves the preview capability and file locator; reports valid/source/accepted/rejected counts, optional contract fingerprint and diagnostic codes without committing an import |
 | `import status` | Reports recovery completion, nonzero state counts and optional head/retry/code fields; successful reporting returns zero even when recovery is incomplete |
 | `import replay` | Requests a new causally linked occurrence; prints its ID/sequence/state. Admission is not terminal completion. Omitted `--new-delivery` generates a UUID |
+| `ingest status` | Shows the requested observation or queue head, including its admission version and safe reason code |
+| `ingest resume` | Requests another attempt of one held admission using its observation ID and exact version |
 | `health` | Queries a separate daemon, renders a table or pretty-printed JSON; `--component` appends an encoded health component path |
 
 Export recovery/leases, import canonical commits and sync idempotency belong to

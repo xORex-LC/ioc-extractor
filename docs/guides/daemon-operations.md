@@ -117,9 +117,20 @@ report. The partial-run resume limitation is tracked as `ING-11` in
 | Verified file fails before hashing or during preparation | After retries, look for a `__rejected` file and its `.error` in `var/failed`. For keyed inputs the source ledger records the same failed path |
 | Queue count or byte limit reached | The file stays in `inbox`. Full polling retries after capacity frees up |
 | Metadata or claim cannot be verified | Check permissions and file stability. An unclaimed input stays in the inbox and inspection retries with backoff |
-| Held admission | Earlier evidence or a possible canonical write needs review. Later promotions wait and `dataProcessingCapacity` is `DOWN` |
+| Held admission | Earlier evidence or a possible canonical write needs review. Inspect the head with `ioc ingest status`; later promotions wait and `dataProcessingCapacity` is `DOWN` |
 
-A
+Use the installed launcher with the same configuration and service account as
+the daemon. Check a specific admission and use its current version to resume
+after addressing the reported cause:
+
+```bash
+sudo /opt/ioc-extractor/bin/ioc ingest status
+sudo /opt/ioc-extractor/bin/ioc ingest status --observation <id>
+sudo /opt/ioc-extractor/bin/ioc ingest resume --observation <id> --at-version <version>
+```
+
+Resume requests a new attempt of the same admission. The daemon alone performs
+file moves. It rechecks the evidence and can hold the request again. A
 `PROMOTION_OUTCOME_UNKNOWN` result calls for ING-11 investigation or coordinated
 restore. Older terminal rejections may require inspection of files retained in
 `processing` because they predate durable rejection intent. Preserve the
