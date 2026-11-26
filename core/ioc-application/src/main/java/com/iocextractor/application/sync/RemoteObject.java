@@ -16,9 +16,9 @@ public record RemoteObject(String path, long size, Instant modifiedAt) {
         modifiedAt = Objects.requireNonNull(modifiedAt, "modifiedAt");
     }
 
-    /** Returns the identity used by the read-only fetch ledger. */
-    public RemoteObjectIdentity identity() {
-        return new RemoteObjectIdentity(path, size, modifiedAt);
+    /** Binds the transport metadata to the configured source for durable fetch identity. */
+    public RemoteObjectIdentity identity(String sourceId) {
+        return new RemoteObjectIdentity(sourceId, path, size, modifiedAt);
     }
 
     private static String requireText(String value, String name) {

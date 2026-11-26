@@ -33,26 +33,36 @@ does not list again. The CLI selection-based fetch performs its own listing.
 Process-local in-flight claims reduce duplicate submissions; the durable ledger
 survives restart. Ordinary fetch reads remote sources without moving/deleting them.
 
-The implemented identity is `(path, size, modifiedAt)`, not a content hash. A
-re-upload is new only when this tuple changes. Neither source nor endpoint is
-part of that key: two endpoints with the same tuple can suppress the second
-fetch (`OPS-11`). See [known issues](../KNOWN-ISSUES.md). Do not infer a separate
-idempotency namespace from a configured endpoint name.
+The idempotency key is `(sourceId, remotePath, size, modifiedAt)`. The source ID
+is the stable configured fetch source name. Listing metadata remains transport
+data until the monitor or fetcher binds it to that source. The same key is used
+by detection, in-flight admission and release, CLI and event-driven fetch, and
+the SQLite lookup and upsert. The endpoint name remains the executor lane key.
+A re-upload in the same source is new when its listed path, size or mtime changes.
 
-Fetch writes staging bytes, forces the file and atomically moves it to the inbox
-before marking the ledger fetched. Directory forcing is best effort on platforms
-that reject directory channels. A crash after landing but before ledger closure
-can land another copy; this is at-least-once transfer, not distributed exactly-once.
-Canonical row deduplication does not imply that all repeated observations are inert.
+Service migration v15 preserves the unscoped ledger as `remote_fetch_ledger_legacy`.
+A matching historical `FETCHED` tuple without a scoped success or an explicit
+replay approval holds work for the affected source. Other source IDs have their
+own decisions. The fetch summary counts held objects as failed, and the batch
+reports `SYNC.FETCH_LEGACY_REVIEW_REQUIRED` with a source ID and count. This
+also applies to CLI dry-run. Legacy `FAILED` and `SKIPPED` rows remain history.
+See the [operator cutover](../guides/remote-storage-sync.md#cut-over-the-legacy-fetch-ledger).
 
-An already occupied final name normally gets a stable identity suffix. This is
-not a no-replace guarantee: the existence check precedes the atomic move, and
-parallel endpoints or another writer can claim that name in between. On Linux,
-two successful moves can leave only one source (`OPS-12`). Use disjoint producer
-filenames while the implementation gap remains open. Atomic visibility alone
-neither fences writers nor proves producer completion. Producers must close an
-excluded temporary file and rename it before discovery; debounce cannot supply
-that contract. Fetch does not revalidate listed size/mtime around the download.
+Fetch writes and forces staging bytes, then atomically moves the file into the
+inbox before marking it fetched. Every name has a deterministic 128-bit
+SHA-256 suffix from the scoped key, before the original extension. For a leaf
+that exceeds the filename byte limit with the suffix, the short form keeps the
+digest and any extension that fits. This separates the names of equal basenames
+from distinct sources and preserves ordinary extension globs. A preexisting
+scoped target fails the attempt. A concurrent writer can still choose the same
+target in the interval between that check and the move
+([OPS-12](../KNOWN-ISSUES.md#ops-12)). The move and ledger update remain separate.
+If the landed file has already moved out of the inbox after a crash, a retry can
+produce a new observation. Directory forcing is best effort.
+
+Producers must close an excluded temporary file and rename it before discovery.
+Fetch uses the metadata listed by the transport and does not revalidate it
+around download.
 
 ## Publish flow
 

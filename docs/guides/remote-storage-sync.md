@@ -22,28 +22,78 @@ run a selected fetch/publish cycle against enabled JDBC-backed sync configuratio
 
 ### Identity, repeats and current limits
 
-Fetch recognizes `(path, size, modifiedAt)`, not file contents. Re-uploading the
-same bytes or different bytes is new only when this tuple changes. Polling cannot
-recover a file removed before it was listed: agree how long producers retain
-completed files and how long outages may last.
+Fetch recognizes `(sourceId, remotePath, size, modifiedAt)`. Keep
+`ioc.sync.fetch.sources[].name` stable for the same logical input even if you
+rotate credentials or change its network address. Give a different input a new
+name. Within a source, a replacement is distinct when the path, size or mtime
+changes. Agree on producer retention so polling can observe completed files.
 
-Two current defects matter when using multiple sources/writers:
+Landed names include a deterministic suffix before the original extension.
+Review exact filename filters in ingestion and any external consumer of the inbox.
+Extension globs such as `*.docx` continue to match. Coordinate inbox writers,
+including manual fetch and the daemon. Concurrent attempts using the same scoped
+destination can still race after the existence check. A crash between landing
+and the ledger update can cause another delivery if ingest already moved the
+first file. [OPS-12](../KNOWN-ISSUES.md#ops-12)
 
-- `OPS-11`: the fetch key has no endpoint/source namespace. Equal tuples on two
-  shares can cause the second download to be skipped entirely.
-- `OPS-12`: name selection and atomic landing are separate. Concurrent writers
-  choosing the same inbox filename can replace a landed source while both fetches
-  are recorded as successful on Linux.
+### Cut over the legacy fetch ledger
 
-See [known issues](../KNOWN-ISSUES.md). Use disjoint remote paths and unique final
-filenames across producers; that reduces these specific collisions but does not
-replace a fix or provide general cross-process fencing. Do not run manual fetch
-alongside the daemon without coordinating writers. Never clear ledger rows as a
-routine resubmission procedure.
+For an upgrade from service schema v14 or older, preserve a stopped, coordinated
+recovery point for the old binary and both DBs. Rehearse the migration with the
+candidate and a copy of the service DB. Schema v15 keeps all old records in
+`remote_fetch_ledger_legacy`. It holds exact matches to old `FETCHED` rows until
+their source is confirmed or replay is approved. New tuples continue normally.
+`ioc sync fetch --source SOURCE --dry-run` reports held matches in its failed
+count and logs `SYNC.FETCH_LEGACY_REVIEW_REQUIRED`. It leaves the inbox and fetch
+records untouched. Opening a copied DB may apply the schema migration.
 
-Even without these defects, fetch is at-least-once: a crash after local landing
-but before the ledger update can download again. Canonical deduplication does not
-make repeated observations equivalent to no operation under every lifecycle policy.
+Inventory historical `FETCHED` tuples and match them to the configured sources
+using the source listing and deployment or transfer records. Record each
+confirmed owner and each replay candidate. A single source in today's config
+does not establish historical ownership. A replay may create a new observation,
+renew TTL or affect fields ordered by admission.
+
+```sql
+SELECT remote_path, remote_size, remote_mtime, local_path, fetched_at
+FROM remote_fetch_ledger_legacy
+WHERE status = 'FETCHED'
+ORDER BY remote_path, remote_size, remote_mtime;
+```
+
+With the daemon and manual sync stopped, apply the reviewed decisions to the
+migrated service DB in a transaction. Bind `:source_id`, `:remote_path`,
+`:remote_size` and `:remote_mtime` to each reviewed entry. Verify that each insert
+affects one row. An existing decision or scoped entry should be reconciled before
+another update. Leave entries without a decision held and retain the legacy table.
+
+For a confirmed historical owner, copy its existing success to that source only.
+
+```sql
+INSERT INTO remote_fetch_ledger (
+    source_id, remote_path, remote_size, remote_mtime, status,
+    local_path, attempts, last_error, fetched_at, updated_at)
+SELECT :source_id, remote_path, remote_size, remote_mtime, status,
+       local_path, attempts, last_error, fetched_at, updated_at
+FROM remote_fetch_ledger_legacy
+WHERE remote_path = :remote_path AND remote_size = :remote_size
+  AND remote_mtime = :remote_mtime AND status = 'FETCHED';
+```
+
+For an explicitly approved redownload, record a replay decision for that source.
+
+```sql
+INSERT INTO remote_fetch_legacy_replay (
+    source_id, remote_path, remote_size, remote_mtime, approved_at)
+SELECT :source_id, remote_path, remote_size, remote_mtime,
+       strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+FROM remote_fetch_ledger_legacy
+WHERE remote_path = :remote_path AND remote_size = :remote_size
+  AND remote_mtime = :remote_mtime AND status = 'FETCHED';
+```
+
+Run a dry-run per source to check the remaining held counts before resuming
+normal operation. Restore the coordinated pre-upgrade point when rolling back
+to a binary that expects the old schema. [Deployment recovery](deployment.md#manual-application-rollback)
 
 ### Producer handoff and push notifications
 
@@ -426,7 +476,7 @@ follow [TESTING](../TESTING.md); an offline skip is not live SMB qualification.
 
 | Symptom | First checks |
 |---|---|
-| Silent second-source skip | `OPS-11`: compare path/size/mtime across endpoints and durable fetch identity |
+| `SYNC.FETCH_LEGACY_REVIEW_REQUIRED` | Review the exact old tuple for the named source and record a cutover decision. [Cutover](#cut-over-the-legacy-fetch-ledger) |
 | Two fetched outcomes, one inbox file | `OPS-12`: same final name and concurrent writers; retain logs/ledger before retry |
 | Persistent DOWN | Component details, failed delivery pairs, credentials/ACL/encryption and local slice integrity |
 | Resource exhaustion / smbTransport DEGRADED | Planned vs owned demand and server quotas/current usage; avoid reconnect storms |

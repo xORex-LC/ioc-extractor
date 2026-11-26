@@ -32,7 +32,7 @@ class RemoteSourceMonitorTest {
         RemoteObject excluded = object("/incoming/b.part", 3);
         FakeTransport transport = new FakeTransport(List.of(accepted, fetched, excluded));
         FakeLedger ledger = new FakeLedger();
-        ledger.markFetched(fetched.identity(), "var/inbox/already.htm", NOW);
+        ledger.markFetched(fetched.identity("source"), "var/inbox/already.htm", NOW);
 
         List<RemoteChangeBatchDetected> events = monitor(transport, ledger, 10)
                 .detect(new RemoteFetchCommand(false));
@@ -89,10 +89,10 @@ class RemoteSourceMonitorTest {
                 List.of(source("source", "endpoint", "/incoming")), 10, CLOCK,
                 retrier(), reporter());
         List<RemoteChangeBatchDetected> first = monitor.detect(new RemoteFetchCommand(false));
-        inFlight.claim(first.getFirst().objects());
+        inFlight.claim("source", first.getFirst().objects());
 
         List<RemoteChangeBatchDetected> whileInFlight = monitor.detect(new RemoteFetchCommand(false));
-        inFlight.release(first.getFirst().objects());
+        inFlight.release("source", first.getFirst().objects());
         List<RemoteChangeBatchDetected> afterRelease = monitor.detect(new RemoteFetchCommand(false));
 
         assertThat(whileInFlight).isEmpty();
@@ -184,6 +184,11 @@ class RemoteSourceMonitorTest {
 
     private static final class FakeLedger implements RemoteFetchLedger {
         private final Map<RemoteObjectIdentity, RemoteFetchRecord> records = new LinkedHashMap<>();
+
+        @Override
+        public boolean requiresLegacyReview(RemoteObjectIdentity identity) {
+            return false;
+        }
 
         @Override
         public Optional<RemoteFetchRecord> find(RemoteObjectIdentity identity) {

@@ -29,7 +29,7 @@ and move the outcome and evidence to the archive. Link to an item with its lower
 ID anchor, for example `KNOWN-ISSUES.md#ops-11`.
 
 Address possible lost/skipped input and inconsistent activation first
-([OPS-11](#ops-11), [OPS-12](#ops-12), [OPS-13](#ops-13), [OPS-14](#ops-14), [OPS-15](#ops-15)),
+([OPS-12](#ops-12), [OPS-14](#ops-14), [OPS-15](#ops-15)),
 alongside the security disposition in [SRC-3](#src-3). Then address retry/status
 failures and outstanding resource/deployment qualification. New enrichment,
 formats and tooling options do not replace this operational work.
@@ -139,20 +139,6 @@ and actual CLI/health on nonterminal work. Do not patch database timestamps to
 hide the error. See [reader](../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcImportStatusReader.java)
 and [import operations](guides/dataframe-import.md).
 
-<a id="ops-11"></a>
-### OPS-11 — Fetch identity omits source/endpoint namespace
-
-**Open · owner: fetch identity/ledger.** `RemoteObjectIdentity`, process-local
-in-flight tracking and the JDBC primary key use only `(path,size,mtime)`.
-Two endpoints with the same tuple but different content reproduced a silent skip
-of the second endpoint without GET. Polling/reconcile cannot repair a wrong identity.
-
-Use non-overlapping remote paths/names until fixed; this is a constraint, not
-cross-process fencing. Close with an explicit namespace contract, compatible
-ledger/in-flight migration, and two-endpoint equal-tuple/restart regressions.
-See [identity](../core/ioc-application/src/main/java/com/iocextractor/application/sync/RemoteObjectIdentity.java)
-and [JDBC ledger](../adapters/adapter-store-jdbc/src/main/java/com/iocextractor/adapter/out/store/jdbc/JdbcRemoteFetchLedger.java).
-
 <a id="ops-12"></a>
 ### OPS-12 — Fetch landing can overwrite a concurrent input
 
@@ -170,21 +156,6 @@ not share the daemon lane. Close with atomic ownership/no-replace landing,
 deterministic endpoint/external-writer regressions and preserved crash-window
 idempotency. See [fetch service](../core/ioc-application/src/main/java/com/iocextractor/application/sync/RemoteFetchService.java)
 and [remote operations](guides/remote-storage-sync.md).
-
-<a id="ops-13"></a>
-### OPS-13 — Failed deployment preflight leaves new host files
-
-**Open · owner: local activation/packaging.** `deploy-local-root.sh` refreshes the
-systemd unit and `bin/ioc{,-config}` before semantic preflight. Explicit `die` exits
-bypass the ERR restoration trap. The running process, `current` and databases
-remain old, but a later restart/CLI can combine new host files with the old JAR.
-The reproduction used the actual source segment with stubbed privileges/systemd.
-
-Before restart compare the unit with `backups/<failed-release-id>-unit.service`,
-restore matching unit/helpers from the rollback point and reload systemd. Close
-with one failure path or staging before preflight, plus rejection/restart tests
-checking unit/helpers/current/databases. See [activation script](../packaging/deploy-local-root.sh)
-and [deployment](guides/deployment.md).
 
 <a id="ops-15"></a>
 ### OPS-15 — Unchecked migration failure can commit partial DDL
@@ -462,7 +433,7 @@ dependency rule and service-owned policies when activating a proposal.
 | <a id="ops-3"></a>OPS-3 | `partial`: generic sync lacks the full capability gate; managed import already has blocking per-source probes/health | Need for broader generic preflight; preserve operator-owned share/ACL and separate producer-denial qualification in OPS-8 | SMB/sync; [import](dev/dataframe-import.md) |
 | <a id="ops-4"></a>OPS-4 | `deferred`: baseline event/reconcile/keyed coordination exists; durable outbox/broker and high/low-water hysteresis do not | Real interprocess delivery or measured pressure requiring hysteresis; events remain hints, ledgers/reconcile authority | Sync/events; [coordination](dev/event-coordination.md) |
 | <a id="ops-5"></a>OPS-5 | `deferred`: fetch-history retention and targeted discovery | Bound historical ledger growth with reviewed idempotency retention; optimize listing only after detection-duration evidence | Fetch/storage; [sync](dev/sync.md) |
-| <a id="ops-6"></a>OPS-6 | `deferred`: fetch is serial within an endpoint; cross-endpoint execution exists | Measured one-share batch SLO bottleneck; bounded sessions/admission/health and first address OPS-11/12. Parallel safety is not blanket-proven | SMB/concurrency; [sync](dev/sync.md) |
+| <a id="ops-6"></a>OPS-6 | `deferred`: fetch is serial within an endpoint; cross-endpoint execution exists | Measured one-share batch SLO bottleneck; bounded sessions/admission/health and first address OPS-12. Parallel safety is not blanket-proven | SMB/concurrency; [sync](dev/sync.md) |
 | <a id="src-1"></a>SRC-1 | `deferred`: Tika umbrella parser set exceeds the qualified HTML/PDF/DOCX/XLSX baseline | Measured size/security benefit justifies loss of best-effort formats; compare explicit modules and extraction quality | Source/packaging; [source reader](../adapters/adapter-source-tika/src/main/java/com/iocextractor/adapter/out/source/TikaSourceReader.java) |
 | <a id="tool-1"></a>TOOL-1 | `deferred`: safe affected-test accelerator; existing taxonomy/module targets already work | Measured local-cycle cost; include staged/unstaged/untracked paths and upstream/downstream closure, fall back to full gate for unknown/shared changes | Build; [testing](TESTING.md) |
 | <a id="tool-2"></a>TOOL-2 | `deferred`: deterministic Java formatter/fmt-check absent; SpotBugs/CPD/PMD gates already exist separately | Dedicated mechanical-change slice after formatter/diff review; introduce check only after clean baseline | Build/style; [build quality](dev/build-quality.md) |
@@ -617,7 +588,9 @@ features or resource budgets are complete. Dated qualification remains dated.
 | <a id="ing-12"></a>ING-12 | `closed` | Bounded hash retry and typed terminal unreadable-source diagnostic; physical pre-claim fate remains ING-13. [Ingestion](dev/ingestion.md) |
 | <a id="ing-14"></a>ING-14 | `closed` | Quiet-period discards re-enter the WatchService retry set; default full polling remains correctness path. [Filter integration test](../adapters/adapter-ingest/src/test/java/com/iocextractor/adapter/in/ingest/IngestFileListFilterIT.java) |
 | <a id="ing-17"></a>ING-17 | `closed` | Equivalent terminal CAS accepts only unchanged authority/evidence and verifies registration even on finalized retry. Completion regressions and the recorded corrected 100-DOCX run support closure; failed load windows remain failed. [Completion tests](../core/ioc-application/src/test/java/com/iocextractor/application/ingest/admission/DocumentAdmissionCompletionTest.java), [history](dev/native-capacity.md) |
-| <a id="ops-1"></a>OPS-1 | `closed` | Original multi-file/new-file verification is covered by recorded 100-DOCX intake; deterministic running-daemon/watch tests were freshly rechecked 2026-11-07. Full polling is the default; watcher is an accelerator. This does not qualify multi-endpoint identity/landing (OPS-11/12). [Daemon tests](../bootstrap/ioc-app/src/test/java/com/iocextractor/DaemonIngestE2EIT.java), [batch history](dev/native-capacity.md) |
+| <a id="ops-1"></a>OPS-1 | `closed` | Original multi-file/new-file verification is covered by recorded 100-DOCX intake; deterministic running-daemon/watch tests were freshly rechecked 2026-11-07. Full polling is the default; watcher is an accelerator. This does not qualify multi-endpoint identity/landing (OPS-12). [Daemon tests](../bootstrap/ioc-app/src/test/java/com/iocextractor/DaemonIngestE2EIT.java), [batch history](dev/native-capacity.md) |
+| <a id="ops-11"></a>OPS-11 | `closed` | Stable source ID scopes listing deduplication, in-flight work and the JDBC ledger. Equal metadata from parallel endpoints lands separate files. Schema v15 retains unscoped history with explicit cutover decisions. [Restart regression](../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/RemoteFetchSourceIsolationIT.java) · [Cutover](guides/remote-storage-sync.md#cut-over-the-legacy-fetch-ledger) |
+| <a id="ops-13"></a>OPS-13 | `closed` | Local deployment stages the unit and both CLI helpers through preflight. A failed activation recovers their prior versions, the active link and, after a start attempt, the stopped database snapshot for that attempt. [Activation regression](../packaging/tests/deploy-local-activation-test.sh) · [Rollback procedure](guides/deployment.md#manual-application-rollback) |
 | <a id="obs-d1"></a>OBS-D1 | `closed` | ADR-0017 diagnostics, bounded outcomes, exactly-once runner delivery and prepare→checkpoint→commit; empty producer ratchet. [Observability](dev/observability.md) |
 | <a id="obs-d3"></a>OBS-D3 | `closed` | Event-local scalar fields use typed SLF4J key/value; MDC owns ambient correlation. Current Boot 4 encoder preserves the contract. [Observability](dev/observability.md) |
 | <a id="obs-1"></a>OBS-1 | `closed` | Six-level severity→log-level mapping documented/tested, including FATAL/ERROR→error. [Observability](dev/observability.md) |

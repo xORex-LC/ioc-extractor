@@ -63,7 +63,11 @@ public final class RemoteSourceMonitor {
         RemoteFetchSources.SourceMatchers matchers = RemoteFetchSources.compileMatchers(source);
         List<RemoteObject> batch = new ArrayList<>(maxBatchSize);
         for (RemoteObject object : list(source)) {
-            if (!matchers.matches(object) || fetched(object) || inFlight.contains(object.identity())) {
+            if (!matchers.matches(object)) {
+                continue;
+            }
+            RemoteObjectIdentity identity = object.identity(source.sourceId());
+            if (inFlight.contains(identity) || fetched(identity)) {
                 continue;
             }
             batch.add(object);
@@ -86,14 +90,14 @@ public final class RemoteSourceMonitor {
         }
     }
 
-    private boolean fetched(RemoteObject object) {
-        return ledger.find(object.identity())
+    private boolean fetched(RemoteObjectIdentity identity) {
+        return ledger.find(identity)
                 .filter(record -> record.status() == RemoteFetchStatus.FETCHED)
                 .isPresent();
     }
 
     private RemoteChangeBatchDetected event(RemoteFetchSource source, List<RemoteObject> objects) {
-        String firstIdentity = objects.get(0).identity().toString();
+        RemoteObjectIdentity firstIdentity = objects.getFirst().identity(source.sourceId());
         ControlEventMetadata metadata = ControlEventMetadata.withoutCausation(
                 "remote-change-batch:" + source.sourceId() + ":" + Integer.toHexString(firstIdentity.hashCode()),
                 RemoteChangeBatchDetected.EVENT_TYPE,

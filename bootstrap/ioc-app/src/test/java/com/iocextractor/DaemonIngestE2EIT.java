@@ -155,9 +155,10 @@ class DaemonIngestE2EIT {
         Instant modifiedAt = Instant.parse("2026-06-28T00:00:00Z");
         FileTransport remote = readOnlyRemote("/incoming/remote-source.html", sourceBytes, modifiedAt);
         Path inbox = Path.of("target/daemon-e2e/inbox");
+        var ledger = new JdbcRemoteFetchLedger(serviceStorageDataSource);
         RemoteFetchService fetcher = new RemoteFetchService(
                 remote,
-                new JdbcRemoteFetchLedger(serviceStorageDataSource),
+                ledger,
                 List.of(new RemoteFetchSource(
                         "e2e-remote", "remote", "/incoming", List.of("*.html"), List.of())),
                 inbox,
@@ -168,7 +169,10 @@ class DaemonIngestE2EIT {
                         new com.iocextractor.platform.diagnostics.sink.CollectingDiagnosticSink(), Clock.systemUTC()));
 
         var fetched = fetcher.fetch(new com.iocextractor.application.port.in.sync.RemoteFetchCommand(false));
-        Path landed = inbox.resolve("remote-source.html");
+        var identity = new RemoteObject("/incoming/remote-source.html", sourceBytes.length, modifiedAt)
+                .identity("e2e-remote");
+        Path landed = Path.of(ledger.find(identity).orElseThrow().localPath());
+        assertThat(landed.getFileName().toString()).matches("remote-source__[a-f0-9]{32}\\.html");
         var admitted = admit(landed, modifiedAt);
         IngestSourceResult ingested = ingestSourceUseCase.ingest(
                 new IngestSourceCommand(admitted.source(), admitted.registration()));

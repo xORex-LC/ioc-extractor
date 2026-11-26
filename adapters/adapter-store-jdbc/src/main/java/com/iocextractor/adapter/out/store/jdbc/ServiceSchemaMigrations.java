@@ -26,6 +26,7 @@ public final class ServiceSchemaMigrations {
     private static final String V13 = "com/iocextractor/adapter/out/store/jdbc/service/v13__export_profile_single_flight.sql";
 
     private static final String V14 = "com/iocextractor/adapter/out/store/jdbc/service/v14__document_execution_admission.sql";
+    private static final String V15 = "com/iocextractor/adapter/out/store/jdbc/service/v15__source_scoped_remote_fetch.sql";
 
     private ServiceSchemaMigrations() {
     }
@@ -45,7 +46,8 @@ public final class ServiceSchemaMigrations {
                 new SqliteSchemaMigration(11, "import observation reservation", resource(V11)),
                 new SqliteSchemaMigration(12, "document processing policy", resource(V12)),
                 new SqliteSchemaMigration(13, "export profile single-flight", resource(V13)),
-                new SqliteSchemaMigration(14, "document execution admission", resource(V14)));
+                new SqliteSchemaMigration(14, "document execution admission", resource(V14)),
+                new SqliteSchemaMigration(15, "source-scoped remote fetch", resource(V15)));
     }
 
     private static String resource(String name) {

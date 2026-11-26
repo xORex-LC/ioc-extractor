@@ -253,9 +253,9 @@ or historical-SQL checksum enforcement is implemented by the normal migrator.
 Service ledgers implement local CAS/idempotency facts; application schedules and
 recovers them. Document/import admission references retain dataframe registration
 identity without becoming the rank authority. Export terminal progress commits
-with its ledger checkpoint. Fetch namespace isolation (OPS-11), nullable import
-status handling (OPS-10) and ordered-field whitespace validation (OPS-14) remain
-[open issues](../../../../../../../../../../../docs/KNOWN-ISSUES.md), not solved by table constraints.
+with its ledger checkpoint. Fetch v15 scopes idempotency by source and retains the historical unscoped ledger.
+Nullable import status handling (OPS-10) and ordered-field whitespace validation
+(OPS-14) remain [open issues](../../../../../../../../../../../docs/KNOWN-ISSUES.md).
 
 `JdbcStorageHealthProbe` observes connection access, foreign keys, WAL, quick_check
 and reported user_version. It returns `JdbcStorageHealth`, not an Actuator object.

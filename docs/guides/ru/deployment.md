@@ -354,20 +354,19 @@ notes, не заменяйте operator YAML целиком fresh template.
 ```
 
 Скрипт отвергает dirty checkout без `--allow-dirty`, выполняет полный Maven gate,
-проверяет неизменность дерева после build, создаёт commit/time release и новым
-JAR проверяет effective installed config от service account. При отказе running
-process и DB не меняются. После проверки создаёт backup обеих DB и старого unit,
-переключает `current`, запускает и проверяет local health. При ошибке activation
-возвращает symlink, unit и DB с POSIX ACLs/xattrs. `--port PORT` становится
-high-precedence `--server.port`, а не только адресом probe.
+проверяет состояние дерева после сборки и проверяет действующую конфигурацию JAR
+кандидата от имени службы. До завершения проверки процесс, `current`, unit,
+CLI-скрипты и базы находятся в исходном состоянии. После успешной проверки
+скрипт останавливает службу, сохраняет обе базы и предыдущие активные файлы,
+устанавливает подготовленные файлы и проверяет здоровье новой службы.
+`--port PORT` задаёт `--server.port` и порт проверки. Дождитесь завершения
+развёртывания перед запуском `ioc-config apply`.
 
-Известное ограничение `OPS-13`: preflight rejection оставляет process/current/DB,
-но unit и CLI helpers могли уже обновиться. Явный failure exit обходит error trap
-восстановления unit. До следующего restart сравните unit с
-`backups/<failed-release-id>-unit.service`, при необходимости восстановите matching
-unit/helpers и выполните reload systemd. Отказ deployment не гарантирует
-неизменности всех host files. Исправление учитывается в
-[известных проблемах](../../KNOWN-ISSUES.md).
+При сбое активации используйте результат восстановления и путь к каталогу
+попытки из вывода. Автоматическое восстановление возвращает unit, `current`,
+оба CLI-скрипта и предыдущее состояние службы. Если кандидат мог запуститься,
+скрипт восстанавливает обе базы. Сбой развёртывания возвращает код ошибки даже
+при успешном восстановлении. [Справочник упаковки](../../../packaging/README.md#deploy-localsh)
 
 Build JVM проверяется до Maven; если default старше по возрасту и имеет major
 ниже 21, явно выберите JDK 21:
@@ -386,38 +385,27 @@ make doctor-core
 
 ## Ручной application rollback
 
-Если upgrade неуспешен и schema compatibility известна:
+Приостановите внешних писателей и остановите службу. При локальном развёртывании
+используйте точный путь `backups/local-deploy.<release-id>.<suffix>/` из вывода.
+В `attempt.properties` указаны предыдущая цель, состояние службы и порт.
+Каталог содержит старые `unit.service`, ссылку `current` и существовавшие
+CLI-скрипты. `db.tar` — проверенный снимок остановленных баз. При наличии
+`candidate-start-attempted` учитывайте возможные записи кандидата. После `SIGKILL`
+или потери питания до запуска проверьте каталог попытки и активные файлы.
+Если снимок неполный, требуется согласованная резервная копия оператора.
+Прежние версии локального скрипта создавали `<release-id>-unit.service` и
+`<release-id>-db.tar`. Для `install.sh` используйте копию оператора.
 
-1. Остановите сервис.
-2. Создайте временный symlink на предыдущий immutable release.
-3. Атомарно замените `current`.
-4. Восстановите matching DB backup, если новый binary мог писать.
-5. Восстановите matching unit и перечитайте systemd.
-6. Восстановите config/environment и нужные service-owned files, затем запустите
-   и проверьте сервис.
+1. Создайте временный symlink на предыдущий релиз и атомарно замените `current`.
+2. Восстановите обе базы вместе, если кандидат мог писать.
+3. Восстановите unit и оба CLI-скрипта с исходными атрибутами. Удалите скрипт,
+   если ранее его не было. Выполните `systemctl daemon-reload`.
+4. Согласуйте конфигурацию, окружение и файлы службы с возвращаемым релизом.
+5. Запустите ранее работавшую службу и проверьте её здоровье на прежнем порту.
 
-Пример symlink предполагает совместимые DB и неизменённую конфигурацию; иначе
-оставьте сервис остановленным до полного restore. Sidecar `*-unit.service`
-создаёт local deployment. Для `install.sh` берите unit из внешнего backup:
-временная recovery copy не сохраняется после завершения installer. Проверьте
-также helpers и выбранную Java.
-
-```bash
-sudo systemctl stop ioc-extractor
-cd /opt/ioc-extractor
-sudo ln -s "releases/<previous-release-id>" .current.rollback
-sudo mv -Tf .current.rollback current
-sudo install -o root -g root -m 0644 \
-  "backups/<failed-release-id>-unit.service" \
-  /etc/systemd/system/ioc-extractor.service
-sudo systemctl daemon-reload
-sudo systemctl start ioc-extractor
-sudo ./bin/ioc health
-```
-
-Не сочетайте старый binary со случайными новыми DB/unit. Application, unit,
-configuration и DB — одна rollback point. Имя unit sidecar содержит ID failed
-deployment, потому что файл хранит unit, предшествовавший этому deployment.
+Перемещённые документы, файловый журнал, проекции, экспорт и действия на SMB
+могут потребовать отдельной сверки. Оставьте службу остановленной до готовности
+совместимых конфигурации и хранилищ.
 
 ## Восстановление DB
 
@@ -430,12 +418,12 @@ deployment, потому что файл хранит unit, предшество
 ```bash
 sudo systemctl stop ioc-extractor
 sudo mv /opt/ioc-extractor/var/db /opt/ioc-extractor/var/db.failed
-sudo tar --acls --xattrs -C /opt/ioc-extractor/var -xf \
-  "/opt/ioc-extractor/backups/<failed-release-id>-db.tar"
+sudo tar --acls --xattrs -p -C /opt/ioc-extractor/var -xf \
+  "/opt/ioc-extractor/backups/<attempt-directory>/db.tar"
 sudo systemctl start ioc-extractor
 ```
 
-Это имя archive относится к local deployment. В ручном upgrade создан полный
+Выберите архив из каталога нужной попытки развёртывания. При ручном upgrade создаётся полный
 `prefix.tar`: восстанавливайте согласованное состояние и сохранённый unit из
 него. Не смешивайте layouts архивов и не восстанавливайте одну DB отдельно.
 Извлекайте в пустое место при остановленном сервисе, сохраняйте failed state
@@ -468,11 +456,11 @@ curl --noproxy '*' --silent --show-error --max-time 5 \
 | Schema/identity/lifecycle incompatibility | Прекратите дальнейшие записи; выполните migration или coordinated restore выбранного релиза. Не правьте version metadata вручную и не открывайте новые DB старым binary. |
 | Storage gate прошёл, SMB нет | Отдельно проверьте server/port/credentials/ACLs и effective encryption. Local promotion не квалифицирует remote endpoint; см. [remote storage](remote-storage-sync.md). |
 | Import health/status падает при pending head | Известный `OPS-10` касается nullable-deadline reader, а не доказывает failed canonical commit. Следуйте [managed import](dataframe-import.md), не исправляйте ledger SQL вручную. |
-| Local deployment отклонён, unit/helpers изменены | До restart следуйте ограничению `OPS-13` выше. Сохраните failed release ID и backup evidence. |
+| Локальное развёртывание сообщает о незавершённом восстановлении | Оставьте приём приостановленным. Используйте каталог попытки и [процедуру ручного восстановления](#ручной-application-rollback). |
 
-До исправления fetch identity/landing `OPS-11`/`OPS-12` используйте непересекающиеся
-remote paths/final filenames и согласованных inbox writers; см. remote storage.
-При приёмке явно указывайте недоступные capabilities.
+При обновлении service DB с историей fetch пройдите [переход журнала](remote-storage-sync.md#переход-с-прежнего-журнала-fetch).
+Согласуйте писателей inbox для [OPS-12](../../KNOWN-ISSUES.md#ops-12).
+При приёмке явно указывайте недоступные возможности.
 
 ## Удаление
 

@@ -6,7 +6,7 @@ Durable coordination format resources. These tables own service checkpoints and 
 
 The owning [ServiceSchemaMigrations](../../../../../../../../java/com/iocextractor/adapter/out/store/jdbc/ServiceSchemaMigrations.java) explicitly loads these
 classpath resources as UTF-8; the directory is not scanned automatically. The
-current catalog ends at version 14. A new file requires a matching catalog entry.
+current catalog ends at version 15. A new file requires a matching catalog entry.
 
 | Resource | Purpose |
 |---|---|
@@ -24,12 +24,13 @@ current catalog ends at version 14. A new file requires a matching catalog entry
 | [v12__document_processing_policy.sql](v12__document_processing_policy.sql) | Pinned document processing policy and unfinalized-admission lookup |
 | [v13__export_profile_single_flight.sql](v13__export_profile_single_flight.sql) | Replace global export single-flight with per-profile active-run uniqueness |
 | [v14__document_execution_admission.sql](v14__document_execution_admission.sql) | Durable document execution attempts, retry deadline/failure and ordered lookup |
+| [v15__source_scoped_remote_fetch.sql](v15__source_scoped_remote_fetch.sql) | Scope fetch identity by source, archive old tuples and record explicit per-source replay approvals |
 
 Historical table names describe upgrade steps, not supported current aggregation
 or partition-staging features. Keep the chain so older supported DBs can advance.
 The nullable `import_delivery.public_mutations` column is not populated/read by
 the current delivery ledger; canonical mutation evidence is dataframe-owned.
-The remote-fetch key still lacks endpoint/source namespace isolation (OPS-11).
+See the [fetch cutover](../../../../../../../../../../../../docs/guides/remote-storage-sync.md#cut-over-the-legacy-fetch-ledger) for historical unscoped records.
 
 ## Execution and failure boundaries
 

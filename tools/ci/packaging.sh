@@ -12,4 +12,5 @@ command -v shellcheck >/dev/null 2>&1 || {
 shellcheck -x packaging/*.sh packaging/templates/ioc packaging/tests/*.sh \
   tools/dev/*.sh tools/ci/*.sh tools/tests/*.sh
 packaging/tests/packaging-contract-test.sh
+packaging/tests/deploy-local-activation-test.sh
 tools/tests/tools-contract-test.sh

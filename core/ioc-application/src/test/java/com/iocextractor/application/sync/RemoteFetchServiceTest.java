@@ -39,13 +39,35 @@ class RemoteFetchServiceTest {
         RemoteObject object = object("/share/a.htm", 10);
         FakeTransport transport = new FakeTransport(List.of(object));
         FakeLedger ledger = new FakeLedger();
-        ledger.markFetched(object.identity(), tempDir.resolve("a.htm").toString(), NOW);
+        ledger.markFetched(object.identity("src"), tempDir.resolve("a.htm").toString(), NOW);
 
         var result = service(transport, ledger).fetch(new RemoteFetchCommand(false));
 
         assertThat(result.skipped()).isEqualTo(1);
         assertThat(result.fetched()).isZero();
         assertThat(transport.getCalls).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void legacyMatchRequiresReviewInBothFetchModes(boolean dryRun) {
+        RemoteObject object = object("/share/a.htm", 10);
+        FakeTransport transport = new FakeTransport(List.of(object));
+        FakeLedger ledger = new FakeLedger();
+        ledger.held.add(object.identity("src"));
+        var sink = new CollectingDiagnosticSink();
+
+        var result = service(transport, ledger, source(), sink).fetch(new RemoteFetchCommand(dryRun));
+
+        assertThat(result.fetched()).isZero();
+        assertThat(result.failed()).isOne();
+        assertThat(transport.getCalls).isZero();
+        assertThat(ledger.records).isEmpty();
+        assertThat(inboxFiles()).isEmpty();
+        assertThat(sink.diagnostics()).singleElement().satisfies(diagnostic -> {
+            assertThat(diagnostic.code()).isEqualTo(SyncDiagnosticCodes.FETCH_LEGACY_REVIEW_REQUIRED);
+            assertThat(diagnostic.context()).containsEntry("sourceId", "src").containsEntry("count", 1);
+        });
     }
 
     @Test
@@ -58,9 +80,9 @@ class RemoteFetchServiceTest {
         var result = service(transport, ledger).fetch(new RemoteFetchCommand(false));
 
         assertThat(result.failed()).isEqualTo(1);
-        assertThat(tempDir.resolve("a.htm")).doesNotExist();
+        assertThat(inboxFiles()).isEmpty();
         assertThat(stagingFiles()).isEmpty();
-        assertThat(ledger.find(object.identity()))
+        assertThat(ledger.find(object.identity("src")))
                 .hasValueSatisfying(record -> assertThat(record.status()).isEqualTo(RemoteFetchStatus.FAILED));
     }
 
@@ -76,7 +98,7 @@ class RemoteFetchServiceTest {
         var result = service.fetch(new RemoteFetchCommand(false));
 
         assertThat(result.failed()).isOne();
-        assertThat(ledger.find(object.identity()))
+        assertThat(ledger.find(object.identity("src")))
                 .hasValueSatisfying(record -> assertThat(record.status()).isEqualTo(RemoteFetchStatus.FAILED));
         assertThat(sink.diagnostics()).singleElement().satisfies(diagnostic -> {
             assertThat(diagnostic.code()).isEqualTo(SyncDiagnosticCodes.TRANSPORT_TRANSIENT);
@@ -115,18 +137,18 @@ class RemoteFetchServiceTest {
         var result = service(transport, ledger).fetch(new RemoteFetchCommand(false));
 
         assertThat(result.failed()).isEqualTo(1);
-        assertThat(tempDir.resolve("a.htm")).doesNotExist();
+        assertThat(inboxFiles()).isEmpty();
         assertThat(stagingFiles()).isEmpty();
         transport.writeThenFail = false;
 
         var retry = service(transport, ledger).fetch(new RemoteFetchCommand(false));
 
         assertThat(retry.fetched()).isEqualTo(1);
-        assertThat(tempDir.resolve("a.htm")).hasContent("content:/share/a.htm");
+        assertThat(landed(ledger, object)).hasContent("content:/share/a.htm");
     }
 
     @Test
-    void occupiedLocalNameGetsStableSuffixWithoutOverwrite() throws Exception {
+    void aBareLocalNameDoesNotAffectScopedLanding() throws Exception {
         Files.writeString(tempDir.resolve("a.htm"), "existing", StandardCharsets.UTF_8);
         RemoteObject object = object("/share/a.htm", 10);
         FakeTransport transport = new FakeTransport(List.of(object));
@@ -136,12 +158,36 @@ class RemoteFetchServiceTest {
 
         assertThat(result.fetched()).isEqualTo(1);
         assertThat(tempDir.resolve("a.htm")).hasContent("existing");
-        assertThat(Files.list(tempDir)
-                        .filter(path -> path.getFileName().toString().startsWith("a__"))
-                        .filter(path -> path.getFileName().toString().endsWith(".htm"))
-                        .toList())
-                .singleElement()
-                .satisfies(path -> assertThat(path).hasContent("content:/share/a.htm"));
+        assertThat(landed(ledger, object)).hasFileName("a__cf82527cd57daf35adde95812ee548d2.htm")
+                .hasContent("content:/share/a.htm");
+    }
+
+    @Test
+    void failsWithoutDownloadingWhenTheScopedDestinationAlreadyExists() throws Exception {
+        Path existing = tempDir.resolve("a__cf82527cd57daf35adde95812ee548d2.htm");
+        Files.writeString(existing, "existing bytes");
+        RemoteObject object = object("/share/a.htm", 10);
+        FakeTransport transport = new FakeTransport(List.of(object));
+        FakeLedger ledger = new FakeLedger();
+
+        var result = service(transport, ledger).fetch(new RemoteFetchCommand(false));
+
+        assertThat(result.failed()).isOne();
+        assertThat(transport.getCalls).isZero();
+        assertThat(existing).hasContent("existing bytes");
+        assertThat(ledger.find(object.identity("src"))).hasValueSatisfying(record ->
+                assertThat(record.status()).isEqualTo(RemoteFetchStatus.FAILED));
+    }
+
+    @Test
+    void maximumLengthUtf8RemoteNameKeepsTheConfiguredExtension() {
+        RemoteObject object = object("/share/" + "я".repeat(125) + ".HTML", 10);
+        FakeLedger ledger = new FakeLedger();
+
+        var result = service(new FakeTransport(List.of(object)), ledger).fetch(new RemoteFetchCommand(false));
+
+        assertThat(result.fetched()).isOne();
+        assertThat(landed(ledger, object).getFileName().toString()).matches("[a-f0-9]{32}\\.HTML");
     }
 
     @Test
@@ -158,7 +204,8 @@ class RemoteFetchServiceTest {
 
         assertThat(result.fetched()).isEqualTo(1);
         assertThat(result.skipped()).isEqualTo(2);
-        assertThat(tempDir.resolve("a.htm")).hasContent("content:/share/a.htm");
+        assertThat(landed(ledger, accepted)).hasContent("content:/share/a.htm");
+        assertThat(inboxFiles()).hasSize(1);
         assertThat(tempDir.resolve("b.tmp")).doesNotExist();
         assertThat(tempDir.resolve("c.pdf")).doesNotExist();
         assertThat(transport.deleteCalls).isZero();
@@ -217,8 +264,8 @@ class RemoteFetchServiceTest {
         assertThat(result.fetched()).isOne();
         assertThat(transport.listCalls).isEmpty();
         assertThat(transport.getCalls).isOne();
-        assertThat(tempDir.resolve("a.htm")).hasContent("content:/share/a.htm");
-        assertThat(ledger.find(object.identity()))
+        assertThat(landed(ledger, object)).hasContent("content:/share/a.htm");
+        assertThat(ledger.find(object.identity("src")))
                 .hasValueSatisfying(record -> assertThat(record.status()).isEqualTo(RemoteFetchStatus.FETCHED));
     }
 
@@ -231,8 +278,8 @@ class RemoteFetchServiceTest {
 
         assertThatThrownBy(() -> service(transport, ledger).fetch(new RemoteFetchCommand(false)))
                 .isSameAs(transport.unexpectedGetFailure);
-        assertThat(ledger.find(object.identity())).isEmpty();
-        assertThat(tempDir.resolve("a.htm")).doesNotExist();
+        assertThat(ledger.find(object.identity("src"))).isEmpty();
+        assertThat(inboxFiles()).isEmpty();
         assertThat(stagingFiles()).isEmpty();
     }
 
@@ -249,7 +296,7 @@ class RemoteFetchServiceTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("remote path must end with one safe file name");
         assertThat(transport.getCalls).isZero();
-        assertThat(ledger.find(object.identity())).isEmpty();
+        assertThat(ledger.find(object.identity("src"))).isEmpty();
         assertThat(stagingFiles()).isEmpty();
     }
 
@@ -287,6 +334,18 @@ class RemoteFetchServiceTest {
 
     private RemoteObject object(String path, long size) {
         return new RemoteObject(path, size, NOW);
+    }
+
+    private Path landed(FakeLedger ledger, RemoteObject object) {
+        return Path.of(ledger.find(object.identity("src")).orElseThrow().localPath());
+    }
+
+    private List<Path> inboxFiles() {
+        try (var children = Files.list(tempDir)) {
+            return children.filter(Files::isRegularFile).toList();
+        } catch (java.io.IOException failure) {
+            throw new java.io.UncheckedIOException(failure);
+        }
     }
 
     private List<Path> stagingFiles() {
@@ -361,6 +420,12 @@ class RemoteFetchServiceTest {
 
     private static final class FakeLedger implements RemoteFetchLedger {
         private final Map<RemoteObjectIdentity, RemoteFetchRecord> records = new LinkedHashMap<>();
+        private final java.util.Set<RemoteObjectIdentity> held = new java.util.HashSet<>();
+
+        @Override
+        public boolean requiresLegacyReview(RemoteObjectIdentity identity) {
+            return held.contains(identity);
+        }
 
         @Override
         public Optional<RemoteFetchRecord> find(RemoteObjectIdentity identity) {

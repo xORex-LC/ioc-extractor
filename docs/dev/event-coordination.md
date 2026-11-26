@@ -77,8 +77,8 @@ work -> durable idempotency ledger / authoritative state
 
 A backstop depends on durable state and retained inputs. It cannot recover an
 unlisted remote file deleted before the next scan or repair a wrong idempotency
-key. Current fetch namespace/collision defects are `OPS-11`/`OPS-12` in
-[known issues](../KNOWN-ISSUES.md); the event architecture does not resolve them.
+key. Fetch uses a source-scoped key across detection, admission and the ledger.
+Concurrent writers can still race on one local target. [OPS-12](../KNOWN-ISSUES.md#ops-12)
 
 ## Keyed execution contract
 

@@ -58,6 +58,7 @@ Generated from `DiagnosticCatalogs`.
 | `SYNC.SECURITY_POLICY_UNMET` | SYNC | FATAL | OPERATION | `sync.security-policy-unmet` | Sync endpoint {endpoint} does not satisfy the configured transport security policy: {reason} |
 | `SYNC.REMOTE_RESOURCE_EXHAUSTED` | SYNC | ERROR | OPERATION | `sync.remote-resource-exhausted` | Remote resources are exhausted on sync endpoint {endpoint}: {reason} |
 | `SYNC.TRANSPORT_TRANSIENT` | SYNC | WARN | OPERATION | `sync.transport-transient` | Transient transport failure on sync endpoint {endpoint}: {reason} |
+| `SYNC.FETCH_LEGACY_REVIEW_REQUIRED` | SYNC | WARN | OPERATION | `sync.fetch-legacy-review-required` | Fetch source {sourceId} has {count} objects requiring a legacy ledger cutover decision |
 | `SYNC.PUBLISH_VERIFY_FAILED` | SYNC | ERROR | OPERATION | `sync.publish-verify-failed` | Published slice {sliceId} for target {targetId} failed verification: {reason} |
 | `SYNC.LOCAL_SLICE_INVALID` | SYNC | ERROR | OPERATION | `sync.local-slice-invalid` | Local export slice {profile}/{sliceName} is invalid and was skipped: {reason} |
 | `LIFECYCLE.ADMISSION_FAILED` | LIFECYCLE | FATAL | OPERATION | `lifecycle.admission-failed` | Canonical lifecycle admission failed: {reason} |
