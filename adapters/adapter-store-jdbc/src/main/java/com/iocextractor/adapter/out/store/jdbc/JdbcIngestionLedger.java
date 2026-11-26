@@ -134,6 +134,36 @@ public final class JdbcIngestionLedger implements IngestionLedger {
     }
 
     @Override
+    public IngestionLedgerTransition recordRejected(SourceUnit source, Path failedPath, String code) {
+        int changed = jdbc.sql("""
+                        INSERT INTO ingestion_ledger (
+                            observation_id, source_key, status, original_path, processing_path,
+                            archived_path, detected_at, updated_at, reason
+                        ) VALUES (
+                            :id, :key, 'FAILED', :original, :processing,
+                            :failed, :detected, :now, :code
+                        )
+                        ON CONFLICT(observation_id) DO NOTHING
+                        """)
+                .param("id", source.observationId().value())
+                .param("key", source.key().value())
+                .param("original", source.originalPath().toString())
+                .param("processing", source.processingPath().toString())
+                .param("failed", failedPath.toString())
+                .param("detected", source.detectedAt().toString())
+                .param("now", Instant.now(clock).toString())
+                .param("code", code)
+                .update();
+        if (changed == 1) {
+            return IngestionLedgerTransition.APPLIED;
+        }
+        return find(source.observationId())
+                .filter(record -> record.matchesRejection(source, failedPath, code))
+                .map(record -> IngestionLedgerTransition.ALREADY_APPLIED)
+                .orElse(IngestionLedgerTransition.CONFLICT);
+    }
+
+    @Override
     public List<IngestionRecord> findIncomplete() {
         return jdbc.sql("""
                         SELECT observation_id, source_key, status, original_path, processing_path, archived_path,

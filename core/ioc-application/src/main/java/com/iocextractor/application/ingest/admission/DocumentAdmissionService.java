@@ -50,6 +50,16 @@ public final class DocumentAdmissionService {
         return advance(current, current.claimed(evidence, clock.instant()));
     }
 
+    /** Updates evidence to the private snapshot used for hashing. */
+    public DocumentAdmission recordSnapshot(DocumentAdmission current, DocumentCandidateEvidence evidence) {
+        return advance(current, current.snapshot(evidence, clock.instant()));
+    }
+
+    /** Records rejection intent using the exact revision used to resolve private ownership. */
+    public DocumentAdmission beginRejection(DocumentAdmission current, DocumentRejection intent) {
+        return advance(current, current.reject(intent, clock.instant()));
+    }
+
     public DocumentAdmission link(ObservationId id, SourceKey key) {
         DocumentAdmission current = required(id);
         verifyRegistration(current);
@@ -169,7 +179,8 @@ public final class DocumentAdmissionService {
                 && expected.sourceKey().equals(durable.sourceKey())
                 && expected.terminalOutcome().equals(durable.terminalOutcome())
                 && expected.createdAt().equals(durable.createdAt())
-                && expected.execution().equals(durable.execution());
+                && expected.execution().equals(durable.execution())
+                && expected.rejection().equals(durable.rejection());
     }
 
     private DocumentAdmission required(ObservationId id) {

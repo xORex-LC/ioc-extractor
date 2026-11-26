@@ -67,9 +67,9 @@ Daemon обрабатывает целые файлы, а не дописыва�
 inbox -> stability wait -> durable order -> atomic claim -> private sealed source
       -> bounded preparation -> ordered promotion -> canonical commit
       -> CSV projection -> done
-verified source rejection -> failed
-pre-hash retry exhaustion -> blocked admission, owned token retained
-pre-reservation failure -> may remain in inbox (ING-13)
+verified pre-promotion rejection -> failed file + .error
+uncertain ownership or possible canonical effects -> held admission
+metadata failure before reservation -> inbox with backoff
 ```
 
 По умолчанию принимаются `.htm`, `.html`, `.docx`, а `.tmp`, `.part` и скрытые
@@ -118,17 +118,18 @@ lifecycle/provenance по политике. Другой документ не �
 
 | Ситуация | Где смотреть / действие |
 |---|---|
-| Проверенный источник отклонён после ограниченных попыток | `var/failed`, sidecar `.error` и диагностика; сохраните источник для расследования |
-| Достоверного ключа содержимого ещё нет, попытки исчерпаны | Owned token/admission может остаться в `processing`; `dataProcessingCapacity` имеет `DOWN`, следующие promotion ждут за заблокированным первым заданием |
-| Слишком большой незахваченный файл или насыщение count/byte admission | Файл остаётся в `inbox`; полный опрос повторяет допуск после изменения давления |
-| Сбой до reservation | Может остаться в `inbox` (`ING-13`); сохраните файл и логи |
-| Прерванные claim, promotion или projection | Сохраните journals и owned files для startup recovery |
+| Проверенный файл больше `ioc.ingestion.execution.max-source-bytes` | Он перемещается в `var/failed` с кодом `SOURCE_TOO_LARGE` в `.error` без чтения содержимого |
+| Проверенный файл вызвал ошибку до хеширования или на подготовке | После исчерпания попыток ищите файл `__rejected` и `.error` в `var/failed`. Для файла с ключом журнал источников хранит тот же путь отказа |
+| Достигнут предел очереди по числу или объёму файлов | Файл остаётся в `inbox`. Полный опрос повторит допуск, когда освободится место |
+| Не удаётся проверить метаданные или захват | Проверьте права и стабильность файла. Незахваченный файл остаётся в inbox, проверка повторяется с задержкой |
+| Заявка удержана | Нужно сверить свидетельства владения или возможную каноническую запись. Последующие записи ждут, `dataProcessingCapacity` имеет статус `DOWN` |
 
-Поддерживаемой команды clear/requeue очереди документов нет. Возврат терминального
-источника в inbox или удаление ledger/SQLite records не являются поддерживаемым
-повтором; идентичный контент может остаться терминально дедуплицированным.
-Исправьте причину и используйте согласованное recovery или coordinated restore.
-Не используйте команду managed-import `replay` для документов.
+При коде
+`PROMOTION_OUTCOME_UNKNOWN` нужен разбор по ING-11 или согласованное
+восстановление. Старые терминальные отказы могли оставить файлы в
+`processing` до появления протокола сохранения намерения. Сохраните журналы
+и файлы для сверки. Исправленный терминальный документ передавайте как новую
+поставку с новым именем.
 
 ## Проверки health
 

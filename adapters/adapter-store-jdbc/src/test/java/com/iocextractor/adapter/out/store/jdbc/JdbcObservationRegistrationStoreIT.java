@@ -8,6 +8,7 @@ import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionReservation;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
 import com.iocextractor.application.ingest.admission.DocumentCandidateEvidence;
+import com.iocextractor.application.ingest.admission.DocumentRejection;
 import com.iocextractor.application.ingest.admission.DocumentTerminalOutcome;
 import com.iocextractor.application.observation.ManagedImportObservationAdmission;
 import com.iocextractor.application.observation.ObservationAdmissionReference;
@@ -126,6 +127,65 @@ class JdbcObservationRegistrationStoreIT {
                     new ObservationId("overflow"), ObservationOrigin.DOCUMENT))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("exhausted");
+        }
+    }
+
+    @Test
+    void serviceV16PreservesPendingV15EvidenceAndAllowsRejectionWithoutContentKey() throws Exception {
+        try (HikariDataSource dataframe = dataSource("dataframe", "df-migration.db");
+             HikariDataSource service = dataSource("service", "service-migration.db")) {
+            new SqliteUserVersionSchemaMigrator(dataframe, DataframeFormatMigrations.sqlite()).migrate();
+            var migrations = ServiceSchemaMigrations.sqlite();
+            new SqliteUserVersionSchemaMigrator(service, migrations.subList(0, 15)).migrate();
+            var id = new ObservationId("legacy-claimed");
+            var registrations = new JdbcObservationRegistrationStore(dataframe, CLOCK);
+            var registration = registrations.registerNew(id, ObservationOrigin.DOCUMENT);
+            Path source = tempDir.resolve("processing/legacy.pending");
+            try (var connection = service.getConnection();
+                 var statement = connection.prepareStatement("""
+                         INSERT INTO document_admission (
+                             occurrence_id, candidate_path, candidate_file_key, candidate_size,
+                             candidate_mtime_ns, claim_path, claimed_file_key, claimed_size,
+                             claimed_mtime_ns, version, phase, dataframe_namespace, admission_order,
+                             created_at_ms, updated_at_ms, execution_attempts, retry_after_ms)
+                         VALUES (?, ?, 'inode', 8, 10, ?, 'inode', 8, 10, 7, 'CLAIMED',
+                                 ?, ?, 0, 0, 2, 0)
+                         """)) {
+                statement.setString(1, id.value());
+                statement.setString(2, tempDir.resolve("inbox/legacy.docx").toString());
+                statement.setString(3, source.toString());
+                statement.setString(4, registration.namespaceId());
+                statement.setLong(5, registration.admissionOrder().value());
+                assertThat(statement.executeUpdate()).isOne();
+            }
+
+            new SqliteUserVersionSchemaMigrator(service, migrations).migrate();
+
+            assertThatThrownBy(() -> new SqliteUserVersionSchemaMigrator(
+                    service, migrations.subList(0, 15)).migrate())
+                    .hasMessageContaining("STORAGE.MIGRATION_DOWNGRADE");
+            var journal = new JdbcDocumentAdmissionJournal(service);
+            var documents = new DocumentAdmissionService(journal, registrations, CLOCK);
+            var migrated = journal.find(id).orElseThrow();
+            assertThat(migrated.version()).isEqualTo(7);
+            assertThat(migrated.registration()).contains(registration);
+            assertThat(migrated.execution().attempts()).isEqualTo(2);
+            assertThat(migrated.rejection()).isEmpty();
+
+            var intent = new DocumentRejection(source, tempDir.resolve("failed/legacy"),
+                    migrated.claimedEvidence().orElseThrow(), DocumentRejection.Code.SOURCE_HASH_FAILED);
+            var rejecting = documents.beginRejection(migrated, intent);
+            assertThat(journal.replace(migrated, rejecting)).isFalse();
+            assertThat(new JdbcDocumentAdmissionJournal(service).find(id)).contains(rejecting);
+            documents.complete(id, DocumentTerminalOutcome.REJECTED);
+
+            assertThat(journal.find(id)).get().satisfies(value -> {
+                assertThat(value.rejection()).contains(intent);
+                assertThat(value.sourceKey()).isEmpty();
+                assertThat(value.registrationFinalized()).isTrue();
+                assertThat(value.terminalOutcome()).contains(DocumentTerminalOutcome.REJECTED);
+            });
+            assertThat(journal.findRecoverable(10)).isEmpty();
         }
     }
 

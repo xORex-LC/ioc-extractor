@@ -93,6 +93,22 @@ class SourceFailureLoggingIT {
 
         try (var connection = DriverManager.getConnection(serviceDb(directory));
              var statement = connection.createStatement();
+             var ledger = statement.executeQuery("""
+                     SELECT processing_path, archived_path, reason
+                     FROM ingestion_ledger WHERE status = 'FAILED'
+                     """)) {
+            assertThat(ledger.next()).isTrue();
+            Path archived = Path.of(ledger.getString("archived_path"));
+            assertThat(Path.of(ledger.getString("processing_path"))).doesNotExist();
+            assertThat(archived).hasContent("<p>example.test</p>");
+            assertThat(archived.resolveSibling(archived.getFileName() + ".error"))
+                    .hasContent("DOCUMENT_PREPARATION_FAILED\n");
+            assertThat(ledger.getString("reason")).isEqualTo("DOCUMENT_PREPARATION_FAILED");
+            assertThat(ledger.next()).isFalse();
+        }
+
+        try (var connection = DriverManager.getConnection(serviceDb(directory));
+             var statement = connection.createStatement();
              var runs = statement.executeQuery("SELECT reason FROM ingest_run WHERE status = 'FAILED'")) {
             int failedRuns = 0;
             while (runs.next()) {

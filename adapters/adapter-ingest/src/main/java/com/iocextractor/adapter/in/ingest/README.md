@@ -80,24 +80,25 @@ general race-proof no-replace primitive against arbitrary concurrent writers.
 `sealClaim` copies within the admitted byte allowance to a new inode, forces it
 and atomically publishes it before hashing. A producer's old file descriptor
 cannot modify that sealed inode. Recovery reuses an existing seal and reconciles
-claim/link progress without allocating another rank. Failure disposition moves
-the source to `failed` and writes a separate `.error` sidecar; that sidecar is
-not an atomic source/report pair.
+claim/link progress without allocating another rank. Rejection persists a
+versioned intent before moving the owned source. It verifies the moved identity,
+publishes `.error` atomically and only then writes terminal records.
 
-The file admission journal compares the expected versioned record, forces a
-temporary record, atomically replaces it and forces the directory. It retains
-attempt/retry-after and terminal-registration progress. By contrast,
-`FileIngestionLedger` serializes transitions per observation within one instance
-and prefers atomic replacement, with ordinary-move fallback and no explicit
-fsync. Legacy key-named records remain readable. Neither file store replaces
+The file admission journal serializes mutations with a filesystem lock shared
+by the daemon and operator commands. It compares the expected versioned record,
+forces a temporary record, atomically replaces it and forces the directory.
+`FileIngestionLedger` serializes transitions per observation within one instance.
+Initial claims and verified rejections require forced atomic publication.
+Legacy terminal updates still allow ordinary-move fallback. Legacy key-named records remain readable. Neither file store replaces
 the daemon's JDBC run saga or canonical dataframe authority. Bootstrap selects
 the store; the adapter's file-bean fallback is not the production default.
 
-Retry/backoff is durable and does not sleep on the detector. Verified-key
-exhaustion can reject a source. Exhausted pre-hash failure keeps the token/rank
-blocked, stops newer promotion and makes capacity health DOWN; there is no
-automatic clear/requeue API. Pre-reservation disposition (ING-13) and partial-run
-resume (ING-11) remain [known limitations](../../../../../../../../../../docs/KNOWN-ISSUES.md).
+Retries use durable deadlines. The detector returns after a short claim.
+A verified oversized file bypasses sealing and hashing. Exhausted failures can
+reject by observation ID, including those without a content key. If ownership
+or the promotion outcome is uncertain, the retained head blocks later promotion
+and makes capacity health DOWN. Partial-run resume (ING-11) remains a
+[known limitation](../../../../../../../../../../docs/KNOWN-ISSUES.md).
 Document commits can succeed for earlier artifacts before a later failure;
 this adapter does not provide whole-document rollback.
 

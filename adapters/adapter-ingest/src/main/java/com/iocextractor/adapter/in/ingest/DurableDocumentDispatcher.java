@@ -2,11 +2,13 @@ package com.iocextractor.adapter.in.ingest;
 
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.admission.DocumentAdmission;
-import com.iocextractor.application.ingest.admission.DocumentTerminalOutcome;
+import com.iocextractor.application.ingest.admission.DocumentAdmissionPhase;
+import com.iocextractor.application.ingest.admission.DocumentExecutionState;
+import com.iocextractor.application.ingest.admission.DocumentExecutionState.Failure;
+import com.iocextractor.application.ingest.admission.DocumentRejection;
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
 import com.iocextractor.application.port.in.ingest.PreparedIngestion;
 import com.iocextractor.application.port.in.ingest.PrepareIngestionUseCase;
-import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
 import com.iocextractor.platform.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
 import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
@@ -31,11 +33,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Bounded execution of durable document references. Only the oldest admission may promote. */
 public final class DurableDocumentDispatcher implements AutoCloseable {
-    private static final Instant BLOCKED = Instant.ofEpochMilli(Long.MAX_VALUE);
+    private static final int STARTUP_REJECTION_LIMIT = 256;
     private final Object monitor = new Object();
     private final OrderedDocumentAdmissionHandler admissions;
     private final PrepareIngestionUseCase preparation;
-    private final RejectIngestionUseCase rejection;
+    private final FileDocumentCandidateEvidenceReader evidenceReader = new FileDocumentCandidateEvidenceReader();
+    private final LinkedHashMap<Path, Instant> unclaimedBackoff = new LinkedHashMap<>();
     private final IngestAdapterProperties.Execution limits;
     private final int preparationWindow;
     private final int maxAttempts;
@@ -58,18 +61,17 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
     private volatile String lastFailure;
 
     public DurableDocumentDispatcher(OrderedDocumentAdmissionHandler admissions,
-            PrepareIngestionUseCase preparation, RejectIngestionUseCase rejection,
+            PrepareIngestionUseCase preparation,
             IngestAdapterProperties properties, Clock clock, DiagnosticSink diagnostics) {
-        this(admissions, preparation, rejection, properties, clock, diagnostics, Integer.MAX_VALUE);
+        this(admissions, preparation, properties, clock, diagnostics, Integer.MAX_VALUE);
     }
 
     public DurableDocumentDispatcher(OrderedDocumentAdmissionHandler admissions,
-            PrepareIngestionUseCase preparation, RejectIngestionUseCase rejection,
+            PrepareIngestionUseCase preparation,
             IngestAdapterProperties properties, Clock clock, DiagnosticSink diagnostics, int workspaceCapacity) {
         if (workspaceCapacity < 1) { throw new IllegalArgumentException("Workspace capacity must be positive"); }
         this.admissions = Objects.requireNonNull(admissions, "admissions");
         this.preparation = Objects.requireNonNull(preparation, "preparation");
-        this.rejection = Objects.requireNonNull(rejection, "rejection");
         this.limits = properties.execution();
         preparationWindow = Math.min(limits.window(), workspaceCapacity);
         this.maxAttempts = properties.retry().maxAttempts();
@@ -105,19 +107,61 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
         Path source = file.toPath().toAbsolutePath().normalize();
         synchronized (monitor) {
             if (!running) { return; }
-            List<DocumentAdmission> pending = admissions.pending(limits.maxPendingDocuments() + 1);
-            if (pending.stream().anyMatch(value -> value.candidatePath().equals(source))) { return; }
-            var evidence = new FileDocumentCandidateEvidenceReader().read(source);
-            long bytes = evidence.size();
-            long pendingBytes = pending.stream().mapToLong(value -> value.candidateEvidence().size()).sum();
-            if (pending.size() >= limits.maxPendingDocuments() || bytes > limits.maxSourceBytes()
-                    || bytes > limits.maxPendingSourceBytes() - pendingBytes) {
-                saturationCount++;
+            List<DocumentAdmission> pending = admissions.inspectPending(limits.maxPendingDocuments() + 1);
+            if (pending.stream().anyMatch(value -> value.candidatePath().equals(source)
+                    && value.phase() != DocumentAdmissionPhase.TERMINAL)) {
                 return;
             }
-            admissions.claim(source, new ObservationId(UUID.randomUUID().toString()), clock.instant(), evidence);
+            Instant now = clock.instant();
+            if (unclaimedBackoff.getOrDefault(source, Instant.EPOCH).isAfter(now)) {
+                return;
+            }
+            try {
+                var evidence = evidenceReader.read(source);
+                if (evidence.fileKey().isEmpty()) {
+                    throw new IllegalStateException("Stable document identity is unavailable");
+                }
+                long pendingBytes = admittedBytes(pending);
+                boolean oversize = evidence.size() > limits.maxSourceBytes();
+                if (pending.size() >= limits.maxPendingDocuments()
+                        || !oversize && evidence.size() > limits.maxPendingSourceBytes() - pendingBytes) {
+                    saturationCount++;
+                    return;
+                }
+                admissions.claim(source, new ObservationId(UUID.randomUUID().toString()), now, evidence);
+                unclaimedBackoff.remove(source);
+            } catch (RuntimeException failure) {
+                unclaimedBackoff.put(source, now.plus(backoff.isZero() ? Duration.ofSeconds(1) : backoff));
+                if (unclaimedBackoff.size() > limits.maxPendingDocuments()) {
+                    unclaimedBackoff.pollFirstEntry();
+                }
+                report("document-intake", ownershipReason(failure, Failure.CLAIM_UNCONFIRMED), IngestDiagnosticCodes.CLAIM_FAILED);
+            }
         }
         nudge();
+    }
+
+    private long admittedBytes(List<DocumentAdmission> pending) {
+        return pending.stream().mapToLong(value -> value.candidateEvidence().size())
+                .filter(bytes -> bytes <= limits.maxSourceBytes()).sum();
+    }
+
+    /** Resumes already-durable dispositions at the queue head before opening intake. */
+    public int recoverBeforeIntake() {
+        int recovered = 0;
+        while (recovered < STARTUP_REJECTION_LIMIT) {
+            var pending = admissions.pending(1);
+            if (pending.isEmpty()) {
+                break;
+            }
+            var head = pending.getFirst();
+            if (head.rejection().isEmpty() || head.execution().retryAfter().isAfter(clock.instant())
+                    || !finishRejection(admissions.beginExecution(head.observationId()))) {
+                break;
+            }
+            recovered++;
+        }
+        return recovered;
     }
 
     /** A hint; the periodic journal scan owns recovery of rejected/lost hints. */
@@ -159,20 +203,25 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
 
     private void prepare(Job job) {
         PreparedIngestion prepared = null;
-        RuntimeException failure = null;
         try {
             job.admission = admissions.beginExecution(job.admission.observationId());
-            var document = admissions.finish(job.admission.observationId());
-            job.command = new IngestSourceCommand(document.source(), document.registration());
-            prepared = preparation.prepare(job.command);
-        } catch (RuntimeException caught) { failure = caught; }
+            if (job.admission.rejection().isEmpty() && !admissions.promotionUncertain(job.admission)) {
+                job.admission = admissions.ensureClaimed(job.admission.observationId());
+                if (!oversize(job.admission)) {
+                    var document = admissions.finish(job.admission.observationId());
+                    job.command = new IngestSourceCommand(document.source(), document.registration());
+                    prepared = preparation.prepare(job.command);
+                }
+            }
+        } catch (RuntimeException failure) {
+            job.claimFailure = ownershipReason(failure, Failure.CLAIM_UNCONFIRMED);
+        }
         catch (Error fatal) { failStop(fatal); throw fatal; }
         boolean abandoned;
         synchronized (monitor) {
             abandoned = failed;
             if (!abandoned) {
                 job.prepared = prepared;
-                job.failure = failure;
                 job.ready = true;
             }
         }
@@ -188,29 +237,40 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
     }
 
     private void promoteReady(Job job) {
+        synchronized (monitor) {
+            if (failed) { return; }
+            job.promotionStarted = true;
+        }
         try {
-            synchronized (monitor) {
-                if (failed) { return; }
-                job.promotionStarted = true;
-            }
-            if (job.failure != null) {
-                retryOrBlock(job, job.failure);
-                return;
-            }
-            var result = job.prepared.promote();
-            try { DocumentCompletionObserver.completed(result, job.admission.candidatePath(), job.command.key()); }
-            catch (RuntimeException observationFailure) { report(job.admission.observationId().value(), observationFailure); }
-            if (result.status() == com.iocextractor.application.ingest.IngestionStatus.FAILED) { return; }
-            synchronized (monitor) {
-                completedDocuments++;
-                completedBytes += job.admission.candidateEvidence().size();
-                writtenRows += result.extractionResultOptional().map(value -> value.writtenPerArtifact()
-                        .values().stream().mapToLong(Integer::longValue).sum()).orElse(0L);
+            if (job.prepared == null) {
+                reconcileUnprepared(job);
+            } else {
+                promotePrepared(job);
             }
         } catch (RuntimeException failure) {
-            boolean recoverable;
-            synchronized (monitor) { recoverable = !failed; }
-            if (recoverable) { retryOrBlock(job, failure); }
+            report(job.admission.observationId().value(), failure);
+        }
+    }
+
+    private void promotePrepared(Job job) {
+        com.iocextractor.application.port.in.ingest.IngestSourceResult result;
+        try {
+            result = job.prepared.promote();
+        } catch (RuntimeException failure) {
+            synchronized (monitor) {
+                if (failed) { return; }
+            }
+            reconcileUnprepared(job);
+            return;
+        }
+        try { DocumentCompletionObserver.completed(result, job.admission.candidatePath(), job.command.key()); }
+        catch (RuntimeException failure) { report(job.admission.observationId().value(), failure); }
+        if (result.status() == com.iocextractor.application.ingest.IngestionStatus.FAILED) { return; }
+        synchronized (monitor) {
+            completedDocuments++;
+            completedBytes += job.admission.candidateEvidence().size();
+            writtenRows += result.extractionResultOptional().map(value -> value.writtenPerArtifact()
+                    .values().stream().mapToLong(Integer::longValue).sum()).orElse(0L);
         }
     }
 
@@ -229,31 +289,90 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
         nudge();
     }
 
-    private void retryOrBlock(Job job, RuntimeException failure) {
+    private boolean oversize(DocumentAdmission admission) {
+        return admission.sourceKey().isEmpty() && admission.candidateEvidence().size() > limits.maxSourceBytes();
+    }
+
+    private void reconcileUnprepared(Job job) {
+        var current = admissions.required(job.admission.observationId());
+        if (current.phase() == DocumentAdmissionPhase.TERMINAL) {
+            return;
+        }
+        if (current.rejection().isPresent()) {
+            finishRejection(current);
+            return;
+        }
+        if (admissions.promotionUncertain(current)) {
+            defer(current, Failure.PROMOTION_OUTCOME_UNKNOWN.name(), true, IngestDiagnosticCodes.RECOVERY_FAILED);
+            return;
+        }
+        var code = rejectionCode(current, job.command != null);
+        boolean exhausted = current.execution().attempts() >= maxAttempts;
+        if (current.claimedEvidence().isEmpty()) {
+            defer(current, job.claimFailure, exhausted, IngestDiagnosticCodes.CLAIM_FAILED);
+        } else if (!exhausted && !oversize(current)) {
+            defer(current, code.name(), false, IngestDiagnosticCodes.SOURCE_UNREADABLE);
+        } else {
+            beginRejection(current, code);
+        }
+    }
+
+    private DocumentRejection.Code rejectionCode(DocumentAdmission admission, boolean preparationReached) {
+        if (oversize(admission)) {
+            return DocumentRejection.Code.SOURCE_TOO_LARGE;
+        }
+        return preparationReached ? DocumentRejection.Code.DOCUMENT_PREPARATION_FAILED
+                : DocumentRejection.Code.SOURCE_HASH_FAILED;
+    }
+
+    private void beginRejection(DocumentAdmission current, DocumentRejection.Code code) {
+        DocumentAdmission rejecting;
         try {
-            if (job.admission.execution().attempts() >= maxAttempts && job.command != null) {
-                rejection.reject(job.admission.observationId(), job.command.key(), failure.getMessage());
-                admissions.complete(job.admission.observationId(), DocumentTerminalOutcome.REJECTED);
-            } else {
-                Instant due = job.admission.execution().attempts() >= maxAttempts
-                        ? BLOCKED : clock.instant().plus(backoff);
-                admissions.retryExecution(job.admission.observationId(), due, failure.getMessage());
+            rejecting = admissions.beginRejection(current, code);
+        } catch (RuntimeException failure) {
+            defer(current, ownershipReason(failure, Failure.REJECTION_OWNERSHIP_UNCONFIRMED), true, IngestDiagnosticCodes.DEAD_LETTER_FAILED);
+            return;
+        }
+        finishRejection(rejecting);
+    }
+
+    private boolean finishRejection(DocumentAdmission current) {
+        try {
+            admissions.finishRejection(current);
+        } catch (RuntimeException failure) {
+            var durable = admissions.required(current.observationId());
+            if (durable.phase() != DocumentAdmissionPhase.TERMINAL) {
+                // Disposition gets additional attempts after the preparation budget is spent.
+                defer(durable, ownershipReason(failure, Failure.REJECTION_INCOMPLETE),
+                        durable.execution().attempts() >= 2L * maxAttempts,
+                        IngestDiagnosticCodes.DEAD_LETTER_FAILED);
             }
-        } catch (RuntimeException accounting) { failure.addSuppressed(accounting); }
-        report(job.admission.observationId().value(), failure, job.command == null
-                ? IngestDiagnosticCodes.SOURCE_UNREADABLE : IngestDiagnosticCodes.RECOVERY_FAILED);
+            return false;
+        }
+        report(current.observationId().value(), current.rejection().orElseThrow().code().name(),
+                IngestDiagnosticCodes.SOURCE_UNREADABLE);
+        return true;
+    }
+
+    private static String ownershipReason(RuntimeException failure, Failure fallback) {
+        return (failure instanceof DocumentOwnershipException conflict ? conflict.failure() : fallback).name();
+    }
+
+    private void defer(DocumentAdmission admission, String reason, boolean hold, IngestDiagnosticCodes code) {
+        Instant due = hold ? DocumentExecutionState.HELD : clock.instant().plus(backoff);
+        admissions.retryExecution(admission.observationId(), due, reason);
+        report(admission.observationId().value(), reason, code);
     }
 
     private void report(String source, RuntimeException failure) {
-        report(source, failure, IngestDiagnosticCodes.RECOVERY_FAILED);
+        report(source, failure.getClass().getSimpleName(), IngestDiagnosticCodes.RECOVERY_FAILED);
     }
 
-    private void report(String source, RuntimeException failure, IngestDiagnosticCodes code) {
-        synchronized (monitor) { if (!failed) { lastFailure = failure.getClass().getSimpleName(); } }
+    private void report(String source, String reason, IngestDiagnosticCodes code) {
+        synchronized (monitor) { if (!failed) { lastFailure = reason; } }
         try { diagnostics.emit(factory.create(code)
-                .with("source", source).with("reason", Objects.toString(failure.getMessage(), "execution failed"))
-                .cause(failure).build()); }
-        catch (RuntimeException observationFailure) { failure.addSuppressed(observationFailure); }
+                .with("source", source).with("reason", reason).build()); }
+        catch (RuntimeException ignored) { /* Diagnostic observers do not own durable execution. */ }
     }
 
     /** Fatal VM/worker errors stop intake and promotions; durable occurrences belong to restart recovery. */
@@ -285,12 +404,12 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
     public Snapshot snapshot() {
         synchronized (monitor) {
             var pending = admissions.inspectPending(limits.maxPendingDocuments() + 1);
-            long bytes = pending.stream().mapToLong(value -> value.candidateEvidence().size()).sum();
+            long bytes = admittedBytes(pending);
             long age = pending.stream().map(DocumentAdmission::createdAt)
                     .mapToLong(at -> Math.max(0, Duration.between(at, clock.instant()).toMillis())).max().orElse(0);
             long ready = jobs.values().stream().filter(job -> job.ready && !job.promoting).count();
             long promoting = jobs.values().stream().filter(job -> job.promoting).count();
-            long blocked = pending.stream().filter(value -> value.execution().retryAfter().equals(BLOCKED)).count();
+            long blocked = pending.stream().filter(value -> value.execution().retryAfter().equals(DocumentExecutionState.HELD)).count();
             return new Snapshot(running, pending.size(), bytes, age, jobs.size() - ready - promoting,
                     ready, promoting, blocked, saturationCount, completedDocuments, completedBytes, writtenRows, lastFailure);
         }
@@ -366,7 +485,7 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
         private DocumentAdmission admission;
         private IngestSourceCommand command;
         private PreparedIngestion prepared;
-        private RuntimeException failure;
+        private String claimFailure = Failure.CLAIM_UNCONFIRMED.name();
         private boolean ready;
         private boolean promoting;
         private boolean promotionStarted;

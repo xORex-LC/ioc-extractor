@@ -6,6 +6,8 @@ import com.iocextractor.application.ingest.admission.DocumentAdmission;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionPhase;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionReservation;
 import com.iocextractor.application.ingest.admission.DocumentCandidateEvidence;
+import com.iocextractor.application.ingest.admission.DocumentExecutionState;
+import com.iocextractor.application.ingest.admission.DocumentRejection;
 import com.iocextractor.application.ingest.admission.DocumentTerminalOutcome;
 import com.iocextractor.application.observation.ObservationOrder;
 import com.iocextractor.application.observation.ObservationOrigin;
@@ -29,10 +31,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.function.Supplier;
 
 /** Atomic fsync-backed document admission journal for the daemon file-ledger mode. */
 public final class FileDocumentAdmissionJournal implements DocumentAdmissionJournal {
 
+    private static final Object JVM_WRITES = new Object();
     private final Path directory;
 
     public FileDocumentAdmissionJournal(Path directory) {
@@ -40,7 +44,11 @@ public final class FileDocumentAdmissionJournal implements DocumentAdmissionJour
     }
 
     @Override
-    public synchronized DocumentAdmission reserve(DocumentAdmissionReservation reservation) {
+    public DocumentAdmission reserve(DocumentAdmissionReservation reservation) {
+        return withWriteLock(() -> reserveLocked(reservation));
+    }
+
+    private DocumentAdmission reserveLocked(DocumentAdmissionReservation reservation) {
         Objects.requireNonNull(reservation, "reservation");
         Optional<DocumentAdmission> existing = find(reservation.observationId());
         if (existing.isPresent()) {
@@ -59,13 +67,17 @@ public final class FileDocumentAdmissionJournal implements DocumentAdmissionJour
     }
 
     @Override
-    public synchronized Optional<DocumentAdmission> find(ObservationId observationId) {
+    public Optional<DocumentAdmission> find(ObservationId observationId) {
         Path path = pathFor(Objects.requireNonNull(observationId, "observationId"));
-        return Files.exists(path) ? Optional.of(read(path)) : Optional.empty();
+        return Optional.ofNullable(read(path));
     }
 
     @Override
-    public synchronized boolean replace(DocumentAdmission expected, DocumentAdmission updated) {
+    public boolean replace(DocumentAdmission expected, DocumentAdmission updated) {
+        return withWriteLock(() -> replaceLocked(expected, updated));
+    }
+
+    private boolean replaceLocked(DocumentAdmission expected, DocumentAdmission updated) {
         if (!expected.observationId().equals(updated.observationId())
                 || updated.version() != expected.version() + 1) {
             throw new IllegalArgumentException("Document admission replacement must advance one version");
@@ -79,7 +91,7 @@ public final class FileDocumentAdmissionJournal implements DocumentAdmissionJour
     }
 
     @Override
-    public synchronized List<DocumentAdmission> findRecoverable(int limit) {
+    public List<DocumentAdmission> findRecoverable(int limit) {
         requireLimit(limit);
         return all().stream()
                 .filter(value -> value.phase() != DocumentAdmissionPhase.TERMINAL
@@ -93,7 +105,7 @@ public final class FileDocumentAdmissionJournal implements DocumentAdmissionJour
     }
 
     @Override
-    public synchronized List<DocumentAdmission> findTerminalBefore(Instant cutoff, int limit) {
+    public List<DocumentAdmission> findTerminalBefore(Instant cutoff, int limit) {
         Objects.requireNonNull(cutoff, "cutoff");
         requireLimit(limit);
         return all().stream()
@@ -107,7 +119,11 @@ public final class FileDocumentAdmissionJournal implements DocumentAdmissionJour
     }
 
     @Override
-    public synchronized boolean purgeTerminal(ObservationId observationId, long expectedVersion) {
+    public boolean purgeTerminal(ObservationId observationId, long expectedVersion) {
+        return withWriteLock(() -> purgeLocked(observationId, expectedVersion));
+    }
+
+    private boolean purgeLocked(ObservationId observationId, long expectedVersion) {
         Optional<DocumentAdmission> current = find(observationId);
         if (current.isEmpty()) {
             return false;
@@ -128,6 +144,25 @@ public final class FileDocumentAdmissionJournal implements DocumentAdmissionJour
         }
     }
 
+    private <T> T withWriteLock(Supplier<T> operation) {
+        synchronized (JVM_WRITES) {
+            try {
+                Files.createDirectories(directory);
+                try (var channel = FileChannel.open(directory.resolve(".journal.lock"),
+                        StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+                    var lock = channel.lock();
+                    try {
+                        return operation.get();
+                    } finally {
+                        lock.release();
+                    }
+                }
+            } catch (IOException failure) {
+                throw new IocExtractorException("Could not lock document admission journal", failure);
+            }
+        }
+    }
+
     private List<DocumentAdmission> all() {
         if (!Files.exists(directory)) {
             return List.of();
@@ -135,6 +170,7 @@ public final class FileDocumentAdmissionJournal implements DocumentAdmissionJour
         try (var files = Files.list(directory)) {
             return files.filter(this::isJournalFile)
                     .map(this::read)
+                    .filter(Objects::nonNull)
                     .toList();
         } catch (IOException failure) {
             throw new IocExtractorException("Failed to scan document admission journal", failure);
@@ -150,6 +186,8 @@ public final class FileDocumentAdmissionJournal implements DocumentAdmissionJour
         Properties values = new Properties();
         try (var reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
             values.load(reader);
+        } catch (java.nio.file.NoSuchFileException removed) {
+            return null;
         } catch (IOException failure) {
             throw new IocExtractorException("Failed to read document admission: " + path, failure);
         }
@@ -173,10 +211,16 @@ public final class FileDocumentAdmissionJournal implements DocumentAdmissionJour
                 Boolean.parseBoolean(required(values, "registrationFinalized")),
                 Instant.parse(required(values, "createdAt")),
                 Instant.parse(required(values, "updatedAt")),
-                new com.iocextractor.application.ingest.admission.DocumentExecutionState(
+                new DocumentExecutionState(
                         Integer.parseInt(values.getProperty("executionAttempts", "0")),
                         Instant.parse(values.getProperty("retryAfter", Instant.EPOCH.toString())),
-                        values.getProperty("executionFailure")));
+                        values.getProperty("executionFailure")),
+                optional(values, "rejectionCode").map(code -> new DocumentRejection(
+                        Path.of(required(values, "rejectionSource")), Path.of(required(values, "rejectionTarget")),
+                        new DocumentCandidateEvidence(optional(values, "rejectionFileKey"),
+                                Long.parseLong(required(values, "rejectionSize")),
+                                Long.parseLong(required(values, "rejectionMtimeNanos"))),
+                        DocumentRejection.Code.valueOf(code))));
     }
 
     private void write(DocumentAdmission admission) {
@@ -238,6 +282,14 @@ public final class FileDocumentAdmissionJournal implements DocumentAdmissionJour
         if (admission.execution().failure() != null) {
             values.setProperty("executionFailure", admission.execution().failure());
         }
+        admission.rejection().ifPresent(value -> {
+            values.setProperty("rejectionCode", value.code().name());
+            values.setProperty("rejectionSource", value.source().toString());
+            values.setProperty("rejectionTarget", value.target().toString());
+            values.setProperty("rejectionFileKey", value.evidence().fileKey().orElseThrow());
+            values.setProperty("rejectionSize", Long.toString(value.evidence().size()));
+            values.setProperty("rejectionMtimeNanos", Long.toString(value.evidence().modifiedAtNanos()));
+        });
         return values;
     }
 

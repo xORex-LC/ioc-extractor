@@ -6,6 +6,8 @@ import com.iocextractor.application.ingest.admission.DocumentAdmission;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionPhase;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionReservation;
 import com.iocextractor.application.ingest.admission.DocumentCandidateEvidence;
+import com.iocextractor.application.ingest.admission.DocumentExecutionState;
+import com.iocextractor.application.ingest.admission.DocumentRejection;
 import com.iocextractor.application.ingest.admission.DocumentTerminalOutcome;
 import com.iocextractor.application.observation.ObservationOrder;
 import com.iocextractor.application.observation.ObservationOrigin;
@@ -32,22 +34,15 @@ public final class JdbcDocumentAdmissionJournal implements DocumentAdmissionJour
             occurrence_id, candidate_path, candidate_file_key, candidate_size, candidate_mtime_ns,
             claim_path, claimed_file_key, claimed_size, claimed_mtime_ns, version, phase,
             dataframe_namespace, admission_order, source_key, terminal_outcome,
-            registration_finalized, created_at_ms, updated_at_ms, execution_attempts, retry_after_ms, execution_failure
+            registration_finalized, created_at_ms, updated_at_ms, execution_attempts, retry_after_ms, execution_failure,
+            rejection_code, rejection_source, rejection_target, rejection_file_key, rejection_size, rejection_mtime_ns
             """;
-    private static final String RECOVERABLE_QUERY = """
-            SELECT occurrence_id, candidate_path, candidate_file_key, candidate_size,
-                   candidate_mtime_ns, claim_path, claimed_file_key, claimed_size,
-                   claimed_mtime_ns, version, phase, dataframe_namespace, admission_order,
-                   source_key, terminal_outcome, registration_finalized, created_at_ms, updated_at_ms, execution_attempts, retry_after_ms, execution_failure
+    private static final String RECOVERABLE_QUERY = "SELECT " + COLUMNS + """
             FROM document_admission
             WHERE phase <> 'TERMINAL' OR registration_finalized = 0
             ORDER BY admission_order, created_at_ms, occurrence_id LIMIT ?
             """;
-    private static final String TERMINAL_QUERY = """
-            SELECT occurrence_id, candidate_path, candidate_file_key, candidate_size,
-                   candidate_mtime_ns, claim_path, claimed_file_key, claimed_size,
-                   claimed_mtime_ns, version, phase, dataframe_namespace, admission_order,
-                   source_key, terminal_outcome, registration_finalized, created_at_ms, updated_at_ms, execution_attempts, retry_after_ms, execution_failure
+    private static final String TERMINAL_QUERY = "SELECT " + COLUMNS + """
             FROM document_admission
             WHERE phase = 'TERMINAL' AND registration_finalized = 1 AND updated_at_ms < ?
             ORDER BY updated_at_ms, occurrence_id LIMIT ?
@@ -108,7 +103,9 @@ public final class JdbcDocumentAdmissionJournal implements DocumentAdmissionJour
                        claimed_file_key = ?, claimed_size = ?, claimed_mtime_ns = ?,
                        version = ?, phase = ?, dataframe_namespace = ?, admission_order = ?,
                        source_key = ?, terminal_outcome = ?, registration_finalized = ?, updated_at_ms = ?,
-                       execution_attempts = ?, retry_after_ms = ?, execution_failure = ?
+                       execution_attempts = ?, retry_after_ms = ?, execution_failure = ?,
+                       rejection_code = ?, rejection_source = ?, rejection_target = ?,
+                       rejection_file_key = ?, rejection_size = ?, rejection_mtime_ns = ?
                      WHERE occurrence_id = ? AND version = ? AND phase = ?
                      """)) {
             bindOptionalEvidence(statement, 1, updated.claimedEvidence());
@@ -122,9 +119,14 @@ public final class JdbcDocumentAdmissionJournal implements DocumentAdmissionJour
             statement.setInt(12, updated.execution().attempts());
             statement.setLong(13, updated.execution().retryAfter().toEpochMilli());
             statement.setString(14, updated.execution().failure());
-            statement.setString(15, expected.observationId().value());
-            statement.setLong(16, expected.version());
-            statement.setString(17, expected.phase().name());
+            var rejection = updated.rejection();
+            statement.setString(15, rejection.map(value -> value.code().name()).orElse(null));
+            statement.setString(16, rejection.map(value -> value.source().toString()).orElse(null));
+            statement.setString(17, rejection.map(value -> value.target().toString()).orElse(null));
+            bindOptionalEvidence(statement, 18, rejection.map(DocumentRejection::evidence));
+            statement.setString(21, expected.observationId().value());
+            statement.setLong(22, expected.version());
+            statement.setString(23, expected.phase().name());
             return statement.executeUpdate() == 1;
         } catch (SQLException failure) {
             throw new IocExtractorException("Failed to advance document admission", failure);
@@ -241,10 +243,22 @@ public final class JdbcDocumentAdmissionJournal implements DocumentAdmissionJour
                 result.getInt("registration_finalized") == 1,
                 Instant.ofEpochMilli(result.getLong("created_at_ms")),
                 Instant.ofEpochMilli(result.getLong("updated_at_ms")),
-                new com.iocextractor.application.ingest.admission.DocumentExecutionState(
+                new DocumentExecutionState(
                         result.getInt("execution_attempts"),
                         Instant.ofEpochMilli(result.getLong("retry_after_ms")),
-                        result.getString("execution_failure")));
+                        result.getString("execution_failure")), readRejection(result));
+    }
+
+    private Optional<DocumentRejection> readRejection(ResultSet result) throws SQLException {
+        String code = result.getString("rejection_code");
+        if (code == null) {
+            return Optional.empty();
+        }
+        return Optional.of(new DocumentRejection(
+                Path.of(result.getString("rejection_source")), Path.of(result.getString("rejection_target")),
+                new DocumentCandidateEvidence(Optional.of(result.getString("rejection_file_key")),
+                        result.getLong("rejection_size"), result.getLong("rejection_mtime_ns")),
+                DocumentRejection.Code.valueOf(code)));
     }
 
     private Long nullableLong(ResultSet result, String column) throws SQLException {

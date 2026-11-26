@@ -25,6 +25,7 @@ current catalog ends at version 15. A new file requires a matching catalog entry
 | [v13__export_profile_single_flight.sql](v13__export_profile_single_flight.sql) | Replace global export single-flight with per-profile active-run uniqueness |
 | [v14__document_execution_admission.sql](v14__document_execution_admission.sql) | Durable document execution attempts, retry deadline/failure and ordered lookup |
 | [v15__source_scoped_remote_fetch.sql](v15__source_scoped_remote_fetch.sql) | Scope fetch identity by source, archive old tuples and record explicit per-source replay approvals |
+| [v16__document_rejection.sql](v16__document_rejection.sql) | Preserve admission rows and store physical rejection evidence, allowing rejection without a content key |
 
 Historical table names describe upgrade steps, not supported current aggregation
 or partition-staging features. Keep the chain so older supported DBs can advance.

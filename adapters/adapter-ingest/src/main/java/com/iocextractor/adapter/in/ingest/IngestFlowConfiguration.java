@@ -1,9 +1,7 @@
 package com.iocextractor.adapter.in.ingest;
 
 import com.iocextractor.application.port.in.ingest.PrepareIngestionUseCase;
-import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
-import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
 import com.iocextractor.platform.diagnostics.sink.DiagnosticSink;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -53,7 +51,7 @@ public class IngestFlowConfiguration {
     }
 
     @Bean
-    public SourceLifecycle sourceLifecycle(IngestAdapterProperties properties) {
+    public FileSystemSourceLifecycle sourceLifecycle(IngestAdapterProperties properties) {
         return new FileSystemSourceLifecycle(
                 Path.of(properties.dirs().processing()),
                 Path.of(properties.dirs().done()),
@@ -63,7 +61,7 @@ public class IngestFlowConfiguration {
     @Bean
     public OrderedDocumentAdmissionHandler orderedDocumentAdmissionHandler(
             DocumentAdmissionService admissions,
-            SourceLifecycle sources,
+            FileSystemSourceLifecycle sources,
             FileSourceHasher hasher,
             IngestionLedger ledger) {
         return new OrderedDocumentAdmissionHandler(
@@ -79,13 +77,12 @@ public class IngestFlowConfiguration {
 
     @Bean
     public DurableDocumentDispatcher fileSourceMessageHandler(PrepareIngestionUseCase useCase,
-                                                             RejectIngestionUseCase rejectUseCase,
                                                              com.iocextractor.platform.diagnostics.sink.DiagnosticSink diagnosticSink,
                                                              IngestAdapterProperties properties,
                                                              Clock ingestClock,
                                                              OrderedDocumentAdmissionHandler orderedAdmissions,
                                                              com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspaceFactory workspaces) {
-        return new DurableDocumentDispatcher(orderedAdmissions, useCase, rejectUseCase,
+        return new DurableDocumentDispatcher(orderedAdmissions, useCase,
                 properties, ingestClock, diagnosticSink, workspaces.maximumConcurrentWorkspaces());
     }
 

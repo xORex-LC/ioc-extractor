@@ -44,11 +44,12 @@ ID и перенесите результат со свидетельствам�
 
 **Partial · владелец: ingestion/run-ledger.** Повторы сохраняют document admission,
 наблюдение/ранг и backoff, но подготовка может создать ещё один ingest run.
-После canonical commit ошибка проекции/архивации может оставить прежний run
-в `DB_COMMITTED`, пока источник ещё claimed. При fixed lifecycle receipts могут
-устранить повторный парсинг и воспроизвести принятые строки; без пригодной receipt
-повтор снова извлекает IOC. Это не полный протокол возобновления между admission,
-source ledger и run-ledger; возможны повторная работа и оставшиеся частичные runs.
+Сбой проекции или архивации может оставить запуск в `DB_COMMITTED`, пока
+источник и допуск ещё заявлены. Упорядоченный диспетчер удерживает их с кодом
+`PROMOTION_OUTCOME_UNKNOWN`. Восстановление по журналу запусков может обновить
+известные проекции. Для допуска нужно установить, какие канонические записи
+состоялись и как завершить работу с источником. Полные receipts fixed lifecycle
+помогают подтвердить часть исходов.
 
 Закрытие: спроектированный checkpoint/resume-контракт, который после доказанного
 commit выполняет только недостающие projection/archive/finalization, согласует
@@ -56,40 +57,6 @@ commit выполняет только недостающие projection/archive
 и имеющимися/истёкшими receipts. Воспроизведение receipt не равно возобновлению
 только проекции. См. [ingestion](../dev/ru/ingestion.md#receipts-и-повторы) и
 [IngestionService](../../core/ioc-application/src/main/java/com/iocextractor/application/ingest/IngestionService.java).
-
-<a id="ing-13"></a>
-### ING-13 — Физическая судьба отказов до достоверного ключа содержимого
-
-**Partial · владелец: document admission/source lifecycle.** Исчерпание повторов
-и подавление повторных terminal-логов реализованы. Отказ до резервирования может
-оставить вход в inbox; отклонение только через ledger может сохранить пути
-`unknown`. Зарезервированный отказ до хеширования, напротив, сохраняет свой token,
-блокирует дальнейшую promotion и переводит capacity health в DOWN. Общей
-поддерживаемой команды clear/requeue нет. Это разные окна отказа, а не один
-бесконечно повторяющийся poll-лог.
-
-Исследуйте исходный файл/token и используйте согласованное recovery/restore;
-не очищайте SQLite или приватные свидетельства вручную. Закрытие: явная
-идемпотентная quarantine/disposition для каждого pre-claim/pre-hash окна,
-достоверные сведения об источнике и поддерживаемый интерфейс восстановления.
-См. [эксплуатацию демона](../guides/ru/daemon-operations.md) и
-[ingestion](../dev/ru/ingestion.md#receipts-и-повторы).
-
-<a id="ing-18"></a>
-### ING-18 — Отклонённый запечатанный документ может остаться в processing
-
-**Open · владелец: допуск документов и жизненный цикл источников.** При
-исчерпании повторов подготовки daemon может завершить допуск как `REJECTED`
-и записать сбой в реестр, оставив запечатанный файл в `processing` без `.error`
-в каталоге отказов. Если promotion ещё не создала запись ingest, отклонение
-ищет файлы, в имени которых есть ключ содержимого. Запечатанный файл при этом
-сохраняет имя с токеном `__pending__`. Он занимает место на диске, а оператор
-видит терминальный статус без ожидаемого файла отказа.
-
-Для закрытия нужно выполнять перемещение по долговечному допуску и данным о
-принадлежащем ему источнике. Проверка должна покрывать повтор после прерывания
-на этапах перемещения, записи `.error` и обновления терминального статуса.
-См. [ingestion](../dev/ru/ingestion.md#receipts-и-повторы).
 
 <a id="2-обогащение-вывода-out"></a>
 <a id="out-3"></a>
@@ -599,7 +566,9 @@ pilots и рассмотренной политики. Differential analysis р�
 | <a id="ing-6"></a>ING-6 | `closed` | Partition-wrapper boundary удалён; source identity принадлежит application/adapters. [архитектура](ARCHITECTURE.md) |
 | <a id="ing-9"></a>ING-9 | `closed` | Retention archive сохраняет относительные пути через baseDir вместо схлопывания имён. [тесты retention](../../core/ioc-application/src/test/java/com/iocextractor/application/maintenance/RetentionServiceTest.java) |
 | <a id="ing-10"></a>ING-10 | `closed` | Recovery до poller, source-key guard и монотонные переходы; один daemon, не distributed fencing. Checkpoints f4f011e/c3a03e2/a44d10f/7ce5f8f. [ingestion](../dev/ru/ingestion.md) |
-| <a id="ing-12"></a>ING-12 | `closed` | Ограниченные hash retries и типизированная terminal-диагностика нечитаемого источника; физическая судьба pre-claim остаётся ING-13. [ingestion](../dev/ru/ingestion.md) |
+| <a id="ing-12"></a>ING-12 | `closed` | Ограниченные hash retries и типизированная terminal-диагностика нечитаемого источника; физические исходы покрывает ING-13. [ingestion](../dev/ru/ingestion.md) |
+| <a id="ing-13"></a>ING-13 | `closed` | Проверенные файлы до хеширования и файлы сверх лимита отклоняются по ID наблюдения. Неоднозначное владение удерживается с исходным рангом. [Ingestion](../dev/ru/ingestion.md#receipts-и-повторы) |
+| <a id="ing-18"></a>ING-18 | `closed` | Отказ при подготовке завершает перенос запечатанного файла, запись `.error` и журнал по сохранённому намерению. [Ingestion](../dev/ru/ingestion.md#receipts-и-повторы) |
 | <a id="ing-14"></a>ING-14 | `closed` | Отказы quiet-period возвращаются в WatchService retry set; полный polling остаётся штатным correctness path. [интеграционный тест фильтра](../../adapters/adapter-ingest/src/test/java/com/iocextractor/adapter/in/ingest/IngestFileListFilterIT.java) |
 | <a id="ing-17"></a>ING-17 | `closed` | Эквивалентный terminal CAS принимает только неизменные authority/evidence и проверяет registration даже при finalized retry. Регрессии и записанный исправленный прогон 100 DOCX подтверждают закрытие; неуспешные load windows остаются неуспешными. [тесты completion](../../core/ioc-application/src/test/java/com/iocextractor/application/ingest/admission/DocumentAdmissionCompletionTest.java) [история](../dev/ru/native-capacity.md) |
 | <a id="ops-1"></a>OPS-1 | `closed` | Исходная проверка нескольких/новых файлов покрыта записанным intake 100 DOCX; deterministic running-daemon/watch тесты заново прошли 2026-11-07. Полный polling по умолчанию, watcher — ускоритель. Multi-endpoint identity/landing остаются OPS-12. [тесты демона](../../bootstrap/ioc-app/src/test/java/com/iocextractor/DaemonIngestE2EIT.java) [история batch](../dev/ru/native-capacity.md) |

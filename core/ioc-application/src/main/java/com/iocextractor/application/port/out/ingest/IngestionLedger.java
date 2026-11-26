@@ -39,5 +39,11 @@ public interface IngestionLedger {
         return markFailed(ObservationId.legacy(key.value()), key, reason);
     }
 
+    /**
+     * Records a physically verified pre-promotion rejection. Implementations must
+     * preserve an existing promotion or success and reject incompatible failure facts.
+     */
+    IngestionLedgerTransition recordRejected(SourceUnit source, Path failedPath, String code);
+
     List<IngestionRecord> findIncomplete();
 }

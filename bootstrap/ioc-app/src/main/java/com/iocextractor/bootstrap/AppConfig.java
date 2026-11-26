@@ -1304,23 +1304,13 @@ public class AppConfig {
             Clock clock,
             @Qualifier("iocIngestionFlow") IntegrationFlow intakeFlow,
             ObjectProvider<DataframeImportRuntimeLifecycle> importRuntime,
-            OrderedDocumentStartupRecovery documentRecovery,
             com.iocextractor.adapter.in.ingest.DurableDocumentDispatcher documents) {
         if (!(intakeFlow instanceof Lifecycle lifecycle)) {
             throw new IllegalStateException("iocIngestionFlow does not expose lifecycle control");
         }
         return new CanonicalIntakeStartupCoordinator(
                 runRecovery, sourceRecovery, lifecycleAdmission, lifecycle,
-                importRuntime.getIfAvailable(), lifecycleState, startupObserver, clock,
-                documentRecovery).withDocuments(documents);
-    }
-
-    @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
-    public OrderedDocumentStartupRecovery orderedDocumentStartupRecovery(
-            OrderedDocumentAdmissionHandler admissions,
-            IngestSourceUseCase ingestion) {
-        return new OrderedDocumentStartupRecovery(admissions, ingestion);
+                importRuntime.getIfAvailable(), lifecycleState, startupObserver, clock).withDocuments(documents);
     }
 
     @Bean
@@ -1419,8 +1409,8 @@ public class AppConfig {
     @Bean
     @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
             + "'${ioc.maintenance.retention.enabled:false}' == 'true'")
-    public RetentionStore retentionStore() {
-        return new FileSystemRetentionStore();
+    public RetentionStore retentionStore(OrderedDocumentAdmissionHandler admissions) {
+        return new FileSystemRetentionStore(admissions::pinsRejectionLeaf);
     }
 
     @Bean

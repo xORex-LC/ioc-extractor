@@ -65,9 +65,9 @@ The daemon processes whole files, not an appended byte stream:
 inbox -> stability wait -> durable order -> atomic claim -> private sealed source
       -> bounded preparation -> ordered promotion -> canonical commit
       -> CSV projection -> done
-verified source rejection -> failed
-pre-hash retry exhaustion -> blocked admission, owned token retained
-pre-reservation failure -> may remain in inbox (ING-13)
+verified pre-promotion rejection -> failed file + .error
+uncertain ownership or possible canonical effects -> held admission
+metadata failure before reservation -> inbox with backoff
 ```
 
 Default accepted suffixes are `.htm`, `.html` and `.docx`; `.tmp`, `.part` and
@@ -113,17 +113,18 @@ report. The partial-run resume limitation is tracked as `ING-11` in
 
 | Situation | Where to look / action |
 |---|---|
-| Verified source rejected after bounded attempts | `var/failed`, its `.error` sidecar and diagnostics; retain the source for investigation |
-| Failure before a trustworthy content key, attempts exhausted | Owned token/admission can remain in `processing`; `dataProcessingCapacity` is `DOWN` and later promotions wait behind the blocked head |
-| Unclaimed oversized input or admission count/byte saturation | File remains in `inbox`; full polling retries admission after pressure changes |
-| Pre-reservation failure | May remain in `inbox` (`ING-13`); preserve logs and file |
-| Interrupted claim, promotion or projection | Keep journals and owned files intact for startup recovery |
+| Verified file exceeds `ioc.ingestion.execution.max-source-bytes` | It moves to `var/failed` with a `SOURCE_TOO_LARGE` sidecar without reading its payload |
+| Verified file fails before hashing or during preparation | After retries, look for a `__rejected` file and its `.error` in `var/failed`. For keyed inputs the source ledger records the same failed path |
+| Queue count or byte limit reached | The file stays in `inbox`. Full polling retries after capacity frees up |
+| Metadata or claim cannot be verified | Check permissions and file stability. An unclaimed input stays in the inbox and inspection retries with backoff |
+| Held admission | Earlier evidence or a possible canonical write needs review. Later promotions wait and `dataProcessingCapacity` is `DOWN` |
 
-There is no supported document queue clear/requeue command. Moving a terminal
-source back to the inbox or deleting ledger/SQLite records is not a supported
-retry; identical content can remain terminally deduplicated. Fix the cause and
-use a reviewed recovery or coordinated restore. Do not use the managed-import
-`replay` command for document ingestion.
+A
+`PROMOTION_OUTCOME_UNKNOWN` result calls for ING-11 investigation or coordinated
+restore. Older terminal rejections may require inspection of files retained in
+`processing` because they predate durable rejection intent. Preserve the
+journals and files. Submit a corrected terminal document as a new delivery with
+a fresh filename.
 
 ## Health checks
 

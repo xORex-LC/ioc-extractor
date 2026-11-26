@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Filesystem implementation of source ownership:
@@ -32,6 +33,7 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
     private final Path doneDir;
     private final Path failedDir;
     private final StrictAtomicFileOwnership ownership;
+    private final DocumentRejectionFiles rejections;
 
     public FileSystemSourceLifecycle(Path processingDir, Path doneDir, Path failedDir) {
         this(processingDir, doneDir, failedDir, new StrictAtomicFileOwnership());
@@ -45,6 +47,7 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
         this.doneDir = requireDirectory(doneDir, "doneDir");
         this.failedDir = requireDirectory(failedDir, "failedDir");
         this.ownership = Objects.requireNonNull(ownership, "ownership");
+        this.rejections = new DocumentRejectionFiles(this.failedDir.toAbsolutePath().normalize(), ownership);
     }
 
     @Override
@@ -68,7 +71,7 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
 
     @Override
     public Path prehashClaimPath(Path source, ObservationId observationId) {
-        return processingDir.resolve(prehashFileName(observationId, source));
+        return processingDir.resolve(prehashFileName(observationId, source)).toAbsolutePath().normalize();
     }
 
     @Override
@@ -81,7 +84,7 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
         Path sealed = parent.resolve(fileName + ".sealed");
         Path temporary = parent.resolve(fileName + ".sealing");
         try {
-            if (Files.isRegularFile(sealed)) {
+            if (Files.isRegularFile(sealed, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
                 if (Files.size(sealed) > maximumBytes) {
                     throw new IocExtractorException("Document size changed after bounded admission");
                 }
@@ -90,7 +93,7 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
                 forceDirectory(parent);
                 return sealedClaim(claimed, sealed);
             }
-            if (!Files.isRegularFile(source)) {
+            if (!Files.isRegularFile(source, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
                 throw new IocExtractorException("Claimed ingest source is missing: " + source);
             }
             Files.deleteIfExists(temporary);
@@ -274,9 +277,19 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
         }
     }
 
-    private String observationToken(ObservationId observationId) {
+    DocumentRejectionFiles rejections() { return rejections; }
+
+    String observationToken(ObservationId observationId) {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(
                 observationId.value().getBytes(StandardCharsets.UTF_8));
+    }
+
+    Optional<ObservationId> rejectionOwner(Path path) {
+        try {
+            return rejections.tokenOf(path).map(this::observationId);
+        } catch (IllegalArgumentException foreignName) {
+            return Optional.empty();
+        }
     }
 
     private ObservationId observationId(String token) {

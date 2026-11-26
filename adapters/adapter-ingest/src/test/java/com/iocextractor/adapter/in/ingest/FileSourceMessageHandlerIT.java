@@ -3,13 +3,15 @@ package com.iocextractor.adapter.in.ingest;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
+import com.iocextractor.application.ingest.admission.DocumentAdmission;
+import com.iocextractor.application.ingest.admission.DocumentAdmissionOperations;
+import com.iocextractor.application.ingest.admission.DocumentRejection;
 import com.iocextractor.application.ingest.admission.DocumentTerminalOutcome;
 import com.iocextractor.application.observation.ObservationOrder;
 import com.iocextractor.application.observation.ObservationOrigin;
 import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
 import com.iocextractor.application.port.in.ingest.IngestSourceResult;
-import com.iocextractor.application.port.in.ingest.IngestionRejectionResult;
 import com.iocextractor.application.port.in.ingest.PreparedIngestion;
 import com.iocextractor.application.port.in.ingest.PrepareIngestionUseCase;
 import com.iocextractor.application.port.out.observation.ObservationRegistrationStore;
@@ -26,6 +28,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -229,12 +232,13 @@ class FileSourceMessageHandlerIT {
         assertThat(fixture.registrations.next).hasValue(2);
     }
 
-    @Test
-    void countAndByteSaturationLeaveUnclaimedInputDiscoverableAndBacklogDrains() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {2, 4})
+    void countAndByteSaturationLeaveUnclaimedInputDiscoverableAndBacklogDrains(int maxPending) throws Exception {
         var release = new CountDownLatch(1);
         var prepared = new CountDownLatch(2);
         var done = new CountDownLatch(3);
-        Fixture fixture = new Fixture(2, 6);
+        Fixture fixture = new Fixture(maxPending, 6);
         Path first = fixture.file("first.html", "one");
         Path second = fixture.file("second.html", "two");
         Path third = fixture.file("third.html", "tri");
@@ -316,13 +320,13 @@ class FileSourceMessageHandlerIT {
         Fixture fixture = new Fixture(4, 100);
         assertThatThrownBy(() -> new DurableDocumentDispatcher(fixture.handler,
                 command -> { throw new AssertionError("invalid capacity admitted work"); },
-                (key, reason) -> IngestionRejectionResult.REJECTED, fixture.properties,
+                fixture.properties,
                 fixture.clock, fixture.diagnostics, capacity)).hasMessage("Workspace capacity must be positive");
         assertThat(fixture.handler.pending(10)).isEmpty();
     }
 
     @Test
-    void oversizeInputDoesNotAcquireOwnershipOrAllocateRank() throws Exception {
+    void oversizeInputIsRejectedWithoutReadingOrHashingIt() throws Exception {
         Fixture fixture = new Fixture(2, 6);
         var calls = new AtomicInteger();
         Path source = fixture.file("large.html", "too many bytes");
@@ -332,12 +336,19 @@ class FileSourceMessageHandlerIT {
         })) {
             dispatcher.start();
             dispatcher.handle(source.toFile());
-            assertThat(dispatcher.snapshot().pending()).isZero();
-            assertThat(dispatcher.snapshot().saturationCount()).isEqualTo(1);
+            awaitTerminal(fixture);
+            assertThat(dispatcher.snapshot().saturationCount()).isZero();
         }
-        assertThat(source).exists();
+        var terminal = fixture.terminal().getFirst();
+        var intent = terminal.rejection().orElseThrow();
+        assertThat(intent.source()).isEqualTo(terminal.claimPath());
+        assertThat(intent.target()).hasContent("too many bytes");
+        assertThat(intent.target().resolveSibling(intent.target().getFileName() + ".error"))
+                .hasContent("SOURCE_TOO_LARGE\n");
+        assertThat(terminal.sourceKey()).isEmpty();
+        assertThat(fixture.ledger.find(terminal.observationId())).isEmpty();
+        assertThat(source).doesNotExist();
         assertThat(calls).hasValue(0);
-        assertThat(fixture.registrations.next).hasValue(0);
     }
 
     @Test
@@ -354,7 +365,7 @@ class FileSourceMessageHandlerIT {
             if (command.source().equals(older)) { headEntered.countDown(); await(releaseHead); }
             else { assertThat(done.getCount()).as("head promoted before the next lease").isEqualTo(1); }
             return fixture.prepared(command, done::countDown);
-        }, (key, reason) -> IngestionRejectionResult.REJECTED, fixture.properties,
+        }, fixture.properties,
                 fixture.clock, fixture.diagnostics, 1)) {
             try {
                 dispatcher.start();
@@ -372,7 +383,7 @@ class FileSourceMessageHandlerIT {
     }
 
     @Test
-    void prehashFailureIsDurablyBlockedWithOwnedFileInsteadOfInventingContentIdentity() throws Exception {
+    void prehashFailureRejectsOwnedFileWithoutInventingContentIdentity() throws Exception {
         Fixture fixture = new Fixture(4, 100);
         Path source = fixture.file("changing.html", "ioc");
         var id = new ObservationId("changed-after-claim");
@@ -382,47 +393,169 @@ class FileSourceMessageHandlerIT {
             throw new AssertionError("unstable snapshot reached preparation");
         })) {
             dispatcher.start();
-            awaitBlocked(dispatcher);
-            assertThat(dispatcher.snapshot().blocked()).isEqualTo(1);
-            assertThat(dispatcher.snapshot().pending()).isEqualTo(1);
+            awaitTerminal(fixture);
         }
         var durable = new FileDocumentAdmissionJournal(fixture.journalPath).find(id).orElseThrow();
         assertThat(durable.sourceKey()).isEmpty();
         assertThat(durable.execution().attempts()).isEqualTo(2);
-        assertThat(durable.execution().failure()).contains("size changed");
-        assertThat(Files.exists(admitted.claimPath()) || Files.exists(Path.of(admitted.claimPath() + ".sealed"))).isTrue();
-        assertThat(fixture.diagnostics.diagnostics()).hasSize(2);
+        assertThat(durable.terminalOutcome()).contains(DocumentTerminalOutcome.REJECTED);
+        var intent = durable.rejection().orElseThrow();
+        assertThat(intent.target()).hasContent("changed-size");
+        assertThat(intent.target().resolveSibling(intent.target().getFileName() + ".error"))
+                .hasContent("SOURCE_HASH_FAILED\n");
+        assertThat(admitted.claimPath()).doesNotExist();
+        assertThat(fixture.ledger.find(id)).isEmpty();
     }
 
     @Test
     void exhaustedPreparationRejectsOneDurableOccurrenceAndUnblocksTheNext() throws Exception {
         Fixture fixture = new Fixture(4, 100);
-        var rejected = new AtomicInteger();
-        var rejectionCompleted = new CountDownLatch(1);
         var done = new CountDownLatch(1);
         Path bad = fixture.file("bad.html", "bad");
         Path good = fixture.file("good.html", "good");
-        try (var dispatcher = new DurableDocumentDispatcher(fixture.handler, command -> {
+        try (var dispatcher = fixture.dispatcher(command -> {
             if (command.source().equals(bad)) { throw new IllegalStateException("invalid document"); }
             return fixture.prepared(command, done::countDown);
-        }, (key, reason) -> {
-            rejected.incrementAndGet();
-            rejectionCompleted.countDown();
-            return IngestionRejectionResult.REJECTED;
-        }, fixture.properties, fixture.clock, fixture.diagnostics)) {
+        })) {
             dispatcher.start();
             dispatcher.handle(bad.toFile());
             dispatcher.handle(good.toFile());
-            boolean disposed = rejectionCompleted.await(5, TimeUnit.SECONDS);
-            assertThat(disposed).as("rejection: admissions=%s; diagnostics=%s",
-                    fixture.handler.inspectPending(10), fixture.diagnostics.diagnostics()).isTrue();
             boolean drained = done.await(5, TimeUnit.SECONDS);
             assertThat(drained).as("admissions=%s; capacity=%s; diagnostics=%s",
                     fixture.handler.inspectPending(10), dispatcher.snapshot(), fixture.diagnostics.diagnostics()).isTrue();
-            assertThat(rejected).hasValue(1);
-            assertThat(dispatcher.snapshot().completedDocuments()).isLessThanOrEqualTo(1);
         }
         assertThat(fixture.handler.pending(10)).isEmpty();
+        var rejected = fixture.terminal().stream()
+                .filter(value -> value.terminalOutcome().orElseThrow() == DocumentTerminalOutcome.REJECTED)
+                .findFirst().orElseThrow();
+        assertThat(rejected.execution().attempts()).isEqualTo(2);
+        var intent = rejected.rejection().orElseThrow();
+        assertThat(intent.target()).hasContent("bad");
+        assertThat(intent.target().resolveSibling(intent.target().getFileName() + ".error"))
+                .hasContent("DOCUMENT_PREPARATION_FAILED\n");
+        assertThat(intent.source()).doesNotExist();
+        assertThat(fixture.ledger.find(rejected.observationId())).get().satisfies(record -> {
+            assertThat(record.archivedPath()).isEqualTo(intent.target());
+            assertThat(record.originalPath()).isEqualTo(bad);
+        });
+    }
+
+    @Test
+    void detectorBacksOffWhenCandidateOwnershipCannotBeEstablished() throws Exception {
+        Fixture fixture = new Fixture(4, 100);
+        Path original = fixture.file("original.html", "ioc");
+        Path link = Files.createSymbolicLink(directory.resolve("link.html"), original);
+        try (var dispatcher = fixture.dispatcher(command -> {
+            throw new AssertionError("Unverified file reached preparation");
+        })) {
+            dispatcher.handle(link.toFile());
+            assertThat(fixture.diagnostics.diagnostics()).isEmpty();
+            dispatcher.start();
+            dispatcher.handle(link.toFile());
+            dispatcher.handle(link.toFile());
+            assertThat(dispatcher.snapshot().lastFailure()).isEqualTo("CLAIM_UNCONFIRMED");
+            assertThat(fixture.diagnostics.diagnostics()).hasSize(1);
+            assertThat(dispatcher.snapshot().pending()).isZero();
+        }
+        assertThat(original).hasContent("ioc");
+        assertThat(Files.isSymbolicLink(link)).isTrue();
+        assertThat(fixture.registrations.next).hasValue(0);
+    }
+
+    @Test
+    void startupFinishesPersistedIntentBeforeAnyPreparation() throws Exception {
+        Fixture fixture = new Fixture(4, 100);
+        var id = new ObservationId("startup-rejection");
+        fixture.handler.admit(fixture.file("bad.html", "bad"), id, fixture.clock.instant());
+        var rejecting = fixture.handler.beginRejection(fixture.service.find(id).orElseThrow(),
+                DocumentRejection.Code.DOCUMENT_PREPARATION_FAILED);
+        var intent = rejecting.rejection().orElseThrow();
+        Files.createDirectories(intent.target().getParent());
+        Files.move(intent.source(), intent.target());
+
+        try (var dispatcher = fixture.dispatcher(command -> {
+            throw new AssertionError("Persisted disposition must bypass document preparation");
+        })) {
+            assertThat(dispatcher.recoverBeforeIntake()).isOne();
+        }
+
+        assertThat(fixture.terminal()).singleElement().satisfies(value -> {
+            assertThat(value.terminalOutcome()).contains(DocumentTerminalOutcome.REJECTED);
+            assertThat(value.registrationFinalized()).isTrue();
+        });
+        assertThat(intent.target().resolveSibling(intent.target().getFileName() + ".error"))
+                .hasContent("DOCUMENT_PREPARATION_FAILED\n");
+    }
+
+    @Test
+    void heldDispositionResumesOnlyAtItsCurrentVersion() throws Exception {
+        Fixture fixture = new Fixture(4, 100);
+        var id = new ObservationId("held-rejection");
+        fixture.handler.admit(fixture.file("bad.html", "bad"), id, fixture.clock.instant());
+        var rejecting = fixture.handler.beginRejection(fixture.service.find(id).orElseThrow(),
+                DocumentRejection.Code.DOCUMENT_PREPARATION_FAILED);
+        var intent = rejecting.rejection().orElseThrow();
+        Files.createDirectories(intent.target().getParent());
+        Files.writeString(intent.target(), "foreign");
+        var operations = new DocumentAdmissionOperations(
+                () -> new FileDocumentAdmissionJournal(fixture.journalPath), fixture.clock);
+
+        try (var dispatcher = fixture.dispatcher(command -> {
+            throw new AssertionError("Rejection intent must bypass promotion");
+        })) {
+            dispatcher.start();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (dispatcher.snapshot().blocked() == 0 && System.nanoTime() < deadline) {
+                new CountDownLatch(1).await(10, TimeUnit.MILLISECONDS);
+            }
+            assertThat(dispatcher.snapshot().blocked()).isOne();
+            var held = operations.status(Optional.empty()).orElseThrow();
+            assertThat(held.observationId()).isEqualTo(id);
+            assertThat(held.registration()).isEqualTo(rejecting.registration());
+            assertThat(held.rejection()).contains(intent);
+            assertThat(held.terminalOutcome()).isEmpty();
+            assertThat(intent.source()).hasContent("bad");
+            assertThat(intent.target()).hasContent("foreign");
+            assertThatThrownBy(() -> operations.resume(id, held.version() - 1))
+                    .hasMessageContaining("not held at the requested version");
+
+            Files.move(intent.target(), directory.resolve("foreign-saved"));
+            var resumed = operations.resume(id, held.version());
+            assertThat(resumed.version()).isEqualTo(held.version() + 1);
+            assertThat(resumed.registration()).isEqualTo(held.registration());
+            assertThat(resumed.rejection()).contains(intent);
+            dispatcher.nudge();
+            awaitTerminal(fixture);
+        }
+        assertThat(intent.target()).hasContent("bad");
+        assertThat(directory.resolve("foreign-saved")).hasContent("foreign");
+    }
+
+    @Test
+    void promotionClaimWithoutOutcomeRemainsHeldAcrossRestart() throws Exception {
+        Fixture fixture = new Fixture(4, 100);
+        var id = new ObservationId("promotion-unknown");
+        var admitted = fixture.handler.admit(fixture.file("uncertain.html", "ioc"), id, fixture.clock.instant());
+        fixture.ledger.markClaimed(admitted.source());
+
+        try (var dispatcher = fixture.dispatcher(command -> {
+            throw new AssertionError("Unknown promotion must be reconciled before preparation");
+        })) {
+            dispatcher.start();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (dispatcher.snapshot().blocked() == 0 && System.nanoTime() < deadline) {
+                new CountDownLatch(1).await(10, TimeUnit.MILLISECONDS);
+            }
+            assertThat(dispatcher.snapshot().blocked()).isOne();
+        }
+        assertThat(fixture.service.find(id)).get().satisfies(value -> {
+            assertThat(value.execution().failure()).isEqualTo("PROMOTION_OUTCOME_UNKNOWN");
+            assertThat(value.rejection()).isEmpty();
+            assertThat(value.terminalOutcome()).isEmpty();
+        });
+        assertThat(admitted.source().processingPath()).hasContent("ioc");
+        assertThat(fixture.ledger.find(id)).get().satisfies(record ->
+                assertThat(record.status()).isEqualTo(IngestionStatus.CLAIMED));
     }
 
     @org.junit.jupiter.params.ParameterizedTest
@@ -512,11 +645,12 @@ class FileSourceMessageHandlerIT {
         assertThat(latch.getCount()).isEqualTo(count);
     }
 
-    private static void awaitBlocked(DurableDocumentDispatcher dispatcher) throws InterruptedException {
+    private static void awaitTerminal(Fixture fixture) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (dispatcher.snapshot().blocked() == 0 && System.nanoTime() < deadline) {
+        while (fixture.terminal().isEmpty() && System.nanoTime() < deadline) {
             new CountDownLatch(1).await(10, TimeUnit.MILLISECONDS);
         }
+        assertThat(fixture.terminal()).as("document reached terminal state").hasSize(1);
     }
 
     private final class Fixture {
@@ -529,8 +663,9 @@ class FileSourceMessageHandlerIT {
                 directory.resolve("processing"), directory.resolve("done"), directory.resolve("failed"));
         private final DocumentAdmissionService service = new DocumentAdmissionService(
                 new FileDocumentAdmissionJournal(journalPath), registrations, clock);
+        private final FileIngestionLedger ledger = new FileIngestionLedger(directory.resolve("ingestion-ledger"), clock);
         private final OrderedDocumentAdmissionHandler handler = new OrderedDocumentAdmissionHandler(
-                service, sources, new FileDocumentCandidateEvidenceReader(), new FileSourceHasher());
+                service, sources, new FileDocumentCandidateEvidenceReader(), new FileSourceHasher(), ledger);
         private final CollectingDiagnosticSink diagnostics = new CollectingDiagnosticSink();
         private final IngestAdapterProperties properties;
         private Fixture(int pending, long bytes) {
@@ -538,12 +673,14 @@ class FileSourceMessageHandlerIT {
                     new IngestAdapterProperties.Retry(2, Duration.ZERO), null, 1,
                     new IngestAdapterProperties.Execution(2, Math.min(4, pending), pending, bytes, bytes));
         }
+        private List<DocumentAdmission> terminal() {
+            return new FileDocumentAdmissionJournal(journalPath).findTerminalBefore(clock.instant().plusSeconds(1), 10);
+        }
         private Path file(String name, String content) throws Exception {
             return Files.writeString(directory.resolve(name), content).toAbsolutePath();
         }
         private DurableDocumentDispatcher dispatcher(PrepareIngestionUseCase prepare) {
-            return new DurableDocumentDispatcher(handler, prepare,
-                    (key, reason) -> IngestionRejectionResult.REJECTED, properties, clock, diagnostics);
+            return new DurableDocumentDispatcher(handler, prepare, properties, clock, diagnostics);
         }
         private PreparedIngestion prepared(IngestSourceCommand command, Runnable callback) {
             return new PreparedIngestion() {

@@ -185,7 +185,7 @@ import slots используют тот же реестр и транзакци
 
 Версионируемые миграции используют `user_version`, после них согласуется
 настроенная схема артефактов. Поддерживаются текущие Native dataframe format 12
-и service format 14. Обычный migrator отвергает новые/экспериментальные форматы;
+и service format 16. Обычный migrator отвергает новые/экспериментальные форматы;
 он не переосмысляет их и не снижает версию.
 
 Цепочка миграций сохраняет границы владения: dataframe v4 — lifecycle/history/
@@ -195,7 +195,9 @@ v10 — упорядоченные registrations/field origins, v11 — ordered 
 positions/origin history, v12 — принятые import warnings. Service v9 — managed
 deliveries, v10 — document admission, v11 — import observation reservations,
 v12 — document-policy pins, v13 — export-profile single flight, v14 — bounded
-document execution. Document/import retry сохраняет исходный rank;
+document execution, v15 — идентичность fetch по источнику, v16 — намерения
+отказа документов и терминальные исходы без ключа содержимого. Миграция v16
+сохраняет существующие допуски и их ранги. Document/import retry сохраняет исходный rank;
 нерезервированный legacy import не может молча получить новый rank после restart.
 
 | Граница отказа | Результат и восстановление |
