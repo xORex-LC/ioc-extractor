@@ -26,6 +26,7 @@ import com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository;
 import com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalLifecycleWriter;
 import com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalMatchPlanner;
 import com.iocextractor.adapter.out.store.jdbc.JdbcConfirmationReceiptStore;
+import com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalDocumentCommits;
 import com.iocextractor.adapter.out.store.jdbc.JdbcExpiredArtifactStore;
 import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleClock;
 import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleControlStore;
@@ -75,6 +76,8 @@ import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptReplay
 import com.iocextractor.application.artifact.lifecycle.EventPublishingCanonicalArtifactWriter;
 import com.iocextractor.application.artifact.lifecycle.ExistingRecordsActivationPolicy;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
+import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
+import com.iocextractor.application.artifact.lifecycle.LifecycleTimeSource;
 import com.iocextractor.application.artifact.lifecycle.LifecycleActivationPolicy;
 import com.iocextractor.application.artifact.lifecycle.LifecycleActivationService;
 import com.iocextractor.application.artifact.lifecycle.LifecycleWriteContext;
@@ -93,6 +96,7 @@ import com.iocextractor.application.export.ExportService;
 import com.iocextractor.application.export.SliceRetentionService;
 import com.iocextractor.application.export.StandaloneSliceRetentionGuard;
 import com.iocextractor.application.ingest.IngestionService;
+import com.iocextractor.application.ingest.DocumentPromotionCoordinator;
 import com.iocextractor.application.ingest.IngestionLifecycleSupport;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionOperations;
@@ -567,7 +571,7 @@ public class AppConfig {
 
     @Bean
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
-    public RunLedger runLedger(@Qualifier("serviceStorageDataSource")
+    public JdbcRunLedger runLedger(@Qualifier("serviceStorageDataSource")
                                HikariDataSource serviceStorageDataSource,
                                @Qualifier("serviceSchemaMigration")
                                SchemaMigrationResult serviceSchemaMigration,
@@ -875,11 +879,13 @@ public class AppConfig {
             LifecycleHistoryStore lifecycleHistoryStore,
             ConfirmationReceiptStore confirmationReceiptStore,
             JdbcLifecycleClock lifecycleClock,
-            IocProperties props) {
+            IocProperties props,
+            Clock clock) {
+        boolean fixed = props.lifecycle().validity().mode() == LifecycleValidityMode.FIXED;
         return new LifecycleHistoryRetentionService(
-                dataframeArtifactNames(props),
+                fixed ? dataframeArtifactNames(props) : List.of(),
                 lifecycleHistoryStore,
-                lifecycleClock,
+                documentRecoveryTime(fixed, lifecycleClock, clock),
                 props.lifecycle().historyRetention(),
                 props.lifecycle().reconcile().batchSize(),
                 confirmationReceiptStore);
@@ -1380,6 +1386,63 @@ public class AppConfig {
     }
 
     @Bean
+    @Primary
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
+    DocumentPromotionCoordinator documentPromotionCoordinator(
+            JdbcRunLedger runs,
+            DocumentAdmissionService admissions,
+            IngestionLedger sources,
+            SourceLifecycle files,
+            DocumentPromotionCoordinator.Canonical canonical,
+            DocumentPromotionCoordinator.Processing processing,
+            IocProperties props) {
+        return new DocumentPromotionCoordinator(
+                new DocumentPromotionCoordinator.Journals(runs, admissions, sources, files),
+                canonical, processing, props.lifecycle().receiptRetention());
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
+    DocumentPromotionCoordinator.Canonical documentPromotionStorage(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframe,
+            CanonicalArtifactWriter writer,
+            JdbcConfirmationReceiptStore receipts,
+            JdbcLifecycleClock lifecycleClock,
+            ArtifactProjectionWorkStore projectionWork,
+            ArtifactProjection projection,
+            IocProperties props,
+            Clock clock) {
+        boolean fixed = props.lifecycle().validity().mode() == LifecycleValidityMode.FIXED;
+        return new DocumentPromotionCoordinator.Canonical(new JdbcCanonicalDocumentCommits(dataframe), writer,
+                receipts, receipts, documentRecoveryTime(fixed, lifecycleClock, clock), projectionWork, projection);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
+    DocumentPromotionCoordinator.Processing documentPromotionProcessing(
+            JdbcConfirmationReceiptStore receipts,
+            JdbcLifecycleClock lifecycleClock,
+            SourcePreparerFactory preparers,
+            IocExtractionServiceFactory extraction,
+            KeyedExecutionGuard guard,
+            ProcessingPolicyIdentity policyIdentity,
+            ReplayConfirmationReceiptUseCase receiptReplay,
+            ControlEventPublisher events,
+            DiagnosticSink diagnostics,
+            IocProperties props,
+            Clock clock) {
+        var validity = props.lifecycle().validity();
+        var retention = props.lifecycle().receiptRetention();
+        boolean fixed = validity.mode() == LifecycleValidityMode.FIXED;
+        var policy = policyIdentity.value();
+        var lifecycle = fixed ? new IngestionLifecycleSupport(
+                receiptReplay, receipts, lifecycleClock, policy, retention) : null;
+        var recoveryPolicy = fixed ? policy + ":fixed:" + validity.fixedTtl() + ":" + retention : policy;
+        return new DocumentPromotionCoordinator.Processing(preparers, extraction, guard, policy, recoveryPolicy,
+                lifecycle, events, diagnostics, clock);
+    }
+
+    @Bean
     public ArtifactIdentityResolver artifactIdentityResolver(IocProperties props) {
         return new CanonicalArtifactIdentityResolver(artifactIdentityDefinitions(props));
     }
@@ -1695,5 +1758,9 @@ public class AppConfig {
 
     private ExportFormat projectionFormat(IocProperties props) {
         return CsvFormatConfiguration.resolve(props.sink().csv());
+    }
+    private static LifecycleTimeSource documentRecoveryTime(boolean fixed, JdbcLifecycleClock lifecycleClock,
+                                                              Clock clock) {
+        return fixed ? lifecycleClock : () -> EffectiveTime.at(clock.instant());
     }
 }

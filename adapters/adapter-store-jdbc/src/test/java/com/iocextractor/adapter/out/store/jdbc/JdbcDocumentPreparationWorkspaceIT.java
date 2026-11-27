@@ -8,14 +8,17 @@ import com.iocextractor.application.artifact.ArtifactRowKey;
 import com.iocextractor.application.artifact.ArtifactWritePlan;
 import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.artifact.CanonicalKeyMaterial;
+import com.iocextractor.application.artifact.DocumentPreparationSeal;
 import com.iocextractor.application.artifact.DocumentPreparationSummary;
 import com.iocextractor.application.artifact.PreparedArtifactRow;
 import com.iocextractor.application.artifact.RoutedArtifactCandidate;
 import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.observation.OccurrencePosition;
 import com.iocextractor.application.port.in.ExtractionCommand;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 import com.iocextractor.application.tck.junit.IntegrationTest;
+import com.iocextractor.platform.diagnostics.DiagnosticSeverity;
 import com.iocextractor.platform.diagnostics.result.DiagnosticSummary;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.FileVisitResult;
@@ -660,6 +663,86 @@ class JdbcDocumentPreparationWorkspaceIT {
             // Test-owned corrupted pins are explicitly disposed, not left on the developer disk.
             JdbcDocumentPreparationWorkspaceFactory.deletePrivateDirectory(pin(command));
         }
+    }
+
+    @Test
+    void checkpointPinRestoresExactRowsWithoutInputAndSurvivesAgePruning() throws Exception {
+        var command = command("durable-plan");
+        var observation = new ObservationId(command.runId());
+        var diagnostics = new DiagnosticSummary(3, 1, Map.of(DiagnosticSeverity.WARN, 2L, DiagnosticSeverity.ERROR, 1L));
+        var summary = new DocumentPreparationSummary(2, 1, diagnostics);
+        var factory = factory(limits(1));
+        DocumentPreparationSeal seal;
+        try (var workspace = factory.open(command, POLICIES)) {
+            workspace.append(candidate("first", "keep", "winner"), true, false);
+            var plans = workspace.seal(descriptors(), summary);
+            seal = workspace.pinForRecovery(command.runId(), plans, summary);
+        }
+        Files.setLastModifiedTime(pin(command).resolve("seal"), FileTime.from(Instant.now().minus(Duration.ofDays(2))));
+        var restarted = factory(limits(1));
+        try (var workspace = restarted.open(command, POLICIES)) {
+            assertThat(workspace.recoverySeal(descriptors())).isEqualTo(seal);
+        }
+        Files.delete(command.source());
+        var wrongSeal = new DocumentPreparationSeal("0".repeat(64), seal.artifacts());
+        assertThatThrownBy(() -> restarted.discardPlan(observation, wrongSeal))
+                .hasMessageContaining("manifest checksum mismatch");
+        try (var workspace = restarted.reopen(command, POLICIES)) {
+            assertThatThrownBy(() -> workspace.restore("other-run", seal, descriptors()))
+                    .hasMessageContaining("another run");
+            assertThatThrownBy(() -> workspace.restore(command.runId(), seal, descriptors().reversed()))
+                    .hasMessageContaining("artifact catalog mismatch");
+            var restored = workspace.restore(command.runId(), seal, descriptors());
+            assertThat(restored.summary()).isEqualTo(summary);
+            assertThat(restored.plans()).extracting(ArtifactWritePlan::artifactName).containsExactly("first", "last");
+            assertThat(restored.plans().getFirst().rows().snapshot()).singleElement()
+                    .satisfies(row -> assertThat(row.template().value("value")).isEqualTo("keep"));
+            assertThat(restored.plans().getLast().rows().snapshot()).isEmpty();
+            workspace.beginPromotion();
+            assertThatThrownBy(() -> restarted.discardPlan(observation, seal)).hasMessageContaining("leased");
+        }
+        assertThatThrownBy(() -> restarted.discardUnlinkedPlan(observation, command.runId()))
+                .hasMessageContaining("promoting run");
+        restarted.discardPlan(observation, seal);
+        restarted.discardPlan(observation, seal);
+        assertThat(pin(command)).doesNotExist();
+    }
+
+    @Test
+    void unlinkedPinCanOnlyBeRetiredForItsExactRunBeforePromotion() throws Exception {
+        var command = command("unlinked-plan");
+        var observation = new ObservationId(command.runId());
+        var factory = factory(limits(1));
+        try (var workspace = factory.open(command, POLICIES)) {
+            var plans = workspace.seal(descriptors(), summary(0));
+            workspace.pinForRecovery(command.runId(), plans, summary(0));
+        }
+        assertThatThrownBy(() -> factory.discardUnlinkedPlan(observation, "other-run"))
+                .hasMessageContaining("another or promoting run");
+        assertThat(pin(command)).exists();
+
+        factory.discardUnlinkedPlan(observation, command.runId());
+        factory.discardUnlinkedPlan(observation, command.runId());
+        assertThat(pin(command)).doesNotExist();
+    }
+
+    @Test
+    void checkpointPinWithChangedPolicyOrCorruptWorkspaceIsRetained() throws Exception {
+        var command = command("unreadable-plan");
+        var factory = factory(limits(1));
+        try (var workspace = factory.open(command, POLICIES)) {
+            var plans = workspace.seal(descriptors(), summary(0));
+            workspace.pinForRecovery(command.runId(), plans, summary(0));
+        }
+        var changed = new JdbcDocumentPreparationWorkspaceFactory(temporary.resolve("workspace"), limits(1),
+                identities(), "changed-policy");
+        assertThatThrownBy(() -> changed.reopen(command, POLICIES))
+                .hasRootCauseMessage("Document preparation pin identity mismatch");
+        Files.writeString(pin(command).resolve("prepared.db"), "corrupt");
+        assertThatThrownBy(() -> factory.reopen(command, POLICIES))
+                .hasRootCauseMessage("Document workspace seal checksum mismatch");
+        assertThat(pin(command).resolve("recovery")).exists();
+        assertThat(factory.pressure().leasedWorkspaces()).isZero();
     }
 
     @Test

@@ -88,8 +88,8 @@ The file admission journal serializes mutations with a filesystem lock shared
 by the daemon and operator commands. It compares the expected versioned record,
 forces a temporary record, atomically replaces it and forces the directory.
 `FileIngestionLedger` serializes transitions per observation within one instance.
-Initial claims and verified rejections require forced atomic publication.
-Legacy terminal updates still allow ordinary-move fallback. Legacy key-named records remain readable. Neither file store replaces
+Claims, successful archive records and verified rejections require forced atomic
+publication. Legacy key-named records remain readable. Neither file store replaces
 the daemon's JDBC run saga or canonical dataframe authority. Bootstrap selects
 the store; the adapter's file-bean fallback is not the production default.
 
@@ -98,10 +98,10 @@ A verified oversized file bypasses sealing and hashing. Exhausted failures can
 reject by observation ID, including those without a content key. If ownership
 or the promotion outcome is uncertain, the retained head blocks later promotion
 and makes capacity health DOWN. The operator can request another check by
-observation ID and exact version. Partial-run resume (ING-11) remains a
-[known limitation](../../../../../../../../../../docs/KNOWN-ISSUES.md).
-Document commits can succeed for earlier artifacts before a later failure;
-this adapter does not provide whole-document rollback.
+observation ID and exact version. The linked promotion path verifies the
+archive using the sealed source evidence and resumes missing artifact work
+through its recorded plan and commit markers. See
+[daemon ingestion](../../../../../../../../../../docs/dev/ingestion.md#receipts-and-retry).
 
 Dispatcher close stops scheduling, joins owned coordinator/preparation/promotion
 workers with bounded grace and then closes remaining handles outside its monitor.

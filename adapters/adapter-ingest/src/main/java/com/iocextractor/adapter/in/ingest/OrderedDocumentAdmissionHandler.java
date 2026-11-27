@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Predicate;
 
 /** Filesystem adapter for reservation, token claim, stable hashing and claim adoption. */
 public final class OrderedDocumentAdmissionHandler {
@@ -118,13 +119,28 @@ public final class OrderedDocumentAdmissionHandler {
         return new AdmittedDocument(unit, current.registration().orElseThrow());
     }
 
+    AdmittedDocument linkedDocument(DocumentAdmission admission) {
+        var id = admission.observationId();
+        Path sealed = DocumentRejectionFiles.sealed(checkedClaim(admission));
+        var source = new SourceUnit(id, admission.sourceKey().orElseThrow(), admission.candidatePath(),
+                sealed, admission.createdAt());
+        return new AdmittedDocument(source, admission.registration().orElseThrow());
+    }
+
     public List<DocumentAdmission> pending(int limit) {
+        return pending(limit, id -> false);
+    }
+
+    List<DocumentAdmission> pending(int limit, Predicate<ObservationId> hasPromotionPlan) {
         return admissions.pending(limit).stream().filter(value -> {
             if (value.phase() == DocumentAdmissionPhase.TERMINAL) {
+                if (hasPromotionPlan.test(value.observationId())) {
+                    return true;
+                }
                 admissions.complete(value.observationId(), value.terminalOutcome().orElseThrow());
                 return false;
             }
-            return !completeArchived(value);
+            return !completeArchived(value, hasPromotionPlan);
         }).toList();
     }
 
@@ -137,10 +153,12 @@ public final class OrderedDocumentAdmissionHandler {
         admissions.retryExecution(id, retryAfter, failure);
     }
 
-    /** Pins the failed-file bundle through terminal registration, including sidecar repair. */
+    /** Pins done files and failed-file bundles through terminal registration. */
     public boolean pinsRejectionLeaf(Path path) {
         return sources.rejectionOwner(path).flatMap(admissions::find)
                 .filter(value -> value.rejection().isPresent() && !value.registrationFinalized())
+                .isPresent() || sources.archiveOwner(path).flatMap(admissions::find)
+                .filter(value -> !value.registrationFinalized())
                 .isPresent();
     }
 
@@ -154,13 +172,14 @@ public final class OrderedDocumentAdmissionHandler {
         return ledger.find(admission.observationId()).isPresent();
     }
 
-    private boolean completeArchived(DocumentAdmission admission) {
+    private boolean completeArchived(DocumentAdmission admission, Predicate<ObservationId> hasPromotionPlan) {
         if (admission.phase() != DocumentAdmissionPhase.LINKED || admission.rejection().isPresent()) {
             return false;
         }
         return ledger.find(admission.observationId())
                 .filter(record -> record.status() == IngestionStatus.SOURCE_ARCHIVED
-                        && admission.sourceKey().orElseThrow().equals(record.key()))
+                        && admission.sourceKey().orElseThrow().equals(record.key())
+                        && !hasPromotionPlan.test(admission.observationId()))
                 .map(record -> {
                     admissions.complete(admission.observationId(), DocumentTerminalOutcome.SUCCEEDED);
                     return true;

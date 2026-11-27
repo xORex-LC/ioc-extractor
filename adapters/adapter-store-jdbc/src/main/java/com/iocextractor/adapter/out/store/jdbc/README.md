@@ -65,10 +65,12 @@ Java package, not separate Maven modules or new layer boundaries.
 | File | Responsibility |
 |---|---|
 | [JdbcActiveArtifactReader.java](JdbcActiveArtifactReader.java) | SQLite active-only lifecycle snapshot reader for one explicit effective time |
+| [JdbcCanonicalDocumentCommits.java](JdbcCanonicalDocumentCommits.java) | Reads verified per-artifact document outcomes in one dataframe snapshot |
 | [JdbcCanonicalLifecycleWriter.java](JdbcCanonicalLifecycleWriter.java) | One-artifact lifecycle confirmation transaction after non-reusable ID reservation |
-| [JdbcConfirmationReceiptStore.java](JdbcConfirmationReceiptStore.java) | SQLite complete-receipt reader, retention reaper and observation acknowledgement |
+| [JdbcConfirmationReceiptStore.java](JdbcConfirmationReceiptStore.java) | Complete-receipt reader, receipt pinning, retention and observation acknowledgement |
 | [JdbcConfirmationReceiptWriter.java](JdbcConfirmationReceiptWriter.java) | Stages typed prepared rows and publishes only structurally complete receipts |
 | [JdbcConfirmationValidator.java](JdbcConfirmationValidator.java) | Disk-backed duplicate validation before any canonical ID reservation |
+| [JdbcDocumentCommitMarkers.java](JdbcDocumentCommitMarkers.java) | Shared SQL for canonical observation identity and per-artifact transaction proof |
 | [JdbcExpiredArtifactStore.java](JdbcExpiredArtifactStore.java) | SQLite indexed deadline lookup and bounded archive/delete transaction |
 | [JdbcLifecycleActivationStore.java](JdbcLifecycleActivationStore.java) | SQLite resumable batches for the named `existing-records: expire` policy |
 | [JdbcLifecycleArchive.java](JdbcLifecycleArchive.java) | Atomic typed snapshot, compact provenance copy and active-row deletion |

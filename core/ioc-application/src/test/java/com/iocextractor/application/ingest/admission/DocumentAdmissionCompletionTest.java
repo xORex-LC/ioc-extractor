@@ -231,6 +231,32 @@ class DocumentAdmissionCompletionTest {
     }
 
     @Test
+    void operatorCanResumeHeldTerminalSuccessUntilFinalAcknowledgement() {
+        var linked = linked(REGISTRATION, new SourceKey("digest"));
+        var held = new DocumentExecutionState(3, DocumentExecutionState.HELD,
+                DocumentExecutionState.Failure.PROMOTION_RECOVERY_FAILED.name());
+        var pending = linked.terminal(DocumentTerminalOutcome.SUCCEEDED, NOW).execution(held, NOW);
+        var journal = new Journal(pending);
+        var operations = new DocumentAdmissionOperations(() -> journal, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        assertThat(operations.resume(ID, pending.version())).satisfies(resumed -> {
+            assertThat(resumed.terminalOutcome()).contains(DocumentTerminalOutcome.SUCCEEDED);
+            assertThat(resumed.registration()).contains(REGISTRATION);
+            assertThat(resumed.registrationFinalized()).isFalse();
+            assertThat(resumed.execution()).isEqualTo(DocumentExecutionState.NEW);
+        });
+
+        var finalized = pending.registrationFinalized(NOW);
+        journal.current.set(finalized);
+        assertThatThrownBy(() -> operations.resume(ID, finalized.version())).hasMessageContaining("not held");
+
+        var rejected = linked.reject(rejection(linked.claimPath(), linked.claimedEvidence().orElseThrow()), NOW)
+                .terminal(DocumentTerminalOutcome.REJECTED, NOW).execution(held, NOW);
+        journal.current.set(rejected);
+        assertThatThrownBy(() -> operations.resume(ID, rejected.version())).hasMessageContaining("not held");
+    }
+
+    @Test
     void operatorResumeRejectsMissingActiveAndConcurrentlyChangedAdmissions() {
         var active = linked(REGISTRATION, new SourceKey("digest"));
         var journal = new Journal(active);

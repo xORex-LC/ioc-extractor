@@ -32,6 +32,8 @@ public final class ServiceSchemaMigrations {
 
     private static final String V17 = "com/iocextractor/adapter/out/store/jdbc/service/v17__remove_unscoped_remote_fetch.sql";
 
+    private static final String V18 = "com/iocextractor/adapter/out/store/jdbc/service/v18__document_run_recovery.sql";
+
     private ServiceSchemaMigrations() {
     }
 
@@ -53,7 +55,8 @@ public final class ServiceSchemaMigrations {
                 new SqliteSchemaMigration(14, "document execution admission", resource(V14)),
                 new SqliteSchemaMigration(15, "source-scoped remote fetch", resource(V15)),
                 new SqliteSchemaMigration(16, "document rejection", resource(V16)),
-                new SqliteSchemaMigration(17, "remove unscoped remote fetch", resource(V17)));
+                new SqliteSchemaMigration(17, "remove unscoped remote fetch", resource(V17)),
+                new SqliteSchemaMigration(18, "document run recovery", resource(V18)));
     }
 
     private static String resource(String name) {

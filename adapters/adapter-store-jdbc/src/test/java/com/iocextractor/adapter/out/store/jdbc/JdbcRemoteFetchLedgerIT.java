@@ -124,7 +124,7 @@ class JdbcRemoteFetchLedgerIT {
             var result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
 
             assertThat(result.previousVersion()).isEqualTo(previousVersion);
-            assertThat(result.currentVersion()).isEqualTo(17);
+            assertThat(result.currentVersion()).isEqualTo(18);
             assertThat(jdbc.sql("""
                     SELECT name FROM sqlite_schema
                     WHERE type = 'table' AND name IN ('remote_fetch_ledger_legacy', 'remote_fetch_legacy_replay')

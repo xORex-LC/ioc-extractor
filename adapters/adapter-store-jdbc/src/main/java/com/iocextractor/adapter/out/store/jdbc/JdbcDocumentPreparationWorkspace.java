@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.artifact.DocumentPreparationSummary;
+import com.iocextractor.application.artifact.DocumentPreparationSeal;
 import com.iocextractor.application.artifact.ArtifactWritePlan;
 import com.iocextractor.application.artifact.PreparedArtifactRow;
 import com.iocextractor.application.artifact.RoutedArtifactCandidate;
@@ -13,6 +14,7 @@ import com.iocextractor.common.IocExtractorException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
@@ -76,11 +78,12 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
         this.codec = new DocumentRowCodec(limits.maximumRowBytes(), limits.maximumFieldBytes());
         this.diskCheck = diskCheck;
         this.release = release;
-        this.replay = Files.exists(directory.resolve("seal"));
+        this.replay = Files.exists(directory.resolve("seal"), LinkOption.NOFOLLOW_LINKS);
         Connection opened = null;
         try {
             if (replay) { validateSeal(); }
             else {
+                if (recoveryPinned()) { throw new IocExtractorException("Pinned document workspace seal is missing"); }
                 Files.deleteIfExists(database);
                 Files.deleteIfExists(directory.resolve("prepared.db-journal"));
             }
@@ -136,6 +139,9 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
     }
     @Override
     public void discard() { discard = true; }
+
+    @Override
+    public boolean recoveryPinned() { return DocumentWorkspaceRecovery.pinned(directory); }
 
     @Override
     public void beginPromotion() {
@@ -240,8 +246,7 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
             if (count("candidate", null) != candidateOrdinal) {
                 throw new IocExtractorException("Document seal candidate count mismatch");
             }
-            String catalog = descriptors.stream().map(plan -> plan.artifactName() + ":" + plan.header())
-                    .collect(java.util.stream.Collectors.joining("\n"));
+            String catalog = artifactCatalog(descriptors);
             if (descriptors.size() > MAXIMUM_ARTIFACTS || catalog.length() > MAXIMUM_CATALOG_CHARACTERS) {
                 throw new IocExtractorException("Document artifact catalog exceeds limit");
             }
@@ -268,14 +273,64 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
             } else { validateSeal(); }
             diskCheck.run();
             sealed = true;
-            var plans = new ArrayList<ArtifactWritePlan>();
-            for (var descriptor : descriptors) {
-                String artifact = descriptor.artifactName();
-                int count = Math.toIntExact(count("winner", artifact));
-                plans.add(new ArtifactWritePlan(artifact, descriptor.header(), rows(artifact, count), descriptor.idSequence()));
-            }
-            return List.copyOf(plans);
+            return sealedPlans(descriptors);
         } catch (IOException | SQLException failure) { throw new IocExtractorException("Cannot seal document workspace", failure); }
+    }
+
+    @Override
+    public DocumentPreparationSeal pinForRecovery(String runId, List<ArtifactWritePlan> plans,
+                                                   DocumentPreparationSummary summary) {
+        requireOpen();
+        if (!sealed || discard) { throw new IllegalStateException("Only a sealed document can be pinned"); }
+        try {
+            return DocumentWorkspaceRecovery.pin(directory, runId, Files.readString(directory.resolve("seal")),
+                    artifactNames(plans), summary);
+        } catch (IOException failure) { throw new IocExtractorException("Cannot pin document recovery workspace", failure); }
+    }
+
+    @Override
+    public DocumentPreparationSeal recoverySeal(List<ArtifactWritePlan> descriptors) {
+        requireOpen();
+        if (!replay) { throw new IllegalStateException("Sealed document recovery workspace is required"); }
+        try { return DocumentWorkspaceRecovery.reference(directory, artifactNames(descriptors)); }
+        catch (IOException failure) { throw new IocExtractorException("Cannot read document recovery workspace", failure); }
+    }
+
+    @Override
+    public RestoredPreparationResult restore(String runId, DocumentPreparationSeal seal, List<ArtifactWritePlan> descriptors) {
+        requireOpen();
+        if (sealed || !replay) { throw new IllegalStateException("Sealed document recovery workspace is required"); }
+        try {
+            var summary = DocumentWorkspaceRecovery.readSummary(
+                    directory, runId, Files.readString(directory.resolve("seal")), seal);
+            Path catalog = directory.resolve("catalog");
+            if (!artifactNames(descriptors).equals(seal.artifacts()) || Files.size(catalog) > MAXIMUM_CATALOG_BYTES
+                    || !Files.readString(catalog).startsWith(artifactCatalog(descriptors) + "\ncounts:")) {
+                throw new IocExtractorException("Document recovery artifact catalog mismatch");
+            }
+            var plans = sealedPlans(descriptors);
+            sealed = true;
+            return new RestoredPreparationResult(plans, summary);
+        } catch (IOException | SQLException failure) { throw new IocExtractorException("Cannot restore document workspace", failure); }
+    }
+
+    private List<ArtifactWritePlan> sealedPlans(List<ArtifactWritePlan> descriptors) throws SQLException {
+        var plans = new ArrayList<ArtifactWritePlan>();
+        for (var descriptor : descriptors) {
+            String artifact = descriptor.artifactName();
+            int count = Math.toIntExact(count("winner", artifact));
+            plans.add(new ArtifactWritePlan(artifact, descriptor.header(), rows(artifact, count), descriptor.idSequence()));
+        }
+        return List.copyOf(plans);
+    }
+
+    private static List<String> artifactNames(List<ArtifactWritePlan> plans) {
+        return plans.stream().map(ArtifactWritePlan::artifactName).toList();
+    }
+
+    private static String artifactCatalog(List<ArtifactWritePlan> descriptors) {
+        return descriptors.stream().map(plan -> plan.artifactName() + ":" + plan.header())
+                .collect(java.util.stream.Collectors.joining("\n"));
     }
 
     private RowSource<PreparedArtifactRow> rows(String artifact, int size) {
@@ -340,8 +395,9 @@ final class JdbcDocumentPreparationWorkspace implements DocumentPreparationWorks
     }
 
     private void validateSeal() throws IOException {
-        if (Files.size(directory.resolve("seal")) != SHA256_HEX_CHARACTERS
-                || !Files.readString(directory.resolve("seal")).equals(checksum())) {
+        Path seal = directory.resolve("seal");
+        if (!Files.isRegularFile(seal, LinkOption.NOFOLLOW_LINKS) || Files.size(seal) != SHA256_HEX_CHARACTERS
+                || !Files.readString(seal).equals(checksum())) {
             throw new IocExtractorException("Document workspace seal checksum mismatch");
         }
     }

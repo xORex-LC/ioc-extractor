@@ -2,6 +2,7 @@ package com.iocextractor.application.pipeline.stage;
 
 import com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspace;
 import com.iocextractor.application.artifact.ArtifactWritePlan;
+import com.iocextractor.application.artifact.DocumentWriteIdentity;
 import com.iocextractor.application.pipeline.payload.ArtifactWriteSummary;
 import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
 import com.iocextractor.application.pipeline.PipelineMetaAttributes;
@@ -93,12 +94,20 @@ public final class WriteArtifactsStage implements Stage<PreparedArtifacts, Artif
         if (owner instanceof DocumentPreparationWorkspace workspace) {
             workspace.beginPromotion();
         }
+        var identity = (DocumentWriteIdentity) input.meta().attributes().get(
+                PipelineMetaAttributes.DOCUMENT_WRITE_IDENTITY);
+        var missing = (Set<?>) input.meta().attributes().get(PipelineMetaAttributes.MISSING_DOCUMENT_ARTIFACTS);
         var written = new LinkedHashMap<String, Integer>();
         var changedArtifacts = new LinkedHashSet<String>();
         var diagnostics = new ArrayList<Diagnostic>();
         for (var plan : payload.plans()) {
-            WriteOutcome outcome = writeCanonical(plan, lifecycle, registration);
-            diagnostics.addAll(project(input.meta().runId(), plan.artifactName()));
+            if (identity != null && !Objects.requireNonNull(missing).contains(plan.artifactName())) {
+                continue;
+            }
+            WriteOutcome outcome = writeCanonical(plan, lifecycle, registration, identity);
+            if (identity == null) {
+                diagnostics.addAll(project(input.meta().runId(), plan.artifactName()));
+            }
             written.put(plan.artifactName(), outcome.inserted());
             if (outcome.publicChanged()) {
                 changedArtifacts.add(plan.artifactName());
@@ -116,11 +125,12 @@ public final class WriteArtifactsStage implements Stage<PreparedArtifacts, Artif
 
     private WriteOutcome writeCanonical(ArtifactWritePlan plan,
                                         LifecycleWriteContext lifecycle,
-                                        RegisteredObservation registration) {
+                                        RegisteredObservation registration,
+                                        DocumentWriteIdentity identity) {
         try {
             return lifecycle == null
-                    ? write(plan, registration)
-                    : confirm(plan, lifecycle, registration);
+                    ? write(plan, registration, identity)
+                    : confirm(plan, lifecycle, registration, identity);
         } catch (RuntimeException failure) {
             throw writeFailure("canonical", plan.artifactName(), failure);
         }
@@ -135,14 +145,14 @@ public final class WriteArtifactsStage implements Stage<PreparedArtifacts, Artif
     }
 
     private WriteOutcome write(ArtifactWritePlan plan,
-                               RegisteredObservation registration) {
-        var result = repository.write(plan.materializeCommand(registration));
+                               RegisteredObservation registration, DocumentWriteIdentity identity) {
+        var result = repository.write(plan.materializeCommand(registration, identity));
         return new WriteOutcome(result.inserted(), result.publicRowsChanged() > 0);
     }
 
     private WriteOutcome confirm(ArtifactWritePlan plan,
                                  LifecycleWriteContext context,
-                                 RegisteredObservation registration) {
+                                 RegisteredObservation registration, DocumentWriteIdentity identity) {
         if (lifecycleWriter == null || identityResolver == null) {
             throw new IllegalStateException("Lifecycle-aware canonical writer is not configured");
         }
@@ -161,7 +171,7 @@ public final class WriteArtifactsStage implements Stage<PreparedArtifacts, Artif
                 plan.artifactName(),
                 plan.header(),
                 records,
-                registration));
+                registration, identity));
         return new WriteOutcome(result.publicRowsInserted(), result.publicRowsChanged() > 0);
     }
 

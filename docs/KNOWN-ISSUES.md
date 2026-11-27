@@ -40,21 +40,13 @@ formats and tooling options do not replace this operational work.
 <a id="ing-11"></a>
 ### ING-11 — Resume after a partial ingest run
 
-**Partial · owner: ingestion/run-ledger.** Retries retain the document admission,
-observation/rank and backoff, but preparation can create another ingest run.
-A projection or archive failure can leave a `DB_COMMITTED` run while the source
-and admission remain claimed. The ordered dispatcher holds these occurrences
-with `PROMOTION_OUTCOME_UNKNOWN`. Run recovery can restore known projections.
-The admission still needs proof of which canonical writes succeeded and how
-to finish source disposition. Complete fixed-lifecycle receipts can help
-establish some outcomes.
-
-Close with a designed checkpoint/resume contract that resumes only outstanding
-projection/archive/finalization after a proven commit, coordinates all three
-ledgers, and tests failures/restarts with lifecycle enabled/disabled and receipts
-present/expired. Do not equate receipt replay with projection-only resume.
-See [ingestion](dev/ingestion.md#receipts-and-retry) and
-[IngestionService](../core/ioc-application/src/main/java/com/iocextractor/application/ingest/IngestionService.java).
+**Fixed for observation-linked runs · owner: ingestion/run-ledger.** The daemon
+retains one accepted plan per observation and resumes missing canonical writes,
+projection, archive and terminal acknowledgement using durable evidence.
+Older partial runs without an accepted-plan identity still require drain or
+manual reconciliation during cutover. See
+[ingestion](dev/ingestion.md#receipts-and-retry) and
+[operator procedure](guides/daemon-operations.md#understand-outcomes).
 
 <a id="2-обогащение-вывода-out"></a>
 <a id="out-3"></a>
@@ -549,7 +541,7 @@ features or resource budgets are complete. Dated qualification remains dated.
 | <a id="ing-2"></a>ING-2 | `out-of-scope` | Tail/offset/rotation mode excluded for discrete documents. A future streaming source needs a new source-mode contract, not a dormant promise. [Processing](dev/processing.md) |
 | <a id="ing-3"></a>ING-3 | `closed` | Daemon-only loopback actuator/health transport; REST use-case adapter remains ING-8. [Daemon operations](guides/daemon-operations.md) |
 | <a id="ing-4"></a>ING-4 | `closed` | Service ledger plus canonical JDBC dataframe truth, per-artifact identity and mutable CSV projection; partition staging removed. [Storage](dev/storage.md) |
-| <a id="ing-4a"></a>ING-4a | `closed` | Durable STARTED→DB_COMMITTED→PROJECTION_COMPLETED→COMPLETED checkpoints and run recovery; cross-ledger partial-run resume remains ING-11. [Ingestion](dev/ingestion.md) |
+| <a id="ing-4a"></a>ING-4a | `closed` | Durable STARTED→DB_COMMITTED→PROJECTION_COMPLETED→COMPLETED checkpoints and run recovery; Observation-linked recovery follows ING-11. [Ingestion](dev/ingestion.md) |
 | <a id="ing-5"></a>ING-5 | `closed` | Separate aggregation trigger removed with partition staging; direct canonical ingest. [Ingestion](dev/ingestion.md) |
 | <a id="ing-6"></a>ING-6 | `closed` | Partition-wrapper boundary removed; source identity belongs to application/adapters. [Architecture](ARCHITECTURE.md) |
 | <a id="ing-9"></a>ING-9 | `closed` | Retention archive preserves relative target paths using baseDir instead of flattening leaves. [Retention tests](../core/ioc-application/src/test/java/com/iocextractor/application/maintenance/RetentionServiceTest.java) |

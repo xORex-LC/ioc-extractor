@@ -28,8 +28,9 @@ public final class DocumentAdmissionOperations {
     public DocumentAdmission resume(ObservationId id, long version) {
         var store = journal.get();
         var current = store.find(id).orElseThrow(() -> new IllegalStateException("Missing document admission"));
-        if (current.version() != version || current.phase() == DocumentAdmissionPhase.TERMINAL
-                || !current.execution().retryAfter().equals(DocumentExecutionState.HELD)) {
+        boolean closedDisposition = current.registrationFinalized()
+                || current.terminalOutcome().orElse(null) == DocumentTerminalOutcome.REJECTED;
+        if (current.version() != version || closedDisposition || !current.execution().retryAfter().equals(DocumentExecutionState.HELD)) {
             throw new IllegalStateException("Document admission is not held at the requested version");
         }
         var resumed = current.execution(DocumentExecutionState.NEW, clock.instant());

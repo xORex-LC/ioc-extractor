@@ -111,15 +111,11 @@ class SourceFailureLoggingIT {
 
         try (var connection = DriverManager.getConnection(serviceDb(directory));
              var statement = connection.createStatement();
-             var runs = statement.executeQuery("SELECT reason FROM ingest_run WHERE status = 'FAILED'")) {
-            int failedRuns = 0;
-            while (runs.next()) {
-                String reason = runs.getString("reason");
-                assertThat(reason).contains(READ_FAILED, CONTROLLED_REASON);
-                assertSafeText(reason);
-                failedRuns++;
-            }
-            assertThat(failedRuns).isEqualTo(2);
+             var runs = statement.executeQuery("SELECT observation_id, reason FROM ingest_run WHERE status = 'FAILED'")) {
+            assertThat(runs.next()).isTrue();
+            assertThat(runs.getString("observation_id")).isEqualTo(rejectedObservation);
+            assertThat(runs.getString("reason")).isEqualTo("DOCUMENT_PREPARATION_FAILED");
+            assertThat(runs.next()).isFalse();
         }
 
         launch(0, "ingest", "status", "--observation", rejectedObservation);

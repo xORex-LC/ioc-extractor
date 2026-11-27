@@ -42,21 +42,13 @@ ID и перенесите результат со свидетельствам�
 <a id="ing-11"></a>
 ### ING-11 — Возобновление частично завершённого ingest run
 
-**Partial · владелец: ingestion/run-ledger.** Повторы сохраняют document admission,
-наблюдение/ранг и backoff, но подготовка может создать ещё один ingest run.
-Сбой проекции или архивации может оставить запуск в `DB_COMMITTED`, пока
-источник и допуск ещё заявлены. Упорядоченный диспетчер удерживает их с кодом
-`PROMOTION_OUTCOME_UNKNOWN`. Восстановление по журналу запусков может обновить
-известные проекции. Для допуска нужно установить, какие канонические записи
-состоялись и как завершить работу с источником. Полные receipts fixed lifecycle
-помогают подтвердить часть исходов.
-
-Закрытие: спроектированный checkpoint/resume-контракт, который после доказанного
-commit выполняет только недостающие projection/archive/finalization, согласует
-три журнала и проверяет отказы/restart с включённым/выключенным lifecycle
-и имеющимися/истёкшими receipts. Воспроизведение receipt не равно возобновлению
-только проекции. См. [ingestion](../dev/ru/ingestion.md#receipts-и-повторы) и
-[IngestionService](../../core/ioc-application/src/main/java/com/iocextractor/application/ingest/IngestionService.java).
+**Исправлено для связанных запусков · владелец: ingestion/run-ledger.** Один
+принятый план на наблюдение позволяет демону продолжить недостающую запись,
+проекцию, архивирование и завершение допуска по сохранённым свидетельствам.
+Незавершённые запуски старого формата без идентичности плана надо завершить или
+разобрать перед переходом. См.
+[ingestion](../dev/ru/ingestion.md#receipts-и-повторы) и
+[руководство оператора](../guides/ru/daemon-operations.md#интерпретация-результата).
 
 <a id="2-обогащение-вывода-out"></a>
 <a id="out-3"></a>
@@ -561,7 +553,7 @@ pilots и рассмотренной политики. Differential analysis р�
 | <a id="ing-2"></a>ING-2 | `out-of-scope` | Tail/offset/rotation исключён для дискретных документов. Будущему streaming source нужен новый контракт режима, не скрытое обещание. [обработка](../dev/ru/processing.md) |
 | <a id="ing-3"></a>ING-3 | `closed` | Actuator/health только в daemon на loopback; REST use-case adapter остаётся ING-8. [эксплуатация демона](../guides/ru/daemon-operations.md) |
 | <a id="ing-4"></a>ING-4 | `closed` | Service ledger и canonical JDBC dataframe truth, per-artifact identity и mutable CSV projection; partition staging удалён. [хранение](../dev/ru/storage.md) |
-| <a id="ing-4a"></a>ING-4a | `closed` | Долговечные STARTED→DB_COMMITTED→PROJECTION_COMPLETED→COMPLETED и run recovery; межжурнальный partial-run resume остаётся ING-11. [ingestion](../dev/ru/ingestion.md) |
+| <a id="ing-4a"></a>ING-4a | `closed` | Долговечные STARTED→DB_COMMITTED→PROJECTION_COMPLETED→COMPLETED и run recovery; восстановление связанных записей описано в ING-11. [ingestion](../dev/ru/ingestion.md) |
 | <a id="ing-5"></a>ING-5 | `closed` | Отдельный aggregation trigger удалён с partition staging; ingestion идёт прямо в canonical storage. [ingestion](../dev/ru/ingestion.md) |
 | <a id="ing-6"></a>ING-6 | `closed` | Partition-wrapper boundary удалён; source identity принадлежит application/adapters. [архитектура](ARCHITECTURE.md) |
 | <a id="ing-9"></a>ING-9 | `closed` | Retention archive сохраняет относительные пути через baseDir вместо схлопывания имён. [тесты retention](../../core/ioc-application/src/test/java/com/iocextractor/application/maintenance/RetentionServiceTest.java) |

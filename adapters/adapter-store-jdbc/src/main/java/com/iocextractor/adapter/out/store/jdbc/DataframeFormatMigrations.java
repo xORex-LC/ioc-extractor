@@ -33,6 +33,8 @@ public final class DataframeFormatMigrations {
             "com/iocextractor/adapter/out/store/jdbc/dataframe/v11__ordered_field_provenance.sql";
     private static final String V12 =
             "com/iocextractor/adapter/out/store/jdbc/dataframe/v12__accepted_import_warnings.sql";
+    private static final String V13 =
+            "com/iocextractor/adapter/out/store/jdbc/dataframe/v13__document_commit_proof.sql";
 
     private DataframeFormatMigrations() {
     }
@@ -50,7 +52,8 @@ public final class DataframeFormatMigrations {
                 new SqliteSchemaMigration(9, "managed dataframe import commit", resource(V9)),
                 new SqliteSchemaMigration(10, "registered observation order", resource(V10)),
                 new SqliteSchemaMigration(11, "ordered field provenance", resource(V11)),
-                new SqliteSchemaMigration(12, "accepted import warnings", resource(V12)));
+                new SqliteSchemaMigration(12, "accepted import warnings", resource(V12)),
+                new SqliteSchemaMigration(13, "document commit proof", resource(V13)));
     }
 
     private static String resource(String name) {

@@ -150,7 +150,7 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
     public int recoverBeforeIntake() {
         int recovered = 0;
         while (recovered < STARTUP_REJECTION_LIMIT) {
-            var pending = admissions.pending(1);
+            var pending = admissions.pending(1, preparation::hasPromotionPlan);
             if (pending.isEmpty()) {
                 break;
             }
@@ -181,7 +181,7 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
     private void reconcile() {
         synchronized (monitor) {
             if (!running) { return; }
-            var pending = admissions.pending(limits.maxPendingDocuments() + 1);
+            var pending = admissions.pending(limits.maxPendingDocuments() + 1, preparation::hasPromotionPlan);
             for (var admission : pending.subList(0, Math.min(pending.size(), preparationWindow))) {
                 if (jobs.size() >= preparationWindow) { break; }
                 if (jobs.containsKey(admission.observationId())
@@ -205,13 +205,8 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
         PreparedIngestion prepared = null;
         try {
             job.admission = admissions.beginExecution(job.admission.observationId());
-            if (job.admission.rejection().isEmpty() && !admissions.promotionUncertain(job.admission)) {
-                job.admission = admissions.ensureClaimed(job.admission.observationId());
-                if (!oversize(job.admission)) {
-                    var document = admissions.finish(job.admission.observationId());
-                    job.command = new IngestSourceCommand(document.source(), document.registration());
-                    prepared = preparation.prepare(job.command);
-                }
+            if (job.admission.rejection().isEmpty()) {
+                prepared = prepareAdmission(job);
             }
         } catch (RuntimeException failure) {
             job.claimFailure = ownershipReason(failure, Failure.CLAIM_UNCONFIRMED);
@@ -227,6 +222,25 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
         }
         if (abandoned) { if (prepared != null) { prepared.close(); } return; }
         nudge();
+    }
+
+    private PreparedIngestion prepareAdmission(Job job) {
+        var id = job.admission.observationId();
+        OrderedDocumentAdmissionHandler.AdmittedDocument document;
+        if (preparation.hasPromotionPlan(id)) {
+            document = admissions.linkedDocument(job.admission);
+        } else {
+            if (admissions.promotionUncertain(job.admission)) {
+                return null;
+            }
+            job.admission = admissions.ensureClaimed(id);
+            if (oversize(job.admission)) {
+                return null;
+            }
+            document = admissions.finish(id);
+        }
+        job.command = new IngestSourceCommand(document.source(), document.registration());
+        return preparation.prepare(job.command);
     }
 
     private void promote(Job job) {
@@ -295,11 +309,19 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
 
     private void reconcileUnprepared(Job job) {
         var current = admissions.required(job.admission.observationId());
-        if (current.phase() == DocumentAdmissionPhase.TERMINAL) {
+        if (current.registrationFinalized()) {
             return;
         }
         if (current.rejection().isPresent()) {
             finishRejection(current);
+            return;
+        }
+        if (preparation.hasPromotionPlan(current.observationId())) {
+            defer(current, Failure.PROMOTION_RECOVERY_FAILED.name(),
+                    current.execution().attempts() >= maxAttempts, IngestDiagnosticCodes.RECOVERY_FAILED);
+            return;
+        }
+        if (current.phase() == DocumentAdmissionPhase.TERMINAL) {
             return;
         }
         if (admissions.promotionUncertain(current)) {
@@ -338,6 +360,7 @@ public final class DurableDocumentDispatcher implements AutoCloseable {
 
     private boolean finishRejection(DocumentAdmission current) {
         try {
+            preparation.rejectedBeforePromotion(current.observationId());
             admissions.finishRejection(current);
         } catch (RuntimeException failure) {
             var durable = admissions.required(current.observationId());

@@ -17,12 +17,11 @@ periodic full listing -> include/exclude -> quiet-period stability
 
 bounded preparation workers:
   durable token -> private sealed source -> SHA-256 -> journal link
-    -> read-only receipt lookup or extraction/routing -> sealed workspace
+    -> pin eligible receipt or prepare extraction/routing -> sealed workspace
 
 one promotion worker, oldest unresolved document first:
-  prepared reference -> content-key guard -> receipt revalidation
-    -> failure-policy checkpoint -> canonical commit -> projection
-    -> source archive -> terminal CAS -> post-commit change hint
+  prepared reference -> content-key guard -> accept plan -> prove/write artifacts
+    -> converge projection -> verify archive -> terminal handshake
 ```
 
 The detector remains single-threaded (`ioc.ingestion.concurrency=1`). It performs
@@ -117,13 +116,31 @@ strict equality check; incompatible outcomes or authority changes fail closed.
 
 ## Receipts and retry
 
-With active fixed lifecycle, a read-only complete receipt lookup can avoid
-preparation for `(source_key, processing-policy fingerprint)`. It does not renew
-canonical rows. Promotion revalidates the receipt using effective time and replays
-its typed rows through the canonical writer. If it expired or was purged, the
-same ordered job falls back to extraction. Default receipt retention is 30 days.
-A parsing/mapping semantics change outside configuration must advance the explicit
-code-policy epoch in the fingerprint.
+A linked document has one run per `ObservationId`. The service DB pins its
+namespace, rank, source key, processing policy and lifecycle mode. Ordered
+promotion persists the artifacts accepted by the failure-policy checkpoint,
+including an empty plan. It pins either the sealed SQLite preparation workspace
+or the exact complete fixed-lifecycle receipt eligible at selection. An
+expired or missing receipt at selection leads to extraction. Once pinned,
+the receipt remains available to this observation through canonical recovery
+even after its 30-day default reuse horizon. The code-policy epoch in the
+fingerprint must advance when parsing or mapping semantics change outside config.
+
+For each artifact, SQLite commits canonical mutations and a marker together.
+The marker records the observation, exact plan, result and projection generation,
+including empty or unchanged artifacts. Both lifecycle modes use these proofs.
+On retry or startup, the dispatcher reopens the pinned plan only for artifacts
+without proof. It skips completed writes, ID reservation and confirmations.
+When all writes are proven, it advances the service run and uses the shared
+projection owner until each artifact's acknowledged generation covers the commit.
+
+The daemon moves the verified private source to its deterministic `done` path.
+After an interruption it checks the same file's identity at that path before
+recording the source and run as complete. It then records admission success,
+marks the dataframe registration terminal, releases the plan, and makes
+canonical proof eligible for retention. The final admission acknowledgement
+closes that handshake. Retention pins the archive until that acknowledgement.
+An unfinished handshake resumes without reopening the plan for writes.
 
 Execution attempts and retry deadlines are durable in both admission journals.
 Retries keep the original observation and rank. An unstable candidate, or a
@@ -151,8 +168,9 @@ ownership, missing evidence, or a source record that leaves canonical effects
 uncertain keeps the admission at its original rank. A held head prevents later
 promotions and sets `dataProcessingCapacity` to `DOWN`. The [operator
 procedure](../guides/daemon-operations.md#understand-outcomes) explains exact-version
-resume. Reconciliation of canonical effects remains tracked as
-[ING-11](../KNOWN-ISSUES.md#ing-11).
+resume. A pinned plan with missing or contradictory evidence retries within the execution
+budget and can be held with `PROMOTION_RECOVERY_FAILED`. An older source claim
+with no linked run proof remains held with `PROMOTION_OUTCOME_UNKNOWN`.
 
 Document admission progress timestamps never precede the record's durable
 `updatedAt`. Retry deadlines use absolute UTC. Canonical publication still uses
@@ -172,7 +190,7 @@ field policy requires drain/restore and never receives an invented new rank.
 
 The dispatcher closes admission, joins the coordinator/preparation/promotion
 workers within a bounded grace period, then closes unpromoted handles. Cancelled
-preparation closes its run/workspace and preserves the claimed delivery. A worker
+preparation releases its workspace lease and preserves the linked run and claim. A worker
 that fails to terminate causes an explicit shutdown failure; its live handle is
 not discarded underneath it. Periodic journal discovery resumes pending work on
 restart. This is at-least-once orchestration with idempotent durable steps.

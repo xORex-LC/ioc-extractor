@@ -12,6 +12,7 @@ public record DocumentExecutionState(int attempts, Instant retryAfter, String fa
         CLAIM_UNCONFIRMED,
         CANDIDATE_REPLACED,
         PROMOTION_OUTCOME_UNKNOWN,
+        PROMOTION_RECOVERY_FAILED,
         REJECTION_OWNERSHIP_UNCONFIRMED,
         REJECTION_FILES_MISSING,
         REJECTION_TARGET_CONFLICT,

@@ -5,6 +5,7 @@ import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
 import com.iocextractor.application.ingest.admission.DocumentAdmission;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionOperations;
+import com.iocextractor.application.ingest.admission.DocumentExecutionState;
 import com.iocextractor.application.ingest.admission.DocumentRejection;
 import com.iocextractor.application.ingest.admission.DocumentTerminalOutcome;
 import com.iocextractor.application.observation.ObservationOrder;
@@ -20,6 +21,8 @@ import com.iocextractor.platform.diagnostics.sink.CollectingDiagnosticSink;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,6 +35,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -556,6 +560,125 @@ class FileSourceMessageHandlerIT {
         assertThat(admitted.source().processingPath()).hasContent("ioc");
         assertThat(fixture.ledger.find(id)).get().satisfies(record ->
                 assertThat(record.status()).isEqualTo(IngestionStatus.CLAIMED));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void pinnedPromotionResumesWithOriginalRegistrationWhetherSourceIsAlreadyArchived(boolean alreadyArchived)
+            throws Exception {
+        Fixture fixture = new Fixture(4, 100);
+        var id = new ObservationId("promotion-recovery");
+        var admitted = fixture.handler.admit(fixture.file("recover.html", "ioc"), id, fixture.clock.instant());
+        var linked = fixture.service.find(id).orElseThrow();
+        var source = admitted.source();
+        var evidence = linked.claimedEvidence().orElseThrow();
+        Path target = fixture.sources.archivePath(source);
+        fixture.ledger.markClaimed(source);
+        if (alreadyArchived) {
+            assertThat(fixture.sources.archive(source, evidence)).isEqualTo(target);
+            fixture.ledger.markSourceArchived(id, target);
+            assertThat(source.processingPath()).doesNotExist();
+            assertThat(fixture.handler.pinsRejectionLeaf(target)).isTrue();
+        }
+        var pinned = new AtomicBoolean(true);
+        var promotions = new AtomicInteger();
+
+        try (var dispatcher = fixture.dispatcher(new PrepareIngestionUseCase() {
+            @Override public boolean hasPromotionPlan(ObservationId observationId) {
+                return id.equals(observationId) && pinned.get();
+            }
+
+            @Override public PreparedIngestion prepare(IngestSourceCommand command) {
+                assertThat(command).isEqualTo(new IngestSourceCommand(source, admitted.registration()));
+                assertThat(fixture.service.find(id)).get().satisfies(value -> {
+                    assertThat(value.terminalOutcome()).isEmpty();
+                    assertThat(value.registrationFinalized()).isFalse();
+                });
+                return new PreparedIngestion() {
+                    @Override public IngestSourceResult promote() {
+                        assertThat(fixture.sources.archive(source, evidence)).isEqualTo(target);
+                        fixture.ledger.markSourceArchived(id, target);
+                        promotions.incrementAndGet();
+                        fixture.service.complete(id, DocumentTerminalOutcome.SUCCEEDED, () -> pinned.set(false));
+                        return new IngestSourceResult(command.key(), IngestionStatus.SOURCE_ARCHIVED, false, null);
+                    }
+
+                    @Override public void close() { }
+                };
+            }
+        })) {
+            dispatcher.start();
+            awaitTerminal(fixture);
+        }
+
+        assertThat(promotions).hasValue(1);
+        assertThat(fixture.registrations.next).hasValue(1);
+        assertThat(fixture.terminal()).singleElement().satisfies(value -> {
+            assertThat(value.registration()).contains(admitted.registration());
+            assertThat(value.terminalOutcome()).contains(DocumentTerminalOutcome.SUCCEEDED);
+            assertThat(value.registrationFinalized()).isTrue();
+        });
+        assertThat(fixture.ledger.find(id)).get().satisfies(record -> {
+            assertThat(record.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
+            assertThat(record.archivedPathOptional()).contains(target);
+        });
+        assertThat(source.processingPath()).doesNotExist();
+        assertThat(target).hasContent("ioc");
+        assertThat(fixture.handler.pinsRejectionLeaf(target)).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void pinnedPromotionExhaustionHoldsOriginalClaimAndRegistration(boolean failureDuringPromotion) throws Exception {
+        Fixture fixture = new Fixture(4, 100);
+        var id = new ObservationId("promotion-exhausted");
+        var admitted = fixture.handler.admit(fixture.file("recover.html", "ioc"), id, fixture.clock.instant());
+        fixture.ledger.markClaimed(admitted.source());
+        var attempts = new AtomicInteger();
+
+        try (var dispatcher = fixture.dispatcher(new PrepareIngestionUseCase() {
+            @Override public boolean hasPromotionPlan(ObservationId observationId) {
+                return id.equals(observationId);
+            }
+
+            @Override public PreparedIngestion prepare(IngestSourceCommand command) {
+                assertThat(command.registrationOptional()).contains(admitted.registration());
+                attempts.incrementAndGet();
+                if (!failureDuringPromotion) {
+                    throw new IllegalStateException("Cannot reopen the pinned plan");
+                }
+                return new PreparedIngestion() {
+                    @Override public IngestSourceResult promote() {
+                        throw new IllegalStateException("Cannot finish the pinned plan");
+                    }
+
+                    @Override public void close() { }
+                };
+            }
+        })) {
+            dispatcher.start();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (dispatcher.snapshot().blocked() == 0 && System.nanoTime() < deadline) {
+                new CountDownLatch(1).await(10, TimeUnit.MILLISECONDS);
+            }
+            assertThat(dispatcher.snapshot().blocked()).isOne();
+        }
+
+        assertThat(attempts).hasValue(2);
+        assertThat(fixture.service.find(id)).get().satisfies(value -> {
+            assertThat(value.registration()).contains(admitted.registration());
+            assertThat(value.execution()).isEqualTo(new DocumentExecutionState(2, DocumentExecutionState.HELD,
+                    DocumentExecutionState.Failure.PROMOTION_RECOVERY_FAILED.name()));
+            assertThat(value.rejection()).isEmpty();
+            assertThat(value.terminalOutcome()).isEmpty();
+            assertThat(value.registrationFinalized()).isFalse();
+        });
+        assertThat(fixture.ledger.find(id)).get().satisfies(record -> {
+            assertThat(record.status()).isEqualTo(IngestionStatus.CLAIMED);
+            assertThat(record.archivedPathOptional()).isEmpty();
+        });
+        assertThat(admitted.source().processingPath()).hasContent("ioc");
+        assertThat(fixture.sources.archivePath(admitted.source())).doesNotExist();
     }
 
     @org.junit.jupiter.params.ParameterizedTest

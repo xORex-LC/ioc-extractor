@@ -14,6 +14,10 @@ public record CanonicalWriteResult(int inserted,
                                    long revision) {
 
     public CanonicalWriteResult {
+        validate(inserted, publicRowsUpdated, metadataOnlyRows, revision);
+    }
+
+    static void validate(int inserted, int publicRowsUpdated, int metadataOnlyRows, long revision) {
         if (inserted < 0 || publicRowsUpdated < 0 || metadataOnlyRows < 0) {
             throw new IllegalArgumentException("Canonical write counts must not be negative");
         }

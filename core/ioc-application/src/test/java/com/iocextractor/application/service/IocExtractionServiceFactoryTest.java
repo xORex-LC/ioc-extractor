@@ -4,12 +4,26 @@ import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.artifact.RoutedArtifactCandidate;
+import com.iocextractor.application.artifact.ArtifactWritePlan;
+import com.iocextractor.application.artifact.DocumentPreparationSeal;
+import com.iocextractor.application.artifact.DocumentPreparationSummary;
+import com.iocextractor.application.artifact.DocumentWriteIdentity;
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
+import com.iocextractor.application.observation.ObservationOrder;
+import com.iocextractor.application.observation.ObservationOrigin;
+import com.iocextractor.application.observation.RegisteredObservation;
+import com.iocextractor.application.TestDocumentSourceWorkspace;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.application.pipeline.CompletionStatus;
 import com.iocextractor.application.port.in.ExtractionCommand;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
+import com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspace;
+import com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspaceFactory;
+import com.iocextractor.application.port.out.artifact.DocumentSourceWorkspace;
+import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
 import com.iocextractor.platform.diagnostics.result.FailurePolicy;
 import com.iocextractor.platform.diagnostics.result.Result;
+import com.iocextractor.platform.diagnostics.result.DiagnosticSummary;
 import com.iocextractor.platform.diagnostics.sink.NoopDiagnosticSink;
 import com.iocextractor.domain.attribute.AttributionDecision;
 import com.iocextractor.domain.attribute.AttributionOutcome;
@@ -26,6 +40,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -53,6 +68,9 @@ class IocExtractionServiceFactoryTest {
         assertThat(result.extracted()).isEqualTo(5);
         assertThat(result.retained()).isEqualTo(3);
         assertThat(result.writtenPerArtifact()).containsEntry("masks", 2);
+        var command = new ExtractionCommand("no-workspace", source, false);
+        assertThatThrownBy(() -> service.prepare(command)).hasMessage("Preparation requires a workspace");
+        assertThatThrownBy(() -> service.resume(command, RecoveryWorkspace.SEAL)).hasMessage("Recovery requires a workspace");
     }
 
     @Test
@@ -172,6 +190,142 @@ class IocExtractionServiceFactoryTest {
         assertThat(result.completionStatus()).isEqualTo(CompletionStatus.COMPLETED_WITH_WARNINGS);
         assertThat(result.extracted()).isOne();
         assertThat(routed).hasValue(1);
+    }
+
+    @Test
+    void preservesThePinnedWorkspaceIfTheCheckpointCannotBeUsed() {
+        var workspace = new RecoveryWorkspace();
+        workspace.pinned = true;
+        workspace.restoreFailure = new IllegalStateException("invalid sealed plan");
+        var service = extractionWithWorkspace(workspace);
+        var command = new ExtractionCommand("existing-run", workspace.source(), false);
+
+        assertThatThrownBy(() -> service.extract(command)).hasMessage("Pinned preparation requires managed promotion");
+        assertThatThrownBy(() -> service.prepare(command)).isSameAs(workspace.restoreFailure);
+        assertThatThrownBy(() -> service.resume(command, RecoveryWorkspace.SEAL)).isSameAs(workspace.restoreFailure);
+        assertThat(workspace.closed).isEqualTo(3);
+        assertThat(workspace.discarded).isZero();
+    }
+
+    @Test
+    void managedPromotionAcceptsOnlyASealedUnconsumedHandleAndThePlannedArtifacts() {
+        var workspace = new RecoveryWorkspace();
+        var service = extractionWithWorkspace(workspace);
+        var registration = new RegisteredObservation(new ObservationId("observation"), "namespace",
+                new ObservationOrder(17), ObservationOrigin.DOCUMENT);
+        var command = new ExtractionCommand("new-run", workspace.source(), false, null, registration);
+        var write = new DocumentWriteIdentity(registration, "content", "plan", false);
+        try (var prepared = service.prepare(command)) {
+            assertThatThrownBy(() -> prepared.promote(write, Set.of())).hasMessageContaining("requires a pinned plan");
+            assertThat(prepared.seal()).isEqualTo(RecoveryWorkspace.SEAL);
+            assertThat(prepared.seal()).isEqualTo(RecoveryWorkspace.SEAL);
+            assertThat(workspace.pins).isOne();
+            assertThatThrownBy(prepared::promote).hasMessageContaining("requires managed promotion");
+            assertThatThrownBy(() -> prepared.promote(write, Set.of("unplanned"))).hasMessageContaining("pending artifacts");
+            assertThat(prepared.promote(write, Set.of()).writtenPerArtifact()).isEmpty();
+            assertThatThrownBy(() -> prepared.promote(write, Set.of())).hasMessageContaining("already consumed");
+            assertThatThrownBy(prepared::seal).hasMessageContaining("already consumed");
+        }
+
+        workspace.pinned = false;
+        var closed = service.prepare(command);
+        closed.close();
+        closed.close();
+        assertThatThrownBy(closed::promote).hasMessageContaining("already consumed");
+        assertThatThrownBy(closed::seal).hasMessageContaining("already consumed");
+        assertThat(workspace.closed).isEqualTo(2);
+    }
+
+    @Test
+    void surfacesTheWorkspaceCloseFailureWhenExtractionSucceeded() {
+        var workspace = new RecoveryWorkspace();
+        workspace.closeFailure = new IllegalStateException("workspace close failed");
+        var extraction = extractionWithWorkspace(workspace);
+        assertThatThrownBy(() -> extraction.extract(new ExtractionCommand("completed", workspace.source(), true)))
+                .isSameAs(workspace.closeFailure);
+        assertThat(workspace.discarded).isOne();
+    }
+
+    private static IocExtractionService extractionWithWorkspace(RecoveryWorkspace workspace) {
+        var workspaces = new DocumentPreparationWorkspaceFactory() {
+            @Override
+            public DocumentPreparationWorkspace open(ExtractionCommand command, Map<String, ArtifactWritePolicy> policies) {
+                return workspace;
+            }
+
+            @Override
+            public DocumentPreparationWorkspace reopen(ExtractionCommand command, Map<String, ArtifactWritePolicy> policies) {
+                return workspace;
+            }
+        };
+        var factory = new IocExtractionServiceFactory(
+                TestDocumentSourceWorkspace.reader(source -> ""),
+                new com.iocextractor.domain.refang.ReplacementRefanger(List.of()),
+                TestDocumentSourceWorkspace.extractor(text -> new ExtractionOutcome(List.of(), List.of())),
+                TestDocumentSourceWorkspace.noMarkers(),
+                false, "daemon", new NoopPipelineObserver(), NoopDiagnosticSink.INSTANCE,
+                FailurePolicy.failFast(), 100, new NoWriteRepository(), null,
+                new CanonicalArtifactIdentityResolver(List.of()), NoopPipelineDecisionTracer.INSTANCE,
+                preparers -> occurrence -> Result.success(List.of()), Map.of(), workspaces);
+        return factory.create(List.of(), request -> {
+            throw new AssertionError("An empty plan cannot project an artifact");
+        });
+    }
+
+    private static final class RecoveryWorkspace implements DocumentPreparationWorkspace {
+        static final DocumentPreparationSeal SEAL = new DocumentPreparationSeal("a".repeat(64), List.of());
+        boolean pinned;
+        int pins;
+        int discarded;
+        int closed;
+        RuntimeException restoreFailure;
+        RuntimeException closeFailure;
+
+        @Override public Path source() { return Path.of("workspace/document.html"); }
+        @Override public DocumentSourceWorkspace sourceWorkspace() { return new TestDocumentSourceWorkspace(); }
+        @Override public void discard() { discarded++; }
+        @Override public void beginPromotion() { }
+        @Override public boolean promotionStarted() { return false; }
+        @Override public boolean recoveryPinned() { return pinned; }
+        @Override public boolean firstOriginal(String key) { return true; }
+
+        @Override
+        public void append(RoutedArtifactCandidate candidate, boolean eligible, boolean retainObservations) {
+            throw new AssertionError("The fixture contains no rows");
+        }
+
+        @Override
+        public List<ArtifactWritePlan> seal(List<ArtifactWritePlan> descriptors, DocumentPreparationSummary summary) {
+            return descriptors;
+        }
+
+        @Override
+        public DocumentPreparationSeal pinForRecovery(String runId, List<ArtifactWritePlan> plans,
+                                                      DocumentPreparationSummary summary) {
+            pins++;
+            pinned = true;
+            return SEAL;
+        }
+
+        @Override
+        public DocumentPreparationSeal recoverySeal(List<ArtifactWritePlan> descriptors) { return SEAL; }
+
+        @Override
+        public RestoredPreparationResult restore(String runId, DocumentPreparationSeal seal,
+                                                  List<ArtifactWritePlan> descriptors) {
+            if (restoreFailure != null) {
+                throw restoreFailure;
+            }
+            return new RestoredPreparationResult(descriptors, new DocumentPreparationSummary(0, 0, DiagnosticSummary.empty()));
+        }
+
+        @Override
+        public void close() {
+            closed++;
+            if (closeFailure != null) {
+                throw closeFailure;
+            }
+        }
     }
 
     private static final class NoWriteRepository implements CanonicalArtifactRepository {
