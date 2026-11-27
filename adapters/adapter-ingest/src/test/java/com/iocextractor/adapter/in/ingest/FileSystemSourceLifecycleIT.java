@@ -13,6 +13,7 @@ import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionReservation;
 import com.iocextractor.application.ingest.admission.DocumentRejection;
 import com.iocextractor.application.ingest.admission.DocumentAdmission;
+import com.iocextractor.application.ingest.admission.DocumentCandidateEvidence;
 import com.iocextractor.application.maintenance.RetentionEntry;
 import com.iocextractor.application.ingest.admission.DocumentTerminalOutcome;
 import com.iocextractor.application.observation.ObservationOrder;
@@ -22,17 +23,22 @@ import com.iocextractor.application.port.out.observation.ObservationRegistration
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.common.IocExtractorException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.LinkOption;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Clock;
 import java.time.Instant;
@@ -41,11 +47,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @IntegrationTest
+@Timeout(30)
 class FileSystemSourceLifecycleIT {
 
     @TempDir
@@ -100,6 +108,123 @@ class FileSystemSourceLifecycleIT {
                 .isEqualTo("abc123-source2.html");
         assertThat(failed.resolveSibling(failed.getFileName() + ".error"))
                 .hasContent("broken");
+    }
+
+    @Test
+    void archiveRecoversTheSameInodeAfterTheMoveWasInterrupted() throws Exception {
+        Path processing = tempDir.resolve("processing");
+        Path done = tempDir.resolve("archives/done");
+        Path failed = tempDir.resolve("failed");
+        var writer = new StrictAtomicFileOwnership((source, target) -> {
+            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+            if (done.equals(target.getParent())) {
+                throw new IOException("interrupted after archive rename");
+            }
+        });
+        var lifecycle = new FileSystemSourceLifecycle(processing, done, failed, writer);
+        SourceUnit unit = prepareArchive(lifecycle);
+        var reader = new FileDocumentCandidateEvidenceReader();
+        var expected = reader.read(unit.processingPath());
+        Path archive = done.resolve(
+                "YXJjaGl2ZS1wcm9vZg__" + unit.key().value() + "-YXJjaGl2ZS1wcm9vZg__pending__document.html.sealed");
+
+        assertThat(lifecycle.archivePath(unit)).isEqualTo(archive);
+        assertThatThrownBy(() -> lifecycle.archive(unit, expected)).hasMessageContaining("ownership transfer failed");
+
+        var restarted = new FileSystemSourceLifecycle(processing, done, failed);
+        assertThat(restarted.archive(unit, expected)).isEqualTo(archive);
+        assertThat(restarted.archive(unit, expected)).isEqualTo(archive);
+        assertThat(reader.read(archive)).isEqualTo(expected);
+        assertThat(restarted.archiveOwner(archive)).contains(unit.observationId());
+        assertThat(restarted.archiveOwner(unit.processingPath())).isEmpty();
+        assertThat(restarted.archiveOwner(done.resolve("legacy-document.html"))).isEmpty();
+        assertThat(restarted.archiveOwner(done.resolve(
+                "YXJjaGl2ZS1wcm9vZg__" + unit.key().value() + "-YW5vdGhlcg__pending__document.html.sealed"))).isEmpty();
+        assertThat(restarted.archiveOwner(done.resolve(
+                "A__" + unit.key().value() + "-A__pending__document.html.sealed"))).isEmpty();
+        assertThat(restarted.archiveOwner(done.resolve(
+                "Yh__" + unit.key().value() + "-Yh__pending__document.html.sealed"))).isEmpty();
+        assertThat(unit.processingPath()).doesNotExist();
+        assertThat(archive).hasContent("archive contents");
+    }
+
+    @Test
+    void recoverableArchiveRejectsPathsAndContentKeysOutsideTheSealedLayout() throws Exception {
+        var lifecycle = new FileSystemSourceLifecycle(
+                tempDir.resolve("processing"), tempDir.resolve("done"), tempDir.resolve("failed"));
+        SourceUnit unit = prepareArchive(lifecycle);
+        var foreignPath = new SourceUnit(unit.observationId(), unit.key(), unit.originalPath(),
+                tempDir.resolve("outside.html"), unit.detectedAt());
+        var foreignKey = new SourceUnit(unit.observationId(), new SourceKey("../outside"), unit.originalPath(),
+                unit.processingPath(), unit.detectedAt());
+
+        assertThatThrownBy(() -> lifecycle.archivePath(foreignPath)).hasMessageContaining("sealed claim layout");
+        assertThatThrownBy(() -> lifecycle.archivePath(foreignKey)).hasMessageContaining("sealed occurrence");
+        assertThat(unit.processingPath()).hasContent("archive contents");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"both", "missing", "foreign", "changed-source", "symlink", "no-file-key"})
+    void archiveRejectsAmbiguousOwnershipWithoutRemovingAnyEvidence(String scenario) throws Exception {
+        var lifecycle = new FileSystemSourceLifecycle(
+                tempDir.resolve("processing"), tempDir.resolve("done"), tempDir.resolve("failed"));
+        SourceUnit unit = prepareArchive(lifecycle);
+        var expected = new FileDocumentCandidateEvidenceReader().read(unit.processingPath());
+        Path source = unit.processingPath();
+        Path target = lifecycle.archivePath(unit);
+        Files.createDirectories(target.getParent());
+
+        String message = switch (scenario) {
+            case "both" -> {
+                Files.writeString(target, "occupied");
+                yield "both processing and done";
+            }
+            case "missing" -> {
+                Files.delete(source);
+                yield "neither a processing nor a done";
+            }
+            case "foreign" -> {
+                Files.move(source, tempDir.resolve("retained"));
+                Files.writeString(target, "foreign");
+                yield "identity differs";
+            }
+            case "changed-source" -> {
+                Files.writeString(source, "changed");
+                yield "identity differs";
+            }
+            case "symlink" -> {
+                Path retained = Files.move(source, tempDir.resolve("retained"));
+                Files.createSymbolicLink(target, retained);
+                yield "not a regular file";
+            }
+            default -> "identity differs";
+        };
+        DocumentCandidateEvidence evidence = scenario.equals("no-file-key")
+                ? new DocumentCandidateEvidence(Optional.empty(), expected.size(), expected.modifiedAtNanos())
+                : expected;
+        var leaves = Stream.of(source, target).filter(path -> Files.exists(path, LinkOption.NOFOLLOW_LINKS)).toList();
+
+        assertThatThrownBy(() -> lifecycle.archive(unit, evidence)).hasMessageContaining(message);
+
+        assertThat(Stream.of(source, target).filter(path -> Files.exists(path, LinkOption.NOFOLLOW_LINKS)))
+                .containsExactlyElementsOf(leaves);
+        if (scenario.equals("both")) {
+            assertThat(target).hasContent("occupied");
+        }
+        if (scenario.equals("foreign")) {
+            assertThat(target).hasContent("foreign");
+            assertThat(tempDir.resolve("retained")).hasContent("archive contents");
+        }
+        if (scenario.equals("symlink")) {
+            assertThat(Files.isSymbolicLink(target)).isTrue();
+        }
+    }
+
+    private SourceUnit prepareArchive(FileSystemSourceLifecycle lifecycle) throws IOException {
+        Path source = Files.writeString(tempDir.resolve("document.html"), "archive contents");
+        var claimed = lifecycle.claimBeforeHash(source, new ObservationId("archive-proof"), Instant.EPOCH);
+        var sealed = lifecycle.sealClaim(claimed, 64);
+        return lifecycle.adoptClaim(sealed, new FileSourceHasher().sha256(sealed.processingPath()));
     }
 
     @Test

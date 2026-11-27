@@ -5,6 +5,7 @@ import com.iocextractor.application.ingest.ClaimedSource;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.SourceUnit;
+import com.iocextractor.application.ingest.admission.DocumentCandidateEvidence;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.common.IocExtractorException;
 
@@ -21,6 +22,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * Filesystem implementation of source ownership:
@@ -28,12 +30,17 @@ import java.util.Optional;
  */
 public final class FileSystemSourceLifecycle implements SourceLifecycle {
     private static final int COPY_BUFFER_BYTES = 8 * 1024;
+    private static final String SHA256 = "[0-9a-f]{64}";
+    private static final Pattern CONTENT_KEY = Pattern.compile(SHA256);
+    private static final Pattern SEALED_ARCHIVE_NAME = Pattern.compile(
+            "([A-Za-z0-9_-]+)__" + SHA256 + "-([A-Za-z0-9_-]+)__pending__.+\\.sealed", Pattern.DOTALL);
 
     private final Path processingDir;
     private final Path doneDir;
     private final Path failedDir;
     private final StrictAtomicFileOwnership ownership;
     private final DocumentRejectionFiles rejections;
+    private final FileDocumentCandidateEvidenceReader evidenceReader = new FileDocumentCandidateEvidenceReader();
 
     public FileSystemSourceLifecycle(Path processingDir, Path doneDir, Path failedDir) {
         this(processingDir, doneDir, failedDir, new StrictAtomicFileOwnership());
@@ -149,6 +156,83 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
         Path target = doneDir.resolve(fileName(unit.observationId(), unit.key(), unit.processingPath()));
         move(unit.processingPath(), target);
         return target;
+    }
+
+    @Override
+    public Path archivePath(SourceUnit unit) {
+        Path expected = DocumentRejectionFiles.sealed(prehashClaimPath(unit.originalPath(), unit.observationId()));
+        if (!expected.equals(unit.processingPath().toAbsolutePath().normalize())) {
+            throw new IocExtractorException("Document archive source is outside the sealed claim layout");
+        }
+        if (!CONTENT_KEY.matcher(unit.key().value()).matches()) {
+            throw new IocExtractorException("Document archive name does not represent a sealed occurrence");
+        }
+        return doneDir.toAbsolutePath().normalize().resolve(fileName(unit.observationId(), unit.key(), expected));
+    }
+
+    @Override
+    public Path archive(SourceUnit unit, DocumentCandidateEvidence expected) {
+        Objects.requireNonNull(expected, "expected");
+        Path source = unit.processingPath().toAbsolutePath().normalize();
+        Path target = archivePath(unit);
+        Path destination = Objects.requireNonNull(target.getParent());
+        if (DocumentRejectionFiles.present(source)) {
+            if (DocumentRejectionFiles.present(target)) {
+                throw new IocExtractorException("Document archive has both processing and done files");
+            }
+            verifyArchiveEvidence(source, expected);
+            ensureArchiveDirectory(destination);
+            move(source, target);
+        }
+        if (!DocumentRejectionFiles.present(target)) {
+            throw new IocExtractorException("Document archive has neither a processing nor a done file");
+        }
+        verifyArchiveEvidence(target, expected);
+        try {
+            forceDirectory(destination);
+            forceDirectory(Objects.requireNonNull(source.getParent()));
+        } catch (IOException failure) {
+            throw new IocExtractorException("Failed to persist document archive move", failure);
+        }
+        return target;
+    }
+
+    private void ensureArchiveDirectory(Path directory) {
+        if (DocumentRejectionFiles.present(directory)) {
+            return;
+        }
+        Path parent = Objects.requireNonNull(directory.getParent());
+        ensureArchiveDirectory(parent);
+        try {
+            Files.createDirectory(directory);
+            forceDirectory(parent);
+        } catch (IOException failure) {
+            throw new IocExtractorException("Failed to persist document archive directory", failure);
+        }
+    }
+
+    private void verifyArchiveEvidence(Path path, DocumentCandidateEvidence expected) {
+        if (!expected.sameObjectAs(evidenceReader.read(path))) {
+            throw new IocExtractorException("Document archive file identity differs from its sealed claim");
+        }
+    }
+
+    /** Resolves the owner encoded in a sealed done-file name for retention. */
+    Optional<ObservationId> archiveOwner(Path path) {
+        Path absolute = path.toAbsolutePath().normalize();
+        if (!doneDir.toAbsolutePath().normalize().equals(absolute.getParent())) {
+            return Optional.empty();
+        }
+        var archiveName = SEALED_ARCHIVE_NAME.matcher(Objects.requireNonNull(absolute.getFileName()).toString());
+        if (!archiveName.matches() || !archiveName.group(1).equals(archiveName.group(2))) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(observationId(archiveName.group(1)))
+                    .filter(id -> observationToken(id).equals(archiveName.group(1)));
+        } catch (IllegalArgumentException foreignName) {
+            return Optional.empty();
+        }
     }
 
     @Override

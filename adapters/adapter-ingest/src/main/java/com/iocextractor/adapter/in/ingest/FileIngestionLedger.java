@@ -61,9 +61,11 @@ public final class FileIngestionLedger implements IngestionLedger {
         return transitions.execute(workKey(unit.observationId()), () -> {
             Optional<IngestionRecord> current = find(unit.observationId());
             if (current.isPresent()) {
-                return current.orElseThrow().status() == IngestionStatus.CLAIMED
-                        ? IngestionLedgerTransition.ALREADY_APPLIED
-                        : IngestionLedgerTransition.CONFLICT;
+                if (current.orElseThrow().status() != IngestionStatus.CLAIMED) {
+                    return IngestionLedgerTransition.CONFLICT;
+                }
+                forceLedgerDirectory();
+                return IngestionLedgerTransition.ALREADY_APPLIED;
             }
             write(new IngestionRecord(unit.observationId(), unit.key(), IngestionStatus.CLAIMED,
                     unit.originalPath(), unit.processingPath(), null,
@@ -81,6 +83,7 @@ public final class FileIngestionLedger implements IngestionLedger {
             }
             IngestionRecord record = current.orElseThrow();
             if (record.status() == IngestionStatus.SOURCE_ARCHIVED) {
+                forceLedgerDirectory();
                 return IngestionLedgerTransition.ALREADY_APPLIED;
             }
             if (record.status() != IngestionStatus.CLAIMED) {
@@ -88,7 +91,7 @@ public final class FileIngestionLedger implements IngestionLedger {
             }
             write(new IngestionRecord(observationId, record.key(), IngestionStatus.SOURCE_ARCHIVED,
                     record.originalPath(), record.processingPath(), archivedPath,
-                    record.detectedAt(), Instant.now(clock), record.reason()));
+                    record.detectedAt(), Instant.now(clock), record.reason()), true);
             return IngestionLedgerTransition.APPLIED;
         });
     }
