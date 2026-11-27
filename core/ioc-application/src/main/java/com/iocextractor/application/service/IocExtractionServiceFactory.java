@@ -1,5 +1,7 @@
 package com.iocextractor.application.service;
 
+import com.iocextractor.application.artifact.DocumentPreparationSeal;
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspaceFactory;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.out.SourceReader;
@@ -97,6 +99,16 @@ public final class IocExtractionServiceFactory {
      */
     public IocExtractionService create(List<ArtifactPreparer> preparers, ArtifactProjection projection) {
         return create(preparers, projection, documentPlanFactory.create(preparers), routedWritePolicies);
+    }
+
+    /** Removes the matched private plan once its canonical writes have been proved. */
+    public void discardPlan(ObservationId observation, DocumentPreparationSeal seal) {
+        workspaces.discardPlan(observation, seal);
+    }
+
+    /** Removes a stale local pin only after a durable rejection of the unlinked run. */
+    public void discardUnlinkedPlan(ObservationId observation, String runId) {
+        workspaces.discardUnlinkedPlan(observation, runId);
     }
 
     /** Creates a document use case that resolves candidates after routing on final fields. */

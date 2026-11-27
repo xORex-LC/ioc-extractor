@@ -1,6 +1,8 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
+import com.iocextractor.application.artifact.DocumentPreparationSeal;
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
 import com.iocextractor.application.port.in.ExtractionCommand;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
@@ -14,6 +16,7 @@ import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
@@ -36,6 +39,7 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
     private static final int MAXIMUM_IDENTITY_BYTES = 128 * 1024;
     private static final int MAXIMUM_EXTENSION_CHARACTERS = 32;
     private static final String OWNER_MARKER = "ioc-document-workspace-v1\n";
+    private static final String DISCARDED_PREFIX = ".discarded-";
     private final Path root;
     private final DocumentPreparationLimits limits;
     private final ArtifactIdentityResolver identities;
@@ -69,6 +73,16 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
 
     @Override
     public DocumentPreparationWorkspace open(ExtractionCommand command, Map<String, ArtifactWritePolicy> policies) {
+        return openWorkspace(command, policies, false);
+    }
+
+    @Override
+    public DocumentPreparationWorkspace reopen(ExtractionCommand command, Map<String, ArtifactWritePolicy> policies) {
+        return openWorkspace(command, policies, true);
+    }
+
+    private DocumentPreparationWorkspace openWorkspace(ExtractionCommand command,
+            Map<String, ArtifactWritePolicy> policies, boolean recovery) {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(policies, "policies");
         String observation = command.lifecycleWriteContext() != null
@@ -89,15 +103,15 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
                 initializeRoot();
                 try (var ignored = new Lease(root.resolve(".admission"), true)) {
                     pruneExpired();
-                    if (active.contains(directory)) { throw new IocExtractorException("Document workspace is already leased"); }
-                    reserveDisk(directory);
+                    admitWorkspace(directory, recovery);
                     privateDirectory(directory);
                     lease = new Lease(directory.resolve("lease"), false);
                     active.add(directory);
                     activeWorkspaceCount = active.size();
                     admitted = true;
-                    Path snapshot = pinSource(command, directory, observation);
-                    checkDisk(directory);
+                    Path snapshot = recovery ? reopenSource(command, directory, observation)
+                            : pinSource(command, directory, observation);
+                    if (!recovery) { checkDisk(directory); }
                     Lease owner = lease;
                     return new JdbcDocumentPreparationWorkspace(directory, snapshot, limits, identities, policies,
                             () -> checkDisk(directory), () -> release(directory, owner));
@@ -112,27 +126,82 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
         }
     }
 
+    private void admitWorkspace(Path directory, boolean recovery) throws IOException {
+        if (active.contains(directory)) {
+            throw new IocExtractorException("Document workspace is already leased");
+        }
+        if (!recovery) {
+            reserveDisk(directory);
+            return;
+        }
+        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)
+                || !DocumentWorkspaceRecovery.pinned(directory)
+                || !Files.isRegularFile(directory.resolve("seal"), LinkOption.NOFOLLOW_LINKS)) {
+            throw new IocExtractorException("Pinned document recovery workspace is missing");
+        }
+    }
+
+    @Override
+    public void discardPlan(ObservationId observation, DocumentPreparationSeal seal) {
+        discardWorkspace(observation, Objects.requireNonNull(seal, "seal"), null);
+    }
+
+    @Override
+    public void discardUnlinkedPlan(ObservationId observation, String runId) {
+        discardWorkspace(observation, null, Objects.requireNonNull(runId, "runId"));
+    }
+
+    private synchronized void discardWorkspace(ObservationId observation, DocumentPreparationSeal seal,
+                                                String unlinkedRunId) {
+        Objects.requireNonNull(observation, "observation");
+        String key = ArtifactIdentityDefinition.sha256(observation.value());
+        Path directory = root.resolve(key);
+        Path discarded = root.resolve(DISCARDED_PREFIX + key);
+        try {
+            if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) { return; }
+            initializeRoot();
+            try (var ignoredAdmission = new Lease(root.resolve(".admission"), true)) {
+                deleteDiscarded(discarded);
+                if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) { return; }
+                if (active.contains(directory) || !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
+                    throw new IocExtractorException("Cannot discard document recovery workspace while it is leased or invalid");
+                }
+                try (var ignoredOwner = new Lease(directory.resolve("lease"), false)) {
+                    if (seal != null) {
+                        DocumentWorkspaceRecovery.verify(directory, seal);
+                    } else {
+                        if (!DocumentWorkspaceRecovery.pinned(directory)) { return; }
+                        DocumentWorkspaceRecovery.verifyUnlinkedRun(directory, unlinkedRunId);
+                    }
+                    Files.move(directory, discarded, StandardCopyOption.ATOMIC_MOVE);
+                    DocumentWorkspaceFiles.syncDirectory(root);
+                    deleteDiscarded(discarded);
+                }
+            }
+        } catch (IOException failure) {
+            throw new IocExtractorException("Cannot discard document recovery workspace", failure);
+        }
+    }
+
     private static void closeFailedLease(Path directory, Lease lease, Throwable failure) {
         // Without a lease this attempt cannot safely delete an existing pin. Retention
         // pruning reclaims abandoned directories; sealed pins remain available for replay.
         if (lease == null) { return; }
-        if (!Files.exists(directory.resolve("seal"))) {
+        if (!Files.exists(directory.resolve("seal")) && !DocumentWorkspaceRecovery.pinned(directory)) {
             try { deletePrivateDirectory(directory); } catch (IOException error) { failure.addSuppressed(error); }
         }
         try { lease.close(); } catch (IOException error) { failure.addSuppressed(error); }
     }
 
     private Path pinSource(ExtractionCommand command, Path directory, String observation) throws IOException {
-        String filename = Objects.requireNonNull(command.source().getFileName(), "source filename").toString();
-        Path snapshot = directory.resolve("source" + extension(filename));
+        Path snapshot = sourceSnapshot(command, directory);
         if (Files.size(command.source()) > limits.workspaceBytes() / SOURCE_BUDGET_DIVISOR) {
             throw new IocExtractorException("Document source snapshot exceeds workspace quota");
         }
         // One quarter of the workspace is available for the pinned source; the remainder
         // holds prepared rows, metadata and journal files. The pin format is versioned.
         String sourceHash = JdbcDocumentPreparationWorkspace.hash(command.source());
-        String identity = "document-workspace-v1\n" + observation + "\n" + fingerprint + "\n"
-                + sourceHash + "\n" + command.registration() + "\n" + command.lifecycleWriteContext();
+        String identity = identity(command, observation, sourceHash);
         if (identity.length() > MAXIMUM_IDENTITY_CHARACTERS) { throw new IocExtractorException("Document pin identity exceeds limit"); }
         Path pin = directory.resolve("identity");
         if (Files.exists(pin, LinkOption.NOFOLLOW_LINKS)) {
@@ -148,6 +217,40 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
             DocumentWorkspaceFiles.write(pin, identity);
         }
         return snapshot;
+    }
+
+    private Path reopenSource(ExtractionCommand command, Path directory, String observation) throws IOException {
+        Path pin = directory.resolve("identity");
+        if (!Files.isRegularFile(pin, LinkOption.NOFOLLOW_LINKS) || Files.size(pin) > MAXIMUM_IDENTITY_BYTES) {
+            throw new IocExtractorException("Document preparation pin identity is missing or invalid");
+        }
+        String recorded = Files.readString(pin);
+        String prefix = identityPrefix(observation);
+        int hashEnd = prefix.length() + 64;
+        if (!recorded.startsWith(prefix) || recorded.length() < hashEnd) {
+            throw new IocExtractorException("Document preparation pin identity mismatch");
+        }
+        String sourceHash = recorded.substring(prefix.length(), hashEnd);
+        Path snapshot = sourceSnapshot(command, directory);
+        if (!sourceHash.matches("[a-f0-9]{64}") || !recorded.equals(identity(command, observation, sourceHash))
+                || !Files.isRegularFile(snapshot, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IocExtractorException("Document preparation pin identity mismatch");
+        }
+        return snapshot;
+    }
+
+    private String identity(ExtractionCommand command, String observation, String sourceHash) {
+        return identityPrefix(observation) + sourceHash + "\n" + command.registration() + "\n"
+                + command.lifecycleWriteContext();
+    }
+
+    private String identityPrefix(String observation) {
+        return "document-workspace-v1\n" + observation + "\n" + fingerprint + "\n";
+    }
+
+    private static Path sourceSnapshot(ExtractionCommand command, Path directory) {
+        String filename = Objects.requireNonNull(command.source().getFileName(), "source filename").toString();
+        return directory.resolve("source" + extension(filename));
     }
 
     private void initializeRoot() throws IOException {
@@ -197,14 +300,41 @@ public final class JdbcDocumentPreparationWorkspaceFactory implements DocumentPr
             var iterator = paths.iterator();
             while (iterator.hasNext()) {
                 Path path = iterator.next();
-                if (!Objects.requireNonNull(path.getFileName(), "pin filename").toString().matches("[a-f0-9]{64}") || active.contains(path)
-                        || Files.isSymbolicLink(path) || !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) { continue; }
-                Path age = Files.exists(path.resolve("seal")) ? path.resolve("seal") : path;
-                if (Files.getLastModifiedTime(age).toInstant().isBefore(cutoff)) {
-                    try (var ignored = new Lease(path.resolve("lease"), false)) { deletePrivateDirectory(path); }
-                    catch (OverlappingFileLockException | BusyLeaseException busy) { continue; }
+                String filename = Objects.requireNonNull(path.getFileName(), "pin filename").toString();
+                if (filename.matches("\\.discarded-[a-f0-9]{64}")) {
+                    deleteDiscarded(path);
+                } else if (expiredUnpinnedWorkspace(path, filename, cutoff)) {
+                    discardExpiredWorkspace(path);
                 }
             }
+        }
+    }
+
+    private boolean expiredUnpinnedWorkspace(Path path, String filename, Instant cutoff) throws IOException {
+        if (!filename.matches("[a-f0-9]{64}") || active.contains(path)
+                || !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)
+                || DocumentWorkspaceRecovery.pinned(path)) {
+            return false;
+        }
+        Path seal = path.resolve("seal");
+        Path age = Files.exists(seal) ? seal : path;
+        return Files.getLastModifiedTime(age).toInstant().isBefore(cutoff);
+    }
+
+    private void discardExpiredWorkspace(Path path) throws IOException {
+        try (var ignored = new Lease(path.resolve("lease"), false)) {
+            if (!DocumentWorkspaceRecovery.pinned(path)) {
+                deletePrivateDirectory(path);
+            }
+        } catch (OverlappingFileLockException | BusyLeaseException ignored) {
+            // A live lease owns the workspace.
+        }
+    }
+
+    private void deleteDiscarded(Path discarded) throws IOException {
+        if (Files.isDirectory(discarded, LinkOption.NOFOLLOW_LINKS)) {
+            deletePrivateDirectory(discarded);
+            DocumentWorkspaceFiles.syncDirectory(root);
         }
     }
 

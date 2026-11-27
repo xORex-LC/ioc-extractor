@@ -17,12 +17,11 @@ periodic full listing -> include/exclude -> quiet-period stability
 
 bounded preparation workers:
   durable token -> private sealed source -> SHA-256 -> journal link
-    -> read-only receipt lookup or extraction/routing -> sealed workspace
+    -> pin eligible receipt or prepare extraction/routing -> sealed workspace
 
 one promotion worker, oldest unresolved document first:
-  prepared reference -> content-key guard -> receipt revalidation
-    -> failure-policy checkpoint -> canonical commit -> projection
-    -> source archive -> terminal CAS -> post-commit change hint
+  prepared reference -> content-key guard -> accept plan -> prove/write artifacts
+    -> converge projection -> verify archive -> terminal handshake
 ```
 
 The detector remains single-threaded (`ioc.ingestion.concurrency=1`). It performs
@@ -59,8 +58,9 @@ These are separate budgets: admission bounds owned input; the preparation window
 bounds handles; workspace admission bounds shared cache, parser working
 reservation, memory and disk. The streamed source protocol is defined in
 [ADR 0039](../ADR/0039-streamed-document-source-processing.md).
-Oversized or saturated unclaimed input remains in the listed inbox. Full polling
-rediscovers it without an AcceptOnce filter. Claimed input never disappears because
+Saturated unclaimed input remains in the listed inbox. Full polling rediscovers
+it without an AcceptOnce filter. Verified oversized inputs use one admission
+slot and bypass the byte budget for preparation. Claimed input never disappears because
 an executor rejects a hint: the journal remains the recoverable queue. A coalesced
 hint accelerates dispatch; a one-second journal scan is its correctness backstop.
 
@@ -116,52 +116,81 @@ strict equality check; incompatible outcomes or authority changes fail closed.
 
 ## Receipts and retry
 
-With active fixed lifecycle, a read-only complete receipt lookup can avoid
-preparation for `(source_key, processing-policy fingerprint)`. It does not renew
-canonical rows. Promotion revalidates the receipt using effective time and replays
-its typed rows through the canonical writer. If it expired or was purged, the
-same ordered job falls back to extraction. Default receipt retention is 30 days.
-A parsing/mapping semantics change outside configuration must advance the explicit
-code-policy epoch in the fingerprint.
+A linked document has one run per `ObservationId`. The service DB pins its
+namespace, rank, source key, processing policy and lifecycle mode. Ordered
+promotion persists the artifacts accepted by the failure-policy checkpoint,
+including an empty plan. It pins either the sealed SQLite preparation workspace
+or the exact complete fixed-lifecycle receipt eligible at selection. An
+expired or missing receipt at selection leads to extraction. Once pinned,
+the receipt remains available to this observation through canonical recovery
+even after its 30-day default reuse horizon. The code-policy epoch in the
+fingerprint must advance when parsing or mapping semantics change outside config.
 
-Execution attempts and retry-after are durable in the selected admission journal
-(service schema v14 for JDBC, fsync-backed records for file storage). A transient
-failure retains the private source and original observation/rank. Retries use
-bounded configured backoff without sleeping on the poller. Once a verified
-content key exists, exhausted failure uses the existing source rejection/dead-letter
-lifecycle. Each failed attempt emits a typed diagnostic. Document read errors
-carry the controlled reason described in [observability](observability.md#disclosure-and-redaction).
-Terminal logging observes the outcome. Physical disposition of a sealed document
-after preparation failure has an open [ING-18](../KNOWN-ISSUES.md#ing-18) gap.
+For each artifact, SQLite commits canonical mutations and a marker together.
+The marker records the observation, exact plan, result and projection generation,
+including empty or unchanged artifacts. Both lifecycle modes use these proofs.
+On retry or startup, the dispatcher reopens the pinned plan only for artifacts
+without proof. It skips completed writes, ID reservation and confirmations.
+When all writes are proven, it advances the service run and uses the shared
+projection owner until each artifact's acknowledged generation covers the commit.
+
+The daemon moves the verified private source to its deterministic `done` path.
+After an interruption it checks the same file's identity at that path before
+recording the source and run as complete. It then records admission success,
+marks the dataframe registration terminal, releases the plan, and makes
+canonical proof eligible for retention. The final admission acknowledgement
+closes that handshake. Retention pins the archive until that acknowledgement.
+An unfinished handshake resumes without reopening the plan for writes.
+
+Execution attempts and retry deadlines are durable in both admission journals.
+Retries keep the original observation and rank. An unstable candidate, or a
+candidate waiting for queue capacity, stays in the inbox. Failed inspection
+without stable identity also leaves it there and uses bounded poll backoff.
+The document count limits intake of oversized files too. A verified oversized
+candidate takes one admission slot and is moved directly to failed storage
+without copying or hashing its payload.
+
+When retries are exhausted and canonical promotion has not started, the
+admission records a versioned rejection intent with the exact private source,
+target, filesystem evidence and a safe reason code. A claimed document can be
+rejected without a content key. A linked document additionally gets a source
+ledger failure with real paths. The failed basename encodes the observation ID
+and ends in `__rejected`. The daemon verifies the moved file and atomically
+publishes its `.error` before recording terminal outcomes and finalizing the
+observation registration. Daemon retention skips both files while that
+registration is pending. The failed and processing directories must support
+atomic same-filesystem rename.
+
+Recovery uses the same intent at startup and during periodic execution. If the
+file already reached its target, the daemon checks its stored evidence and
+recreates an incomplete or missing sidecar. A conflicting target, unknown
+ownership, missing evidence, or a source record that leaves canonical effects
+uncertain keeps the admission at its original rank. A held head prevents later
+promotions and sets `dataProcessingCapacity` to `DOWN`. The [operator
+procedure](../guides/daemon-operations.md#understand-outcomes) explains exact-version
+resume. A pinned plan with missing or contradictory evidence retries within the execution
+budget and can be held with `PROMOTION_RECOVERY_FAILED`. An older source claim
+with no linked run proof remains held with `PROMOTION_OUTCOME_UNKNOWN`.
 
 Document admission progress timestamps never precede the record's durable
-`updatedAt`. A backward wall-clock step therefore cannot prevent claim, retry
-or receipt-driven terminal finalization. Retry-after remains an absolute UTC
-deadline. This coordination rule does not authorize canonical publication:
-the canonical safe clock still rejects unsafe UTC independently.
-
-An exhausted pre-hash failure has no trustworthy content key. Its admission stays
-blocked with the owned token (`retry_after_ms=Long.MAX_VALUE`), blocks later document
-promotion and makes capacity health DOWN. There is no automatic requeue/clear API;
-the operator must investigate the token/permissions and perform a supported
-recovery or coordinated restore. Startup cannot silently skip a broken token or
-invent an identity. Pre-reservation failure may leave the input in the inbox;
-ING-13 remains open. The partial-run resume limitation ING-11 also remains open.
-See [KNOWN-ISSUES.md](../KNOWN-ISSUES.md).
+`updatedAt`. Retry deadlines use absolute UTC. Canonical publication still uses
+its independent safe clock.
 
 ## Startup, recovery and shutdown
 
 `CanonicalIntakeStartupCoordinator` is the highest-precedence ApplicationRunner.
-It keeps intake closed while recovering run saga, document admissions, ordinary
-source work, lifecycle admission and managed imports. Only then do document
-execution and ordinary intake start. A failed barrier stops both intake paths,
+It keeps intake closed while recovering the run saga, pending rejection intents
+at the head of the document queue, legacy source work, lifecycle admission and
+managed imports. The ordered dispatcher resumes other admissions from the
+durable queue when execution starts. Legacy source recovery leaves ordered
+admissions to that dispatcher. A failed barrier stops both intake paths,
 fails readiness and reports the original diagnostic once. Admission recovery
 preserves the existing rank; unresolved legacy work without rank under ordered
 field policy requires drain/restore and never receives an invented new rank.
 
 The dispatcher closes admission, joins the coordinator/preparation/promotion
 workers within a bounded grace period, then closes unpromoted handles. Cancelled
-preparation closes its run/workspace and preserves the claimed delivery. A worker
+preparation releases its workspace lease and preserves the linked run and claim. A worker
 that fails to terminate causes an explicit shutdown failure; its live handle is
 not discarded underneath it. Periodic journal discovery resumes pending work on
 restart. This is at-least-once orchestration with idempotent durable steps.

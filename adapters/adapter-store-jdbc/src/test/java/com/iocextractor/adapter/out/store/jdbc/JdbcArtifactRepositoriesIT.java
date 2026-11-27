@@ -8,11 +8,15 @@ import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.artifact.CanonicalWriteCommand;
 import com.iocextractor.application.artifact.CanonicalWriteRow;
+import com.iocextractor.application.artifact.DocumentArtifactCommit;
+import com.iocextractor.application.artifact.DocumentWriteIdentity;
 import com.iocextractor.application.export.ArtifactRevision;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
+import com.iocextractor.application.artifact.lifecycle.ProjectionGeneration;
 import com.iocextractor.application.observation.ObservationOrigin;
 import com.iocextractor.application.observation.OccurrencePosition;
+import com.iocextractor.application.port.out.artifact.RowSource;
 import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
@@ -92,6 +96,64 @@ class JdbcArtifactRepositoriesIT {
         assertThat(revisions).containsExactly(
                 new ArtifactRevision("hashes", 0, null),
                 new ArtifactRevision("masks", 1, CLOCK.instant()));
+    }
+
+    @Test
+    void managedCompatibilityWriteRecoversCommittedAndNoOpArtifactsFromTheSamePlan() throws Exception {
+        var schema = schema("masks", "id", "mask", "source");
+        var emptySchema = schema("hashes", "id", "hash", "source");
+        var repository = canonicalRepository(List.of(schema, emptySchema), List.of(
+                new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1),
+                new ArtifactIdentityDefinition("hashes", List.of("hash"), false, 1)));
+        var registration = new JdbcObservationRegistrationStore(dataSource, CLOCK)
+                .registerNew(new ObservationId("managed-disabled"), ObservationOrigin.DOCUMENT);
+        var identity = new DocumentWriteIdentity(registration, "source-key", "workspace:seal", false);
+        var proof = new JdbcCanonicalDocumentCommits(dataSource);
+        var first = new CanonicalWriteCommand("masks", List.of("id", "mask", "source"),
+                RowSource.of(List.of(new CanonicalWriteRow(
+                        row("id", "1", "mask", "example.test", "source", "original"), Map.of()))),
+                registration, identity);
+        var empty = new CanonicalWriteCommand("hashes", List.of("id", "hash", "source"),
+                RowSource.of(List.of()), registration, identity);
+
+        assertThat(proof.find(identity)).isEmpty();
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TRIGGER reject_document_proof BEFORE INSERT ON canonical_observation_commit
+                    BEGIN SELECT RAISE(ABORT, 'document proof fault'); END
+                    """);
+        }
+        assertThatThrownBy(() -> repository.write(first)).hasMessageContaining("Failed ordered JDBC artifact write");
+        assertThat(repository.load("masks").rows()).isEmpty();
+        assertThat(proof.find(identity)).isEmpty();
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("DROP TRIGGER reject_document_proof");
+        }
+
+        var committed = repository.write(first);
+        assertThat(committed).isEqualTo(new CanonicalWriteResult(1, 1));
+        assertThat(proof.find(identity)).containsExactlyEntriesOf(Map.of(
+                "masks", new DocumentArtifactCommit(1, 0, 0, 1, new ProjectionGeneration(1))));
+
+        new JdbcConfirmationReceiptStore(dataSource, List.of(schema, emptySchema))
+                .purgeExpired(EffectiveTime.at(CLOCK.instant().plus(java.time.Duration.ofDays(90))), 20);
+        var restartedProof = new JdbcCanonicalDocumentCommits(dataSource);
+        assertThat(repository.write(first)).isEqualTo(committed);
+        assertThat(repository.write(empty)).isEqualTo(new CanonicalWriteResult(0, 0));
+        assertThat(restartedProof.find(identity)).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "masks", new DocumentArtifactCommit(1, 0, 0, 1, new ProjectionGeneration(1)),
+                "hashes", new DocumentArtifactCommit(0, 0, 0, 0, new ProjectionGeneration(1))));
+        assertThat(repository.load("masks").rows()).singleElement()
+                .satisfies(value -> assertThat(value.value("id")).isEqualTo("1"));
+        assertThatThrownBy(() -> restartedProof.find(
+                new DocumentWriteIdentity(registration, "source-key", "workspace:different", false)))
+                .hasMessage("Canonical observation plan or lifecycle mode differs");
+        assertThatThrownBy(() -> restartedProof.find(
+                new DocumentWriteIdentity(registration, "source-key", "workspace:seal", true)))
+                .hasMessage("Canonical observation plan or lifecycle mode differs");
+        assertThatThrownBy(() -> restartedProof.find(
+                new DocumentWriteIdentity(registration, "other-source", "workspace:seal", false)))
+                .hasMessage("Observation id was already used for another source");
     }
 
     @Test

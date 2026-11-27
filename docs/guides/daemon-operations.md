@@ -65,9 +65,9 @@ The daemon processes whole files, not an appended byte stream:
 inbox -> stability wait -> durable order -> atomic claim -> private sealed source
       -> bounded preparation -> ordered promotion -> canonical commit
       -> CSV projection -> done
-verified source rejection -> failed
-pre-hash retry exhaustion -> blocked admission, owned token retained
-pre-reservation failure -> may remain in inbox (ING-13)
+verified pre-promotion rejection -> failed file + .error
+uncertain ownership or possible canonical effects -> held admission
+metadata failure before reservation -> inbox with backoff
 ```
 
 Default accepted suffixes are `.htm`, `.html` and `.docx`; `.tmp`, `.part` and
@@ -108,22 +108,42 @@ With `collect-and-continue`, valid rows may commit despite item diagnostics.
 `COMPLETED_WITH_ERRORS` therefore needs review even when the source reaches
 `done`. Document writes commit per artifact: a later artifact/projection failure
 does not roll back earlier canonical writes. Health is not a per-source commit
-report. The partial-run resume limitation is tracked as `ING-11` in
-[known issues](../KNOWN-ISSUES.md).
+report. The daemon uses canonical commit markers to resume missing writes,
+projection and archive for a linked run.
 
 | Situation | Where to look / action |
 |---|---|
-| Verified source rejected after bounded attempts | `var/failed`, its `.error` sidecar and diagnostics; retain the source for investigation |
-| Failure before a trustworthy content key, attempts exhausted | Owned token/admission can remain in `processing`; `dataProcessingCapacity` is `DOWN` and later promotions wait behind the blocked head |
-| Unclaimed oversized input or admission count/byte saturation | File remains in `inbox`; full polling retries admission after pressure changes |
-| Pre-reservation failure | May remain in `inbox` (`ING-13`); preserve logs and file |
-| Interrupted claim, promotion or projection | Keep journals and owned files intact for startup recovery |
+| Verified file exceeds `ioc.ingestion.execution.max-source-bytes` | It moves to `var/failed` with a `SOURCE_TOO_LARGE` sidecar without reading its payload |
+| Verified file fails before hashing or during preparation | After retries, look for a `__rejected` file and its `.error` in `var/failed`. For keyed inputs the source ledger records the same failed path |
+| Queue count or byte limit reached | The file stays in `inbox`. Full polling retries after capacity frees up |
+| Metadata or claim cannot be verified | Check permissions and file stability. An unclaimed input stays in the inbox and inspection retries with backoff |
+| Held admission | Earlier evidence or a possible canonical write needs review. Inspect the head with `ioc ingest status`; later promotions wait and `dataProcessingCapacity` is `DOWN` |
 
-There is no supported document queue clear/requeue command. Moving a terminal
-source back to the inbox or deleting ledger/SQLite records is not a supported
-retry; identical content can remain terminally deduplicated. Fix the cause and
-use a reviewed recovery or coordinated restore. Do not use the managed-import
-`replay` command for document ingestion.
+Use the installed launcher with the same configuration and service account as
+the daemon. Check a specific admission and use its current version to resume
+after addressing the reported cause:
+
+```bash
+sudo /opt/ioc-extractor/bin/ioc ingest status
+sudo /opt/ioc-extractor/bin/ioc ingest status --observation <id>
+sudo /opt/ioc-extractor/bin/ioc ingest resume --observation <id> --at-version <version>
+```
+
+Resume requests a new attempt of the same admission. The daemon alone performs
+file moves. It rechecks the evidence and can hold the request again. A
+`PROMOTION_RECOVERY_FAILED` result calls for checking the pinned plan, dataframe
+proof, projection or archive. `PROMOTION_OUTCOME_UNKNOWN` identifies an older
+claim with insufficient proof and requires investigation or coordinated restore. Older terminal rejections may require inspection of files retained in
+`processing` because they predate durable rejection intent. Preserve the
+journals and files. Submit a corrected terminal document as a new delivery with
+a fresh filename.
+
+Before upgrading an existing daemon, drain or account for unfinished runs tied
+to the old journal format. For rollback, restore the matching binary,
+configuration, both SQLite databases and service-owned files, including the
+admission journal for the file backend and any pinned workspaces. Restoring an
+unfinished claim from a file copy can change its identity. Preserve the private
+files with a filesystem snapshot when unfinished claims must survive rollback.
 
 ## Health checks
 

@@ -50,6 +50,16 @@ public final class DocumentAdmissionService {
         return advance(current, current.claimed(evidence, clock.instant()));
     }
 
+    /** Updates evidence to the private snapshot used for hashing. */
+    public DocumentAdmission recordSnapshot(DocumentAdmission current, DocumentCandidateEvidence evidence) {
+        return advance(current, current.snapshot(evidence, clock.instant()));
+    }
+
+    /** Records rejection intent using the exact revision used to resolve private ownership. */
+    public DocumentAdmission beginRejection(DocumentAdmission current, DocumentRejection intent) {
+        return advance(current, current.reject(intent, clock.instant()));
+    }
+
     public DocumentAdmission link(ObservationId id, SourceKey key) {
         DocumentAdmission current = required(id);
         verifyRegistration(current);
@@ -62,13 +72,21 @@ public final class DocumentAdmissionService {
     }
 
     public DocumentAdmission complete(ObservationId id, DocumentTerminalOutcome outcome) {
+        return complete(id, outcome, () -> { });
+    }
+
+    /**
+     * Completes the terminal handshake. The idempotent cleanup runs after the
+     * registration is terminal and before publishing final acknowledgement.
+     */
+    public DocumentAdmission complete(ObservationId id, DocumentTerminalOutcome outcome, Runnable cleanup) {
         DocumentAdmission current = verifyRegistration(required(id));
         if (current.phase() != DocumentAdmissionPhase.TERMINAL) {
             current = advanceTerminal(current, current.terminal(outcome, clock.instant()));
         } else if (current.terminalOutcome().orElseThrow() != outcome) {
             throw new IllegalStateException("Document terminal outcome changed during retry");
         }
-        return finalizeRegistration(current);
+        return finalizeRegistration(current, cleanup);
     }
 
     public List<DocumentAdmission> recover(int limit) {
@@ -121,7 +139,7 @@ public final class DocumentAdmissionService {
         }
         verifyRegistration(current);
         return current.phase() == DocumentAdmissionPhase.TERMINAL
-                ? finalizeRegistration(current) : current;
+                ? finalizeRegistration(current, () -> { }) : current;
     }
 
     private DocumentAdmission verifyRegistration(DocumentAdmission admission) {
@@ -135,12 +153,13 @@ public final class DocumentAdmissionService {
         return admission;
     }
 
-    private DocumentAdmission finalizeRegistration(DocumentAdmission current) {
+    private DocumentAdmission finalizeRegistration(DocumentAdmission current, Runnable cleanup) {
         if (current.registrationFinalized()) {
             return current;
         }
         RegisteredObservation registration = current.registration().orElseThrow();
         registrations.markTerminal(current.observationId(), registration.namespaceId());
+        cleanup.run();
         return advanceTerminal(current, current.registrationFinalized(clock.instant()));
     }
 
@@ -169,7 +188,8 @@ public final class DocumentAdmissionService {
                 && expected.sourceKey().equals(durable.sourceKey())
                 && expected.terminalOutcome().equals(durable.terminalOutcome())
                 && expected.createdAt().equals(durable.createdAt())
-                && expected.execution().equals(durable.execution());
+                && expected.execution().equals(durable.execution())
+                && expected.rejection().equals(durable.rejection());
     }
 
     private DocumentAdmission required(ObservationId id) {

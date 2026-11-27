@@ -9,7 +9,12 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Durable aggregate for one document occurrence before the existing ingest ledger takes over. */
+/**
+ * Durable identity, ownership and execution state for one document occurrence.
+ *
+ * @param claimedEvidence file identity of the private claim, updated to the sealed snapshot before hashing
+ * @param rejection immutable physical disposition proof retained through terminal registration
+ */
 public record DocumentAdmission(ObservationId observationId,
                                 Path candidatePath,
                                 DocumentCandidateEvidence candidateEvidence,
@@ -23,10 +28,12 @@ public record DocumentAdmission(ObservationId observationId,
                                 boolean registrationFinalized,
                                 Instant createdAt,
                                 Instant updatedAt,
-                                DocumentExecutionState execution) {
+                                DocumentExecutionState execution,
+                                Optional<DocumentRejection> rejection) {
 
     public DocumentAdmission {
         Objects.requireNonNull(execution, "execution");
+        rejection = Objects.requireNonNull(rejection, "rejection");
         Objects.requireNonNull(observationId, "observationId");
         Objects.requireNonNull(candidatePath, "candidatePath");
         Objects.requireNonNull(candidateEvidence, "candidateEvidence");
@@ -47,11 +54,17 @@ public record DocumentAdmission(ObservationId observationId,
         if ((phase.ordinal() >= DocumentAdmissionPhase.CLAIMED.ordinal()) != claimedEvidence.isPresent()) {
             throw new IllegalArgumentException("Claimed document admission requires claimed evidence");
         }
-        if ((phase.ordinal() >= DocumentAdmissionPhase.LINKED.ordinal()) != sourceKey.isPresent()) {
+        if (phase == DocumentAdmissionPhase.LINKED && sourceKey.isEmpty()
+                || phase.ordinal() < DocumentAdmissionPhase.LINKED.ordinal() && sourceKey.isPresent()) {
             throw new IllegalArgumentException("Linked document admission requires a source key");
         }
         if ((phase == DocumentAdmissionPhase.TERMINAL) != terminalOutcome.isPresent()) {
             throw new IllegalArgumentException("Terminal outcome must exist exactly in terminal phase");
+        }
+        if (rejection.isPresent() && (claimedEvidence.isEmpty()
+                    || terminalOutcome.orElse(DocumentTerminalOutcome.REJECTED) != DocumentTerminalOutcome.REJECTED)
+                || phase == DocumentAdmissionPhase.TERMINAL && sourceKey.isEmpty() && rejection.isEmpty()) {
+            throw new IllegalArgumentException("Invalid document rejection state");
         }
         if (registrationFinalized && phase != DocumentAdmissionPhase.TERMINAL) {
             throw new IllegalArgumentException("Only terminal admission can finalize registration");
@@ -66,13 +79,30 @@ public record DocumentAdmission(ObservationId observationId,
             Instant createdAt, Instant updatedAt) {
         this(observationId, candidatePath, candidateEvidence, claimPath, claimedEvidence, phase,
                 version, registration, sourceKey, terminalOutcome, registrationFinalized,
-                createdAt, updatedAt, DocumentExecutionState.NEW);
+                createdAt, updatedAt, DocumentExecutionState.NEW, Optional.empty());
     }
 
     public DocumentAdmission execution(DocumentExecutionState state, Instant at) {
         return new DocumentAdmission(observationId, candidatePath, candidateEvidence, claimPath,
                 claimedEvidence, phase, version + 1, registration, sourceKey, terminalOutcome,
-                registrationFinalized, createdAt, coordinationTime(at), state);
+                registrationFinalized, createdAt, coordinationTime(at), state, rejection);
+    }
+
+    /** Captures the private snapshot's file identity before hashing its bytes. */
+    public DocumentAdmission snapshot(DocumentCandidateEvidence evidence, Instant at) {
+        requirePhase(DocumentAdmissionPhase.CLAIMED);
+        return copy(phase, registration, Optional.of(evidence), sourceKey, terminalOutcome, false, at);
+    }
+
+    /** Persists the chosen file and target before any filesystem disposition. */
+    public DocumentAdmission reject(DocumentRejection intent, Instant at) {
+        if (phase != DocumentAdmissionPhase.CLAIMED && phase != DocumentAdmissionPhase.LINKED
+                || rejection.isPresent()) {
+            throw new IllegalStateException("Document cannot begin rejection");
+        }
+        return new DocumentAdmission(observationId, candidatePath, candidateEvidence, claimPath,
+                claimedEvidence, phase, version + 1, registration, sourceKey, terminalOutcome,
+                false, createdAt, coordinationTime(at), execution, Optional.of(intent));
     }
 
     public static DocumentAdmission reserved(DocumentAdmissionReservation reservation) {
@@ -102,16 +132,23 @@ public record DocumentAdmission(ObservationId observationId,
 
     public DocumentAdmission linked(SourceKey value, Instant at) {
         requirePhase(DocumentAdmissionPhase.CLAIMED);
+        if (rejection.isPresent()) {
+            throw new IllegalStateException("Rejecting document cannot be linked");
+        }
         return copy(DocumentAdmissionPhase.LINKED, registration, claimedEvidence,
                 Optional.of(Objects.requireNonNull(value, "sourceKey")), Optional.empty(), false, at);
     }
 
     public DocumentAdmission terminal(DocumentTerminalOutcome outcome, Instant at) {
-        if (phase != DocumentAdmissionPhase.LINKED) {
-            throw new IllegalStateException("Document admission must be linked before terminal disposition");
+        boolean allowed = switch (outcome) {
+            case SUCCEEDED, QUARANTINED -> phase == DocumentAdmissionPhase.LINKED && rejection.isEmpty();
+            case REJECTED -> rejection.isPresent() && phase != DocumentAdmissionPhase.TERMINAL;
+        };
+        if (!allowed) {
+            throw new IllegalStateException("Document has no eligible terminal disposition");
         }
         return copy(DocumentAdmissionPhase.TERMINAL, registration, claimedEvidence, sourceKey,
-                Optional.of(Objects.requireNonNull(outcome, "outcome")), false, at);
+                Optional.of(outcome), false, at);
     }
 
     public DocumentAdmission registrationFinalized(Instant at) {
@@ -128,7 +165,7 @@ public record DocumentAdmission(ObservationId observationId,
                                    Instant at) {
         return new DocumentAdmission(observationId, candidatePath, candidateEvidence, claimPath,
                 nextClaimedEvidence, next, version + 1, nextRegistration, nextSourceKey,
-                nextOutcome, finalized, createdAt, coordinationTime(at), execution);
+                nextOutcome, finalized, createdAt, coordinationTime(at), execution, rejection);
     }
 
     /** Operational progress stays ordered when wall UTC steps back; deadlines retain their own UTC authority. */

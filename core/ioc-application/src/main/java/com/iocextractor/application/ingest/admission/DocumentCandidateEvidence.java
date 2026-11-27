@@ -19,10 +19,11 @@ public record DocumentCandidateEvidence(Optional<String> fileKey,
     /** A missing stable identity is ambiguous and therefore never inherits a reservation. */
     public boolean sameObjectAs(DocumentCandidateEvidence claimed) {
         Objects.requireNonNull(claimed, "claimed");
-        return fileKey.isPresent()
-                && claimed.fileKey.isPresent()
-                && fileKey.equals(claimed.fileKey)
-                && size == claimed.size
-                && modifiedAtNanos == claimed.modifiedAtNanos;
+        return sameFileAs(claimed) && size == claimed.size && modifiedAtNanos == claimed.modifiedAtNanos;
+    }
+
+    /** Identifies the claimed inode even if its metadata changed after ownership moved. */
+    public boolean sameFileAs(DocumentCandidateEvidence other) {
+        return fileKey.isPresent() && fileKey.equals(other.fileKey());
     }
 }

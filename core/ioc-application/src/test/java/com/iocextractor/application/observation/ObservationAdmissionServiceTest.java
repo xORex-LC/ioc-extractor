@@ -410,7 +410,7 @@ class ObservationAdmissionServiceTest {
                 .hasMessageContaining("differs from reservation");
         assertThatThrownBy(() -> ordered.terminal(DocumentTerminalOutcome.SUCCEEDED, NOW))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("must be linked");
+                .hasMessageContaining("no eligible terminal disposition");
     }
 
     @Test

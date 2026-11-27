@@ -4,6 +4,7 @@ import com.iocextractor.application.ingest.ArchivedSourceUnit;
 import com.iocextractor.application.ingest.ClaimedSource;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.SourceUnit;
+import com.iocextractor.application.ingest.admission.DocumentCandidateEvidence;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
 
 import java.nio.file.Path;
@@ -51,6 +52,31 @@ public interface SourceLifecycle {
     }
 
     Path archive(SourceUnit unit);
+
+    /**
+     * Resolves the exact archive destination for a sealed document occurrence.
+     *
+     * @param unit the occurrence and its owned sealed source, including after a move
+     * @return the destination, without performing filesystem operations
+     * @throws UnsupportedOperationException if recoverable archiving is unavailable
+     */
+    default Path archivePath(SourceUnit unit) {
+        throw new UnsupportedOperationException("Recoverable document archive is not supported");
+    }
+
+    /**
+     * Moves a sealed document to its archive and verifies the original file identity.
+     * A retry after a successful move verifies the sole archived file against the same
+     * evidence. Ambiguous or conflicting evidence prevents completion.
+     *
+     * @param unit the occurrence and its owned sealed source
+     * @param expected the sealed file evidence captured before the first move
+     * @return the verified destination after durable archive publication
+     * @throws UnsupportedOperationException if recoverable archiving is unavailable
+     */
+    default Path archive(SourceUnit unit, DocumentCandidateEvidence expected) {
+        throw new UnsupportedOperationException("Recoverable document archive is not supported");
+    }
 
     Path archive(ArchivedSourceUnit source);
 

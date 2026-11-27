@@ -202,10 +202,12 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
             EffectiveTime asOf = Objects.requireNonNull(
                     timeSource.now(connection), "lifecycle effective time");
             ValidityDecision validity = validityPolicy.decide(asOf).requireValidAt(asOf);
-            ensureObservation(connection, confirmation, asOf);
+            var document = confirmation.documentWrite();
+            JdbcDocumentCommitMarkers.ensureWritableObservation(connection,
+                    confirmation.observationId(), confirmation.sourceKey(), epochMillis(asOf), document);
             var records = JdbcRowSources.onConnection(confirmation.records(), connection);
             boolean hasOrderedFields = records.anyMatch(record -> !record.preparedRow().orderedFieldPositions().isEmpty());
-            if (hasOrderedFields) {
+            if (hasOrderedFields && document == null) {
                 mutationEngine.validateRegistration(connection,
                         Objects.requireNonNull(confirmation.registration(),
                                 "ordered confirmation registration"));
@@ -253,9 +255,8 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
             long revision = changedPublicRows == 0
                     ? currentRevision(connection, schema.artifactName())
                     : bumpRevision(connection, schema.artifactName(), asOf.value().toString());
-            ProjectionGeneration generation = changedPublicRows == 0
-                    ? currentProjectionGeneration(connection, schema.artifactName())
-                    : advanceProjectionGeneration(connection, schema.artifactName(), asOf);
+            ProjectionGeneration generation = projectionGeneration(connection, schema.artifactName(), asOf,
+                    changedPublicRows > 0, document != null);
 
             insertCommitMarker(connection, confirmation, asOf, created, renewed, restarted,
                     updated, metadataOnly, revision, generation);
@@ -360,22 +361,31 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
     private Optional<LifecycleWriteResult> loadCommitted(Connection connection,
                                                          CanonicalArtifactConfirmation confirmation)
             throws SQLException {
+        if (confirmation.documentWrite() != null) {
+            mutationEngine.validateRegistration(connection, confirmation.documentWrite().registration());
+        }
         try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT c.effective_as_of_ms, c.inserted, c.renewed, c.restarted,
+                SELECT c.artifact, c.effective_as_of_ms, c.inserted, c.renewed, c.restarted,
                        c.updated, c.metadata_only,
-                       c.artifact_revision, c.projection_generation, o.source_key
-                FROM canonical_observation_commit c
-                JOIN canonical_observation o ON o.observation_id = c.observation_id
-                WHERE c.observation_id = ? AND c.artifact = ?
+                       c.artifact_revision, c.projection_generation, o.source_key, o.state,
+                       o.document_plan_id, o.document_lifecycle
+                FROM canonical_observation o
+                LEFT JOIN canonical_observation_commit c ON o.observation_id = c.observation_id AND c.artifact = ?
+                WHERE o.observation_id = ?
                 """)) {
-            statement.setString(1, confirmation.observationId().value());
-            statement.setString(2, confirmation.artifactName());
+            statement.setString(1, confirmation.artifactName());
+            statement.setString(2, confirmation.observationId().value());
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     return Optional.empty();
                 }
-                if (!confirmation.sourceKey().equals(resultSet.getString("source_key"))) {
-                    throw new IocExtractorException("Observation id was already used for another source");
+                JdbcDocumentCommitMarkers.verifyIdentity(
+                        resultSet, confirmation.sourceKey(), confirmation.documentWrite());
+                if (resultSet.getString("artifact") == null) {
+                    if (!"OPEN".equals(resultSet.getString("state"))) {
+                        throw new IocExtractorException("Canonical observation identity is not writable");
+                    }
+                    return Optional.empty();
                 }
                 return Optional.of(new LifecycleWriteResult(
                         confirmation.observationId(),
@@ -389,35 +399,6 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                         resultSet.getLong("artifact_revision"),
                         new ProjectionGeneration(resultSet.getLong("projection_generation")),
                         true));
-            }
-        }
-    }
-
-    private void ensureObservation(Connection connection,
-                                   CanonicalArtifactConfirmation confirmation,
-                                   EffectiveTime asOf) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement("""
-                INSERT INTO canonical_observation(observation_id, source_key, state, started_at_ms)
-                VALUES (?, ?, 'OPEN', ?)
-                ON CONFLICT(observation_id) DO NOTHING
-                """)) {
-            statement.setString(1, confirmation.observationId().value());
-            statement.setString(2, confirmation.sourceKey());
-            statement.setLong(3, epochMillis(asOf));
-            statement.executeUpdate();
-        }
-        try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT source_key, state
-                FROM canonical_observation
-                WHERE observation_id = ?
-                """)) {
-            statement.setString(1, confirmation.observationId().value());
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (!resultSet.next()
-                        || !confirmation.sourceKey().equals(resultSet.getString("source_key"))
-                        || !"OPEN".equals(resultSet.getString("state"))) {
-                    throw new IocExtractorException("Canonical observation identity is not writable");
-                }
             }
         }
     }
@@ -479,23 +460,15 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
         }
     }
 
-    private ProjectionGeneration advanceProjectionGeneration(Connection connection,
-                                                             String artifact,
-                                                             EffectiveTime asOf) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement("""
-                INSERT INTO artifact_projection_state(
-                    artifact, required_generation, projected_generation, requested_at_ms)
-                VALUES (?, 1, 0, ?)
-                ON CONFLICT(artifact) DO UPDATE SET
-                    required_generation = artifact_projection_state.required_generation + 1,
-                    requested_at_ms = excluded.requested_at_ms,
-                    last_error_code = NULL
-                """)) {
-            statement.setString(1, artifact);
-            statement.setLong(2, epochMillis(asOf));
-            statement.executeUpdate();
+    private ProjectionGeneration projectionGeneration(Connection connection, String artifact, EffectiveTime asOf,
+                                                       boolean publicRowsChanged, boolean managed) throws SQLException {
+        if (!publicRowsChanged) {
+            var current = currentProjectionGeneration(connection, artifact);
+            if (!managed || current.value() > 0) {
+                return current;
+            }
         }
-        return currentProjectionGeneration(connection, artifact);
+        return JdbcDocumentCommitMarkers.advanceProjectionGeneration(connection, artifact, epochMillis(asOf));
     }
 
     private ProjectionGeneration currentProjectionGeneration(Connection connection, String artifact)

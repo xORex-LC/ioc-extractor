@@ -65,10 +65,12 @@ Java package, not separate Maven modules or new layer boundaries.
 | File | Responsibility |
 |---|---|
 | [JdbcActiveArtifactReader.java](JdbcActiveArtifactReader.java) | SQLite active-only lifecycle snapshot reader for one explicit effective time |
+| [JdbcCanonicalDocumentCommits.java](JdbcCanonicalDocumentCommits.java) | Reads verified per-artifact document outcomes in one dataframe snapshot |
 | [JdbcCanonicalLifecycleWriter.java](JdbcCanonicalLifecycleWriter.java) | One-artifact lifecycle confirmation transaction after non-reusable ID reservation |
-| [JdbcConfirmationReceiptStore.java](JdbcConfirmationReceiptStore.java) | SQLite complete-receipt reader, retention reaper and observation acknowledgement |
+| [JdbcConfirmationReceiptStore.java](JdbcConfirmationReceiptStore.java) | Complete-receipt reader, receipt pinning, retention and observation acknowledgement |
 | [JdbcConfirmationReceiptWriter.java](JdbcConfirmationReceiptWriter.java) | Stages typed prepared rows and publishes only structurally complete receipts |
 | [JdbcConfirmationValidator.java](JdbcConfirmationValidator.java) | Disk-backed duplicate validation before any canonical ID reservation |
+| [JdbcDocumentCommitMarkers.java](JdbcDocumentCommitMarkers.java) | Shared SQL for canonical observation identity and per-artifact transaction proof |
 | [JdbcExpiredArtifactStore.java](JdbcExpiredArtifactStore.java) | SQLite indexed deadline lookup and bounded archive/delete transaction |
 | [JdbcLifecycleActivationStore.java](JdbcLifecycleActivationStore.java) | SQLite resumable batches for the named `existing-records: expire` policy |
 | [JdbcLifecycleArchive.java](JdbcLifecycleArchive.java) | Atomic typed snapshot, compact provenance copy and active-row deletion |
@@ -253,7 +255,10 @@ or historical-SQL checksum enforcement is implemented by the normal migrator.
 Service ledgers implement local CAS/idempotency facts; application schedules and
 recovers them. Document/import admission references retain dataframe registration
 identity without becoming the rank authority. Export terminal progress commits
-with its ledger checkpoint. Fetch v15 scopes idempotency by source and retains the historical unscoped ledger.
+with its ledger checkpoint. Fetch v15 scopes idempotency by source. Migration
+v17 drops unscoped fetch history and preserves scoped records. Document admission
+v16 records durable rejection
+intent and supports rejected occurrences without a content key.
 Nullable import status handling (OPS-10) and ordered-field whitespace validation
 (OPS-14) remain [open issues](../../../../../../../../../../../docs/KNOWN-ISSUES.md).
 

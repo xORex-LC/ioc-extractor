@@ -179,15 +179,24 @@ See [artifact export](artifact-export.md) and
 ## Schema and recovery
 
 Versioned migrations use `user_version`, followed by configured artifact-schema
-reconciliation. Native dataframe format 12 and service format 14 remain the
+reconciliation. Native dataframe format 13 and service format 18 are the
 supported current formats. The normal migrator rejects newer/experimental
 formats; it does not reinterpret or lower their version.
 
 The migration chain preserves these ownership distinctions: dataframe v4 owns
 lifecycle/history/receipts, v5/v8 slots and sparse free ranges, v6 the bounded
 reconciliation checkpoint, v7 named match identities, v9 import receipts,
-v10 ordered registrations/field origins, and v11 ordered receipt positions/origin history and v12 accepted import warnings. Service v9 owns managed deliveries, v10 document
-admission, v11 import observation reservations v12 document-policy pins, v13 export-profile single flight and v14 bounded document execution.
+v10 ordered registrations and field origins, v11 ordered receipt positions and
+origin history, v12 accepted import warnings, and v13 document commit proof and
+receipt pins. Service v9 owns managed deliveries, v10 document
+admission, v11 import observation reservations, v12 document-policy pins, v13
+export-profile single flight, v14 bounded document execution, v15 source-scoped
+fetch, v16 document rejection intent including terminal outcomes without a
+content key, v17 removal of unscoped fetch history, and v18 document runs linked by
+observation with the accepted plan reference. Service v16 preserves
+prior admission rows and their ranks.
+Service v18 leaves older run identities unlinked. See
+[document recovery](ingestion.md#receipts-and-retry) for proof and retention.
 A document or import retry resumes its original rank; an unreserved legacy
 import occurrence cannot silently acquire a different rank after restart.
 
@@ -196,7 +205,7 @@ import occurrence cannot silently acquire a different rank after restart.
 | Schema/identity drift | Startup fails before business mutation; correct configuration or perform an explicit migration |
 | Canonical transaction | Roll back the owning artifact transaction or the entire import transaction; independently reserved IDs remain burned |
 | Commit before projection/finalization | Canonical truth remains; run/delivery ledgers reconcile from the canonical receipt/checkpoint |
-| Source/workspace removed after commit | A compatible complete receipt is sufficient; do not reapply the delivery |
+| Document workspace unavailable | An incomplete commit requires the exact pinned plan. Full commit proof allows projection and archive recovery without that workspace |
 | Projection rename before acknowledgement | Required generation remains pending; startup/periodic recovery repeats installation |
 | Interrupted expiry | Committed pages remain closed; reconcile resumes from truth without resurrection |
 | Unsafe UTC | Confirmation fails closed; readiness reflects clock degradation without reducing high-water |

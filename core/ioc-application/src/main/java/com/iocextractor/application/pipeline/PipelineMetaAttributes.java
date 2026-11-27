@@ -23,6 +23,12 @@ public final class PipelineMetaAttributes {
     /** Invocation-owned private preparation state, closed by the extraction use case. */
     public static final String DOCUMENT_PREPARATION_WORKSPACE = "ioc.document.workspace";
 
+    /** Identity of the accepted daemon document plan. */
+    public static final String DOCUMENT_WRITE_IDENTITY = "ioc.document.write_identity";
+
+    /** Artifact names whose canonical transactions still need to commit. */
+    public static final String MISSING_DOCUMENT_ARTIFACTS = "ioc.document.missing_artifacts";
+
     private PipelineMetaAttributes() {
     }
 }

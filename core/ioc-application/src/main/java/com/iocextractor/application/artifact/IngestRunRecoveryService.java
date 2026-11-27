@@ -34,7 +34,7 @@ public final class IngestRunRecoveryService {
         for (IngestRun run : runLedger.findIncompleteIngestRuns()) {
             recovered++;
             if (run.status() == IngestRunStatus.STARTED) {
-                runLedger.markFailed(run.runId(), "startup recovery: run stopped before DB commit");
+                runLedger.markFailed(run.runId(), "startup recovery: legacy run has no DB_COMMITTED checkpoint");
                 continue;
             }
             if (run.status() == IngestRunStatus.DB_COMMITTED) {

@@ -51,9 +51,9 @@ unresolved document. Count/byte saturation leaves unclaimed input discoverable;
 the durable journal and periodic scan recover admitted work after lost hints.
 
 The preparation window is capped by global workspace capacity. Attempts and
-backoff survive restart. Exhausted pre-hash failure retains its owned token and
-rank, blocks later document promotion and requires investigation; it cannot be
-turned into a content-key rejection using path/mtime. Shutdown joins dispatcher
+backoff survive restart. Owned pre-promotion failures, including those before
+hashing, can be moved under their observation ID. Uncertain ownership or
+possible canonical effects hold the admission at its original rank. Shutdown joins dispatcher
 workers within a bounded grace period and preserves durable recovery references.
 The inbound README explains fatal errors, cleanup and terminal observation.
 

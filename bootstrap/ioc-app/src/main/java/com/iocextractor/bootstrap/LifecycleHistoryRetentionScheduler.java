@@ -83,10 +83,6 @@ public final class LifecycleHistoryRetentionScheduler implements SmartLifecycle 
         if (!active || executor != null) {
             return;
         }
-        var result = admission.snapshot().result();
-        if (result == null || !result.lifecycleActive()) {
-            return;
-        }
         executor = Objects.requireNonNull(executorFactory.get(), "executor");
         executor.scheduleWithFixedDelay(this::runOnce,
                 0L, cleanupInterval.toMillis(), TimeUnit.MILLISECONDS);

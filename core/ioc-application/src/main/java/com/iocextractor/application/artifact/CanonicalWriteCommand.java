@@ -11,16 +11,26 @@ import java.util.Optional;
 public record CanonicalWriteCommand(String artifactName,
                                     List<String> header,
                                     RowSource<CanonicalWriteRow> rows,
-                                    RegisteredObservation registration) {
+                                    RegisteredObservation registration,
+                                    DocumentWriteIdentity documentWrite) {
 
     public CanonicalWriteCommand {
         Objects.requireNonNull(artifactName, "artifactName");
         header = List.copyOf(Objects.requireNonNull(header, "header"));
         Objects.requireNonNull(rows, "rows");
+        if (documentWrite != null && (documentWrite.lifecycleActive()
+                || !documentWrite.registration().equals(registration))) {
+            throw new IllegalArgumentException("Document write identity does not match compatibility command");
+        }
         boolean ordered = rows.anyMatch(row -> !row.orderedFieldPositions().isEmpty());
         if (ordered && registration == null) {
             throw new IllegalArgumentException("Ordered fields require a registered observation");
         }
+    }
+
+    public CanonicalWriteCommand(String artifactName, List<String> header,
+                                 RowSource<CanonicalWriteRow> rows, RegisteredObservation registration) {
+        this(artifactName, header, rows, registration, null);
     }
 
     public CanonicalWriteCommand(String artifactName, List<String> header,

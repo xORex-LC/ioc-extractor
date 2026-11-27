@@ -1,7 +1,13 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.tck.junit.IntegrationTest;
+import com.iocextractor.application.artifact.DocumentRun;
 import com.iocextractor.application.artifact.IngestRunStatus;
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
+import com.iocextractor.application.ingest.SourceKey;
+import com.iocextractor.application.observation.ObservationOrder;
+import com.iocextractor.application.observation.ObservationOrigin;
+import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
@@ -72,6 +78,51 @@ class JdbcRunLedgerIT {
                 .isInstanceOf(IocExtractorException.class)
                 .hasMessageContaining("transition conflict");
         assertThat(ledger.findIncompleteIngestRuns()).isEmpty();
+    }
+
+    @Test
+    void upgradesUnlinkedHistoryAndPinsExactlyOneAcceptedRunIncludingAnEmptyPlan() {
+        dataSource = dataSource("service-v17.db");
+        var migrations = ServiceSchemaMigrations.sqlite();
+        new SqliteUserVersionSchemaMigrator(dataSource, migrations.subList(0, 17)).migrate();
+        var ledger = new JdbcRunLedger(dataSource, CLOCK);
+        var legacy = ledger.startIngest("same-source", List.of("masks"));
+        var upgrade = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
+        assertThat(upgrade.appliedVersions()).containsExactly(18);
+        var id = new ObservationId("new-observation");
+        var registration = new RegisteredObservation(id, "dataframe", new ObservationOrder(41),
+                ObservationOrigin.DOCUMENT);
+        var identity = new DocumentRun.Identity(registration, new SourceKey("same-source"), "policy", false);
+        var run = ledger.beginDocument(identity);
+        assertThat(ledger.beginDocument(identity)).isEqualTo(run);
+        assertThat(run.plan()).isEmpty();
+        assertThatThrownBy(() -> ledger.markDbCommitted(run.run().runId()))
+                .isInstanceOf(IocExtractorException.class).hasMessageContaining("transition conflict");
+        assertThat(ledger.findIncompleteIngestRuns()).containsExactly(legacy);
+        assertThatThrownBy(() -> ledger.beginDocument(
+                new DocumentRun.Identity(registration, identity.sourceKey(), "changed-policy", false)))
+                .isInstanceOf(IocExtractorException.class).hasMessageContaining("identity");
+
+        var plan = new DocumentRun.Plan(DocumentRun.Plan.Kind.WORKSPACE, "sealed-empty-plan", List.of());
+        var pinned = ledger.pinPlan(run, plan);
+        assertThat(pinned.plan()).contains(plan);
+        assertThat(ledger.pinPlan(run, plan)).isEqualTo(pinned);
+        assertThatThrownBy(() -> ledger.pinPlan(run,
+                new DocumentRun.Plan(DocumentRun.Plan.Kind.WORKSPACE, "other-seal", List.of("masks"))))
+                .isInstanceOf(IocExtractorException.class).hasMessageContaining("plan");
+        assertThatThrownBy(() -> ledger.markFailed(run.run().runId(), "rejection lost the plan race"))
+                .isInstanceOf(IocExtractorException.class).hasMessageContaining("transition conflict");
+        ledger.markDbCommitted(run.run().runId());
+        ledger.markProjectionCompleted(run.run().runId());
+        ledger.markCompleted(run.run().runId());
+
+        assertThat(ledger.findDocument(id)).hasValueSatisfying(saved -> {
+            assertThat(saved.run().runId()).isEqualTo(run.run().runId());
+            assertThat(saved.run().status()).isEqualTo(IngestRunStatus.COMPLETED);
+            assertThat(saved.identity()).isEqualTo(identity);
+            assertThat(saved.plan()).contains(plan);
+        });
+        assertThat(ledger.findIncompleteIngestRuns()).containsExactly(legacy);
     }
 
     private JdbcRunLedger ledger() {

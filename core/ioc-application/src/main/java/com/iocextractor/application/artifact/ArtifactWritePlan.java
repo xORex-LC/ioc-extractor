@@ -33,7 +33,13 @@ public record ArtifactWritePlan(String artifactName,
 
     /** Reserves ids while retaining ordered-field positions for canonical mutation. */
     public CanonicalWriteCommand materializeCommand(RegisteredObservation registration) {
-        return new CanonicalWriteCommand(artifactName, header, reservedRows(), registration);
+        return materializeCommand(registration, null);
+    }
+
+    /** Reserves final IDs for one known-missing artifact of a pinned document plan. */
+    public CanonicalWriteCommand materializeCommand(RegisteredObservation registration,
+                                                    DocumentWriteIdentity documentWrite) {
+        return new CanonicalWriteCommand(artifactName, header, reservedRows(), registration, documentWrite);
     }
 
     private RowSource<CanonicalWriteRow> reservedRows() {

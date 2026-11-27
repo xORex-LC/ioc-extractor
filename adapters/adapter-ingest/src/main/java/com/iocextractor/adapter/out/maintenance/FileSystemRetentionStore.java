@@ -12,6 +12,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
@@ -29,13 +31,24 @@ import java.util.stream.Stream;
  */
 public final class FileSystemRetentionStore implements RetentionStore {
 
+    private final Predicate<Path> pinned;
+
+    public FileSystemRetentionStore() {
+        this(path -> false);
+    }
+
+    /** Skips files reserved by an in-flight disposition, including during the final mutation. */
+    public FileSystemRetentionStore(Predicate<Path> pinned) {
+        this.pinned = Objects.requireNonNull(pinned, "pinned");
+    }
+
     @Override
     public List<RetentionEntry> list(Path dir) {
         if (dir == null || !Files.exists(dir)) {
             return List.of();
         }
         try (Stream<Path> walk = Files.walk(dir)) {
-            return walk.filter(Files::isRegularFile)
+            return walk.filter(Files::isRegularFile).filter(pinned.negate())
                     .map(path -> toEntry(path, dir))
                     .toList();
         } catch (IOException | UncheckedIOException e) {
@@ -45,6 +58,7 @@ public final class FileSystemRetentionStore implements RetentionStore {
 
     @Override
     public void delete(RetentionEntry entry) {
+        if (pinned.test(entry.path())) { return; }
         try {
             Files.deleteIfExists(entry.path());
         } catch (IOException e) {
@@ -54,6 +68,7 @@ public final class FileSystemRetentionStore implements RetentionStore {
 
     @Override
     public void archive(RetentionEntry entry, Path archiveDir) {
+        if (pinned.test(entry.path())) { return; }
         // Mirror the entry's sub-path under archiveDir so leaf files that share a base
         // name across sub-trees (masks/<day>/<hash>.csv vs hashes/<day>/<hash>.csv) do
         // not overwrite each other; REPLACE_EXISTING then only re-archives the same item.

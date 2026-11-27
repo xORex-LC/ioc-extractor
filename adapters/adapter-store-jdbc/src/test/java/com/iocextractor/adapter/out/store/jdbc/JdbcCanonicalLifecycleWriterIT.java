@@ -4,6 +4,8 @@ import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.ArtifactRowKey;
+import com.iocextractor.application.artifact.DocumentArtifactCommit;
+import com.iocextractor.application.artifact.DocumentWriteIdentity;
 import com.iocextractor.application.artifact.PreparedArtifactRow;
 import com.iocextractor.application.artifact.lifecycle.CanonicalArtifactConfirmation;
 import com.iocextractor.application.artifact.lifecycle.CanonicalRecordConfirmation;
@@ -13,9 +15,11 @@ import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
 import com.iocextractor.application.artifact.lifecycle.LifecycleTimeSource;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
+import com.iocextractor.application.artifact.lifecycle.ProjectionGeneration;
 import com.iocextractor.application.observation.ObservationOrigin;
 import com.iocextractor.application.observation.OccurrencePosition;
 import com.iocextractor.application.observation.RegisteredObservation;
+import com.iocextractor.application.port.out.artifact.RowSource;
 import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
@@ -276,6 +280,57 @@ class JdbcCanonicalLifecycleWriterIT {
             }
         }
         assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @Test
+    void openManagedDocumentKeepsItsProofAndStagedReceiptUntilTheMissingArtifactCommits() throws Exception {
+        var id = new ObservationId("managed-fixed");
+        var registration = new JdbcObservationRegistrationStore(dataSource, ALLOCATOR_CLOCK)
+                .registerNew(id, ObservationOrigin.DOCUMENT);
+        var identity = new DocumentWriteIdentity(registration, "source-key", "workspace:seal", true);
+        var receipt = receipt("receipt:" + id.value(), 2);
+        var first = new CanonicalArtifactConfirmation(id, identity.sourceKey(), receipt, "masks", publicHeader(),
+                RowSource.of(List.of(row("managed", "managed.example"))), registration, identity);
+        var empty = new CanonicalArtifactConfirmation(id, identity.sourceKey(), receipt, "hashes", publicHeader(),
+                RowSource.of(List.of()), registration, identity);
+        var store = new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30));
+
+        writer(JdbcLifecycleTransactionObserver.NOOP).confirm(first);
+        var resumedAt = START.plus(Duration.ofDays(31));
+        assertThat(store.purgeExpired(EffectiveTime.at(resumedAt), 10))
+                .satisfies(outcome -> {
+                    assertThat(outcome.purged()).isZero();
+                    assertThat(outcome.moreEligible()).isFalse();
+                });
+        var proof = new JdbcCanonicalDocumentCommits(dataSource);
+        assertThat(proof.find(identity)).containsExactlyEntriesOf(Map.of(
+                "masks", new DocumentArtifactCommit(1, 0, 0, 1, new ProjectionGeneration(1))));
+        assertThatThrownBy(() -> proof.find(
+                new DocumentWriteIdentity(registration, identity.sourceKey(), "workspace:different", true)))
+                .hasMessage("Canonical observation plan or lifecycle mode differs");
+        assertThatThrownBy(() -> writer(JdbcLifecycleTransactionObserver.NOOP).confirm(
+                new CanonicalArtifactConfirmation(id, identity.sourceKey(), receipt, "masks", publicHeader(),
+                        first.records(), registration,
+                        new DocumentWriteIdentity(registration, identity.sourceKey(), "workspace:different", true))))
+                .hasMessage("Canonical observation plan or lifecycle mode differs");
+
+        timeSource.set(resumedAt);
+        var restarted = writer(JdbcLifecycleTransactionObserver.NOOP);
+        assertThat(restarted.confirm(first).replayed()).isTrue();
+        assertThat(restarted.confirm(empty).publicRowsChanged()).isZero();
+        assertThat(proof.find(identity)).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "masks", new DocumentArtifactCommit(1, 0, 0, 1, new ProjectionGeneration(1)),
+                "hashes", new DocumentArtifactCommit(0, 0, 0, 0, new ProjectionGeneration(1))));
+        assertThat(queryLong("SELECT _valid_until_epoch_ms FROM masks"))
+                .isEqualTo(START.plus(TTL).toEpochMilli());
+        assertThat(store.findComplete(identity.sourceKey(), "policy-v1", EffectiveTime.at(resumedAt)))
+                .get().satisfies(snapshot -> assertThat(snapshot.artifacts()).hasSize(2));
+
+        var afterRetention = EffectiveTime.at(resumedAt.plus(Duration.ofDays(31)));
+        assertThat(store.purgeExpired(afterRetention, 10).purged()).isZero();
+        store.markTerminal(id, EffectiveTime.at(resumedAt), Duration.ofDays(30));
+        assertThat(store.purgeExpired(afterRetention, 10).purged()).isOne();
+        assertThat(proof.find(identity)).isEmpty();
     }
 
     @Test

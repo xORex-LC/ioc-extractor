@@ -1,5 +1,6 @@
 package com.iocextractor.application.artifact.lifecycle;
 
+import com.iocextractor.application.artifact.DocumentWriteIdentity;
 import com.iocextractor.application.port.out.artifact.RowSource;
 import com.iocextractor.application.observation.RegisteredObservation;
 
@@ -16,6 +17,8 @@ import java.util.Objects;
  * @param artifactName configured artifact name
  * @param header ordered public artifact columns
  * @param records identity-resolved prepared records
+ * @param registration durable dataframe admission, when present
+ * @param documentWrite identity of the admitted document plan, when present
  */
 public record CanonicalArtifactConfirmation(ObservationId observationId,
                                             String sourceKey,
@@ -23,7 +26,8 @@ public record CanonicalArtifactConfirmation(ObservationId observationId,
                                             String artifactName,
                                             List<String> header,
                                             RowSource<CanonicalRecordConfirmation> records,
-                                            RegisteredObservation registration) {
+                                            RegisteredObservation registration,
+                                            DocumentWriteIdentity documentWrite) {
 
     /** Copies metadata; the writer validates streamed rows before reserving identities. */
     public CanonicalArtifactConfirmation {
@@ -33,9 +37,22 @@ public record CanonicalArtifactConfirmation(ObservationId observationId,
         artifactName = requireText(artifactName, "artifactName");
         header = List.copyOf(Objects.requireNonNull(header, "header"));
         Objects.requireNonNull(records, "records");
+        if (documentWrite != null && (!documentWrite.lifecycleActive()
+                || !documentWrite.registration().equals(registration)
+                || !observationId.equals(documentWrite.registration().observationId())
+                || !sourceKey.equals(documentWrite.sourceKey())
+                || !receipt.id().value().equals("receipt:" + observationId.value()))) {
+            throw new IllegalArgumentException("Document write identity does not match lifecycle confirmation");
+        }
         if (header.isEmpty()) {
             throw new IllegalArgumentException("Artifact header must not be empty");
         }
+    }
+
+    public CanonicalArtifactConfirmation(ObservationId observationId, String sourceKey,
+            ConfirmationReceiptContext receipt, String artifactName, List<String> header,
+            RowSource<CanonicalRecordConfirmation> records, RegisteredObservation registration) {
+        this(observationId, sourceKey, receipt, artifactName, header, records, registration, null);
     }
 
     public CanonicalArtifactConfirmation(ObservationId observationId, String sourceKey,

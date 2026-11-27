@@ -7,6 +7,7 @@ import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.port.out.artifact.lifecycle.CanonicalObservationStore;
 import com.iocextractor.application.port.out.artifact.lifecycle.ConfirmationReceiptStore;
+import com.iocextractor.application.port.out.artifact.lifecycle.DocumentReceiptPlans;
 import com.iocextractor.common.IocExtractorException;
 
 import javax.sql.DataSource;
@@ -25,7 +26,7 @@ import java.util.Optional;
 
 /** SQLite complete-receipt reader, retention reaper and observation acknowledgement. */
 public final class JdbcConfirmationReceiptStore
-        implements ConfirmationReceiptStore, CanonicalObservationStore {
+        implements ConfirmationReceiptStore, CanonicalObservationStore, DocumentReceiptPlans {
 
     private final DataSource dataSource;
     private final JdbcWriterAdmission writerAdmission;
@@ -83,6 +84,77 @@ public final class JdbcConfirmationReceiptStore
         } catch (SQLException | RuntimeException e) {
             throw new IocExtractorException("Failed to load a complete confirmation receipt", e);
         }
+    }
+
+    @Override
+    public Optional<ConfirmationReceiptSnapshot> pin(
+            ObservationId id, String sourceKey, String policy, EffectiveTime asOf) {
+        writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL, () -> {
+            try (Connection connection = dataSource.getConnection();
+                 PreparedStatement statement = connection.prepareStatement("""
+                         INSERT INTO document_confirmation_receipt_pin(observation_id, receipt_id)
+                         SELECT ?, receipt_id
+                         FROM confirmation_receipt
+                         WHERE source_key = ? AND processing_policy_fingerprint = ?
+                           AND payload_version = 2 AND state = 'COMPLETE' AND purge_after_ms > ?
+                         ORDER BY completed_at_ms DESC, receipt_id DESC LIMIT 1
+                         ON CONFLICT(observation_id) DO NOTHING
+                         """)) {
+                statement.setString(1, id.value());
+                statement.setString(2, sourceKey);
+                statement.setString(3, policy);
+                statement.setLong(4, asOf.value().toEpochMilli());
+                statement.executeUpdate();
+                return null;
+            } catch (SQLException e) {
+                throw new IocExtractorException("Failed to pin document receipt", e);
+            }
+        });
+        return pinned(id, sourceKey, policy);
+    }
+
+    @Override
+    public Optional<ConfirmationReceiptSnapshot> pinned(ObservationId id, String sourceKey, String policy) {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT r.receipt_id, r.source_key, r.processing_policy_fingerprint, r.expected_artifacts,
+                            r.row_count, r.state, r.payload_version
+                     FROM document_confirmation_receipt_pin p
+                     JOIN confirmation_receipt r ON r.receipt_id = p.receipt_id
+                     WHERE p.observation_id = ?
+                     """)) {
+            statement.setString(1, id.value());
+            try (ResultSet row = statement.executeQuery()) {
+                if (!row.next()) {
+                    return Optional.empty();
+                }
+                if (!sourceKey.equals(row.getString("source_key"))
+                        || !policy.equals(row.getString("processing_policy_fingerprint"))
+                        || !"COMPLETE".equals(row.getString("state")) || row.getInt("payload_version") != 2) {
+                    throw new IocExtractorException("Pinned document receipt identity conflict");
+                }
+                ReceiptHeader header = readHeader(row);
+                return Optional.of(new ConfirmationReceiptSnapshot(
+                        header.id(), sourceKey, policy, loadArtifacts(connection, header)));
+            }
+        } catch (SQLException e) {
+            throw new IocExtractorException("Failed to load pinned document receipt", e);
+        }
+    }
+
+    @Override
+    public void release(ObservationId id) {
+        writerAdmission.execute(JdbcWriterAdmission.OperationClass.CONTROL, () -> {
+            try (Connection connection = dataSource.getConnection();
+                 PreparedStatement statement = connection.prepareStatement(
+                         "DELETE FROM document_confirmation_receipt_pin WHERE observation_id = ?")) {
+                statement.setString(1, id.value());
+                statement.executeUpdate();
+                return null;
+            } catch (SQLException e) {
+                throw new IocExtractorException("Failed to release pinned document receipt", e);
+            }
+        });
     }
 
     @Override
@@ -181,12 +253,14 @@ public final class JdbcConfirmationReceiptStore
                 if (!resultSet.next()) {
                     return Optional.empty();
                 }
-                return Optional.of(new ReceiptHeader(
-                        new ConfirmationReceiptId(resultSet.getString("receipt_id")),
-                        resultSet.getInt("expected_artifacts"),
-                        resultSet.getLong("row_count")));
+                return Optional.of(readHeader(resultSet));
             }
         }
+    }
+
+    private static ReceiptHeader readHeader(ResultSet row) throws SQLException {
+        return new ReceiptHeader(new ConfirmationReceiptId(row.getString("receipt_id")),
+                row.getInt("expected_artifacts"), row.getLong("row_count"));
     }
 
     private List<ConfirmationReceiptArtifact> loadArtifacts(Connection connection,
@@ -235,8 +309,14 @@ public final class JdbcConfirmationReceiptStore
                     SELECT r.receipt_id
                     FROM confirmation_receipt r
                     LEFT JOIN confirmation_receipt_artifact a ON a.receipt_id = r.receipt_id
-                    WHERE (r.state = 'COMPLETE' AND r.purge_after_ms <= ?)
-                       OR (r.state = 'STAGING' AND a.staged_at_ms <= ?)
+                    WHERE NOT EXISTS (SELECT 1 FROM document_confirmation_receipt_pin p WHERE p.receipt_id = r.receipt_id)
+                      AND NOT EXISTS (
+                          SELECT 1 FROM canonical_observation o
+                          WHERE o.observation_id = substr(r.receipt_id, 9)
+                            AND ('receipt:' || o.observation_id) = r.receipt_id
+                            AND o.document_lifecycle = 1 AND o.state = 'OPEN')
+                      AND ((r.state = 'COMPLETE' AND r.purge_after_ms <= ?)
+                        OR (r.state = 'STAGING' AND a.staged_at_ms <= ?))
                     GROUP BY r.receipt_id
                     ORDER BY COALESCE(r.purge_after_ms, MIN(a.staged_at_ms)), r.receipt_id
                     LIMIT ?
@@ -273,8 +353,14 @@ public final class JdbcConfirmationReceiptStore
                 SELECT 1
                 FROM confirmation_receipt r
                 LEFT JOIN confirmation_receipt_artifact a ON a.receipt_id = r.receipt_id
-                WHERE (r.state = 'COMPLETE' AND r.purge_after_ms <= ?)
-                   OR (r.state = 'STAGING' AND a.staged_at_ms <= ?)
+                WHERE NOT EXISTS (SELECT 1 FROM document_confirmation_receipt_pin p WHERE p.receipt_id = r.receipt_id)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM canonical_observation o
+                      WHERE o.observation_id = substr(r.receipt_id, 9)
+                        AND ('receipt:' || o.observation_id) = r.receipt_id
+                        AND o.document_lifecycle = 1 AND o.state = 'OPEN')
+                  AND ((r.state = 'COMPLETE' AND r.purge_after_ms <= ?)
+                    OR (r.state = 'STAGING' AND a.staged_at_ms <= ?))
                 LIMIT 1
                 """)) {
             statement.setLong(1, asOf.value().toEpochMilli());

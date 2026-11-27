@@ -6,7 +6,7 @@ Canonical dataframe format resources. These tables own business/identity, lifecy
 
 The owning [DataframeFormatMigrations](../../../../../../../../java/com/iocextractor/adapter/out/store/jdbc/DataframeFormatMigrations.java) explicitly loads these
 classpath resources as UTF-8; the directory is not scanned automatically. The
-current catalog ends at version 12. A new file requires a matching catalog entry.
+current catalog ends at version 13. A new file requires a matching catalog entry.
 
 | Resource | Purpose |
 |---|---|
@@ -22,6 +22,7 @@ current catalog ends at version 12. A new file requires a matching catalog entry
 | [v10__registered_observation_order.sql](v10__registered_observation_order.sql) | Dataframe namespace/order authority and lifecycle/compatibility ordered-field origins |
 | [v11__ordered_field_provenance.sql](v11__ordered_field_provenance.sql) | Receipt payload version/field positions, mutation counters and archived ordered origins |
 | [v12__accepted_import_warnings.sql](v12__accepted_import_warnings.sql) | Accepted import row-warning evidence |
+| [v13__document_commit_proof.sql](v13__document_commit_proof.sql) | Managed document plan identity on canonical observations and pins on reused receipts |
 
 Per-artifact business, provenance, lifecycle/history and typed receipt-row tables
 are additionally planned from configuration by `DataframeSchemaReconciler` and

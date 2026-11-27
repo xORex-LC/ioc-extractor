@@ -37,14 +37,6 @@ public final class SyncDiagnosticReporter {
                 .build());
     }
 
-    /** Reports the number of objects held for a source pending a legacy ledger decision. */
-    public void reportLegacyReview(String sourceId, int count) {
-        sink.emit(diagnostics.create(SyncDiagnosticCodes.FETCH_LEGACY_REVIEW_REQUIRED)
-                .with("sourceId", sourceId)
-                .with("count", count)
-                .build());
-    }
-
     private SyncDiagnosticCodes code(RemoteErrorKind kind) {
         return switch (kind) {
             case UNREACHABLE -> SyncDiagnosticCodes.ENDPOINT_UNREACHABLE;

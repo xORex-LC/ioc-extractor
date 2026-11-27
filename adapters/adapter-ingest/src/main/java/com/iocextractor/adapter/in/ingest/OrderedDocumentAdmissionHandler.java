@@ -10,37 +10,31 @@ import com.iocextractor.application.ingest.admission.DocumentAdmissionPhase;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionReservation;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
 import com.iocextractor.application.ingest.admission.DocumentCandidateEvidence;
+import com.iocextractor.application.ingest.admission.DocumentRejection;
+import com.iocextractor.application.ingest.admission.DocumentExecutionState.Failure;
 import com.iocextractor.application.ingest.admission.DocumentTerminalOutcome;
 import com.iocextractor.application.observation.RegisteredObservation;
-import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Predicate;
 
 /** Filesystem adapter for reservation, token claim, stable hashing and claim adoption. */
 public final class OrderedDocumentAdmissionHandler {
 
     private final DocumentAdmissionService admissions;
-    private final SourceLifecycle sources;
+    private final FileSystemSourceLifecycle sources;
     private final FileDocumentCandidateEvidenceReader evidenceReader;
     private final FileSourceHasher hasher;
     private final IngestionLedger ledger;
 
-    public OrderedDocumentAdmissionHandler(DocumentAdmissionService admissions,
-                                           SourceLifecycle sources,
-                                           FileDocumentCandidateEvidenceReader evidenceReader,
-                                           FileSourceHasher hasher) {
-        this(admissions, sources, evidenceReader, hasher, null);
-    }
-
     /** Creates a handler that reconciles terminal ingestion before touching claimed files. */
     public OrderedDocumentAdmissionHandler(DocumentAdmissionService admissions,
-                                           SourceLifecycle sources,
+                                           FileSystemSourceLifecycle sources,
                                            FileDocumentCandidateEvidenceReader evidenceReader,
                                            FileSourceHasher hasher,
                                            IngestionLedger ledger) {
@@ -48,7 +42,7 @@ public final class OrderedDocumentAdmissionHandler {
         this.sources = Objects.requireNonNull(sources, "sources");
         this.evidenceReader = Objects.requireNonNull(evidenceReader, "evidenceReader");
         this.hasher = Objects.requireNonNull(hasher, "hasher");
-        this.ledger = ledger;
+        this.ledger = Objects.requireNonNull(ledger, "ledger");
     }
 
     public AdmittedDocument admit(Path source, ObservationId observationId, Instant detectedAt) {
@@ -77,31 +71,77 @@ public final class OrderedDocumentAdmissionHandler {
                 : new DocumentAdmissionReservation(
                         observationId, existing.candidatePath(), existing.candidateEvidence(),
                         existing.claimPath(), existing.createdAt());
-        DocumentAdmission admitted = admissions.admit(reservation);
-        if (admitted.phase() != DocumentAdmissionPhase.ORDERED) { return admitted; }
-        ClaimedSource claimed = claimOrRecover(admitted);
-        DocumentCandidateEvidence claimedEvidence = evidenceReader.read(claimed.processingPath());
-        return admissions.recordClaim(admitted.observationId(), claimedEvidence);
+        return acquireClaim(admissions.admit(reservation));
+    }
+
+    /** Resumes just the ownership step, including moves made before their journal update. */
+    DocumentAdmission ensureClaimed(ObservationId id) {
+        DocumentAdmission current = required(id);
+        return switch (current.phase()) {
+            case RESERVED -> claim(current.candidatePath(), id, current.createdAt());
+            case ORDERED -> acquireClaim(current);
+            default -> current;
+        };
     }
 
     public AdmittedDocument finish(ObservationId id) {
-        DocumentAdmission current = admissions.find(id).orElseThrow();
-        if (current.phase() == DocumentAdmissionPhase.RESERVED) {
-            current = admissions.admit(new DocumentAdmissionReservation(current.observationId(),
-                    current.candidatePath(), current.candidateEvidence(), current.claimPath(), current.createdAt()));
+        DocumentAdmission current = ensureClaimed(id);
+        if (current.rejection().isPresent() || current.phase() == DocumentAdmissionPhase.TERMINAL) {
+            throw new IllegalStateException("Document is unavailable for preparation");
         }
-        return advanceToLinked(current);
+        Path claimPath = checkedClaim(current);
+        ClaimedSource claimed = new ClaimedSource(id, current.candidatePath(), claimPath, current.createdAt());
+        Path sealedPath = DocumentRejectionFiles.sealed(claimPath);
+        if (DocumentRejectionFiles.present(sealedPath)) {
+            requireSealedEvidence(current, sealedPath, evidenceReader.read(sealedPath));
+        }
+        if (DocumentRejectionFiles.present(claimPath)
+                && !current.candidateEvidence().sameObjectAs(evidenceReader.read(claimPath))) {
+            throw new IllegalStateException("Document claim evidence changed before sealing");
+        }
+        claimed = sources.sealClaim(claimed, current.candidateEvidence().size());
+        var snapshot = evidenceReader.read(claimed.processingPath());
+        if (snapshot.size() != current.candidateEvidence().size()) {
+            throw new IllegalStateException("Document size changed after bounded admission");
+        }
+        if (current.phase() == DocumentAdmissionPhase.CLAIMED
+                && !current.claimedEvidence().orElseThrow().equals(snapshot)) {
+            current = admissions.recordSnapshot(current, snapshot);
+        }
+        SourceKey key = stableHash(claimed.processingPath());
+        SourceUnit unit = sources.adoptClaim(claimed, key);
+        if (current.phase() == DocumentAdmissionPhase.CLAIMED) {
+            current = admissions.link(current.observationId(), key);
+        }
+        if (!current.sourceKey().orElseThrow().equals(key)) {
+            throw new IllegalStateException("Document admission is not ready for ingestion");
+        }
+        return new AdmittedDocument(unit, current.registration().orElseThrow());
+    }
+
+    AdmittedDocument linkedDocument(DocumentAdmission admission) {
+        var id = admission.observationId();
+        Path sealed = DocumentRejectionFiles.sealed(checkedClaim(admission));
+        var source = new SourceUnit(id, admission.sourceKey().orElseThrow(), admission.candidatePath(),
+                sealed, admission.createdAt());
+        return new AdmittedDocument(source, admission.registration().orElseThrow());
     }
 
     public List<DocumentAdmission> pending(int limit) {
+        return pending(limit, id -> false);
+    }
+
+    List<DocumentAdmission> pending(int limit, Predicate<ObservationId> hasPromotionPlan) {
         return admissions.pending(limit).stream().filter(value -> {
             if (value.phase() == DocumentAdmissionPhase.TERMINAL) {
+                if (hasPromotionPlan.test(value.observationId())) {
+                    return true;
+                }
                 admissions.complete(value.observationId(), value.terminalOutcome().orElseThrow());
                 return false;
             }
-            return !completeFromIngestionLedger(value);
-        })
-                .filter(value -> value.phase() != DocumentAdmissionPhase.TERMINAL).toList();
+            return !completeArchived(value, hasPromotionPlan);
+        }).toList();
     }
 
     /** Read-only bounded metadata for health; reconciliation remains an execution responsibility. */
@@ -113,89 +153,128 @@ public final class OrderedDocumentAdmissionHandler {
         admissions.retryExecution(id, retryAfter, failure);
     }
 
-    public List<AdmittedDocument> recover(int limit) {
-        List<AdmittedDocument> recovered = new ArrayList<>();
-        for (DocumentAdmission admission : admissions.recover(limit)) {
-            if (completeFromIngestionLedger(admission)) {
-                continue;
-            }
-            if (admission.phase() != DocumentAdmissionPhase.TERMINAL) {
-                recovered.add(advanceToLinked(admission));
-            }
-        }
-        return List.copyOf(recovered);
+    /** Pins done files and failed-file bundles through terminal registration. */
+    public boolean pinsRejectionLeaf(Path path) {
+        return sources.rejectionOwner(path).flatMap(admissions::find)
+                .filter(value -> value.rejection().isPresent() && !value.registrationFinalized())
+                .isPresent() || sources.archiveOwner(path).flatMap(admissions::find)
+                .filter(value -> !value.registrationFinalized())
+                .isPresent();
     }
 
-    private boolean completeFromIngestionLedger(DocumentAdmission admission) {
-        if (ledger == null || admission.phase() != DocumentAdmissionPhase.LINKED) {
+    DocumentAdmission required(ObservationId id) { return admissions.find(id).orElseThrow(); }
+
+    /**
+     * The ordered promotion path persists a source ledger claim before canonical effects.
+     * A legacy failed row with no recorded disposition also cannot establish their absence.
+     */
+    boolean promotionUncertain(DocumentAdmission admission) {
+        return ledger.find(admission.observationId()).isPresent();
+    }
+
+    private boolean completeArchived(DocumentAdmission admission, Predicate<ObservationId> hasPromotionPlan) {
+        if (admission.phase() != DocumentAdmissionPhase.LINKED || admission.rejection().isPresent()) {
             return false;
         }
-        return ledger.find(admission.observationId()).map(record -> {
-            if (record.status() == IngestionStatus.SOURCE_ARCHIVED) {
-                admissions.complete(admission.observationId(), DocumentTerminalOutcome.SUCCEEDED);
-                return true;
-            }
-            if (record.status() == IngestionStatus.FAILED) {
-                admissions.complete(admission.observationId(), DocumentTerminalOutcome.REJECTED);
-                return true;
-            }
-            return false;
-        }).orElse(false);
+        return ledger.find(admission.observationId())
+                .filter(record -> record.status() == IngestionStatus.SOURCE_ARCHIVED
+                        && admission.sourceKey().orElseThrow().equals(record.key())
+                        && !hasPromotionPlan.test(admission.observationId()))
+                .map(record -> {
+                    admissions.complete(admission.observationId(), DocumentTerminalOutcome.SUCCEEDED);
+                    return true;
+                }).orElse(false);
     }
 
-    /** Completes the service-journal/dataframe terminal handshake idempotently. */
-    public void complete(ObservationId observationId, DocumentTerminalOutcome outcome) {
-        admissions.complete(observationId, outcome);
-    }
-
-    private AdmittedDocument advanceToLinked(DocumentAdmission initial) {
-        DocumentAdmission current = initial;
-        ClaimedSource claimed;
-        if (current.phase() == DocumentAdmissionPhase.ORDERED) {
-            claimed = claimOrRecover(current);
-            DocumentCandidateEvidence claimedEvidence = evidenceReader.read(claimed.processingPath());
-            if (!current.candidateEvidence().sameObjectAs(claimedEvidence)) {
-                throw new IllegalStateException("Document changed before private claim");
-            }
-            current = admissions.recordClaim(
-                    current.observationId(), claimedEvidence);
+    /** Saves the ownership proof and destination before moving the exact private file. */
+    DocumentAdmission beginRejection(DocumentAdmission current, DocumentRejection.Code code) {
+        if (promotionUncertain(current)) {
+            throw new IllegalStateException("Canonical promotion outcome requires reconciliation");
+        }
+        Path claim = checkedClaim(current);
+        Path sealed = DocumentRejectionFiles.sealed(claim);
+        Path source;
+        DocumentCandidateEvidence evidence;
+        if (DocumentRejectionFiles.present(sealed)) {
+            source = sealed;
+            evidence = evidenceReader.read(source);
+            requireSealedEvidence(current, source, evidence);
         } else {
-            claimed = claimedSource(current);
+            if (current.sourceKey().isPresent()) {
+                throw new IllegalStateException("Linked document's private snapshot is missing");
+            }
+            source = claim;
+            evidence = evidenceReader.read(source);
+            requireClaimIdentity(current, evidence);
         }
-        claimed = sources.sealClaim(claimed, current.candidateEvidence().size());
-        if (evidenceReader.read(claimed.processingPath()).size() != current.candidateEvidence().size()) {
-            throw new IllegalStateException("Document size changed after bounded admission");
-        }
-        SourceKey key = stableHash(claimed.processingPath());
-        SourceUnit unit = sources.adoptClaim(claimed, key);
-        if (current.phase() == DocumentAdmissionPhase.CLAIMED) {
-            current = admissions.link(current.observationId(), key);
-        } else if (current.phase() == DocumentAdmissionPhase.LINKED
-                && !current.sourceKey().orElseThrow().equals(key)) {
-            throw new IllegalStateException("Recovered document content key changed");
-        }
-        if (current.phase() != DocumentAdmissionPhase.LINKED) {
-            throw new IllegalStateException("Document admission is not ready for ingestion");
-        }
-        return new AdmittedDocument(unit, current.registration().orElseThrow());
+        return admissions.beginRejection(current, new DocumentRejection(
+                source, failedTarget(current.observationId()), evidence, code));
     }
 
-    private ClaimedSource claimOrRecover(DocumentAdmission admission) {
-        boolean claimExists = Files.exists(admission.claimPath());
-        boolean candidateExists = Files.exists(admission.candidatePath());
-        if (claimExists) {
-            return claimedSource(admission);
+    /** Reconciles file, sidecar, keyed ledger and terminal registration in that order. */
+    void finishRejection(DocumentAdmission admission) {
+        DocumentRejection intent = admission.rejection().orElseThrow();
+        var source = admission.sourceKey().map(key -> new SourceUnit(admission.observationId(), key,
+                admission.candidatePath(), intent.source(), admission.createdAt()));
+        ledger.find(admission.observationId()).ifPresent(record -> {
+            if (source.isEmpty() || !record.matchesRejection(source.orElseThrow(), intent.target(), intent.code().name())) {
+                throw new IllegalStateException("Canonical promotion outcome conflicts with document rejection");
+            }
+        });
+        sources.rejections().finish(admission, checkedClaim(admission),
+                failedTarget(admission.observationId()), evidenceReader);
+        if (source.isPresent()
+                && !ledger.recordRejected(source.orElseThrow(), intent.target(), intent.code().name()).completed()) {
+            throw new IllegalStateException("Ingestion ledger rejected the document disposition");
         }
-        if (!candidateExists) {
-            throw new IllegalStateException("Document candidate and private claim are both missing");
-        }
-        return sources.claimBeforeHash(admission.candidatePath(), admission.observationId(),
-                admission.createdAt());
+        admissions.complete(admission.observationId(), DocumentTerminalOutcome.REJECTED);
     }
 
-    private ClaimedSource claimedSource(DocumentAdmission admission) {
-        return new ClaimedSource(admission.observationId(), admission.candidatePath(),
-                admission.claimPath(), admission.createdAt());
+    private Path failedTarget(ObservationId id) {
+        return sources.rejections().target(sources.observationToken(id));
+    }
+
+    private DocumentAdmission acquireClaim(DocumentAdmission current) {
+        if (current.phase() != DocumentAdmissionPhase.ORDERED) {
+            return current;
+        }
+        Path claim = checkedClaim(current);
+        if (!DocumentRejectionFiles.present(claim)) {
+            if (!current.candidateEvidence().sameObjectAs(evidenceReader.read(current.candidatePath()))) {
+                throw new DocumentOwnershipException(Failure.CANDIDATE_REPLACED);
+            }
+            sources.claimBeforeHash(current.candidatePath(), current.observationId(), current.createdAt());
+        }
+        return admissions.recordClaim(current.observationId(), evidenceReader.read(claim));
+    }
+
+    private Path checkedClaim(DocumentAdmission admission) {
+        Path claim = sources.prehashClaimPath(admission.candidatePath(), admission.observationId());
+        if (!claim.equals(admission.claimPath())) {
+            throw new IllegalStateException("Document claim path differs from configured ownership");
+        }
+        return claim;
+    }
+
+    private void requireClaimIdentity(DocumentAdmission admission, DocumentCandidateEvidence evidence) {
+        if (!admission.candidateEvidence().sameFileAs(evidence)) {
+            throw new IllegalStateException("Document claim identity changed");
+        }
+    }
+
+    private void requireSealedEvidence(DocumentAdmission admission, Path sealed, DocumentCandidateEvidence evidence) {
+        var claimed = admission.claimedEvidence().orElseThrow();
+        // Older journals, and a crash just after sealing, can still hold the original inode.
+        if (admission.candidateEvidence().sameFileAs(claimed)) {
+            var original = admission.candidateEvidence();
+            if (evidence.fileKey().isEmpty() || evidence.size() != original.size()
+                    || evidence.modifiedAtNanos() != original.modifiedAtNanos()
+                    || admission.sourceKey().filter(key -> !key.equals(stableHash(sealed))).isPresent()) {
+                throw new IllegalStateException("Document snapshot evidence is inconsistent");
+            }
+        } else if (!claimed.sameObjectAs(evidence)) {
+            throw new IllegalStateException("Document snapshot identity changed");
+        }
     }
 
     private SourceKey stableHash(Path claimedPath) {

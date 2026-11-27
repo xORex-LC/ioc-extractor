@@ -272,8 +272,12 @@ for scenario in restore rollback-stop; do
 done
 
 arrange success
-mkdir "${TEST_PREFIX}/backups/local-deploy.interrupted.000001"
+mkdir "${TEST_PREFIX}/backups/"local-deploy.{interrupted,expired}.000001
+touch -t 202001010000 "${TEST_PREFIX}/backups/"{local-deploy.expired.000001/completed,old-db.tar,old-unit.service}
 activate 0
+[[ -f "${TEST_PREFIX}/backups/old-db.tar" && -f "${TEST_PREFIX}/backups/old-unit.service" ]] \
+  || fail 'retention touched files outside the attempt directories'
+[[ ! -d "${TEST_PREFIX}/backups/local-deploy.expired.000001" ]] || fail 'expired completed attempt survived retention'
 [[ "$(readlink "${TEST_PREFIX}/current")" == releases/candidate ]] || fail 'candidate not active'
 [[ -d "${TEST_PREFIX}/releases/previous" ]] || fail 'release retention removed rollback binary'
 [[ -d "${TEST_PREFIX}/backups/local-deploy.interrupted.000001" ]] || fail 'retention removed interrupted attempt'

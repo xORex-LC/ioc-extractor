@@ -74,7 +74,9 @@ class DocumentAdmissionCompletionTest {
     @Test
     void conflictingConcurrentTerminalOutcomeIsRejected() {
         var journal = new Journal(linked(REGISTRATION, new SourceKey("digest")));
-        journal.concurrentUpdate.set(value -> value.terminal(DocumentTerminalOutcome.REJECTED, NOW.plusSeconds(1)));
+        journal.concurrentUpdate.set(value -> value
+                .reject(rejection(value.claimPath(), value.claimedEvidence().orElseThrow()), NOW)
+                .terminal(DocumentTerminalOutcome.REJECTED, NOW.plusSeconds(1)));
 
         assertThatThrownBy(() -> service(journal, new Registrations(), 2)
                 .complete(ID, DocumentTerminalOutcome.SUCCEEDED)).isInstanceOf(IllegalStateException.class);
@@ -133,7 +135,7 @@ class DocumentAdmissionCompletionTest {
                     terminal.phase(), defect.equals("version") ? value.version() : terminal.version(),
                     terminal.registration(), terminal.sourceKey(), terminal.terminalOutcome(), false,
                     defect.equals("created") ? NOW.minusSeconds(1) : terminal.createdAt(), terminal.updatedAt(),
-                    defect.equals("execution") ? new DocumentExecutionState(1, NOW, "other attempt") : terminal.execution());
+                    defect.equals("execution") ? new DocumentExecutionState(1, NOW, "other attempt") : terminal.execution(), terminal.rejection());
         });
 
         assertThatThrownBy(() -> service(journal, new Registrations(), 2)
@@ -150,6 +152,144 @@ class DocumentAdmissionCompletionTest {
         assertThatThrownBy(() -> service(journal, new Registrations(), 2)
                 .complete(ID, DocumentTerminalOutcome.SUCCEEDED)).isInstanceOf(IllegalStateException.class);
         assertThat(journal.current.get().phase()).isEqualTo(DocumentAdmissionPhase.LINKED);
+    }
+
+    @Test
+    void rejectionWithoutKeyRequiresClaimEvidenceAndAnIntent() {
+        var evidence = new DocumentCandidateEvidence(Optional.of("file-key"), 1, 1);
+        var reservation = new DocumentAdmissionReservation(ID, Path.of("inbox/document.docx"),
+                evidence, Path.of("processing/document.docx"), NOW);
+        var reserved = DocumentAdmission.reserved(reservation);
+        var ordered = reserved.ordered(REGISTRATION, NOW);
+        var claimed = ordered.claimed(evidence, NOW);
+        var intent = rejection(reservation.claimPath(), evidence);
+
+        assertThatThrownBy(() -> reserved.reject(intent, NOW)).hasMessageContaining("cannot begin rejection");
+        assertThatThrownBy(() -> ordered.terminal(DocumentTerminalOutcome.REJECTED, NOW))
+                .hasMessageContaining("no eligible terminal disposition");
+        assertThatThrownBy(() -> claimed.terminal(DocumentTerminalOutcome.REJECTED, NOW))
+                .hasMessageContaining("no eligible terminal disposition");
+
+        var rejecting = claimed.reject(intent, NOW);
+        assertThatThrownBy(() -> rejecting.reject(intent, NOW)).hasMessageContaining("cannot begin rejection");
+        assertThatThrownBy(() -> rejecting.linked(new SourceKey("digest"), NOW))
+                .hasMessage("Rejecting document cannot be linked");
+        assertThatThrownBy(() -> rejecting.terminal(DocumentTerminalOutcome.SUCCEEDED, NOW))
+                .hasMessageContaining("no eligible terminal disposition");
+        var rejected = rejecting.terminal(DocumentTerminalOutcome.REJECTED, NOW);
+        assertThatThrownBy(() -> rejected.terminal(DocumentTerminalOutcome.REJECTED, NOW))
+                .hasMessageContaining("no eligible terminal disposition");
+        assertThat(rejected).satisfies(value -> {
+            assertThat(value.registration()).contains(REGISTRATION);
+            assertThat(value.sourceKey()).isEmpty();
+            assertThat(value.rejection()).contains(intent);
+        });
+
+        var linked = claimed.linked(new SourceKey("digest"), NOW).reject(intent, NOW);
+        assertThatThrownBy(() -> linked.terminal(DocumentTerminalOutcome.SUCCEEDED, NOW))
+                .hasMessageContaining("no eligible terminal disposition");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "CLAIMED, digest, -, false", "LINKED, -, -, false", "ORDERED, -, -, true",
+            "TERMINAL, -, REJECTED, false", "TERMINAL, -, SUCCEEDED, true"
+    })
+    void journalValueRejectsEvidenceInconsistentWithItsPhase(
+            DocumentAdmissionPhase phase, String sourceKey, String outcome, boolean hasIntent) {
+        var example = linked(REGISTRATION, new SourceKey("example"));
+        var evidence = example.candidateEvidence();
+        Optional<SourceKey> key = sourceKey.equals("-") ? Optional.empty() : Optional.of(new SourceKey(sourceKey));
+        Optional<DocumentTerminalOutcome> terminal = outcome.equals("-") ? Optional.empty()
+                : Optional.of(DocumentTerminalOutcome.valueOf(outcome));
+        Optional<DocumentRejection> intent = hasIntent ? Optional.of(rejection(example.claimPath(), evidence))
+                : Optional.empty();
+        var claimed = phase == DocumentAdmissionPhase.ORDERED ? Optional.<DocumentCandidateEvidence>empty()
+                : Optional.of(evidence);
+
+        assertThatThrownBy(() -> new DocumentAdmission(ID, example.candidatePath(), evidence,
+                example.claimPath(), claimed, phase, 3, Optional.of(REGISTRATION), key,
+                terminal, false, NOW, NOW, DocumentExecutionState.NEW, intent))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejectionRequiresDistinctAbsolutePathsAndInodeEvidence() {
+        var evidence = new DocumentCandidateEvidence(Optional.of("inode"), 1, 1);
+        var source = Path.of("processing/document").toAbsolutePath();
+        var target = Path.of("failed/document").toAbsolutePath();
+        var code = DocumentRejection.Code.SOURCE_TOO_LARGE;
+        assertThatThrownBy(() -> new DocumentRejection(Path.of("relative"), target, evidence, code))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DocumentRejection(source, Path.of("relative"), evidence, code))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DocumentRejection(source, source, evidence, code))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DocumentRejection(source, target,
+                new DocumentCandidateEvidence(Optional.empty(), 1, 1), code))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void operatorCanResumeHeldTerminalSuccessUntilFinalAcknowledgement() {
+        var linked = linked(REGISTRATION, new SourceKey("digest"));
+        var held = new DocumentExecutionState(3, DocumentExecutionState.HELD,
+                DocumentExecutionState.Failure.PROMOTION_RECOVERY_FAILED.name());
+        var pending = linked.terminal(DocumentTerminalOutcome.SUCCEEDED, NOW).execution(held, NOW);
+        var journal = new Journal(pending);
+        var operations = new DocumentAdmissionOperations(() -> journal, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        assertThat(operations.resume(ID, pending.version())).satisfies(resumed -> {
+            assertThat(resumed.terminalOutcome()).contains(DocumentTerminalOutcome.SUCCEEDED);
+            assertThat(resumed.registration()).contains(REGISTRATION);
+            assertThat(resumed.registrationFinalized()).isFalse();
+            assertThat(resumed.execution()).isEqualTo(DocumentExecutionState.NEW);
+        });
+
+        var finalized = pending.registrationFinalized(NOW);
+        journal.current.set(finalized);
+        assertThatThrownBy(() -> operations.resume(ID, finalized.version())).hasMessageContaining("not held");
+
+        var rejected = linked.reject(rejection(linked.claimPath(), linked.claimedEvidence().orElseThrow()), NOW)
+                .terminal(DocumentTerminalOutcome.REJECTED, NOW).execution(held, NOW);
+        journal.current.set(rejected);
+        assertThatThrownBy(() -> operations.resume(ID, rejected.version())).hasMessageContaining("not held");
+    }
+
+    @Test
+    void operatorResumeRejectsMissingActiveAndConcurrentlyChangedAdmissions() {
+        var active = linked(REGISTRATION, new SourceKey("digest"));
+        var journal = new Journal(active);
+        var operations = new DocumentAdmissionOperations(() -> journal, Clock.fixed(NOW, ZoneOffset.UTC));
+        var missing = new ObservationId("unknown");
+        assertThat(operations.status(Optional.of(missing))).isEmpty();
+        assertThat(operations.status(Optional.of(ID))).contains(active);
+        assertThatThrownBy(() -> operations.resume(missing, active.version()))
+                .hasMessage("Missing document admission");
+        assertThatThrownBy(() -> operations.resume(ID, active.version()))
+                .hasMessageContaining("not held");
+        var held = active.execution(new DocumentExecutionState(2, DocumentExecutionState.HELD, "CLAIM_UNCONFIRMED"), NOW);
+        journal.current.set(held);
+        journal.concurrentUpdate.set(value -> value.execution(value.execution(), NOW));
+        assertThatThrownBy(() -> operations.resume(ID, held.version())).hasMessageContaining("changed concurrently");
+        var finished = active.terminal(DocumentTerminalOutcome.SUCCEEDED, NOW).registrationFinalized(NOW);
+        journal.current.set(finished);
+        assertThat(operations.status(Optional.empty())).isEmpty();
+        assertThatThrownBy(() -> operations.resume(ID, finished.version())).hasMessageContaining("not held");
+    }
+
+    @Test
+    void statusAllowsKnownCodesAndFiltersLegacyFreeText() {
+        assertThat(DocumentExecutionState.Failure.isKnownCode("CANDIDATE_REPLACED")).isTrue();
+        assertThat(DocumentExecutionState.Failure.isKnownCode("SOURCE_TOO_LARGE")).isTrue();
+        assertThat(DocumentExecutionState.Failure.isKnownCode("parser detail with source name")).isFalse();
+        assertThatThrownBy(() -> new DocumentExecutionState(-1, Instant.EPOCH, null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private static DocumentRejection rejection(Path source, DocumentCandidateEvidence evidence) {
+        return new DocumentRejection(source, Path.of("failed/document").toAbsolutePath(),
+                evidence, DocumentRejection.Code.SOURCE_HASH_FAILED);
     }
 
     private static DocumentAdmission linked(RegisteredObservation registration, SourceKey key) {
@@ -186,7 +326,9 @@ class DocumentAdmissionCompletionTest {
 
         private Journal(DocumentAdmission initial) { current = new AtomicReference<>(initial); }
         @Override public DocumentAdmission reserve(DocumentAdmissionReservation reservation) { throw new UnsupportedOperationException(); }
-        @Override public Optional<DocumentAdmission> find(ObservationId id) { return Optional.of(current.get()); }
+        @Override public Optional<DocumentAdmission> find(ObservationId id) {
+            return Optional.of(current.get()).filter(value -> value.observationId().equals(id));
+        }
         @Override public boolean replace(DocumentAdmission expected, DocumentAdmission updated) {
             await(expected.phase() == DocumentAdmissionPhase.LINKED ? terminalBarrier : finalizationBarrier);
             var competing = concurrentUpdate.getAndSet(null);

@@ -18,6 +18,6 @@ Stateless port calls do not imply no I/O or no adapter caching. The thick publis
 
 Push is optional and carries no file/IOC facts. Reconnect/overflow signals request ordinary detection; lost hints are recovered by complete polling/reconcile. Watches own their adapter resources and have explicit best-effort close semantics, not a promise of durable notification delivery.
 
-The fetch ledger and in-flight registry use the same source-scoped key. The ledger also reports whether matching unscoped history requires a cutover decision. See the [fetch flow](../../../../../../../../../../../docs/dev/sync.md).
+The fetch ledger and in-flight registry use the same source-scoped key. See the [fetch flow](../../../../../../../../../../../docs/dev/sync.md).
 
 [Capability internals](../../../../../../../../../../../docs/dev/sync.md) owns the cross-module flow. [Module map](../../../../../../../../../README.md) owns dependencies and verification; exact member guarantees remain in Javadoc.

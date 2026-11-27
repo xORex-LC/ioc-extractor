@@ -15,12 +15,15 @@ import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 
@@ -58,13 +61,15 @@ public final class FileIngestionLedger implements IngestionLedger {
         return transitions.execute(workKey(unit.observationId()), () -> {
             Optional<IngestionRecord> current = find(unit.observationId());
             if (current.isPresent()) {
-                return current.orElseThrow().status() == IngestionStatus.CLAIMED
-                        ? IngestionLedgerTransition.ALREADY_APPLIED
-                        : IngestionLedgerTransition.CONFLICT;
+                if (current.orElseThrow().status() != IngestionStatus.CLAIMED) {
+                    return IngestionLedgerTransition.CONFLICT;
+                }
+                forceLedgerDirectory();
+                return IngestionLedgerTransition.ALREADY_APPLIED;
             }
             write(new IngestionRecord(unit.observationId(), unit.key(), IngestionStatus.CLAIMED,
                     unit.originalPath(), unit.processingPath(), null,
-                    unit.detectedAt(), Instant.now(clock), null));
+                    unit.detectedAt(), Instant.now(clock), null), true);
             return IngestionLedgerTransition.APPLIED;
         });
     }
@@ -78,6 +83,7 @@ public final class FileIngestionLedger implements IngestionLedger {
             }
             IngestionRecord record = current.orElseThrow();
             if (record.status() == IngestionStatus.SOURCE_ARCHIVED) {
+                forceLedgerDirectory();
                 return IngestionLedgerTransition.ALREADY_APPLIED;
             }
             if (record.status() != IngestionStatus.CLAIMED) {
@@ -85,7 +91,7 @@ public final class FileIngestionLedger implements IngestionLedger {
             }
             write(new IngestionRecord(observationId, record.key(), IngestionStatus.SOURCE_ARCHIVED,
                     record.originalPath(), record.processingPath(), archivedPath,
-                    record.detectedAt(), Instant.now(clock), record.reason()));
+                    record.detectedAt(), Instant.now(clock), record.reason()), true);
             return IngestionLedgerTransition.APPLIED;
         });
     }
@@ -115,6 +121,24 @@ public final class FileIngestionLedger implements IngestionLedger {
     }
 
     @Override
+    public IngestionLedgerTransition recordRejected(SourceUnit source, Path failedPath, String code) {
+        return transitions.execute(workKey(source.observationId()), () -> {
+            Optional<IngestionRecord> current = find(source.observationId());
+            if (current.isPresent()) {
+                if (!current.orElseThrow().matchesRejection(source, failedPath, code)) {
+                    return IngestionLedgerTransition.CONFLICT;
+                }
+                forceLedgerDirectory();
+                return IngestionLedgerTransition.ALREADY_APPLIED;
+            }
+            write(new IngestionRecord(source.observationId(), source.key(), IngestionStatus.FAILED,
+                    source.originalPath(), source.processingPath(), failedPath,
+                    source.detectedAt(), Instant.now(clock), code), true);
+            return IngestionLedgerTransition.APPLIED;
+        });
+    }
+
+    @Override
     public List<IngestionRecord> findIncomplete() {
         return findRecords(record -> record.status() != IngestionStatus.SOURCE_ARCHIVED
                 && record.status() != IngestionStatus.FAILED);
@@ -126,7 +150,7 @@ public final class FileIngestionLedger implements IngestionLedger {
         }
         try (var files = Files.list(ledgerDir)) {
             return files
-                    .filter(path -> path.getFileName().toString().endsWith(".properties"))
+                    .filter(path -> Objects.requireNonNull(path.getFileName()).toString().endsWith(".properties"))
                     .map(this::read)
                     .filter(predicate)
                     .toList();
@@ -156,6 +180,10 @@ public final class FileIngestionLedger implements IngestionLedger {
     }
 
     private void write(IngestionRecord record) {
+        write(record, false);
+    }
+
+    private void write(IngestionRecord record, boolean requireDurability) {
         try {
             Files.createDirectories(ledgerDir);
             Properties props = new Properties();
@@ -171,17 +199,44 @@ public final class FileIngestionLedger implements IngestionLedger {
 
             Path target = pathFor(record.observationId());
             Path temp = Files.createTempFile(ledgerDir, fileToken(record.observationId()), ".tmp");
-            try (Writer writer = Files.newBufferedWriter(temp)) {
-                props.store(writer, "ioc ingestion ledger");
-            }
             try {
-                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+                try (Writer writer = Files.newBufferedWriter(temp)) {
+                    props.store(writer, "ioc ingestion ledger");
+                }
+                if (requireDurability) {
+                    try (var channel = FileChannel.open(temp, StandardOpenOption.WRITE)) {
+                        channel.force(true);
+                    }
+                }
+                publish(temp, target, requireDurability);
+            } finally {
+                Files.deleteIfExists(temp);
             }
         } catch (IOException e) {
             throw new IocExtractorException(
                     "Failed to write ingestion ledger record: " + record.observationId().value(), e);
+        }
+    }
+
+    private void publish(Path temp, Path target, boolean requireDurability) throws IOException {
+        try {
+            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException unsupported) {
+            if (requireDurability) {
+                throw unsupported;
+            }
+            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+        if (requireDurability) {
+            forceLedgerDirectory();
+        }
+    }
+
+    private void forceLedgerDirectory() {
+        try (var channel = FileChannel.open(ledgerDir, StandardOpenOption.READ)) {
+            channel.force(true);
+        } catch (IOException failure) {
+            throw new IocExtractorException("Failed to persist ingestion ledger directory", failure);
         }
     }
 

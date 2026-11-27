@@ -55,6 +55,12 @@ import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.platform.etl.NoopPipelineObserver;
 import com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard;
 import com.iocextractor.platform.events.RecordingControlEventPublisher;
+import com.iocextractor.application.ingest.admission.DocumentAdmission;
+import com.iocextractor.application.ingest.admission.DocumentAdmissionReservation;
+import com.iocextractor.application.ingest.admission.DocumentCandidateEvidence;
+import com.iocextractor.application.observation.ObservationOrder;
+import com.iocextractor.application.observation.ObservationOrigin;
+import com.iocextractor.application.observation.RegisteredObservation;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -79,16 +85,25 @@ class IngestionServiceTest {
 
     private final Clock clock = Clock.fixed(EVENT_TIME, ZoneOffset.UTC);
 
-    @Test
-    void orderedRecoveryRejectsLegacyUnrankedWorkBeforeCreatingAnotherRun() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"legacy", "owned", "claim-failure"})
+    void orderedRecoveryLeavesRankedWorkToTheDispatcher(String scenario) {
         var ledger = new MemoryLedger();
         var record = new IngestionRecord(new SourceKey("legacy"), IngestionStatus.CLAIMED,
                 Path.of("inbox/legacy.html"), Path.of("processing/legacy.html"), null,
                 Instant.EPOCH, Instant.EPOCH, null);
         ledger.record = record;
         ledger.incompleteRecords = List.of(record);
+        var evidence = new DocumentCandidateEvidence(Optional.of("inode"), 1, 1);
+        var token = new RegisteredObservation(record.observationId(), "namespace",
+                new ObservationOrder(1), ObservationOrigin.DOCUMENT);
+        var admission = DocumentAdmission.reserved(new DocumentAdmissionReservation(record.observationId(),
+                        record.originalPath(), evidence, record.processingPath(), record.detectedAt()))
+                .ordered(token, EVENT_TIME).claimed(evidence, EVENT_TIME).linked(record.key(), EVENT_TIME);
         var journal = new com.iocextractor.application.port.out.ingest.DocumentAdmissionJournal() {
-            public Optional<com.iocextractor.application.ingest.admission.DocumentAdmission> find(ObservationId id) { return Optional.empty(); }
+            public Optional<DocumentAdmission> find(ObservationId id) {
+                return scenario.equals("legacy") ? Optional.empty() : Optional.of(admission);
+            }
             public com.iocextractor.application.ingest.admission.DocumentAdmission reserve(
                     com.iocextractor.application.ingest.admission.DocumentAdmissionReservation reservation) { throw new AssertionError("recovery must not reserve"); }
             public boolean replace(com.iocextractor.application.ingest.admission.DocumentAdmission before,
@@ -108,12 +123,27 @@ class IngestionServiceTest {
                 runs, new CollectingProjection(), new RecordingControlEventPublisher(), clock,
                 NoopDiagnosticSink.INSTANCE, new SynchronousKeyedExecutionGuard(), null,
                 new com.iocextractor.application.ingest.admission.DocumentAdmissionService(journal, registrations, clock));
-        assertThatThrownBy(service::recoverIncomplete).isInstanceOfSatisfying(DiagnosticException.class,
-                failure -> assertThat(failure.diagnostic().context().get("reason").toString())
-                        .contains("legacy unranked ingestion work", "drain legacy work"));
+        if (scenario.equals("claim-failure")) {
+            ledger.record = null;
+            ledger.claimFailure = new IllegalStateException("Interruption before promotion");
+            var source = new SourceUnit(record.observationId(), record.key(), record.originalPath(),
+                    record.processingPath(), record.detectedAt());
+            assertThatThrownBy(() -> service.ingest(new IngestSourceCommand(source, token)))
+                    .isInstanceOf(DiagnosticException.class);
+            assertThat(ledger.record).isNull();
+        } else if (scenario.equals("owned")) {
+            assertThat(service.recoverIncomplete()).isEmpty();
+            assertThatThrownBy(() -> service.reject(record.observationId(), record.key(), "failure"))
+                    .hasMessage("Ordered document rejection belongs to admission disposition");
+            assertThat(ledger.record).isEqualTo(record);
+        } else {
+            assertThatThrownBy(service::recoverIncomplete).isInstanceOfSatisfying(DiagnosticException.class,
+                    failure -> assertThat(failure.diagnostic().context().get("reason").toString())
+                            .contains("legacy unranked ingestion work", "drain legacy work"));
+            assertThat(ledger.record).isEqualTo(record);
+        }
         assertThat(runs.starts).isZero();
         assertThat(lifecycle.events).isEmpty();
-        assertThat(ledger.record).isEqualTo(record);
     }
 
     @Test
@@ -1534,6 +1564,11 @@ class IngestionServiceTest {
                     originalPath, processingPath, null,
                     Instant.EPOCH, Instant.EPOCH, reason);
             return IngestionLedgerTransition.APPLIED;
+        }
+
+        @Override
+        public IngestionLedgerTransition recordRejected(SourceUnit source, Path failedPath, String code) {
+            throw new AssertionError("Ordered rejection belongs to the admission handler");
         }
 
         @Override

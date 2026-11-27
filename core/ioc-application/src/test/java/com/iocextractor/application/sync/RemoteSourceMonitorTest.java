@@ -186,11 +186,6 @@ class RemoteSourceMonitorTest {
         private final Map<RemoteObjectIdentity, RemoteFetchRecord> records = new LinkedHashMap<>();
 
         @Override
-        public boolean requiresLegacyReview(RemoteObjectIdentity identity) {
-            return false;
-        }
-
-        @Override
         public Optional<RemoteFetchRecord> find(RemoteObjectIdentity identity) {
             return Optional.ofNullable(records.get(identity));
         }

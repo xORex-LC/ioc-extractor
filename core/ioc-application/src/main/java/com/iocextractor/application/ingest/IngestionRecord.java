@@ -51,6 +51,14 @@ public record IngestionRecord(ObservationId observationId,
                 archivedPath, detectedAt, updatedAt, reason);
     }
 
+    /** Compares the durable physical outcome, leaving update timestamps out of retry identity. */
+    public boolean matchesRejection(SourceUnit source, Path failedPath, String code) {
+        return status == IngestionStatus.FAILED && observationId.equals(source.observationId())
+                && key.equals(source.key()) && originalPath.equals(source.originalPath())
+                && processingPath.equals(source.processingPath()) && failedPath.equals(archivedPath)
+                && code.equals(reason);
+    }
+
     public Optional<Path> archivedPathOptional() {
         return Optional.ofNullable(archivedPath);
     }

@@ -184,18 +184,25 @@ import slots используют тот же реестр и транзакци
 ## Схема и восстановление
 
 Версионируемые миграции используют `user_version`, после них согласуется
-настроенная схема артефактов. Поддерживаются текущие Native dataframe format 12
-и service format 14. Обычный migrator отвергает новые/экспериментальные форматы;
+настроенная схема артефактов. Поддерживаются текущие Native dataframe format 13
+и service format 18. Обычный migrator отвергает новые/экспериментальные форматы;
 он не переосмысляет их и не снижает версию.
 
 Цепочка миграций сохраняет границы владения: dataframe v4 — lifecycle/history/
 receipts, v5/v8 — slots и разреженные свободные диапазоны, v6 — checkpoint
 ограниченной reconciliation, v7 — named match identities, v9 — import receipts,
 v10 — упорядоченные registrations/field origins, v11 — ordered receipt
-positions/origin history, v12 — принятые import warnings. Service v9 — managed
+positions/origin history, v12 — принятые import warnings, v13 — маркеры записи
+артефактов документа и закреплённые квитанции. Service v9 — managed
 deliveries, v10 — document admission, v11 — import observation reservations,
 v12 — document-policy pins, v13 — export-profile single flight, v14 — bounded
-document execution. Document/import retry сохраняет исходный rank;
+document execution, v15 — идентичность fetch по источнику, v16 — намерения
+отказа документов и терминальные исходы без ключа содержимого, v17 — удаление
+прежней истории fetch без ID источника, v18 — журнал запуска с привязкой к
+наблюдению и ссылкой на принятый план. Миграция v16
+сохраняет существующие допуски и их ранги. Service v18 сохраняет старые запуски
+без привязки. См. [восстановление документов](ingestion.md#receipts-и-повторы).
+Document/import retry сохраняет исходный rank;
 нерезервированный legacy import не может молча получить новый rank после restart.
 
 | Граница отказа | Результат и восстановление |
@@ -203,7 +210,7 @@ document execution. Document/import retry сохраняет исходный ra
 | Schema/identity drift | Startup прекращается до бизнес-мутации; исправить конфигурацию или выполнить явную миграцию |
 | Каноническая транзакция | Откатить транзакцию своего артефакта либо всю import transaction; независимо зарезервированные ID остаются сгоревшими |
 | Commit до проекции/finalization | Каноническая истина сохраняется; журналы run/delivery восстанавливаются по каноническому receipt/checkpoint |
-| Source/workspace удалён после commit | Достаточен совместимый complete receipt; не применять доставку повторно |
+| Workspace документа недоступен | Для неполной записи нужен точный закреплённый план. При полном комплекте маркеров проекция и архивирование продолжаются без workspace |
 | Переименование проекции до acknowledgement | Требуемая generation остаётся ожидающей; startup/periodic recovery повторяет установку |
 | Прерванное истечение | Зафиксированные страницы остаются закрытыми; reconcile продолжается из истины без оживления |
 | Небезопасное UTC | Подтверждение отвергается; readiness отражает отказ часов без уменьшения high-water |

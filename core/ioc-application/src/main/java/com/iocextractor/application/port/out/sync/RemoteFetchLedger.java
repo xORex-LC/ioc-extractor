@@ -11,9 +11,6 @@ public interface RemoteFetchLedger {
 
     Optional<RemoteFetchRecord> find(RemoteObjectIdentity identity);
 
-    /** Returns whether a historical unscoped FETCHED row lacks a replay approval for this source. */
-    boolean requiresLegacyReview(RemoteObjectIdentity identity);
-
     RemoteFetchRecord markFetched(RemoteObjectIdentity identity, String localPath, Instant fetchedAt);
 
     RemoteFetchRecord markSkipped(RemoteObjectIdentity identity, String reason, Instant skippedAt);

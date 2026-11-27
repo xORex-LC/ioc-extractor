@@ -56,6 +56,40 @@ public abstract class IngestionLedgerContractTest {
     }
 
     @Test
+    void physicalRejectionPersistsPathsAndOnlyAcceptsAnExactRetry() {
+        IngestionLedger ledger = createLedger(FIXED_CLOCK);
+        SourceUnit source = unit("pre-promotion");
+        Path failed = path("failed/rejected");
+        String code = "DOCUMENT_PREPARATION_FAILED";
+
+        assertThat(ledger.recordRejected(source, failed, code)).isEqualTo(IngestionLedgerTransition.APPLIED);
+        assertThat(ledger.recordRejected(source, failed, code)).isEqualTo(IngestionLedgerTransition.ALREADY_APPLIED);
+        assertThat(ledger.recordRejected(source, path("failed/elsewhere"), code))
+                .isEqualTo(IngestionLedgerTransition.CONFLICT);
+        assertThat(ledger.find(source.observationId())).get().satisfies(record -> {
+            assertThat(record.status()).isEqualTo(IngestionStatus.FAILED);
+            assertThat(record.originalPath()).isEqualTo(source.originalPath());
+            assertThat(record.processingPath()).isEqualTo(source.processingPath());
+            assertThat(record.archivedPath()).isEqualTo(failed);
+            assertThat(record.reason()).isEqualTo(code);
+            assertThat(record.matchesRejection(source, failed, "SOURCE_HASH_FAILED")).isFalse();
+            assertThat(record.matchesRejection(new SourceUnit(source.observationId(), new SourceKey("other-content"),
+                    source.originalPath(), source.processingPath(), source.detectedAt()), failed, code)).isFalse();
+            assertThat(record.matchesRejection(new SourceUnit(source.observationId(), source.key(),
+                    path("inbox/other"), source.processingPath(), source.detectedAt()), failed, code)).isFalse();
+            assertThat(record.matchesRejection(new SourceUnit(source.observationId(), source.key(),
+                    source.originalPath(), path("processing/other"), source.detectedAt()), failed, code)).isFalse();
+            assertThat(record.matchesRejection(unit("other-observation"), failed, code)).isFalse();
+        });
+
+        SourceUnit promoting = unit("promoting");
+        assertThat(ledger.markClaimed(promoting)).isEqualTo(IngestionLedgerTransition.APPLIED);
+        assertThat(ledger.recordRejected(promoting, failed, code)).isEqualTo(IngestionLedgerTransition.CONFLICT);
+        assertThat(ledger.find(promoting.observationId())).get().satisfies(record ->
+                assertThat(record.status()).isEqualTo(IngestionStatus.CLAIMED));
+    }
+
+    @Test
     void returns_empty_for_missing_source_key() {
         IngestionLedger ledger = createLedger(FIXED_CLOCK);
 

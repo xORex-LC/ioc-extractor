@@ -261,20 +261,27 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         } catch (RuntimeException e) {
             RuntimeException failure = isIngestDiagnostic(e)
                     ? e : ledgerFailure(command.key(), "mark-claimed", e);
-            try {
-                sourceLifecycle.fail(unit, e.getMessage());
-            } catch (RuntimeException cleanupFailure) {
-                failure.addSuppressed(cleanupFailure);
-            }
-            try {
-                requireCompleted(command.key(), "mark-failed-after-claim-error",
-                        ledger.markFailed(command.observationId(), command.key(), e.getMessage()));
-            } catch (RuntimeException cleanupFailure) {
-                failure.addSuppressed(cleanupFailure);
+            if (!hasDocumentAdmission(command.observationId())) {
+                failLegacyClaim(command, unit, e, failure);
             }
             throw failure;
         }
         return processClaimed(unit, command.registration(), prepared);
+    }
+
+    private void failLegacyClaim(IngestSourceCommand command, SourceUnit unit,
+                                 RuntimeException cause, RuntimeException failure) {
+        try {
+            sourceLifecycle.fail(unit, cause.getMessage());
+        } catch (RuntimeException cleanupFailure) {
+            failure.addSuppressed(cleanupFailure);
+        }
+        try {
+            requireCompleted(command.key(), "mark-failed-after-claim-error",
+                    ledger.markFailed(command.observationId(), command.key(), cause.getMessage()));
+        } catch (RuntimeException cleanupFailure) {
+            failure.addSuppressed(cleanupFailure);
+        }
     }
 
     @Override
@@ -282,6 +289,9 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         try {
             List<IngestSourceResult> results = new ArrayList<>();
             for (IngestionRecord record : ledger.findIncomplete()) {
+                if (hasDocumentAdmission(record.observationId())) {
+                    continue;
+                }
                 try {
                     IngestSourceResult result = executionGuard.execute(workKey(record.key()), () ->
                             ledger.find(record.observationId()).map(this::recover).orElse(null));
@@ -323,7 +333,12 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
             String reason) {
         Objects.requireNonNull(observationId, "observationId");
         Objects.requireNonNull(key, "key");
-        return executionGuard.execute(workKey(key), () -> rejectGuarded(observationId, key, reason));
+        return executionGuard.execute(workKey(key), () -> {
+            if (hasDocumentAdmission(observationId)) {
+                throw new IllegalStateException("Ordered document rejection belongs to admission disposition");
+            }
+            return rejectGuarded(observationId, key, reason);
+        });
     }
 
     private IngestionRejectionResult rejectGuarded(
@@ -477,25 +492,13 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     }
 
     private IngestSourceResult recover(IngestionRecord record) {
-        RegisteredObservation registration = documentAdmissions == null
-                ? null : resumeOrderedDocument(record);
-        return recover(record, registration);
-    }
-
-    private RegisteredObservation resumeOrderedDocument(IngestionRecord record) {
-        try {
-            return documentAdmissions.resume(record.observationId());
-        } catch (IllegalStateException missingAdmission) {
-            if (missingAdmission.getMessage() == null
-                    || !missingAdmission.getMessage().contains("Missing document admission")) {
-                throw missingAdmission;
-            }
+        if (documentAdmissions != null) {
             throw new IllegalStateException(
                     "Ordered observation recovery found legacy unranked ingestion work; "
                             + "disable enabled latest-registered field policies, drain legacy work, "
-                            + "then re-enable them, or restore coordinated pre-upgrade state",
-                    missingAdmission);
+                            + "then re-enable them, or restore coordinated pre-upgrade state");
         }
+        return recover(record, null);
     }
 
     private IngestSourceResult recover(IngestionRecord record, RegisteredObservation registration) {
@@ -579,8 +582,12 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         return extractionFactory.create(sourcePreparers.preparers(), NoopArtifactProjection.INSTANCE).extract(command);
     }
 
+    private boolean hasDocumentAdmission(ObservationId observationId) {
+        return documentAdmissions != null && documentAdmissions.find(observationId).isPresent();
+    }
+
     private void completeDocument(ObservationId observationId, DocumentTerminalOutcome outcome) {
-        if (documentAdmissions != null && documentAdmissions.find(observationId).isPresent()) {
+        if (hasDocumentAdmission(observationId)) {
             documentAdmissions.complete(observationId, outcome);
         }
     }

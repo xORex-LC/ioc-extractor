@@ -91,18 +91,37 @@ class SourceFailureLoggingIT {
         assertThat(sourceFailures).isEqualTo(2);
         assertThat(stageFailureFound).isTrue();
 
+        String rejectedObservation;
         try (var connection = DriverManager.getConnection(serviceDb(directory));
              var statement = connection.createStatement();
-             var runs = statement.executeQuery("SELECT reason FROM ingest_run WHERE status = 'FAILED'")) {
-            int failedRuns = 0;
-            while (runs.next()) {
-                String reason = runs.getString("reason");
-                assertThat(reason).contains(READ_FAILED, CONTROLLED_REASON);
-                assertSafeText(reason);
-                failedRuns++;
-            }
-            assertThat(failedRuns).isEqualTo(2);
+             var ledger = statement.executeQuery("""
+                     SELECT observation_id, processing_path, archived_path, reason
+                     FROM ingestion_ledger WHERE status = 'FAILED'
+                     """)) {
+            assertThat(ledger.next()).isTrue();
+            rejectedObservation = ledger.getString("observation_id");
+            Path archived = Path.of(ledger.getString("archived_path"));
+            assertThat(Path.of(ledger.getString("processing_path"))).doesNotExist();
+            assertThat(archived).hasContent("<p>example.test</p>");
+            assertThat(archived.resolveSibling(archived.getFileName() + ".error"))
+                    .hasContent("DOCUMENT_PREPARATION_FAILED\n");
+            assertThat(ledger.getString("reason")).isEqualTo("DOCUMENT_PREPARATION_FAILED");
+            assertThat(ledger.next()).isFalse();
         }
+
+        try (var connection = DriverManager.getConnection(serviceDb(directory));
+             var statement = connection.createStatement();
+             var runs = statement.executeQuery("SELECT observation_id, reason FROM ingest_run WHERE status = 'FAILED'")) {
+            assertThat(runs.next()).isTrue();
+            assertThat(runs.getString("observation_id")).isEqualTo(rejectedObservation);
+            assertThat(runs.getString("reason")).isEqualTo("DOCUMENT_PREPARATION_FAILED");
+            assertThat(runs.next()).isFalse();
+        }
+
+        launch(0, "ingest", "status", "--observation", rejectedObservation);
+        assertThat(readSafeOutput(directory.resolve("stdout.log")))
+                .contains("Observation: " + rejectedObservation, "Outcome: REJECTED",
+                        "Code: DOCUMENT_PREPARATION_FAILED");
     }
 
     private void launch(int expectedExit, String... arguments) throws Exception {
@@ -137,6 +156,11 @@ class SourceFailureLoggingIT {
     }
 
     public static void main(String[] arguments) {
+        if (arguments.length > 0 && "ingest".equals(arguments[0])) {
+            System.setProperty("ioc.ingestion.ledger.type", "jdbc");
+            IocExtractorApplication.main(arguments);
+            return;
+        }
         var application = new SpringApplication(IocExtractorApplication.class, FailingReaderConfiguration.class);
         boolean daemon = arguments.length == 0;
         String[] startupArgs = daemon ? new String[]{

@@ -48,28 +48,6 @@ class RemoteFetchServiceTest {
         assertThat(transport.getCalls).isZero();
     }
 
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void legacyMatchRequiresReviewInBothFetchModes(boolean dryRun) {
-        RemoteObject object = object("/share/a.htm", 10);
-        FakeTransport transport = new FakeTransport(List.of(object));
-        FakeLedger ledger = new FakeLedger();
-        ledger.held.add(object.identity("src"));
-        var sink = new CollectingDiagnosticSink();
-
-        var result = service(transport, ledger, source(), sink).fetch(new RemoteFetchCommand(dryRun));
-
-        assertThat(result.fetched()).isZero();
-        assertThat(result.failed()).isOne();
-        assertThat(transport.getCalls).isZero();
-        assertThat(ledger.records).isEmpty();
-        assertThat(inboxFiles()).isEmpty();
-        assertThat(sink.diagnostics()).singleElement().satisfies(diagnostic -> {
-            assertThat(diagnostic.code()).isEqualTo(SyncDiagnosticCodes.FETCH_LEGACY_REVIEW_REQUIRED);
-            assertThat(diagnostic.context()).containsEntry("sourceId", "src").containsEntry("count", 1);
-        });
-    }
-
     @Test
     void failedDownloadLeavesNoFinalInboxFileAndNoFetchedMark() {
         RemoteObject object = object("/share/a.htm", 10);
@@ -420,12 +398,6 @@ class RemoteFetchServiceTest {
 
     private static final class FakeLedger implements RemoteFetchLedger {
         private final Map<RemoteObjectIdentity, RemoteFetchRecord> records = new LinkedHashMap<>();
-        private final java.util.Set<RemoteObjectIdentity> held = new java.util.HashSet<>();
-
-        @Override
-        public boolean requiresLegacyReview(RemoteObjectIdentity identity) {
-            return held.contains(identity);
-        }
 
         @Override
         public Optional<RemoteFetchRecord> find(RemoteObjectIdentity identity) {

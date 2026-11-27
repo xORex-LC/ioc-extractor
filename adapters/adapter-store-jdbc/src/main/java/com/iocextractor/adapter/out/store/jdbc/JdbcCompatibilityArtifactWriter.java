@@ -4,6 +4,7 @@ import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalWriteCommand;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
+import com.iocextractor.application.artifact.DocumentArtifactCommit;
 import com.iocextractor.application.artifact.PreparedArtifactRow;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 import com.iocextractor.common.IocExtractorException;
@@ -82,40 +83,64 @@ final class JdbcCompatibilityArtifactWriter {
         try (Connection connection = dataSource.getConnection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
+            Throwable failure = null;
             try {
                 acquireWriteOwnership(connection);
                 var registration = command.registration();
-                if (ordered) { orderedFields.validateRegistration(connection, Objects.requireNonNull(registration)); }
-                long identityEpoch = ordered ? identityEpoch(connection, command.artifactName()) : 0;
-                MutationCounts counts;
-                if (ordered) {
-                    counts = applyRows(connection, schema, command, identityEpoch, registration);
-                } else {
-                    int inserted = 0;
-                    try (var cursor = command.rows().open()) {
-                        while (cursor.next()) {
-                            if (insertRow(connection, schema, cursor.value().row())) { inserted++; }
-                        }
-                    }
-                    counts = new MutationCounts(inserted, 0, 0);
+                var document = command.documentWrite();
+                if (ordered || document != null) {
+                    orderedFields.validateRegistration(connection, Objects.requireNonNull(registration));
                 }
+                if (document != null) {
+                    var committed = JdbcDocumentCommitMarkers.find(connection, document).get(command.artifactName());
+                    if (committed != null) {
+                        connection.commit();
+                        return committed.compatibilityResult();
+                    }
+                    JdbcDocumentCommitMarkers.ensureWritableObservation(connection,
+                            document.registration().observationId(), document.sourceKey(), clock.millis(), document);
+                }
+                var counts = ordered
+                        ? applyRows(connection, schema, command, identityEpoch(connection, command.artifactName()), registration)
+                        : insertRows(connection, schema, command);
                 int publicChanges = Math.addExact(counts.inserted(), counts.updated());
                 long revision = publicChanges > 0
                         ? bumpRevision(connection, command.artifactName(), clock.instant().toString())
                         : currentRevision(connection, command.artifactName());
+                if (document != null) {
+                    long now = clock.millis();
+                    var generation = JdbcDocumentCommitMarkers.advanceProjectionGeneration(
+                            connection, command.artifactName(), now);
+                    JdbcDocumentCommitMarkers.insertCompatibility(connection, document, command.artifactName(), now,
+                            new DocumentArtifactCommit(
+                                    counts.inserted(), counts.updated(), counts.metadataOnly(), revision, generation));
+                }
                 connection.commit();
-                return new CanonicalWriteResult(
-                        counts.inserted(), counts.updated(), counts.metadataOnly(), revision);
-            } catch (SQLException | RuntimeException failure) {
-                rollback(connection, failure);
-                throw failure;
+                return new CanonicalWriteResult(counts.inserted(), counts.updated(), counts.metadataOnly(), revision);
+            } catch (SQLException | RuntimeException | Error caught) {
+                failure = caught;
+                JdbcLifecycleTransactions.rollback(connection, caught);
+                throw caught;
             } finally {
-                connection.setAutoCommit(previousAutoCommit);
+                JdbcLifecycleTransactions.restoreAutoCommit(connection, previousAutoCommit, failure);
             }
         } catch (SQLException failure) {
             throw new IocExtractorException(
                     "Failed ordered JDBC artifact write: " + command.artifactName(), failure);
         }
+    }
+
+    private MutationCounts insertRows(Connection connection, DataframeArtifactSchema schema,
+                                      CanonicalWriteCommand command) throws SQLException {
+        int inserted = 0;
+        try (var cursor = command.rows().open()) {
+            while (cursor.next()) {
+                if (insertRow(connection, schema, cursor.value().row())) {
+                    inserted++;
+                }
+            }
+        }
+        return new MutationCounts(inserted, 0, 0);
     }
 
     private MutationCounts applyRows(Connection connection,

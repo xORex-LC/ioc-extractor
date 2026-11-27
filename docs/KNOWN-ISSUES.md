@@ -40,52 +40,13 @@ formats and tooling options do not replace this operational work.
 <a id="ing-11"></a>
 ### ING-11 — Resume after a partial ingest run
 
-**Partial · owner: ingestion/run-ledger.** Retries retain the document admission,
-observation/rank and backoff, but preparation can create another ingest run.
-After canonical commit, projection/archive failure can leave an earlier run
-`DB_COMMITTED` while source work is still claimed. Fixed-lifecycle receipts may
-avoid parsing and replay accepted rows; without a reusable receipt the retry
-extracts again. This is not a complete resume protocol across admission, source
-ledger and run-ledger; repeated work and abandoned partial runs remain possible.
-
-Close with a designed checkpoint/resume contract that resumes only outstanding
-projection/archive/finalization after a proven commit, coordinates all three
-ledgers, and tests failures/restarts with lifecycle enabled/disabled and receipts
-present/expired. Do not equate receipt replay with projection-only resume.
-See [ingestion](dev/ingestion.md#receipts-and-retry) and
-[IngestionService](../core/ioc-application/src/main/java/com/iocextractor/application/ingest/IngestionService.java).
-
-<a id="ing-13"></a>
-### ING-13 — Physical fate of failures before a trustworthy content key
-
-**Partial · owner: document admission/source lifecycle.** Retry exhaustion and
-terminal-log suppression exist. Pre-reservation failure can still leave input in
-the inbox; ledger-only rejection can persist `unknown` paths. A reserved pre-hash
-failure instead retains its owned token, blocks later promotion and makes capacity
-health DOWN. There is no supported general clear/requeue command. These are
-different failure windows, not one endlessly repeated poll log.
-
-Investigate the original file/token and use coordinated recovery/restore; do not
-clear SQLite rows or delete private evidence by hand. Close with explicit,
-idempotent quarantine/disposition for each pre-claim/pre-hash window, real source
-evidence and a supported recovery interface. See [daemon operations](guides/daemon-operations.md)
-and [ingestion](dev/ingestion.md#receipts-and-retry).
-
-<a id="ing-18"></a>
-### ING-18 — Rejected sealed document can remain in processing
-
-**Open · owner: document admission and source lifecycle.** After preparation
-fails through the retry limit, the daemon can finalize the admission as
-`REJECTED` and record the ingest failure while leaving the sealed input in
-`processing` without a failed `.error` sidecar. If promotion has not created
-the ingest record, rejection searches for archived-style filenames containing
-the content key. The sealed claim still uses the token-only `__pending__` name.
-The retained file occupies disk space and the operator sees a terminal status
-without the expected failed-file evidence.
-
-Close with disposition driven by the durable admission and its owned source.
-Qualify idempotent recovery across the move, sidecar write and terminal ledger
-updates. See [ingestion](dev/ingestion.md#receipts-and-retry).
+**Fixed for observation-linked runs · owner: ingestion/run-ledger.** The daemon
+retains one accepted plan per observation and resumes missing canonical writes,
+projection, archive and terminal acknowledgement using durable evidence.
+Older partial runs without an accepted-plan identity still require drain or
+manual reconciliation during cutover. See
+[ingestion](dev/ingestion.md#receipts-and-retry) and
+[operator procedure](guides/daemon-operations.md#understand-outcomes).
 
 <a id="2-обогащение-вывода-out"></a>
 <a id="out-3"></a>
@@ -580,16 +541,18 @@ features or resource budgets are complete. Dated qualification remains dated.
 | <a id="ing-2"></a>ING-2 | `out-of-scope` | Tail/offset/rotation mode excluded for discrete documents. A future streaming source needs a new source-mode contract, not a dormant promise. [Processing](dev/processing.md) |
 | <a id="ing-3"></a>ING-3 | `closed` | Daemon-only loopback actuator/health transport; REST use-case adapter remains ING-8. [Daemon operations](guides/daemon-operations.md) |
 | <a id="ing-4"></a>ING-4 | `closed` | Service ledger plus canonical JDBC dataframe truth, per-artifact identity and mutable CSV projection; partition staging removed. [Storage](dev/storage.md) |
-| <a id="ing-4a"></a>ING-4a | `closed` | Durable STARTED→DB_COMMITTED→PROJECTION_COMPLETED→COMPLETED checkpoints and run recovery; cross-ledger partial-run resume remains ING-11. [Ingestion](dev/ingestion.md) |
+| <a id="ing-4a"></a>ING-4a | `closed` | Durable STARTED→DB_COMMITTED→PROJECTION_COMPLETED→COMPLETED checkpoints and run recovery; Observation-linked recovery follows ING-11. [Ingestion](dev/ingestion.md) |
 | <a id="ing-5"></a>ING-5 | `closed` | Separate aggregation trigger removed with partition staging; direct canonical ingest. [Ingestion](dev/ingestion.md) |
 | <a id="ing-6"></a>ING-6 | `closed` | Partition-wrapper boundary removed; source identity belongs to application/adapters. [Architecture](ARCHITECTURE.md) |
 | <a id="ing-9"></a>ING-9 | `closed` | Retention archive preserves relative target paths using baseDir instead of flattening leaves. [Retention tests](../core/ioc-application/src/test/java/com/iocextractor/application/maintenance/RetentionServiceTest.java) |
 | <a id="ing-10"></a>ING-10 | `closed` | Recovery-before-poller startup, source-key guard and monotonic transitions; single daemon, not distributed fencing. Checkpoints f4f011e/c3a03e2/a44d10f/7ce5f8f; [ingestion](dev/ingestion.md) |
-| <a id="ing-12"></a>ING-12 | `closed` | Bounded hash retry and typed terminal unreadable-source diagnostic; physical pre-claim fate remains ING-13. [Ingestion](dev/ingestion.md) |
+| <a id="ing-12"></a>ING-12 | `closed` | Bounded hash retry and typed terminal unreadable-source diagnostic; physical disposition is covered by ING-13. [Ingestion](dev/ingestion.md) |
+| <a id="ing-13"></a>ING-13 | `closed` | Verified pre-hash and oversized files reach failed storage by observation ID. Ambiguous ownership is held for versioned resume. [Ingestion](dev/ingestion.md#receipts-and-retry) |
+| <a id="ing-18"></a>ING-18 | `closed` | Prepared-document rejection reconciles the sealed file, sidecar and ledger from durable intent. [Ingestion](dev/ingestion.md#receipts-and-retry) |
 | <a id="ing-14"></a>ING-14 | `closed` | Quiet-period discards re-enter the WatchService retry set; default full polling remains correctness path. [Filter integration test](../adapters/adapter-ingest/src/test/java/com/iocextractor/adapter/in/ingest/IngestFileListFilterIT.java) |
 | <a id="ing-17"></a>ING-17 | `closed` | Equivalent terminal CAS accepts only unchanged authority/evidence and verifies registration even on finalized retry. Completion regressions and the recorded corrected 100-DOCX run support closure; failed load windows remain failed. [Completion tests](../core/ioc-application/src/test/java/com/iocextractor/application/ingest/admission/DocumentAdmissionCompletionTest.java), [history](dev/native-capacity.md) |
 | <a id="ops-1"></a>OPS-1 | `closed` | Original multi-file/new-file verification is covered by recorded 100-DOCX intake; deterministic running-daemon/watch tests were freshly rechecked 2026-11-07. Full polling is the default; watcher is an accelerator. This does not qualify multi-endpoint identity/landing (OPS-12). [Daemon tests](../bootstrap/ioc-app/src/test/java/com/iocextractor/DaemonIngestE2EIT.java), [batch history](dev/native-capacity.md) |
-| <a id="ops-11"></a>OPS-11 | `closed` | Stable source ID scopes listing deduplication, in-flight work and the JDBC ledger. Equal metadata from parallel endpoints lands separate files. Schema v15 retains unscoped history with explicit cutover decisions. [Restart regression](../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/RemoteFetchSourceIsolationIT.java) · [Cutover](guides/remote-storage-sync.md#cut-over-the-legacy-fetch-ledger) |
+| <a id="ops-11"></a>OPS-11 | `closed` | Stable source ID scopes listing deduplication, in-flight work and the JDBC ledger. Equal metadata from parallel endpoints lands separate files. Schema v17 removes unscoped history and keeps records with a source ID. [Restart regression](../bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/RemoteFetchSourceIsolationIT.java) · [Cutover](guides/remote-storage-sync.md#cut-over-the-legacy-fetch-ledger) |
 | <a id="ops-13"></a>OPS-13 | `closed` | Local deployment stages the unit and both CLI helpers through preflight. A failed activation recovers their prior versions, the active link and, after a start attempt, the stopped database snapshot for that attempt. [Activation regression](../packaging/tests/deploy-local-activation-test.sh) · [Rollback procedure](guides/deployment.md#manual-application-rollback) |
 | <a id="obs-d1"></a>OBS-D1 | `closed` | ADR-0017 diagnostics, bounded outcomes, exactly-once runner delivery and prepare→checkpoint→commit; empty producer ratchet. [Observability](dev/observability.md) |
 | <a id="obs-d3"></a>OBS-D3 | `closed` | Event-local scalar fields use typed SLF4J key/value; MDC owns ambient correlation. Current Boot 4 encoder preserves the contract. [Observability](dev/observability.md) |

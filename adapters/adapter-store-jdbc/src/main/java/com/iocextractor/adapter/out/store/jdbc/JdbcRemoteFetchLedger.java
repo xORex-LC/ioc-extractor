@@ -57,31 +57,6 @@ public final class JdbcRemoteFetchLedger implements RemoteFetchLedger {
     }
 
     @Override
-    public boolean requiresLegacyReview(RemoteObjectIdentity identity) {
-        Objects.requireNonNull(identity, "identity");
-        return jdbc.sql("""
-                        SELECT EXISTS (
-                            SELECT 1 FROM remote_fetch_ledger_legacy
-                            WHERE remote_path = :remote_path
-                              AND remote_size = :remote_size
-                              AND remote_mtime = :remote_mtime AND status = 'FETCHED'
-                        ) AND NOT EXISTS (
-                            SELECT 1 FROM remote_fetch_legacy_replay
-                            WHERE source_id = :source_id
-                              AND remote_path = :remote_path
-                              AND remote_size = :remote_size
-                              AND remote_mtime = :remote_mtime
-                        )
-                        """)
-                .param("source_id", identity.sourceId())
-                .param("remote_path", identity.path())
-                .param("remote_size", identity.size())
-                .param("remote_mtime", identity.modifiedAt().toString())
-                .query(Boolean.class)
-                .single();
-    }
-
-    @Override
     public RemoteFetchRecord markFetched(RemoteObjectIdentity identity, String localPath, Instant fetchedAt) {
         if (localPath == null || localPath.isBlank()) {
             throw new IllegalArgumentException("localPath must not be blank");

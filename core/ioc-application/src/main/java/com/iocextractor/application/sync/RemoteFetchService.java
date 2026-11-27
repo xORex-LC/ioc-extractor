@@ -62,7 +62,6 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
         FetchCounters counters = new FetchCounters();
         for (RemoteFetchSource source : RemoteFetchSources.selected(sources, command)) {
             RemoteFetchSources.SourceMatchers matchers = RemoteFetchSources.compileMatchers(source);
-            int previousReviewCount = counters.reviewRequired;
             for (RemoteObject object : list(source)) {
                 if (!matchers.matches(object)) {
                     counters.skipped++;
@@ -70,7 +69,6 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
                 }
                 fetchOne(source, object, command.dryRun(), counters);
             }
-            reportLegacyReview(source, counters.reviewRequired - previousReviewCount);
         }
         return counters.toResult();
     }
@@ -83,7 +81,6 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
         for (RemoteObject object : command.objects()) {
             fetchOne(source, object, command.dryRun(), counters);
         }
-        reportLegacyReview(source, counters.reviewRequired);
         return counters.toResult();
     }
 
@@ -93,11 +90,6 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
                 .filter(record -> record.status() == RemoteFetchStatus.FETCHED)
                 .isPresent()) {
             counters.skipped++;
-            return;
-        }
-        if (ledger.requiresLegacyReview(identity)) {
-            counters.failed++;
-            counters.reviewRequired++;
             return;
         }
         if (dryRun) {
@@ -151,12 +143,6 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "No sync fetch source matches detected batch: " + command.source()));
-    }
-
-    private void reportLegacyReview(RemoteFetchSource source, int count) {
-        if (count > 0) {
-            diagnosticReporter.reportLegacyReview(source.sourceId(), count);
-        }
     }
 
     private Path finalPathFor(RemoteObjectIdentity identity) throws IOException {
@@ -233,7 +219,6 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
         private int fetched;
         private int skipped;
         private int failed;
-        private int reviewRequired;
 
         private RemoteFetchResult toResult() {
             return new RemoteFetchResult(fetched, skipped, failed);
